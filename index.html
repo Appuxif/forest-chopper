@@ -18,41 +18,62 @@ try {
  const gltf=await loader.loadAsync(GLB_DATA);
  modelScene=gltf.scene; animationClips=gltf.animations; cloneModel=clone;
 } catch(error) { console.error('Lumberjack model load failed',error); }
+// Separate lower-body locomotion and upper-body action tracks.
+const UPPER_BONES=new Set(['Spine','Head','UpperArm.L','Forearm.L','UpperArm.R','Forearm.R','Hand.R']);
+const CHOP_SPEED=1.6;
+function maskedClip(clip,upper){
+ const tracks=clip.tracks.filter(track=>{
+  // Use last dot: Blender bone names include dots (UpperArm.R).
+  const bone=track.name.slice(0,track.name.lastIndexOf('.'));
+  return UPPER_BONES.has(bone)===upper;
+ });
+ return new THREE.AnimationClip(clip.name+(upper?'_upper':'_lower'),clip.duration,tracks);
+}
+const layerClips={};
+for(const clip of animationClips){
+ layerClips[clip.name]={lower:maskedClip(clip,false),upper:maskedClip(clip,true)};
+}
 function createLumberjack(){
  if(!modelScene)return null;
- const group=new THREE.Group(); const visual=cloneModel(modelScene);
- // The Blender character faces local +Z; Three.js camera/player forward is -Z.
- // Correct the mesh once, so both local and networked players face their movement/view yaw.
- visual.rotation.y=Math.PI;
- group.add(visual);
+ const group=new THREE.Group(),visual=cloneModel(modelScene);
+ visual.rotation.y=Math.PI;group.add(visual);
  const mixer=new THREE.AnimationMixer(visual);
- const actions={}; for(const clip of animationClips){const a=mixer.clipAction(clip);actions[clip.name]=a;if(clip.name==='Chop2'||clip.name==='Jump'){a.setLoop(THREE.LoopOnce,1);a.clampWhenFinished=true;}}
- const actor={group,visual,mixer,actions,state:'',chopEnd:0,walkSpeed:0};
- modelActors.add(actor);setActorAnimation(actor,'Idle');return actor;
+ const lower={},upper={};
+ for(const [name,clips] of Object.entries(layerClips)){
+  lower[name]=mixer.clipAction(clips.lower);
+  upper[name]=mixer.clipAction(clips.upper);
+ }
+ if(upper.Chop2){upper.Chop2.setLoop(THREE.LoopOnce,1);upper.Chop2.clampWhenFinished=true;}
+ const actor={group,visual,mixer,lower,upper,lowerState:'',upperState:'',chopEnd:0};
+ actor.actions={...lower,Chop2:upper.Chop2};
+ modelActors.add(actor);
+ transitionLayer(actor,'lower','Idle');transitionLayer(actor,'upper','Idle');
+ return actor;
 }
-// Chop plays every frame, just faster; transition only after the action has finished.
-const CHOP_SPEED=1.6;
-function setActorAnimation(actor,name){
- if(!actor||actor.state===name||!actor.actions[name])return;
- const previous=actor.actions[actor.state],next=actor.actions[name];
- const blend=name==='Chop2'?.06:.12;
- next.reset().setEffectiveTimeScale(name==='Chop2'?CHOP_SPEED:1).setEffectiveWeight(1).fadeIn(blend).play();
- if(previous&&previous!==next)previous.fadeOut(blend);
- actor.state=name;
+function transitionLayer(actor,layer,name){
+ const bank=actor[layer],field=layer+'State';
+ if(!bank[name]||actor[field]===name)return;
+ const previous=bank[actor[field]],next=bank[name];
+ const fade=name==='Chop2'?.055:.12;
+ next.reset().setEffectiveTimeScale(name==='Chop2'?CHOP_SPEED:1).setEffectiveWeight(1).fadeIn(fade).play();
+ if(previous&&previous!==next)previous.fadeOut(fade);
+ actor[field]=name;
 }
 function actorChop(actor){
- if(!actor?.actions.Chop2)return;
- const action=actor.actions.Chop2;
- // Restart the clip from frame zero even when several trees are hit in succession.
- if(actor.state==='Chop2'){action.stop();actor.state='';}
- actor.chopEnd=performance.now()+action.getClip().duration/CHOP_SPEED*1000+35;
- setActorAnimation(actor,'Chop2');
+ const action=actor?.upper?.Chop2;
+ if(!action)return;
+ if(actor.upperState==='Chop2'){action.stop();actor.upperState='';}
+ actor.chopEnd=performance.now()+action.getClip().duration/CHOP_SPEED*1000;
+ transitionLayer(actor,'upper','Chop2');
 }
-function tickActor(actor,dt,walking,jumping=false){if(!actor)return;
+function tickActor(actor,dt,walking,jumping=false){
+ if(!actor)return;
+ const motion=jumping&&actor.lower.Jump?'Jump':walking?'Walk':'Idle';
+ transitionLayer(actor,'lower',motion);
+ if(actor.upperState!=='Chop2'||performance.now()>=actor.chopEnd-100){
+  transitionLayer(actor,'upper',motion);
+ }
  actor.mixer.update(dt);
- // Never interrupt a chopping action before its last keyframe.
- if(actor.state==='Chop2'&&performance.now()<actor.chopEnd)return;
- setActorAnimation(actor,jumping&&actor.actions.Jump?'Jump':walking?'Walk':'Idle');
 }
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,280);camera.rotation.order='YXZ';const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'default'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;host.prepend(renderer.domElement);
