@@ -21,7 +21,7 @@ function sendChat(text){
 ctx.$('chattoggle').onclick=()=>{ctx.$('chatpanel').classList.toggle('collapsed');ctx.$('chatunread').textContent='';};
 ctx.$('chatform').onsubmit=e=>{e.preventDefault();if(sendChat(ctx.$('chatinput').value))ctx.$('chatinput').value='';};
 function syncWood(w,c){ctx.wood=w;ctx.$('wood').textContent=ctx.wood;if(c!==undefined){ctx.cuts=c;ctx.$('cut').textContent=ctx.cuts}}
-function clearWorld(){for(const t of ctx.trees.values())ctx.scene.remove(t);for(const g of ctx.chunks.values())ctx.scene.remove(g);for(const f of ctx.falling)ctx.scene.remove(f.tree);for(const p of ctx.particles)ctx.scene.remove(p.mesh);for(const p of ctx.placed)ctx.scene.remove(p.mesh);if(ctx.preview){ctx.scene.remove(ctx.preview);ctx.preview=null}ctx.trees.clear();ctx.chunks.clear();ctx.falling.length=0;ctx.particles.length=0;ctx.placed.length=0;ctx.felled.clear();ctx.treeDamage.clear()}
+function clearWorld(){for(const t of ctx.trees.values()){ctx.scene.remove(t);ctx.disposeTree(t)}for(const g of ctx.chunks.values())ctx.scene.remove(g);for(const f of ctx.falling){ctx.scene.remove(f.tree);ctx.disposeTree(f.tree)}for(const p of ctx.particles)ctx.scene.remove(p.mesh);for(const p of ctx.placed)ctx.scene.remove(p.mesh);ctx.disposePreview();ctx.trees.clear();ctx.chunks.clear();ctx.falling.length=0;ctx.particles.length=0;ctx.placed.length=0;ctx.felled.clear();ctx.treeDamage.clear()}
 function addLog(data){if(ctx.placed.some(p=>p.id===data.id))return;const m=ctx.makeLog();m.position.set(data.x,data.y,data.z);if(data.orientation===1)m.rotation.y=Math.PI/2;ctx.scene.add(m);ctx.placed.push({...data,mesh:m})}
 function treeHit(id,hp){ctx.treeDamage.set(id,hp);const t=ctx.trees.get(id);if(t){t.userData.hp=hp;t.userData.scar.visible=true;t.userData.scar.scale.y=1+(1-hp/t.userData.maxHp)*2.2;ctx.spawnChips(t)}}
 function treeFell(id){ctx.felled.add(id);ctx.treeDamage.delete(id);const t=ctx.trees.get(id);if(t){ctx.trees.delete(id);ctx.falling.push({tree:t,elapsed:0,direction:Math.random()*Math.PI*2})}}
@@ -60,7 +60,7 @@ function addAvatar(p){if(p.id===ctx.myId)return;
  group.position.set(p.x,p.y||0,p.z);ctx.scene.add(group);
  ctx.avatars.set(p.id,{group,actor,tag,name:p.name||'Игрок',goal:new ctx.THREE.Vector3(p.x,p.y||0,p.z),angle:p.yaw||0,jumping:!!p.jumping});}
 
-function removeAvatar(id){const a=ctx.avatars.get(id);if(a){ctx.scene.remove(a.group);a.tag.material.map.dispose();a.tag.material.dispose();if(a.actor){a.actor.mixer.stopAllAction();ctx.modelActors.delete(a.actor)}ctx.avatars.delete(id)}}
+function removeAvatar(id){const a=ctx.avatars.get(id);if(a){ctx.scene.remove(a.group);a.tag.material.map.dispose();a.tag.material.dispose();if(a.actor){a.actor.mixer.stopAllAction();ctx.modelActors.delete(a.actor)}else{for(const child of a.group.children){if(child.geometry)child.geometry.dispose();if(child.material&&child!==a.tag)child.material.dispose()}}ctx.avatars.delete(id)}}
 let peer=null, guestConnection=null;
 const bridges=new Set();
 let generation=0;

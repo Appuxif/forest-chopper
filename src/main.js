@@ -36,7 +36,7 @@ const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
 // Multiplayer: authoritative server state, client-side rendering.
 let socket=null,myId=null,lastMoveSent=0;const avatars=new Map();
 
-let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
+let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposeTree, disposePreview, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
  get $(){return $;},
  get chatHistory(){return chatHistory;},
@@ -66,6 +66,8 @@ const ctx={
  get clearWorld(){return clearWorld;},
  get closeNet(){return closeNet;},
  get createLumberjack(){return createLumberjack;},
+ get disposeTree(){return disposeTree;},
+ get disposePreview(){return disposePreview;},
  get cuts(){return cuts;}, set cuts(value){cuts=value;},
  get drag(){return drag;}, set drag(value){drag=value;},
  get endMat(){return endMat;},
@@ -149,9 +151,9 @@ const ctx={
  get wood(){return wood;}, set wood(value){wood=value;},
  get yaw(){return yaw;}, set yaw(value){yaw=value;},
 };
-({rand, makeTree, build, updateChunks}=createWorld(ctx));
+({rand, makeTree, build, updateChunks, disposeTree}=createWorld(ctx));
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
-({makeLog, overlaps, candidate, updatePreview, placeLog, removeLog, setMode}=createBuilding(ctx));
+({makeLog, overlaps, candidate, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
 ({aimed, spawnChips, chop}=createChopping(ctx));
 ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.group.visible=thirdPerson;}
 ({isOnline, sendNet, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, chatHistory}=createMultiplayer(ctx));
