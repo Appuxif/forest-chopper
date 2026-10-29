@@ -10,8 +10,9 @@ export function installDebug(ctx) {
   };
   const releaseAll = () => { for (const code of movementKeys) stop(code); };
   const events = [];
+  let eventSequence = 0;
   const addEvent = (type, details = {}) => {
-    events.push({ time: Math.round(performance.now()), type, ...details });
+    events.push({ id: ++eventSequence, time: Math.round(performance.now()), type, ...details });
     if (events.length > 150) events.shift();
   };
   const heading = (x, z) => Math.atan2(-(x - ctx.px), -(z - ctx.pz));
@@ -248,6 +249,33 @@ export function installDebug(ctx) {
         activeTask:api.getActiveTask(),lastTask:describeTask(lastTask),
         wood:ctx.wood,cuts:ctx.cuts,online:ctx.isOnline()};
     },
+    // Tiny incremental feed for frequent MCP polling. Full observation is only
+    // needed when choosing a new action or diagnosing a problem.
+    getBrief(afterChatId=0,afterEventId=0,afterTaskId=0) {
+      const chatCursor=Math.max(0,Number(afterChatId)||0);
+      const eventCursor=Math.max(0,Number(afterEventId)||0);
+      const taskCursor=Math.max(0,Number(afterTaskId)||0);
+      // Return oldest unread items first so the caller can safely advance cursors.
+      const chat=ctx.chatHistory.filter(m=>m.id>chatCursor).slice(0,20)
+        .map(m=>({id:m.id,from:m.from,name:m.name,text:m.text}));
+      const recentEvents=events.filter(e=>e.id>eventCursor).slice(0,20)
+        .map(({id,type,...details})=>({id,type,...details}));
+      const compactTask=task=>task?{
+        id:task.id,type:task.type,status:task.status,
+        ...(task.progress?{progress:task.progress}:{}),
+        ...(task.status!=='running'?{
+          outcome:task.result?.status??(task.status==='failed'?task.error:null)
+        }:{}),
+      }:null;
+      const last=taskRecords.get(taskCounter);
+      return {
+        chat,chatId:chat.at(-1)?.id??chatCursor,
+        events:recentEvents,eventId:recentEvents.at(-1)?.id??eventCursor,
+        active:compactTask(activeTask),
+        ...(last&&last.id>taskCursor&&last.status!=='running'?{last:compactTask(last)}:{}),
+        position:[round(ctx.px),round(ctx.pz)],wood:ctx.wood,cuts:ctx.cuts,online:ctx.isOnline(),
+      };
+    },
     events(since = 0) { return events.filter(e=>e.time>=since); },
     clearEvents(){events.length=0;},
     jump() { ctx.requestJump(); return api.state(); },
@@ -278,7 +306,7 @@ export function installDebug(ctx) {
     scene: ctx.scene, camera: ctx.camera, renderer: ctx.renderer,
     get player() { return ctx.ownAvatar; },
     get rootMotion() { return ctx.rootMotion; },
-    help: 'startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
+    help: 'startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
   };
   window.__gameDebug = api;
   window.addEventListener('blur', releaseAll);

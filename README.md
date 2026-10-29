@@ -80,3 +80,7 @@ HTML, CSS, JavaScript, Three.js / WebGL, Blender / GLB, Python, websockets.
 ## Статус
 
 🚧 Быстрый экспериментальный прототип. Без полноценных тестов, системы аккаунтов и защиты от читов.
+
+### Headless server bots (MCP / CLI)
+
+Bot setup: [docs/SERVER_BOTS.md](docs/SERVER_BOTS.md). Autonomous AI agent instructions: [docs/AI_PLAYER.md](docs/AI_PLAYER.md). Browser/Chrome DevTools AI debugging: [docs/AI_PLAYER_DEBUG.md](docs/AI_PLAYER_DEBUG.md).
