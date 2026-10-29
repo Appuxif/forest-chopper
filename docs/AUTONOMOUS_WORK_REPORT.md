@@ -8,7 +8,7 @@
 
 ## Completed
 
-### P0.1 — Dispose of owned Three.js resources
+### P0.1 — Dispose of owned Three.js resources (`0dc3667`)
 
 - Added `disposeTree(tree)`: disposes **only** per-tree scar geometry and material, leaving trunk/leaf/grass shared resources intact.
 - Called cleanup during chunk unload, after falling-tree animation, while resetting the offline world, and on multiplayer world replacement.
@@ -19,17 +19,26 @@
 - Browser graphics memory: the first preview render raised geometry count from 63 to 64 while visible; after its removal this returned to 63. Texture count remained 58. **This is not a direct material-memory measurement**; JS mock tests validate material disposal calls.
 - Browser screenshots (temporary, outside repository): `/tmp/forest-chopper-overnight-p0-desktop.webp`, `/tmp/forest-chopper-overnight-p0-mobile.webp`.
 
+### P0.2 — Validate offline and online building actions
+
+- The same `placeError()` check drives preview color, local placement, and outbound multiplayer placement commands.
+- Recomputes snapped placement at action time instead of trusting the last rendered preview; respects the 16-level height limit and wood inventory.
+- Prevents log placement/removal outside build mode. Missing logs and blocked placements provide a meaningful `buildhint` message.
+- Offline placement/removal mutates local wood/logs. Online actions only send validated commands; the server remains authoritative and must acknowledge them.
+- Added `tests/building.test.mjs`: 9 real scenarios for both modes, insufficient wood, 16 levels, stale preview, removal, and green/red preview.
+- Isolated mobile browser (390 × 844): no-wood preview is red, placement stays at wood=0, warning is visible, leaving build mode removes preview, and no console errors appeared.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.
 - P0.1: Python unittest 1/1 passed; JS `node --test tests/resources.test.mjs` 2/2 passed; `node --check` for `src/*.js` passed.
+- P0.2: Python unittest 1/1 passed; JS `node --test tests/*.test.mjs` 11/11 passed; JS syntax and `git diff --check` passed.
 - Isolated browser test: page loaded with WebGL2, `window.__gameDebug` available in debug page; no errors after fixing one syntax issue caught during development.
 - No changes made to world seeds, tree IDs, saved world format, bot or network protocols.
 - Visual quality/subjective game feel was not assessed by a human.
 
 ## In progress / next
 
-- P0.2 — Validate placement/removal consistently in offline and online modes.
 - P0.3 — Expand protocol and physics regression tests.
 - P0.4 — Polish keyboard/chat and touch UX.
 - P1 — Notifications, hit feedback, hints, and quality-of-life when P0 is stable.
