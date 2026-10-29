@@ -75,9 +75,10 @@ function actorChop(actor){
  actor.chopEnd=performance.now()+action.getClip().duration/CHOP_SPEED*1000+30;
  transitionLayer(actor,'upper','Chop2');
 }
-function tickActor(actor,dt,walking,jumping=false){
+function tickActor(actor,dt,walking,jumping=false,strafe=0){
  if(!actor)return;
- const motion=jumping&&actor.lower.Jump?'Jump':walking?'Walk':'Idle';
+ const strafeClip=strafe<0?'StrafeLeft':strafe>0?'StrafeRight':null;
+ const motion=jumping&&actor.lower.Jump?'Jump':strafeClip&&actor.lower[strafeClip]?strafeClip:walking?'Walk':'Idle';
  transitionLayer(actor,'lower',motion);
  // No early return / early blend-out: finish ALL of Chop2.
  if(actor.upperState!=='Chop2'||performance.now()>=actor.chopEnd){
@@ -213,7 +214,7 @@ function animate(now){requestAnimationFrame(animate);const dt=Math.min(.05,(now-
   camera.position.set(px+Math.sin(yaw)*back,feetY+1.8+raise+Math.max(0,-Math.sin(pitch))*1.5,pz+Math.cos(yaw)*back);
   camera.lookAt(px,feetY+1.65+Math.tan(pitch)*3,pz);
  }
- if(ownAvatar){ownAvatar.group.position.set(px,feetY,pz);ownAvatar.group.rotation.y=yaw;tickActor(ownAvatar,dt,Math.hypot(forward,side)>.1,!onGround)}
+ if(ownAvatar){ownAvatar.group.position.set(px,feetY,pz);ownAvatar.group.rotation.y=yaw;tickActor(ownAvatar,dt,Math.hypot(forward,side)>.1,!onGround,Math.abs(forward)<.1&&Math.abs(side)>.1?Math.sign(side):0)}
  swing=Math.max(0,swing-dt*3.8);axe.rotation.z=-.25-swing*.9;axe.rotation.x=swing*.65;axe.position.y=-.7+swing*.15;
 for(let i=falling.length-1;i>=0;i--){const f=falling[i];f.elapsed+=dt;const a=Math.min(1,f.elapsed/1.8);const angle=a*a*(Math.PI/2);f.tree.rotation.z=Math.sin(f.direction)*angle;f.tree.rotation.x=Math.cos(f.direction)*angle;if(f.elapsed>2.5){scene.remove(f.tree);falling.splice(i,1)}}
 for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){scene.remove(p.mesh);particles.splice(i,1)}}
