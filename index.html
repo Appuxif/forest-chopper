@@ -69,7 +69,7 @@ function createLumberjack(){
   if(clips.lower.tracks.length)lower[name]=mixer.clipAction(clips.lower);
   if(clips.upper.tracks.length)upper[name]=mixer.clipAction(clips.upper);
  }
- if(upper.Chop2){upper.Chop2.setLoop(THREE.LoopOnce,1);upper.Chop2.clampWhenFinished=false;}
+ if(upper.Chop2){upper.Chop2.setLoop(THREE.LoopOnce,1);upper.Chop2.clampWhenFinished=true;}
  const actor={group,visual,mixer,lower,upper,lowerState:'',upperState:'',chopEnd:0,rmTimes:{}};
  actor.actions={...lower,Chop2:upper.Chop2};
  modelActors.add(actor);
@@ -90,7 +90,7 @@ function transitionLayer(actor,layer,name,rate=1){
   return;
  }
  const previous=bank[actor[field]];
- const fade=name==='Chop2'?.045:.12;
+ const fade=name==='Chop2' ? .045 : (layer==='upper'&&previous===bank.Chop2 ? .18 : .12);
  next.reset().setEffectiveTimeScale(speed).setEffectiveWeight(1);
  if(layer==='lower'&&speed<0)next.time=Math.max(0,next.getClip().duration-1e-5);
  if(layer==='lower')actor.rmTimes[name]=next.time;
@@ -150,7 +150,7 @@ const scarMat=new THREE.MeshLambertMaterial({color:0xe0ad70,side:THREE.DoubleSid
 group.position.set(x,0,z);group.userData={id,x,z,h,scale,hp:treeDamage.get(id)??maxHp,maxHp,scar,alive:true};if(group.userData.hp<maxHp){scar.visible=true;scar.scale.y=1+(1-group.userData.hp/maxHp)*2.2;}scene.add(group);trees.set(id,group)}
 function build(cx,cz){const key=cx+','+cz;if(chunks.has(key))return;const decor=new THREE.Group();scene.add(decor);chunks.set(key,decor);
 for(let i=0;i<8;i++){const x=cx*chunkSize+rand(cx,cz,i*3)*chunkSize,z=cz*chunkSize+rand(cx,cz,i*3+1)*chunkSize;if(Math.hypot(x,z)<8)continue;const id=key+':'+i;if(!felled.has(id))makeTree(x,z,id)}
-for(let i=0;i<25;i++){const x=cx*chunkSize+rand(cx,cz,100+i*2)*chunkSize,z=cz*chunkSize+rand(cx,cz,101+i*2)*chunkSize,isRock=rand(cx,cz,300+i)>.86;const obj=new THREE.Mesh(isRock?rockGeo:grassGeo,isRock?rockMat:grassMat);obj.position.set(x,isRock?.19:.3,z);obj.scale.setScalar(isRock?.35+rand(cx,cz,i)*.5:.7+rand(cx,cz,i)*.9);obj.rotation.y=rand(cx,cz,i+500)*6.28;decor.add(obj)}}
+for(let i=0;i<25;i++){const x=cx*chunkSize+rand(cx,cz,100+i*2)*chunkSize,z=cz*chunkSize+rand(cx,cz,101+i*2)*chunkSize,isRock=rand(cx,cz,300+i)>.86;const obj=new THREE.Mesh(isRock?rockGeo:grassGeo,isRock?rockMat:grassMat);const scale=isRock?.35+rand(cx,cz,i)*.5:.7+rand(cx,cz,i)*.9;obj.position.set(x,isRock?.19:.3*scale+.025,z);obj.scale.setScalar(scale);obj.rotation.y=rand(cx,cz,i+500)*6.28;decor.add(obj)}}
 function updateChunks(){const cx=Math.floor(px/chunkSize),cz=Math.floor(pz/chunkSize);for(let x=cx-radius;x<=cx+radius;x++)for(let z=cz-radius;z<=cz+radius;z++)build(x,z);for(const [key,group] of chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>radius+1||Math.abs(z-cz)>radius+1){scene.remove(group);chunks.delete(key)}}for(const [key,t] of trees){if(Math.abs(t.position.x-px)>chunkSize*(radius+1.5)||Math.abs(t.position.z-pz)>chunkSize*(radius+1.5)){scene.remove(t);trees.delete(key)}}}
 scene.add(camera);const axe=new THREE.Group();camera.add(axe);const handle=new THREE.Mesh(new THREE.CylinderGeometry(.045,.065,1.3,8),new THREE.MeshLambertMaterial({color:0x99623b}));handle.rotation.z=-.2;axe.add(handle);const metal=new THREE.MeshStandardMaterial({color:0xc2cbd0,metalness:.65,roughness:.35});const head=new THREE.Mesh(new THREE.BoxGeometry(.48,.32,.15),metal);head.position.set(-.18,.58,0);axe.add(head);const blade=new THREE.Mesh(new THREE.CylinderGeometry(.26,.26,.15,3),metal);blade.rotation.x=Math.PI/2;blade.rotation.z=Math.PI/2;blade.position.set(-.44,.58,0);axe.add(blade);axe.position.set(.72,-.7,-1.1);axe.rotation.z=-.25;
 // Each placed log costs one wood unit. Snap to half-meter grid; automatic vertical stacking.
@@ -268,7 +268,8 @@ function animate(now){
  const sprint=!!(keys.ShiftLeft||keys.ShiftRight);
  const moving=Math.hypot(forward,side)>.1;
  const motion=!moving?'Idle':Math.abs(forward)>.1?(sprint?'Run':'Walk'):(side<0?'StrafeLeft':'StrafeRight');
- const rate=(motion==='StrafeLeft'||motion==='StrafeRight')?(sprint?2:1.35):(forward<0?-1:1);
+ // Playback rate also scales Root Motion distance: faster feet = faster travel.
+ const rate=motion==='Idle'?1:(motion==='StrafeLeft'||motion==='StrafeRight')?(sprint?5:4):(motion==='Run'?(forward<0?-2.35:2.35):(forward<0?-2.25:2.25));
  simulateVertical(dt);
  let dx=0,dz=0;
  if(ownAvatar){
@@ -287,7 +288,7 @@ function animate(now){
  // Also keep a fallback when testing against an old GLB without Root Motion.
  const noRoot=motion!=='Idle'&&(!rootMotion[motion]||rootMotion[motion].travel.lengthSq()<1e-5);
  if(!onGround||!ownAvatar||noRoot){
-  const speed=sprint?2.2:1.1;
+  const speed=sprint?4.6:2.5;
   dx=(-Math.sin(yaw)*forward+Math.cos(yaw)*side)*speed*dt;
   dz=(-Math.cos(yaw)*forward-Math.sin(yaw)*side)*speed*dt;
  }
