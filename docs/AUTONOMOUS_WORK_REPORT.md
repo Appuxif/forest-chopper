@@ -35,6 +35,13 @@
 - The original production world and public multiplayer are never accessed. Existing bot test is preserved.
 - Full suite: Node 14/14, Python 3/3, JS syntax and `git diff --check` pass.
 
+### P0.4 — Partial: clear interrupted touch input
+
+- The renderer now clears swipe tracking on `pointercancel` (previously only on `pointerup`).
+- Window blur now resets mobile joystick displacement and swipe tracking as well as the existing keyboard reset, preventing unintended movement after switching tabs or losing focus.
+- JS syntax and existing 14 Node + 3 Python tests pass. Isolated Chrome debug page verified simulated blur clears WASD and joystick knob displacement. Full real touch gesture interaction and visual polish remain to be reviewed.
+- Existing mobile hint text and both HTML entrypoints match except for debug title; no text correction was necessary.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.
