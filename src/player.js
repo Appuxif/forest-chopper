@@ -47,12 +47,22 @@ function animate(now){
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;
 for(let i=ctx.falling.length-1;i>=0;i--){const f=ctx.falling[i];f.elapsed+=dt;const a=Math.min(1,f.elapsed/1.8);const angle=a*a*(Math.PI/2);f.tree.rotation.z=Math.sin(f.direction)*angle;f.tree.rotation.x=Math.cos(f.direction)*angle;if(f.elapsed>2.5){ctx.scene.remove(f.tree);ctx.falling.splice(i,1)}}
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}
-if(ctx.frame++%12===0){ctx.updateChunks();ctx.updatePreview();const t=ctx.buildMode?null:ctx.aimed();ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`🌲 Дерево · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':''}if(ctx.isOnline()&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround})}for(const avatar of ctx.avatars.values()){avatar.group.position.lerp(avatar.goal,Math.min(1,dt*10));avatar.group.rotation.y+=Math.atan2(Math.sin(avatar.angle-avatar.group.rotation.y),Math.cos(avatar.angle-avatar.group.rotation.y))*Math.min(1,dt*8);
+if(ctx.frame++%12===0){ctx.updateChunks();ctx.updatePreview();const t=ctx.buildMode?null:ctx.aimed();ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`🌲 Дерево · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':''}if(ctx.isOnline()&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround})}for(const avatar of ctx.avatars.values()){
+ const previousX=avatar.group.position.x,previousZ=avatar.group.position.z;
+ avatar.group.position.lerp(avatar.goal,Math.min(1,dt*10));
+ avatar.group.rotation.y+=Math.atan2(Math.sin(avatar.angle-avatar.group.rotation.y),Math.cos(avatar.angle-avatar.group.rotation.y))*Math.min(1,dt*8);
  if(avatar.actor){
+   // Infer the remote player's speed from actual replicated movement. Previously
+   // every remote avatar played Walk, even when its local player was sprinting.
+   const deltaX=avatar.group.position.x-previousX,deltaZ=avatar.group.position.z-previousZ;
+   const speed=Math.hypot(deltaX,deltaZ)/Math.max(dt,1/120);
+   avatar.moveSpeed=(avatar.moveSpeed??0)+(speed-(avatar.moveSpeed??0))*Math.min(1,dt*8);
    const vx=avatar.goal.x-avatar.group.position.x,vz=avatar.goal.z-avatar.group.position.z;
    const a=avatar.group.rotation.y,front=-Math.sin(a)*vx-Math.cos(a)*vz,right=Math.cos(a)*vx-Math.sin(a)*vz;
-   const remoteMotion=Math.hypot(vx,vz)<.025?'Idle':Math.abs(right)>Math.abs(front)*1.5?(right>0?'StrafeRight':'StrafeLeft'):'Walk';
-   ctx.tickActor(avatar.actor,dt,remoteMotion,avatar.jumping);
+   const moving=avatar.moveSpeed>.55;
+   const remoteMotion=!moving?'Idle':Math.abs(right)>Math.abs(front)*1.5?(right>0?'StrafeRight':'StrafeLeft'):(avatar.moveSpeed>3.3?'Run':'Walk');
+   const rate=remoteMotion==='Run'?2.35:remoteMotion==='Walk'?2.25:remoteMotion.startsWith('Strafe')?4:1;
+   ctx.tickActor(avatar.actor,dt,remoteMotion,avatar.jumping,rate);
   }
  }ctx.renderer.render(ctx.scene,ctx.camera)}requestAnimationFrame(animate);
 

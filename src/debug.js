@@ -26,6 +26,25 @@ export function installDebug(ctx) {
     bearing: round(relativeAngle(x,z) * 180 / Math.PI), ...extra
   });
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const taskRecords = new Map();
+  let taskCounter = 0;
+  let activeTask = null;
+  const cancelled = signal => { if (signal?.aborted) throw new Error('Task cancelled'); };
+  const wait = async (ms, signal) => {
+    if (!signal) return pause(ms);
+    cancelled(signal);
+    await new Promise(resolve => {
+      const timer = setTimeout(done, ms);
+      function done() { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); }
+      signal.addEventListener('abort', done, {once:true});
+    });
+    cancelled(signal);
+  };
+  const describeTask = task => task ? ({id:task.id,type:task.type,status:task.status,
+    startedAt:task.startedAt,finishedAt:task.finishedAt??null,
+    progress:task.progress??null,result:task.result??null,error:task.error??null}) : null;
+  const cancelActive = () => { if (activeTask?.status==='running') activeTask.controller.abort(); releaseAll(); };
+
   let lastTreeHP = new Map();
   let lastPlayers = new Set();
   let lastCuts = ctx.cuts;
@@ -55,24 +74,24 @@ export function installDebug(ctx) {
     },
     release(code) { stop(code); return api.state(); },
     releaseAll,
-    async hold(code, milliseconds = 500) {
+    async hold(code, milliseconds = 500, signal) {
       if (!movementKeys.has(code)) throw new Error(`Unsupported movement key: ${code}`);
       if (!Number.isFinite(milliseconds) || milliseconds < 0 || milliseconds > 15000)
         throw new Error('Duration must be between 0 and 15000 ms');
+      cancelled(signal);
       api.press(code);
       // Safety timeout also releases the key when an awaited DevTools call is cancelled.
       const timer = setTimeout(() => stop(code), milliseconds);
       activeTimers.set(code, timer);
-      await new Promise(resolve => setTimeout(resolve, milliseconds));
+      try { await wait(milliseconds, signal); } finally { if (activeTimers.get(code) === timer) stop(code); }
       // Avoid releasing a newer press that started during the hold.
-      if (activeTimers.get(code) === timer) stop(code);
       return api.state();
     },
-    async move(direction, milliseconds = 500, sprint = false) {
+    async move(direction, milliseconds = 500, sprint = false, signal) {
       const codes = { forward: 'KeyW', backward: 'KeyS', left: 'KeyA', right: 'KeyD' };
       if (!codes[direction]) throw new Error('Use forward, backward, left, or right');
       if (sprint) api.press('ShiftLeft');
-      try { return await api.hold(codes[direction], milliseconds); }
+      try { return await api.hold(codes[direction], milliseconds, signal); }
       finally { if (sprint) stop('ShiftLeft'); }
     },
     chat(limit=30) { return ctx.chatHistory.slice(-Math.max(1,Math.min(120,limit))); },
@@ -99,13 +118,15 @@ export function installDebug(ctx) {
       ctx.pitch=0;
       return api.state();
     },
-    async navigateTo(x,z,{sprint=true,stopDistance=1.7,timeout=12000}={}) {
+    async navigateTo(x,z,{sprint=true,stopDistance=1.7,timeout=12000,signal,onProgress}={}) {
       if (!Number.isFinite(x)||!Number.isFinite(z)) throw Error('Finite x,z required');
       timeout=Math.max(100,Math.min(30000,timeout));
       const start=performance.now();let stagnant=0,previous=Infinity;
       try {
         while (performance.now()-start < timeout) {
+          cancelled(signal);
           const distance=Math.hypot(x-ctx.px,z-ctx.pz);
+          onProgress?.({phase:'moving',distance:round(distance),x:round(ctx.px),z:round(ctx.pz)});
           if (distance <= stopDistance) return {status:'arrived',distance:round(distance),state:api.state()};
           if (distance >= previous-.015) stagnant++; else stagnant=0;
           if (stagnant>=5) {
@@ -115,31 +136,117 @@ export function installDebug(ctx) {
           previous=distance;
           api.lookAt(x,z);
           if(sprint)api.press('ShiftLeft');
-          await api.hold('KeyW',180);
+          await api.hold('KeyW',180,signal);
         }
         return {status:'timeout',distance:round(Math.hypot(x-ctx.px,z-ctx.pz)),state:api.state()};
       } finally { releaseAll(); }
     },
-    async chopTree(id,{maxHits=25}={}) {
+    async chopTree(id,{maxHits=25,signal,onProgress}={}) {
+      cancelled(signal);
       const tree=ctx.trees.get(id);
       if (!tree) return {status:'tree_not_found',id};
       // Approach to a point 1.8 m from the trunk, outside its mesh.
       const dx=ctx.px-tree.position.x,dz=ctx.pz-tree.position.z;
       const length=Math.hypot(dx,dz)||1;
       const tx=tree.position.x+dx/length*1.85,tz=tree.position.z+dz/length*1.85;
-      const nav=await api.navigateTo(tx,tz,{sprint:true,stopDistance:.2,timeout:15000});
+      const nav=await api.navigateTo(tx,tz,{sprint:true,stopDistance:.2,timeout:15000,signal,onProgress});
       if(nav.status!=='arrived' && nav.status!=='blocked') return {status:'navigation_'+nav.status,id,nav};
       api.lookAt(tree.position.x,tree.position.z);
       let hits=0;
       while (ctx.trees.has(id) && hits<maxHits) {
+        cancelled(signal);
         // A raycast must actually select this trunk; don't blindly spam chop.
         if(ctx.aimed()?.userData.id!==id) return {status:'not_aimed',id,hits,position:api.state().position};
         const before=tree.userData.hp;
+        onProgress?.({phase:'chopping',treeId:id,hits,hp:before});
         ctx.chop();hits++;
-        await pause(1350);
+        await wait(1350,signal);
         if (tree.userData.hp===before && ctx.trees.has(id)) addEvent('chop_missed',{id});
       }
       return {status:ctx.trees.has(id)?'max_hits':'felled',id,hits,wood:ctx.wood,cuts:ctx.cuts};
+    },
+    startTask(type, params = {}) {
+      if (activeTask?.status === 'running') return {status:'busy',active:describeTask(activeTask)};
+      if (!params || typeof params !== 'object' || Array.isArray(params)) throw Error('Task parameters must be an object');
+      const supported = ['navigate','chopTree','move','followPlayer'];
+      if (!supported.includes(type)) throw Error('Unsupported task type: '+type);
+      const controller = new AbortController();
+      const task = {id:++taskCounter,type,status:'running',startedAt:Date.now(),controller,progress:{phase:'starting'},
+        ...(type==='followPlayer'?{playerId:Number(params.playerId)}:{})};
+      activeTask=task;
+      taskRecords.set(task.id,task);
+      // Do not block the MCP tool call: the promise continues inside the browser.
+      Promise.resolve().then(async () => {
+        const signal=controller.signal;
+        const onProgress = progress => { task.progress = progress; };
+        if(type==='navigate') return api.navigateTo(params.x,params.z,{...params,signal,onProgress});
+        if(type==='chopTree') return api.chopTree(params.treeId,{...params,signal,onProgress});
+        if(type==='move') {
+          onProgress({phase:'moving',direction:params.direction});
+          return api.move(params.direction,params.milliseconds??500,params.sprint??false,signal);
+        }
+        if(type==='followPlayer') {
+          const playerId=Number(params.playerId);
+          if(!Number.isInteger(playerId)) throw Error('Valid playerId required');
+          // Follow is a persistent mode. It only ends on explicit cancellation,
+          // when the target leaves, or when this tab is closed/reloaded.
+          while(true) {
+            cancelled(signal);
+            const player=ctx.avatars.get(playerId);
+            if(!player) return {status:'player_not_found',playerId};
+            const {x,z}=player.group.position;
+            const distance=Math.hypot(x-ctx.px,z-ctx.pz);
+            if(distance>3) {
+              onProgress({phase:'following',playerId,distance:round(distance)});
+              // Re-sample the moving target frequently; no fixed destination.
+              const nav=await api.navigateTo(x,z,{sprint:true,stopDistance:2,timeout:1200,signal});
+              if(nav.status==='blocked') {
+                onProgress({phase:'blocked',playerId,distance:nav.distance});
+                await wait(450,signal);
+              }
+            } else {
+              onProgress({phase:'near_player',playerId,distance:round(distance)});
+              await wait(350,signal);
+            }
+          }
+        }
+      }).then(result=>{task.status=controller.signal.aborted?'cancelled':'completed';task.result=result;},
+        err=>{task.status=controller.signal.aborted?'cancelled':'failed';task.error=String(err?.message||err);})
+        .finally(()=>{
+          task.finishedAt=Date.now();
+          if(activeTask===task) activeTask=null;
+          releaseAll();
+          while(taskRecords.size>30)taskRecords.delete(taskRecords.keys().next().value);
+        });
+      return describeTask(task);
+    },
+    // Toggle-style shortcuts: start once, stop when the player requests it.
+    startFollowing(playerId) {
+      const current=activeTask;
+      if(current?.status==='running' && current.type==='followPlayer' && current.playerId===Number(playerId))
+        return describeTask(current);
+      return api.startTask('followPlayer',{playerId});
+    },
+    stopFollowing() {
+      const task=activeTask;
+      if(!task || task.type!=='followPlayer' || task.status!=='running')
+        return {status:'not_following'};
+      return api.cancelTask(task.id);
+    },
+    getTask(id) { return describeTask(taskRecords.get(Number(id))); },
+    getActiveTask() { return describeTask(activeTask); },
+    cancelTask(id) {
+      const task=taskRecords.get(Number(id));
+      if(!task)return {status:'not_found'};
+      if(task.status==='running') task.controller.abort();
+      return describeTask(task);
+    },
+    getSnapshot(radius=25,limit=18,afterChatId=0) {
+      const lastTask=taskRecords.get(taskCounter);
+      return {...api.observe(radius,limit),
+        chat:api.chat(30).filter(m=>m.id>afterChatId),
+        activeTask:api.getActiveTask(),lastTask:describeTask(lastTask),
+        wood:ctx.wood,cuts:ctx.cuts,online:ctx.isOnline()};
     },
     events(since = 0) { return events.filter(e=>e.time>=since); },
     clearEvents(){events.length=0;},
@@ -171,10 +278,10 @@ export function installDebug(ctx) {
     scene: ctx.scene, camera: ctx.camera, renderer: ctx.renderer,
     get player() { return ctx.ownAvatar; },
     get rootMotion() { return ctx.rootMotion; },
-    help: 'chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
+    help: 'startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
   };
   window.__gameDebug = api;
   window.addEventListener('blur', releaseAll);
-  window.addEventListener('pagehide', releaseAll);
+  window.addEventListener('pagehide', cancelActive);
   console.info('Forest Chopper debug controls ready:', api.help);
 }

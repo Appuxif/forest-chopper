@@ -25,13 +25,42 @@ function clearWorld(){for(const t of ctx.trees.values())ctx.scene.remove(t);for(
 function addLog(data){if(ctx.placed.some(p=>p.id===data.id))return;const m=ctx.makeLog();m.position.set(data.x,data.y,data.z);if(data.orientation===1)m.rotation.y=Math.PI/2;ctx.scene.add(m);ctx.placed.push({...data,mesh:m})}
 function treeHit(id,hp){ctx.treeDamage.set(id,hp);const t=ctx.trees.get(id);if(t){t.userData.hp=hp;t.userData.scar.visible=true;t.userData.scar.scale.y=1+(1-hp/t.userData.maxHp)*2.2;ctx.spawnChips(t)}}
 function treeFell(id){ctx.felled.add(id);ctx.treeDamage.delete(id);const t=ctx.trees.get(id);if(t){ctx.trees.delete(id);ctx.falling.push({tree:t,elapsed:0,direction:Math.random()*Math.PI*2})}}
-function addAvatar(p){if(p.id===ctx.myId||ctx.avatars.has(p.id))return;
+// Camera-facing player names, kept above the character even as it turns or moves.
+function createNameTag(name) {
+ const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;
+ const g=canvas.getContext('2d');
+ const label=(String(name||'Игрок').trim()||'Игрок').slice(0,22);
+ g.font='bold 46px sans-serif';
+ const width=Math.min(492,Math.ceil(g.measureText(label).width)+44);
+ const left=(512-width)/2;
+ g.fillStyle='rgba(8,25,17,.78)';
+ g.beginPath();g.roundRect(left,16,width,94,24);g.fill();
+ g.strokeStyle='rgba(200,245,213,.65)';g.lineWidth=3;g.stroke();
+ g.fillStyle='#ffffff';g.textAlign='center';g.textBaseline='middle';
+ g.fillText(label,256,64,455);
+ const texture=new ctx.THREE.CanvasTexture(canvas);
+ texture.colorSpace=ctx.THREE.SRGBColorSpace;
+ const material=new ctx.THREE.SpriteMaterial({map:texture,transparent:true,depthWrite:false});
+ const tag=new ctx.THREE.Sprite(material);
+ tag.position.set(0,2.75,0);tag.scale.set(2.5,.625,1);
+ return tag;
+}
+function addAvatar(p){if(p.id===ctx.myId)return;
+ if(ctx.avatars.has(p.id)){
+  const avatar=ctx.avatars.get(p.id);
+  if(p.name && avatar.name!==p.name){
+   avatar.group.remove(avatar.tag);avatar.tag.material.map.dispose();avatar.tag.material.dispose();
+   avatar.tag=createNameTag(p.name);avatar.group.add(avatar.tag);avatar.name=p.name;
+  }
+  return;
+ }
  const actor=ctx.createLumberjack();const group=actor?actor.group:new ctx.THREE.Group();
  if(!actor){const mesh=new ctx.THREE.Mesh(new ctx.THREE.CapsuleGeometry(.34,1.1,4,8),new ctx.THREE.MeshLambertMaterial({color:0x557d96}));mesh.position.y=1.0;group.add(mesh)}
+ const tag=createNameTag(p.name);group.add(tag);
  group.position.set(p.x,p.y||0,p.z);ctx.scene.add(group);
- ctx.avatars.set(p.id,{group,actor,goal:new ctx.THREE.Vector3(p.x,p.y||0,p.z),angle:p.yaw||0,jumping:!!p.jumping});}
+ ctx.avatars.set(p.id,{group,actor,tag,name:p.name||'Игрок',goal:new ctx.THREE.Vector3(p.x,p.y||0,p.z),angle:p.yaw||0,jumping:!!p.jumping});}
 
-function removeAvatar(id){const a=ctx.avatars.get(id);if(a){ctx.scene.remove(a.group);if(a.actor){a.actor.mixer.stopAllAction();ctx.modelActors.delete(a.actor)}ctx.avatars.delete(id)}}
+function removeAvatar(id){const a=ctx.avatars.get(id);if(a){ctx.scene.remove(a.group);a.tag.material.map.dispose();a.tag.material.dispose();if(a.actor){a.actor.mixer.stopAllAction();ctx.modelActors.delete(a.actor)}ctx.avatars.delete(id)}}
 let peer=null, guestConnection=null;
 const bridges=new Set();
 let generation=0;

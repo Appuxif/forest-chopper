@@ -6,6 +6,7 @@ import {createChopping} from './chopping.js';
 import {createControls} from './controls.js';
 import {createPlayer} from './player.js';
 import {createMultiplayer} from './multiplayer.js';
+import {createMinimap} from './minimap.js';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 
@@ -155,6 +156,7 @@ const ctx={
 ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.group.visible=thirdPerson;}
 ({isOnline, sendNet, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, chatHistory}=createMultiplayer(ctx));
 ({toggleView, animate}=createPlayer(ctx));
+createMinimap(ctx);
 ({look}=createControls(ctx));
 if (location.pathname.endsWith('/index_debug.html')) {
   const { installDebug } = await import('./debug.js');
