@@ -154,4 +154,8 @@ ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.
 ({isOnline, sendNet, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet}=createMultiplayer(ctx));
 ({toggleView, animate}=createPlayer(ctx));
 ({look}=createControls(ctx));
+if (location.pathname.endsWith('/index_debug.html')) {
+  const { installDebug } = await import('./debug.js');
+  installDebug(ctx);
+}
 requestAnimationFrame(animate);
