@@ -6,7 +6,7 @@
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 
 // Lumberjack GLB is served as a separate file by GitHub Pages.
-const GLB_DATA = "./lumberjack.glb";
+const GLB_DATA = "./lumberjack/lumberjack.glb";
 
 let modelScene=null,animationClips=[],cloneModel=null,ownAvatar=null,thirdPerson=true;
 const modelActors=new Set();
