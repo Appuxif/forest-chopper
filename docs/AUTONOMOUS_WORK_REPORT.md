@@ -28,6 +28,13 @@
 - Added `tests/building.test.mjs`: 9 real scenarios for both modes, insufficient wood, 16 levels, stale preview, removal, and green/red preview.
 - Isolated mobile browser (390 × 844): no-wood preview is red, placement stays at wood=0, warning is visible, leaving build mode removes preview, and no console errors appeared.
 
+### P0.3 — Protocol, physics and save/load regression coverage
+
+- Added `tests/physics.test.mjs`: oriented log footprints, horizontal collision, axis sliding around tree trunks, landing on stacked supports, and head collision.
+- Added `tests/test_world.py`: isolated ephemeral WebSocket test server and a temporary save directory; covers human welcome, join/leave, chat, invalid JSON and coordinates, hit cooldown, tree damage/fell rewards, and world seed/felled/damage/log save-load roundtrip.
+- The original production world and public multiplayer are never accessed. Existing bot test is preserved.
+- Full suite: Node 14/14, Python 3/3, JS syntax and `git diff --check` pass.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.
@@ -39,7 +46,6 @@
 
 ## In progress / next
 
-- P0.3 — Expand protocol and physics regression tests.
 - P0.4 — Polish keyboard/chat and touch UX.
 - P1 — Notifications, hit feedback, hints, and quality-of-life when P0 is stable.
 
