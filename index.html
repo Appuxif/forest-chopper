@@ -46,7 +46,8 @@ for(const clip of animationClips){
   return dot>=0&&track.name.slice(dot+1)==='position'&&normalizeBone(track.name.slice(0,dot))==='root';
  });
  if(!root)continue;
- const sampler=root.clone().createInterpolant(new Float32Array(3));
+ const rootTrack=root.clone(); // Keep an independent copy before zeroing skeleton translation.
+ const sampler=rootTrack.createInterpolant(new Float32Array(3));
  const origin=new THREE.Vector3().fromArray(sampler.evaluate(0));
  const end=new THREE.Vector3().fromArray(sampler.evaluate(clip.duration));
  rootMotion[clip.name]={sampler,duration:clip.duration,travel:end.clone().sub(origin)};
