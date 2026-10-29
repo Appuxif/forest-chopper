@@ -20,14 +20,17 @@ try {
 } catch(error) { console.error('Lumberjack model load failed',error); }
 // Two independent bone-mask layers: locomotion on the legs + root and
 // chopping on the torso/arms. Every track belongs to exactly one layer.
-const LOWER_BONES=new Set(['Root','Hips','Thigh.L','Thigh.R','Shin.L','Shin.R']);
+// GLTFLoader sanitizes bone names: Thigh.L becomes Thigh_L.
+// Normalize both variants so Chop2 NEVER owns a leg/root channel.
+const LOWER_BONES=new Set(['root','hips','thighl','thighr','shinl','shinr']);
+const normalizeBone=name=>name.replace(/[._\s-]/g,'').toLowerCase();
 const CHOP_SPEED=1.6;
 function maskedClip(clip,upper){
  const tracks=clip.tracks.filter(track=>{
   // glTF names may include periods: remove only the final property suffix.
   const dot=track.name.lastIndexOf('.');
   const bone=dot===-1?track.name:track.name.slice(0,dot);
-  return (LOWER_BONES.has(bone))!==upper;
+  return LOWER_BONES.has(normalizeBone(bone))!==upper;
  });
  return new THREE.AnimationClip(clip.name+(upper?'_upper':'_lower'),clip.duration,tracks);
 }
@@ -35,7 +38,7 @@ const layerClips={};
 for(const clip of animationClips){
  layerClips[clip.name]={lower:maskedClip(clip,false),upper:maskedClip(clip,true)};
 }
-console.info('Lumberjack animation layers',Object.fromEntries(Object.entries(layerClips).map(([name,clips])=>[name,[clips.lower.tracks.length,clips.upper.tracks.length]])));
+console.info('Lumberjack animation layers (expected lower=18, upper=21)',Object.fromEntries(Object.entries(layerClips).map(([name,clips])=>[name,[clips.lower.tracks.length,clips.upper.tracks.length]])));
 function createLumberjack(){
  if(!modelScene)return null;
  const group=new THREE.Group(),visual=cloneModel(modelScene);
