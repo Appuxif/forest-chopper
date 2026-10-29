@@ -30,16 +30,27 @@ function createLumberjack(){
  const actor={group,visual,mixer,actions,state:'',chopEnd:0,walkSpeed:0};
  modelActors.add(actor);setActorAnimation(actor,'Idle');return actor;
 }
+// Play the complete Chop animation at a faster rate.
+const CHOP_SPEED=1.6;
 function setActorAnimation(actor,name){
  if(!actor||actor.state===name||!actor.actions[name])return;
- const previous=actor.actions[actor.state];const next=actor.actions[name];
- next.reset().fadeIn(.16).play();if(previous)previous.fadeOut(.16);
+ const previous=actor.actions[actor.state],next=actor.actions[name];
+ const blend=name==='Chop'?.06:.12;
+ next.reset().setEffectiveTimeScale(name==='Chop'?CHOP_SPEED:1).setEffectiveWeight(1).fadeIn(blend).play();
+ if(previous&&previous!==next)previous.fadeOut(blend);
  actor.state=name;
 }
-function actorChop(actor){if(!actor)return;const action=actor.actions.Chop;if(!action)return;const duration=action.getClip().duration*1000;actor.chopEnd=performance.now()+duration;actor.state='';setActorAnimation(actor,'Chop')}
+function actorChop(actor){
+ if(!actor?.actions.Chop)return;
+ const action=actor.actions.Chop;
+ if(actor.state==='Chop'){action.stop();actor.state='';}
+ actor.chopEnd=performance.now()+action.getClip().duration/CHOP_SPEED*1000+35;
+ setActorAnimation(actor,'Chop');
+}
 function tickActor(actor,dt,walking,jumping=false){if(!actor)return;
- if(performance.now()>=actor.chopEnd)setActorAnimation(actor,jumping&&actor.actions.Jump?'Jump':walking?'Walk':'Idle');
  actor.mixer.update(dt);
+ if(actor.state==='Chop'&&performance.now()<actor.chopEnd)return;
+ setActorAnimation(actor,jumping&&actor.actions.Jump?'Jump':walking?'Walk':'Idle');
 }
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,280);camera.rotation.order='YXZ';const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'default'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;host.prepend(renderer.domElement);
@@ -134,7 +145,7 @@ function setMode(on){buildMode=on;$('mode').textContent=on?'🪓 Рубить':'
 $('mode').onclick=()=>setMode(!buildMode);$('rotate').onclick=()=>orientation=1-orientation;$('place').onclick=placeLog;$('undo').onclick=removeLog;
 const ray=new THREE.Raycaster();ray.far=5.2;function aimed(){if(thirdPerson){ray.set(new THREE.Vector3(px,1.8,pz),new THREE.Vector3(-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch)).normalize())}else{ray.setFromCamera(new THREE.Vector2(0,0),camera)}let best=null,dist=5.2;for(const t of trees.values()){if(Math.hypot(t.position.x-px,t.position.z-pz)>6)continue;const hits=ray.intersectObjects(t.children.filter(c=>c!==t.userData.scar),false);if(hits.length&&hits[0].distance<dist){best=t;dist=hits[0].distance}}return best}
 const chipGeo=new THREE.BoxGeometry(.1,.1,.1),chipMat=new THREE.MeshLambertMaterial({color:0xc59560});function spawnChips(t){for(let i=0;i<7;i++){const mesh=new THREE.Mesh(chipGeo,chipMat);mesh.position.set(t.position.x+(Math.random()-.5)*.7,1.15+Math.random()*.5,t.position.z+(Math.random()-.5)*.7);scene.add(mesh);particles.push({mesh,vx:(Math.random()-.5)*3,vy:1+Math.random()*3,vz:(Math.random()-.5)*3,life:.7})}}
-function chop(){if(buildMode){placeLog();return}const now=performance.now();const chopCooldown=(ownAvatar?.actions?.Chop?.getClip().duration??1.75)*1000;if(now-lastHit<chopCooldown)return;lastHit=now;swing=1;actorChop(ownAvatar);const t=aimed();if(!t)return;const u=t.userData;if(isOnline()){sendNet({type:"hit",tree:u.id});return;}u.hp--;u.scar.visible=true;u.scar.scale.y=1+(1-u.hp/u.maxHp)*2.2;spawnChips(t);t.rotation.z=(Math.random()-.5)*.045;
+function chop(){if(buildMode){placeLog();return}const now=performance.now();const chopCooldown=(ownAvatar?.actions?.Chop?.getClip().duration??1.75)/CHOP_SPEED*1000+35;if(now-lastHit<chopCooldown)return;lastHit=now;swing=1;actorChop(ownAvatar);const t=aimed();if(!t)return;const u=t.userData;if(isOnline()){sendNet({type:"hit",tree:u.id});return;}u.hp--;u.scar.visible=true;u.scar.scale.y=1+(1-u.hp/u.maxHp)*2.2;spawnChips(t);t.rotation.z=(Math.random()-.5)*.045;
 if(u.hp<=0){trees.delete(u.id);felled.add(u.id);falling.push({tree:t,elapsed:0,direction:Math.atan2(px-u.x,pz-u.z)+Math.PI,removed:false});wood+=5;cuts++;$('wood').textContent=wood;$('cut').textContent=cuts;$('target').textContent='+5 🪵 Древесина';setTimeout(()=>{if($('target').textContent.includes('+5'))$('target').textContent=''},900)}}
 function look(dx,dy){yaw-=dx*.003;pitch=Math.max(-1.43,Math.min(1.43,pitch-dy*.003))}renderer.domElement.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'){if(document.pointerLockElement!==renderer.domElement)renderer.domElement.requestPointerLock?.();chop()}else{drag={id:e.pointerId,x:e.clientX,y:e.clientY};renderer.domElement.setPointerCapture(e.pointerId)}});renderer.domElement.addEventListener('pointermove',e=>{if(drag?.id===e.pointerId){look(e.clientX-drag.x,e.clientY-drag.y);drag.x=e.clientX;drag.y=e.clientY}});renderer.domElement.addEventListener('pointerup',e=>{if(drag?.id===e.pointerId)drag=null});document.addEventListener('mousemove',e=>{if(document.pointerLockElement===renderer.domElement)look(e.movementX,e.movementY)});
 const isTypingTarget=el=>el instanceof Element&&!!el.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]');document.addEventListener('focusin',e=>{if(isTypingTarget(e.target)){for(const code in keys)keys[code]=false}});document.addEventListener('keydown',e=>{if(isTypingTarget(e.target)||isTypingTarget(document.activeElement))return;if(e.code==='Space'){e.preventDefault();if(!e.repeat)requestJump();return}if(e.code==='KeyV'){toggleView();return}if(e.code==='KeyB'){setMode(!buildMode);return}if(e.code==='KeyR'&&buildMode){orientation=1-orientation;return}if(e.code==='KeyE'&&buildMode){placeLog();return}if(e.code==='KeyQ'&&buildMode){removeLog();return}if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){keys[e.code]=true;e.preventDefault()}});document.addEventListener('keyup',e=>{keys[e.code]=false});window.addEventListener('blur',()=>{for(const code in keys)keys[code]=false});$('jump').addEventListener('pointerdown',e=>{e.preventDefault();requestJump()});$('hit').addEventListener('pointerdown',e=>{e.preventDefault();chop()});const stick=$('stick'),knob=$('knob');let joyId=null;function joy(e){const r=stick.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,len=Math.max(1,Math.hypot(dx,dy)),factor=Math.min(1,48/len);joyX=dx*factor/48;joyY=dy*factor/48;knob.style.transform=`translate(${joyX*40}px,${joyY*40}px)`}stick.addEventListener('pointerdown',e=>{e.preventDefault();joyId=e.pointerId;stick.setPointerCapture(e.pointerId);joy(e)});stick.addEventListener('pointermove',e=>{if(e.pointerId===joyId)joy(e)});function stopJoy(){joyId=null;joyX=joyY=0;knob.style.transform='translate(0,0)'}stick.addEventListener('pointerup',stopJoy);stick.addEventListener('pointercancel',stopJoy);
