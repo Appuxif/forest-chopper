@@ -4,3 +4,5 @@ __pycache__/
 venv/
 forest_world.json
 *.tmp
+.idea/
+tools/
