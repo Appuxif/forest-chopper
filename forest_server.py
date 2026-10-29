@@ -47,9 +47,9 @@ class World:
     async def handler(self,ws):
         if len(self.clients)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
-        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'yaw':0,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0}
+        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0}
         self.clients[ws]=player
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','yaw')} for w,p in self.clients.items() if w!=ws],'wood':0,'cuts':0})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping')} for w,p in self.clients.items() if w!=ws],'wood':0,'cuts':0})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -59,15 +59,15 @@ class World:
                 kind=data.get('type');now=time.monotonic()
                 if kind=='hello':
                     player['name']=str(data.get('name','Игрок'))[:22].strip() or f'Игрок {uid}'
-                    await self.broadcast({'type':'join','player':{k:player[k] for k in ('id','name','x','z','yaw')}},ws)
+                    await self.broadcast({'type':'join','player':{k:player[k] for k in ('id','name','x','z','y','yaw','jumping')}},ws)
                 elif kind=='move':
-                    try:x=float(data['x']);z=float(data['z']);yaw=float(data['yaw'])
+                    try:x=float(data['x']);z=float(data['z']);yaw=float(data['yaw']);y=float(data.get('y',0));jumping=bool(data.get('jumping',False))
                     except (ValueError,KeyError,TypeError):continue
-                    if not all(map(math.isfinite,(x,z,yaw))) or abs(x)>240000 or abs(z)>240000:continue
+                    if not all(map(math.isfinite,(x,z,yaw,y))) or y<0 or y>12 or abs(x)>240000 or abs(z)>240000:continue
                     dt=max(.05,now-player['last_pos']);distance=math.hypot(x-player['x'],z-player['z'])
                     if distance>max(4,dt*11):continue
-                    player.update(x=x,z=z,yaw=yaw,last_pos=now)
-                    await self.broadcast({'type':'move','id':uid,'x':x,'z':z,'yaw':yaw},ws)
+                    player.update(x=x,z=z,y=y,yaw=yaw,jumping=jumping,last_pos=now)
+                    await self.broadcast({'type':'move','id':uid,'x':x,'z':z,'y':y,'yaw':yaw,'jumping':jumping},ws)
                 elif kind=='hit':
                     if now-player['last_hit']<.28:continue
                     player['last_hit']=now
