@@ -1,3 +1,4 @@
+import {createPeer, waitForPeer, bridgeGuest, peerSocket} from './peer-bridge.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 export function createMultiplayer(ctx) {
 function isOnline(){return ctx.socket?.readyState===WebSocket.OPEN&&ctx.myId!==null}
@@ -14,10 +15,77 @@ function addAvatar(p){if(p.id===ctx.myId||ctx.avatars.has(p.id))return;
  ctx.avatars.set(p.id,{group,actor,goal:new ctx.THREE.Vector3(p.x,p.y||0,p.z),angle:p.yaw||0,jumping:!!p.jumping});}
 
 function removeAvatar(id){const a=ctx.avatars.get(id);if(a){ctx.scene.remove(a.group);if(a.actor){a.actor.mixer.stopAllAction();ctx.modelActors.delete(a.actor)}ctx.avatars.delete(id)}}
-function closeNet(){if(ctx.socket){const old=ctx.socket;ctx.socket=null;old.onclose=null;old.close()}ctx.myId=null;for(const id of [...ctx.avatars.keys()])removeAvatar(id);ctx.$('online').textContent='⚪ Одиночная игра';ctx.$('netstatus').textContent='Отключено. Локальный мир можно продолжить.';ctx.$('reset').disabled=false}
+let peer=null, guestConnection=null;
+const bridges=new Set();
+let generation=0;
+function closeNet(){
+ generation++;
+ for(const stop of bridges)stop();bridges.clear();
+ if(guestConnection){guestConnection.close();guestConnection=null}
+ if(peer){peer.destroy();peer=null}
+ if(ctx.socket){const old=ctx.socket;ctx.socket=null;old.onclose=null;old.close()}
+ ctx.myId=null;for(const id of [...ctx.avatars.keys()])removeAvatar(id);
+ ctx.$('online').textContent='⚪ Одиночная игра';ctx.$('netstatus').textContent='Отключено. Локальный мир можно продолжить.';
+ ctx.$('reset').disabled=false;
+}
+const status=text=>{ctx.$('netstatus').textContent=text};
+const url=()=>{let u=ctx.$('neturl').value.trim();if(u.startsWith('https://'))u='wss://'+u.slice(8);else if(u.startsWith('http://'))u='ws://'+u.slice(7);if(!/^wss?:\/\//.test(u))u='ws://'+u;return u};
+const peerConfig=()=>({custom:ctx.$('peercustom').checked,host:ctx.$('peerhost').value.trim(),port:Number(ctx.$('peerport').value),path:ctx.$('peerpath').value.trim(),secure:ctx.$('peersecure').checked});
+const mode=ctx.$('netmode'),room=ctx.$('peerroom');
+ctx.$('peercustom').onchange=()=>{ctx.$('peersettings').style.display=ctx.$('peercustom').checked?'block':'none'};
+mode.onchange=()=>{
+ const isGuest=mode.value==='guest';
+ ctx.$('neturl').closest('label').style.display=isGuest?'none':'';
+ room.closest('label').style.display=mode.value==='direct'?'none':'';
+ room.placeholder=isGuest?'Вставьте ID комнаты':'ID создаётся автоматически';
+ room.readOnly=!isGuest;
+ ctx.$('connect').textContent=mode.value==='host'?'Создать комнату':isGuest?'Присоединиться':'Подключиться';
+};mode.onchange();
 ctx.$('nettoggle').onclick=()=>{ctx.$('network').style.display=ctx.$('network').style.display==='none'?'block':'none'};
 ctx.$('disconnect').onclick=closeNet;
-ctx.$('connect').onclick=()=>{closeNet();let url=ctx.$('neturl').value.trim();if(url.startsWith('https://'))url='wss://'+url.slice(8);else if(url.startsWith('http://'))url='ws://'+url.slice(7);if(!/^wss?:\/\//.test(url))url='ws://'+url;try{ctx.socket=new WebSocket(url)}catch(e){ctx.$('netstatus').textContent='Ошибка адреса: '+e.message;return}const ws=ctx.socket;ctx.$('netstatus').textContent='Подключаемся...';ws.onopen=()=>{ws.send(JSON.stringify({type:'hello',name:ctx.$('netname').value}))};ws.onerror=()=>{ctx.$('netstatus').textContent='Не удалось подключиться. Проверьте адрес, порт и firewall.'};ws.onclose=()=>{if(ctx.socket===ws){closeNet();ctx.$('netstatus').textContent='Соединение потеряно. Переподключитесь.'}};ws.onmessage=e=>{let d;try{d=JSON.parse(e.data)}catch{return}switch(d.type){case 'welcome':ctx.myId=d.id;clearWorld();ctx.seed=d.seed;for(const id of d.felled)ctx.felled.add(id);for(const [id,hp] of Object.entries(d.damage||{}))ctx.treeDamage.set(id,hp);for(const log of d.logs)addLog(log);for(const p of d.players)addAvatar(p);ctx.px=ctx.pz=0;ctx.feetY=ctx.verticalSpeed=0;ctx.onGround=true;syncWood(d.wood,d.cuts);ctx.updateChunks();ctx.$('online').textContent='🟢 Онлайн · '+(d.players.length+1)+' игроков';ctx.$('netstatus').textContent='Подключено! Мир общий и сохраняется на сервере.';break;case 'join':addAvatar(d.player);ctx.$('online').textContent='🟢 Онлайн · '+(ctx.avatars.size+1)+' игроков';break;case 'leave':removeAvatar(d.id);ctx.$('online').textContent='🟢 Онлайн · '+(ctx.avatars.size+1)+' игроков';break;case 'move':{const a=ctx.avatars.get(d.id);if(a){a.goal.set(d.x,d.y||0,d.z);a.angle=d.yaw;a.jumping=!!d.jumping}break}case 'tree_hit':treeHit(d.tree,d.hp);for(const a of ctx.avatars.values()){if(Math.hypot(a.group.position.x-(ctx.trees.get(d.tree)?.position.x??9999),a.group.position.z-(ctx.trees.get(d.tree)?.position.z??9999))<5)ctx.actorChop(a.actor)}break;case 'tree_fell':treeFell(d.tree);if(d.by===ctx.myId){syncWood(d.wood,d.cuts);ctx.$('target').textContent='+5 🪵 Древесина'}break;case 'log_add':addLog(d.log);if(d.by===ctx.myId)syncWood(d.wood);break;case 'log_remove':{const i=ctx.placed.findIndex(p=>p.id===d.id);if(i>=0){ctx.scene.remove(ctx.placed[i].mesh);ctx.placed.splice(i,1)}if(d.by===ctx.myId)syncWood(d.wood);break}}}};
+function connectSocket(ws) {
+ ctx.socket=ws;
+ ws.onopen=()=>{ws.send(JSON.stringify({type:'hello',name:ctx.$('netname').value}))};
+ ws.onerror=()=>{status('Ошибка соединения. Проверьте сервер, адрес и сеть.')};
+ ws.onclose=()=>{if(ctx.socket===ws){closeNet();status('Соединение потеряно. Переподключитесь.')}};
+ ws.onmessage=e=>{let d;try{d=JSON.parse(e.data)}catch{return}switch(d.type){case 'welcome':ctx.myId=d.id;clearWorld();ctx.seed=d.seed;for(const id of d.felled)ctx.felled.add(id);for(const [id,hp] of Object.entries(d.damage||{}))ctx.treeDamage.set(id,hp);for(const log of d.logs)addLog(log);for(const p of d.players)addAvatar(p);ctx.px=ctx.pz=0;ctx.feetY=ctx.verticalSpeed=0;ctx.onGround=true;syncWood(d.wood,d.cuts);ctx.updateChunks();ctx.$('online').textContent='🟢 Онлайн · '+(d.players.length+1)+' игроков';ctx.$('netstatus').textContent='Подключено! Мир общий и сохраняется на сервере.';break;case 'join':addAvatar(d.player);ctx.$('online').textContent='🟢 Онлайн · '+(ctx.avatars.size+1)+' игроков';break;case 'leave':removeAvatar(d.id);ctx.$('online').textContent='🟢 Онлайн · '+(ctx.avatars.size+1)+' игроков';break;case 'move':{const a=ctx.avatars.get(d.id);if(a){a.goal.set(d.x,d.y||0,d.z);a.angle=d.yaw;a.jumping=!!d.jumping}break}case 'tree_hit':treeHit(d.tree,d.hp);for(const a of ctx.avatars.values()){if(Math.hypot(a.group.position.x-(ctx.trees.get(d.tree)?.position.x??9999),a.group.position.z-(ctx.trees.get(d.tree)?.position.z??9999))<5)ctx.actorChop(a.actor)}break;case 'tree_fell':treeFell(d.tree);if(d.by===ctx.myId){syncWood(d.wood,d.cuts);ctx.$('target').textContent='+5 🪵 Древесина'}break;case 'log_add':addLog(d.log);if(d.by===ctx.myId)syncWood(d.wood);break;case 'log_remove':{const i=ctx.placed.findIndex(p=>p.id===d.id);if(i>=0){ctx.scene.remove(ctx.placed[i].mesh);ctx.placed.splice(i,1)}if(d.by===ctx.myId)syncWood(d.wood);break}}};
+}
+ctx.$('connect').onclick=async()=>{
+ closeNet();const token=generation;
+ try {
+  if(mode.value==='direct') {
+    status('Подключаемся к WebSocket...');
+    connectSocket(new WebSocket(url()));return;
+  }
+  status('Соединяемся с PeerServer...');
+  const candidate=await createPeer(peerConfig());
+  if(token!==generation){candidate.destroy();return}
+  peer=candidate;
+  peer.on('error',err=>{if(token===generation)status('PeerJS: '+(err.message||err.type))});
+  const localId=await waitForPeer(peer);
+  if(token!==generation)return;
+  if(mode.value==='host') {
+    peer.on('connection',conn=>{
+      if(token!==generation){conn.close();return}
+      conn.on('open',()=>{
+        if(token!==generation){conn.close();return}
+        const stop=bridgeGuest(conn,url(),status);
+        bridges.add(stop);
+        conn.on('close',()=>bridges.delete(stop));
+      });
+    });
+    room.value=localId;
+    status('Комната '+localId+' готова. Можно отправить ID друзьям.');
+    connectSocket(new WebSocket(url()));
+  } else {
+    const hostId=room.value.trim();
+    if(!hostId)throw Error('Укажите ID комнаты');
+    status('Подключаемся к комнате '+hostId+'...');
+    guestConnection=peer.connect(hostId,{reliable:true,serialization:'json'});
+    connectSocket(peerSocket(guestConnection));
+  }
+ }catch(err){if(token===generation){closeNet();status('Подключение не удалось: '+err.message)}}
+};
 
 return {isOnline, sendNet, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet};
 }
