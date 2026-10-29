@@ -3,6 +3,23 @@ import {createPeer, waitForPeer, bridgeGuest, peerSocket} from './peer-bridge.js
 export function createMultiplayer(ctx) {
 function isOnline(){return ctx.socket?.readyState===WebSocket.OPEN&&ctx.myId!==null}
 function sendNet(data){if(isOnline())ctx.socket.send(JSON.stringify(data))}
+const chatHistory=[];
+function receiveChat(message) {
+ if (!message || !Number.isInteger(message.id) || typeof message.text!=='string') return;
+ if (chatHistory.some(x=>x.id===message.id)) return;
+ chatHistory.push(message);if(chatHistory.length>120)chatHistory.shift();
+ const log=ctx.$('chatmessages'),line=document.createElement('div');line.className='chatline';
+ const name=document.createElement('span');name.className='chatname';name.textContent=(message.name||'Игрок')+': ';
+ line.append(name,document.createTextNode(message.text));log.append(line);
+ while(log.children.length>80)log.firstChild.remove();log.scrollTop=log.scrollHeight;
+ if(ctx.$('chatpanel').classList.contains('collapsed'))ctx.$('chatunread').textContent='●';
+}
+function sendChat(text){
+ if(typeof text!=='string'||!text.trim()||!isOnline())return false;
+ sendNet({type:'chat',text:text.trim().slice(0,400)});return true;
+}
+ctx.$('chattoggle').onclick=()=>{ctx.$('chatpanel').classList.toggle('collapsed');ctx.$('chatunread').textContent='';};
+ctx.$('chatform').onsubmit=e=>{e.preventDefault();if(sendChat(ctx.$('chatinput').value))ctx.$('chatinput').value='';};
 function syncWood(w,c){ctx.wood=w;ctx.$('wood').textContent=ctx.wood;if(c!==undefined){ctx.cuts=c;ctx.$('cut').textContent=ctx.cuts}}
 function clearWorld(){for(const t of ctx.trees.values())ctx.scene.remove(t);for(const g of ctx.chunks.values())ctx.scene.remove(g);for(const f of ctx.falling)ctx.scene.remove(f.tree);for(const p of ctx.particles)ctx.scene.remove(p.mesh);for(const p of ctx.placed)ctx.scene.remove(p.mesh);if(ctx.preview){ctx.scene.remove(ctx.preview);ctx.preview=null}ctx.trees.clear();ctx.chunks.clear();ctx.falling.length=0;ctx.particles.length=0;ctx.placed.length=0;ctx.felled.clear();ctx.treeDamage.clear()}
 function addLog(data){if(ctx.placed.some(p=>p.id===data.id))return;const m=ctx.makeLog();m.position.set(data.x,data.y,data.z);if(data.orientation===1)m.rotation.y=Math.PI/2;ctx.scene.add(m);ctx.placed.push({...data,mesh:m})}
@@ -20,6 +37,7 @@ const bridges=new Set();
 let generation=0;
 function closeNet(){
  generation++;
+ chatHistory.length=0;ctx.$('chatmessages').replaceChildren();ctx.$('chatunread').textContent='';
  for(const stop of bridges)stop();bridges.clear();
  if(guestConnection){guestConnection.close();guestConnection=null}
  if(peer){peer.destroy();peer=null}
@@ -48,7 +66,7 @@ function connectSocket(ws) {
  ws.onopen=()=>{ws.send(JSON.stringify({type:'hello',name:ctx.$('netname').value}))};
  ws.onerror=()=>{status('Ошибка соединения. Проверьте сервер, адрес и сеть.')};
  ws.onclose=()=>{if(ctx.socket===ws){closeNet();status('Соединение потеряно. Переподключитесь.')}};
- ws.onmessage=e=>{let d;try{d=JSON.parse(e.data)}catch{return}switch(d.type){case 'welcome':ctx.myId=d.id;clearWorld();ctx.seed=d.seed;for(const id of d.felled)ctx.felled.add(id);for(const [id,hp] of Object.entries(d.damage||{}))ctx.treeDamage.set(id,hp);for(const log of d.logs)addLog(log);for(const p of d.players)addAvatar(p);ctx.px=ctx.pz=0;ctx.feetY=ctx.verticalSpeed=0;ctx.onGround=true;syncWood(d.wood,d.cuts);ctx.updateChunks();ctx.$('online').textContent='🟢 Онлайн · '+(d.players.length+1)+' игроков';ctx.$('netstatus').textContent='Подключено! Мир общий и сохраняется на сервере.';break;case 'join':addAvatar(d.player);ctx.$('online').textContent='🟢 Онлайн · '+(ctx.avatars.size+1)+' игроков';break;case 'leave':removeAvatar(d.id);ctx.$('online').textContent='🟢 Онлайн · '+(ctx.avatars.size+1)+' игроков';break;case 'move':{const a=ctx.avatars.get(d.id);if(a){a.goal.set(d.x,d.y||0,d.z);a.angle=d.yaw;a.jumping=!!d.jumping}break}case 'tree_hit':treeHit(d.tree,d.hp);for(const a of ctx.avatars.values()){if(Math.hypot(a.group.position.x-(ctx.trees.get(d.tree)?.position.x??9999),a.group.position.z-(ctx.trees.get(d.tree)?.position.z??9999))<5)ctx.actorChop(a.actor)}break;case 'tree_fell':treeFell(d.tree);if(d.by===ctx.myId){syncWood(d.wood,d.cuts);ctx.$('target').textContent='+5 🪵 Древесина'}break;case 'log_add':addLog(d.log);if(d.by===ctx.myId)syncWood(d.wood);break;case 'log_remove':{const i=ctx.placed.findIndex(p=>p.id===d.id);if(i>=0){ctx.scene.remove(ctx.placed[i].mesh);ctx.placed.splice(i,1)}if(d.by===ctx.myId)syncWood(d.wood);break}}};
+ ws.onmessage=e=>{let d;try{d=JSON.parse(e.data)}catch{return}switch(d.type){case 'chat':receiveChat(d);break;case 'welcome':for(const message of d.chat||[])receiveChat(message);ctx.myId=d.id;clearWorld();ctx.seed=d.seed;for(const id of d.felled)ctx.felled.add(id);for(const [id,hp] of Object.entries(d.damage||{}))ctx.treeDamage.set(id,hp);for(const log of d.logs)addLog(log);for(const p of d.players)addAvatar(p);ctx.px=ctx.pz=0;ctx.feetY=ctx.verticalSpeed=0;ctx.onGround=true;syncWood(d.wood,d.cuts);ctx.updateChunks();ctx.$('online').textContent='🟢 Онлайн · '+(d.players.length+1)+' игроков';ctx.$('netstatus').textContent='Подключено! Мир общий и сохраняется на сервере.';break;case 'join':addAvatar(d.player);ctx.$('online').textContent='🟢 Онлайн · '+(ctx.avatars.size+1)+' игроков';break;case 'leave':removeAvatar(d.id);ctx.$('online').textContent='🟢 Онлайн · '+(ctx.avatars.size+1)+' игроков';break;case 'move':{const a=ctx.avatars.get(d.id);if(a){a.goal.set(d.x,d.y||0,d.z);a.angle=d.yaw;a.jumping=!!d.jumping}break}case 'tree_hit':treeHit(d.tree,d.hp);for(const a of ctx.avatars.values()){if(Math.hypot(a.group.position.x-(ctx.trees.get(d.tree)?.position.x??9999),a.group.position.z-(ctx.trees.get(d.tree)?.position.z??9999))<5)ctx.actorChop(a.actor)}break;case 'tree_fell':treeFell(d.tree);if(d.by===ctx.myId){syncWood(d.wood,d.cuts);ctx.$('target').textContent='+5 🪵 Древесина'}break;case 'log_add':addLog(d.log);if(d.by===ctx.myId)syncWood(d.wood);break;case 'log_remove':{const i=ctx.placed.findIndex(p=>p.id===d.id);if(i>=0){ctx.scene.remove(ctx.placed[i].mesh);ctx.placed.splice(i,1)}if(d.by===ctx.myId)syncWood(d.wood);break}}};
 }
 ctx.$('connect').onclick=async()=>{
  closeNet();const token=generation;
@@ -87,5 +105,5 @@ ctx.$('connect').onclick=async()=>{
  }catch(err){if(token===generation){closeNet();status('Подключение не удалось: '+err.message)}}
 };
 
-return {isOnline, sendNet, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet};
+return {isOnline, sendNet, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, chatHistory};
 }

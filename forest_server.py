@@ -30,7 +30,7 @@ def tree_info(key,seed):
 class World:
     def __init__(self,path):
         self.path=Path(path);self.clients={};self.next_id=1;self.seed=random.randrange(1,999999)
-        self.felled=set();self.damage={};self.logs={};self.next_log=1
+        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.chat=[];self.chat_seq=0
         if self.path.exists():
             try:
                 data=json.loads(self.path.read_text());self.seed=int(data['seed']);self.felled=set(data.get('felled',[]));self.damage={str(k):int(v) for k,v in data.get('damage',{}).items()};self.logs={int(k):v for k,v in data.get('logs',{}).items()};self.next_log=max(self.logs,default=0)+1
@@ -47,9 +47,9 @@ class World:
     async def handler(self,ws):
         if len(self.clients)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
-        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0}
+        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0}
         self.clients[ws]=player
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping')} for w,p in self.clients.items() if w!=ws],'wood':0,'cuts':0})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping')} for w,p in self.clients.items() if w!=ws],'wood':0,'cuts':0,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -60,6 +60,17 @@ class World:
                 if kind=='hello':
                     player['name']=str(data.get('name','Игрок'))[:22].strip() or f'Игрок {uid}'
                     await self.broadcast({'type':'join','player':{k:player[k] for k in ('id','name','x','z','y','yaw','jumping')}},ws)
+                elif kind=='chat':
+                    message=data.get('text')
+                    if not isinstance(message,str):continue
+                    message=message.strip()[:400]
+                    if not message or now-player['last_chat']<.35:continue
+                    player['last_chat']=now
+                    self.chat_seq+=1
+                    entry={'id':self.chat_seq,'type':'chat','from':uid,'name':player['name'],'text':message,'timestamp':int(time.time()*1000)}
+                    self.chat.append(entry)
+                    self.chat=self.chat[-80:]
+                    await self.broadcast(entry)
                 elif kind=='move':
                     try:x=float(data['x']);z=float(data['z']);yaw=float(data['yaw']);y=float(data.get('y',0));jumping=bool(data.get('jumping',False))
                     except (ValueError,KeyError,TypeError):continue

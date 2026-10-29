@@ -75,6 +75,9 @@ export function installDebug(ctx) {
       try { return await api.hold(codes[direction], milliseconds); }
       finally { if (sprint) stop('ShiftLeft'); }
     },
+    chat(limit=30) { return ctx.chatHistory.slice(-Math.max(1,Math.min(120,limit))); },
+    say(text) { return ctx.sendChat(text); },
+    tasks(limit=30) {return api.chat(120).filter(m=>/^\s*[!/](?:task|задача|поручение)(?:\s|:|$)/i.test(m.text)).slice(-limit);},
     observe(radius = 12, limit = 18) {
       radius = Math.max(1, Math.min(100, Number(radius) || 12));
       limit = Math.max(1, Math.min(100, Math.floor(limit) || 18));
@@ -168,7 +171,7 @@ export function installDebug(ctx) {
     scene: ctx.scene, camera: ctx.camera, renderer: ctx.renderer,
     get player() { return ctx.ownAvatar; },
     get rootMotion() { return ctx.rootMotion; },
-    help: 'observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
+    help: 'chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
   };
   window.__gameDebug = api;
   window.addEventListener('blur', releaseAll);
