@@ -128,7 +128,7 @@
 ## In progress / next
 
 - P1.9 mini-objectives, P1.10 multiplayer presence, P1.11 tree shapes and P1.12 flora are completed; see dated sections and commit bodies below.
-- Finish any remaining P0.4 subjective touch/UI review and P0.6 optional diagnostics.
+- P0.6 optional local renderer diagnostics completed (see below); finish any remaining P0.4 subjective touch/UI review.
 - Next reasonable P2: small forest landmarks or another low-cost QoL improvement. Defer heavyweight mechanics needing protocol or world save changes.
 - No push/deploy.
 
@@ -177,6 +177,14 @@
 - Real isolated desktop browser: initial seed yielded 86 birches among 390 trees; birch trunk uses a shared CanvasTexture, four `IcosahedronGeometry` lobes, and exactly five meshes; renderer initially used 66 geometries/59 textures after render (one new shared tree geometry and one shared bark texture). Navigated to a live birch, aimed, chopped once (HP 10→9), verified unchanged trunk material/texture/scale, and restored the same birch with HP 9 after reloading the isolated offline save. Dynamic `Берёза` label verified. Debug browser had one unrelated missing resource (404, likely favicon), no application JavaScript exception.
 - Normal `index.html` tested in 390×844 mobile/touch emulation with reduced motion: WebGL loaded, mobile controls present, debug API absent, and no console errors. Screenshots in `/tmp/forest-overnight-birch-{desktop,mobile}.webp`.
 - Validation: Node 38/38, Python 5/5, `node --check` on all client modules, Python compile, and `git diff --check`. No push; user world/server unaffected.
+
+### P0.6 — Opt-in local renderer diagnostics (2026-10-30)
+
+- Extended the existing `FPS` checkbox to `FPS и диагностика рендера (локально)`. Once enabled, the small HUD updates approximately once a second and shows FPS, ping/offline, renderer draw calls/triangles, GPU geometry/texture counts, loaded chunks/trees and live chip particles.
+- `src/diagnostics.js` only reads the local Three.js renderer and existing in-memory collection sizes. Metrics are never sent over the network, saved to localStorage, logged, or sampled when the checkbox is disabled. Existing saved preference shape (`mouseSensitivity`, `showFps`) and world saves remain unchanged.
+- Tests cover accurate/fallback metric collection, no data leaks from other ctx properties, and throttled HUD updates/disabled state/storage not containing stats.
+- Real isolated browser: desktop debug showed `FPS 31 · offline / Draws 970 · Tri 50490 · Geom 66 · Tex 59 / Chunks 49 · Trees 389 · FX 0`; 390×844 touch viewport placed the 61.5-pixel HUD entirely inside the viewport without crossing movement/chop/build buttons, and browser console contained no errors. Screenshot `/tmp/forest-overnight-diagnostics-mobile.webp`.
+- Validation: 40/40 Node tests, 5/5 Python tests, JS syntax and `git diff --check`. Both HTML entrypoints and relevant module URLs versioned `20261030-diagnostics`. No push.
 
 ## Git
 

@@ -1,4 +1,5 @@
 // Lightweight client-only preferences. No framework or new dependencies.
+import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
 const KEY = 'forest-chopper:settings:v1';
 const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false});
 
@@ -23,7 +24,7 @@ export function createSettings(doc = document, storage = null) {
     storage = null;
   }
   const state = sanitizeSettings(persisted);
-  let connected = false, latency = null, lastRate = null;
+  let connected = false, latency = null, lastRate = null, lastDiagnostics = '';
   const css = doc.createElement('style');
   css.textContent = `
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
@@ -34,7 +35,7 @@ export function createSettings(doc = document, storage = null) {
 .fc-settings input[type=range]{display:block;width:100%;margin-top:8px;accent-color:#8bd0a4}
 .fc-settings input[type=checkbox]{accent-color:#8bd0a4}
 .fc-settings button{border-radius:7px;padding:7px 10px}
-.fc-fps{position:fixed;z-index:5;top:320px;left:16px;border-radius:6px;padding:5px 8px;background:#10251fe8;color:#baf1ca;font:600 12px/1.3 ui-monospace,monospace;pointer-events:none}
+.fc-fps{position:fixed;z-index:5;top:320px;left:16px;max-width:calc(100vw - 32px);border-radius:6px;padding:6px 8px;background:#10251fe8;color:#baf1ca;font:600 11px/1.5 ui-monospace,monospace;white-space:pre-line;pointer-events:none}
 @media(max-width:450px){.fc-settings{top:96px}.fc-settings-toggle{padding:9px 10px}}
 `;
   doc.head.append(css);
@@ -50,7 +51,7 @@ export function createSettings(doc = document, storage = null) {
   panel.innerHTML = `<h2>⚙ Настройки</h2>
     <label>Чувствительность обзора: <output id="fc-sensitivity-value"></output>
       <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
-    <label><input id="fc-show-fps" type="checkbox"> Показывать FPS</label>
+    <label><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
     <button id="fc-reset-settings" type="button">Сбросить настройки</button>`;
   const fps = doc.createElement('div');
   fps.className = 'fc-fps';
@@ -63,7 +64,7 @@ export function createSettings(doc = document, storage = null) {
   const output = panel.querySelector('#fc-sensitivity-value');
   const checkbox = panel.querySelector('#fc-show-fps');
   const networkLabel = () => connected ? `Ping ${latency === null ? '—' : latency + ' ms'}` : 'offline';
-  const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}`;};
+  const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
   function reflect() {
     range.value = state.mouseSensitivity;
     output.textContent = String(state.mouseSensitivity.toFixed(1));
@@ -105,13 +106,14 @@ export function createSettings(doc = document, storage = null) {
     latency = connected && Number.isFinite(ms) && ms >= 0 && ms <= 120000 ? Math.round(ms) : null;
     renderFps();
   }
-  function tick(now) {
-    if (!state.showFps) {lastSample = null;frames = 0;return;}
+  function tick(now, gameCtx = null) {
+    if (!state.showFps) {lastSample = null;frames = 0;lastDiagnostics='';return;}
     if (lastSample === null) {lastSample = now;frames = 0;return;}
     frames++;
     if (now - lastSample >= 950) {
       const rate = Math.round(frames * 1000 / (now - lastSample));
       lastRate = Math.max(0, rate);
+      lastDiagnostics = gameCtx ? formatDiagnostics(collectDiagnostics(gameCtx)) : '';
       renderFps();
       frames = 0;
       lastSample = now;
