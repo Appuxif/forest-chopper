@@ -167,6 +167,17 @@
 - Isolated debug browser: 7 frosty trees among 387 loaded trees, all shared one foliage material `#b1ced2`, every tree still exactly five meshes, geometry count unchanged at 65. Chrome mobile 390×844 and desktop 1366×768 were exercised, console clear. Screenshots `/tmp/forest-overnight-p27-{mobile,desktop}.webp`.
 - Validation: Node 37/37, Python 5/5, JS syntax and diff checks PASS. No push.
 
+### P1 follow-up — Birch trees with white bark and rounded crowns (2026-10-30)
+
+- Added a new deterministic visual tree species (`species:'birch'`) for approximately 20% of existing tree slots, selected from unused procedural seed index 703. Existing tree coordinates, IDs, height/scale random channels, HP, hit cooldown, wood rewards, collision and multiplayer/save formats remain unchanged.
+- Birch trunks use the existing shared cylinder geometry at a slightly slimmer cosmetic width, one globally shared Lambert bark material and one shared procedurally drawn CanvasTexture. The texture contains fixed short dark bark streaks; hitting a birch does not create or expand rectangles, flash, or mutate the bark material.
+- Canopies use one shared low-poly icosahedron geometry with three shared light-green materials. Exactly four offset, rounded foliage lobes plus one trunk per tree: still five meshes, no per-tree geometry/material/texture allocations. Rare frosty trees retain the existing palette override without losing species identity.
+- Aiming at a birch labels the health HUD `🌳 Берёза`. Both HTML entrypoints and relevant JS import URLs were versioned (`20261030-birch`) to avoid stale cached tree/player code on mobile devices.
+- New deterministic resource test generates 450 trees, verifies birch/normal distribution, original HP/IDs/world positions/trunk scales, shared geometry/materials, reproducible silhouettes after unload/rebuild and damaged birch HP restoration.
+- Real isolated desktop browser: initial seed yielded 86 birches among 390 trees; birch trunk uses a shared CanvasTexture, four `IcosahedronGeometry` lobes, and exactly five meshes; renderer initially used 66 geometries/59 textures after render (one new shared tree geometry and one shared bark texture). Navigated to a live birch, aimed, chopped once (HP 10→9), verified unchanged trunk material/texture/scale, and restored the same birch with HP 9 after reloading the isolated offline save. Dynamic `Берёза` label verified. Debug browser had one unrelated missing resource (404, likely favicon), no application JavaScript exception.
+- Normal `index.html` tested in 390×844 mobile/touch emulation with reduced motion: WebGL loaded, mobile controls present, debug API absent, and no console errors. Screenshots in `/tmp/forest-overnight-birch-{desktop,mobile}.webp`.
+- Validation: Node 38/38, Python 5/5, `node --check` on all client modules, Python compile, and `git diff --check`. No push; user world/server unaffected.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.

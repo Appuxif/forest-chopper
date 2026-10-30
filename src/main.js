@@ -1,10 +1,10 @@
 import {createAnimations} from './animations.js';
-import {createWorld} from './world.js?v=20261030-no-scar3';
+import {createWorld} from './world.js?v=20261030-birch';
 import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-no-scar3';
-import {createPlayer} from './player.js?v=20261030-no-scar3';
+import {createPlayer} from './player.js?v=20261030-birch';
 import {createMultiplayer} from './multiplayer.js?v=20261030-no-scar3';
 import {createMinimap} from './minimap.js';
 import {createNotifications} from './notifications.js';
@@ -25,9 +25,25 @@ const ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000),new THREE.MeshLam
 const trunkGeo=new THREE.CylinderGeometry(.38,.6,1,9),leafGeo=new THREE.ConeGeometry(1,1,8),grassGeo=new THREE.ConeGeometry(.17,.6,3),rockGeo=new THREE.DodecahedronGeometry(1,0);
 // Shared tiny flora primitives: replace some grass meshes, never increase per-chunk object count.
 const flowerGeo=new THREE.OctahedronGeometry(.24,0),mushroomGeo=new THREE.SphereGeometry(.28,7,4);
+// Birch uses one shared low-poly crown geometry and a single bark texture for all trees.
+const birchLeafGeo=new THREE.IcosahedronGeometry(1,1);
 const trunkMats=[0x65442e,0x795339,0x543925].map(color=>new THREE.MeshLambertMaterial({color}));const leafMats=[0x214c30,0x30683a,0x3a7141,0x285e46].map(color=>new THREE.MeshLambertMaterial({color}));const grassMat=new THREE.MeshLambertMaterial({color:0x829b4c}),rockMat=new THREE.MeshLambertMaterial({color:0x808478});
 const flowerMat=new THREE.MeshLambertMaterial({color:0xf1bc67}),mushroomMat=new THREE.MeshLambertMaterial({color:0xa94c40});
 const rareLeafMat=new THREE.MeshLambertMaterial({color:0xb1ced2}); // Shared frosty foliage, cosmetic only.
+const birchLeafMats=[0x6fa54b,0x83b753,0x98c367].map(color=>new THREE.MeshLambertMaterial({color}));
+const barkCanvas=document.createElement('canvas');barkCanvas.width=256;barkCanvas.height=512;
+const barkCtx=barkCanvas.getContext('2d');
+barkCtx.fillStyle='#eeeae0';barkCtx.fillRect(0,0,256,512);
+// Fixed short dark horizontal lenticels, painted into the texture, never as damage overlays.
+for(let i=0;i<68;i++){
+ const x=(i*73+i*i%47)%256,y=(i*119+i*i%73)%512;
+ const width=7+i*13%23,height=2+i%3;
+ barkCtx.fillStyle=i%4===0?'#8e9289':'#414942';
+ barkCtx.fillRect(x,y,width,height);
+ barkCtx.fillRect(x+2,y+height,Math.max(3,Math.floor(width/3)),1);
+}
+const birchBarkTexture=new THREE.CanvasTexture(barkCanvas);birchBarkTexture.colorSpace=THREE.SRGBColorSpace;
+const birchTrunkMat=new THREE.MeshLambertMaterial({map:birchBarkTexture});
 const trees=new Map(),chunks=new Map(),felled=new Set(),falling=[],particles=[],keys={},treeDamage=new Map();let seed=(Math.random()*999999)|0,px=0,pz=0,yaw=0,pitch=0,wood=0,cuts=0,joyX=0,joyY=0,swing=0,lastHit=0,drag=null,frame=0,lastTime=performance.now();const chunkSize=24,radius=3;
 
 scene.add(camera);const axe=new THREE.Group();camera.add(axe);const handle=new THREE.Mesh(new THREE.CylinderGeometry(.045,.065,1.3,8),new THREE.MeshLambertMaterial({color:0x99623b}));handle.rotation.z=-.2;axe.add(handle);const metal=new THREE.MeshStandardMaterial({color:0xc2cbd0,metalness:.65,roughness:.35});const head=new THREE.Mesh(new THREE.BoxGeometry(.48,.32,.15),metal);head.position.set(-.18,.58,0);axe.add(head);const blade=new THREE.Mesh(new THREE.CylinderGeometry(.26,.26,.15,3),metal);blade.rotation.x=Math.PI/2;blade.rotation.z=Math.PI/2;blade.position.set(-.44,.58,0);axe.add(blade);axe.position.set(.72,-.7,-1.1);axe.rotation.z=-.25;
@@ -67,6 +83,9 @@ const ctx={
  get animate(){return animate;},
  get avatars(){return avatars;},
  get axe(){return axe;},
+ get birchLeafGeo(){return birchLeafGeo;},
+ get birchLeafMats(){return birchLeafMats;},
+ get birchTrunkMat(){return birchTrunkMat;},
  get blade(){return blade;},
  get blocksPlayerAt(){return blocksPlayerAt;},
  get build(){return build;},

@@ -50,6 +50,8 @@ function fixture() {
   };
   const ctx = {
     THREE, scene, $, trunkGeo: sharedGeometry, leafGeo: sharedGeometry,
+    birchLeafGeo: sharedGeometry, birchTrunkMat: sharedMaterial,
+    birchLeafMats: [sharedMaterial,sharedMaterial,sharedMaterial],
     grassGeo: sharedGeometry, rockGeo: sharedGeometry,
     flowerGeo: sharedGeometry, mushroomGeo: sharedGeometry,
     trunkMats: [sharedMaterial, sharedMaterial, sharedMaterial],
@@ -202,4 +204,56 @@ test('rare frosty trees are seed-deterministic and purely cosmetic', () => {
     ctx.scene.remove(ctx.trees.get(id));ctx.trees.delete(id);
   }
   assert.ok(rareCount>1&&rareCount<40,`expected rare appearance, got ${rareCount}/600`);
+});
+
+test('birches have a consistent white-bark trunk and rounded shared canopy without changing tree rules', () => {
+  const {ctx, created, sharedGeometry, sharedMaterial} = fixture();
+  const birchGeo={kind:'rounded-crown'}, birchBark={kind:'white-bark'};
+  const birchLeaves=[{kind:'light-green'},{kind:'green'},{kind:'yellow-green'}];
+  ctx.birchLeafGeo=birchGeo;
+  ctx.birchTrunkMat=birchBark;
+  ctx.birchLeafMats=birchLeaves;
+  const world=createWorld(ctx);
+  let birches=0, regular=0, firstBirch=null;
+  for(let i=0;i<450;i++){
+    const x=6+i*.87,z=12+i*1.21,id=`8,5:${i}`;
+    const expectedSpecies=world.rand(x,z,703)<.2?'birch':'conifer';
+    world.makeTree(x,z,id);
+    const tree=ctx.trees.get(id);
+    assert.equal(tree.userData.species,expectedSpecies);
+    assert.equal(tree.userData.id,id);
+    assert.equal(tree.userData.h,7.5+world.rand(x,z,4)*6.5);
+    assert.equal(tree.userData.scale,.9+world.rand(x,z,5)*.65);
+    assert.equal(tree.userData.maxHp,7+Math.floor(world.rand(x,z,8)*5));
+    assert.equal(tree.position.x,x);
+    assert.equal(tree.position.z,z);
+    assert.equal(tree.children.length,5,'birches must not increase per-tree mesh count');
+    const trunk=tree.children[0],leaves=tree.children.slice(1);
+    assert.equal(trunk.geometry,sharedGeometry);
+    if(expectedSpecies==='birch'){
+      birches++;
+      firstBirch??={id,x,z};
+      assert.equal(trunk.material,birchBark);
+      assert.equal(trunk.scale.x,tree.userData.scale*.78);
+      assert.ok(leaves.every(f=>f.geometry===birchGeo));
+      assert.ok(leaves.every(f=>tree.userData.rare?f.material===sharedMaterial:birchLeaves.includes(f.material)));
+      assert.ok(leaves.some(f=>f.position.x!==0),'birch canopy must branch away from the trunk');
+    }else{
+      regular++;
+      assert.equal(trunk.material,sharedMaterial);
+      assert.ok(leaves.every(f=>f.geometry===sharedGeometry));
+    }
+    const silhouette=tree.children.map(m=>[m.geometry,m.material,m.scale.x,m.scale.y,m.position.x,m.position.y,m.position.z]);
+    ctx.scene.remove(tree);ctx.trees.delete(id);
+    world.makeTree(x,z,id);
+    assert.equal(ctx.trees.get(id).userData.species,expectedSpecies);
+    assert.deepEqual(ctx.trees.get(id).children.map(m=>[m.geometry,m.material,m.scale.x,m.scale.y,m.position.x,m.position.y,m.position.z]),silhouette);
+    ctx.scene.remove(ctx.trees.get(id));ctx.trees.delete(id);
+  }
+  assert.ok(birches>50 && birches<140,`expected around 20% birches, got ${birches}/450`);
+  assert.ok(regular>0);
+  assert.deepEqual(created,[sharedGeometry,sharedMaterial], 'no individual tree GPU assets');
+  ctx.treeDamage.set(firstBirch.id,2);
+  world.makeTree(firstBirch.x,firstBirch.z,firstBirch.id);
+  assert.equal(ctx.trees.get(firstBirch.id).userData.hp,2,'damaged birch retains saved HP');
 });
