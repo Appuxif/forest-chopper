@@ -218,6 +218,14 @@
 - Real isolated debug Chrome at mobile 390×844: exactly one campfire with 15 children positioned at `(5,0,5)`, flame y-scale changed gently over time and PointLight intensity was ~0.64; renderer memory remained bounded (69 geometries, 60 textures in initial measurement). Emulated reduced motion: scale restored to 1 and intensity 0.65, with no damage/wood/cuts changes. Visually inspected warm flame, stone ring and logs. Normal `index.html` touch/mobile loaded with no console errors and no debug API. Screenshot `/tmp/forest-overnight-campfire-mobile.webp`.
 - Full test suite validated before commit; no push and no writes to production world save.
 
+### P2.9 — Persistent camera FOV slider (2026-10-30)
+
+- Added `Угол обзора (FOV)` to Settings, a simple 65–95° slider in 5° steps (default 75°) for both first-person and third-person cameras. Adjusting it calls `camera.updateProjectionMatrix()` immediately without reloading or changing movement/collision.
+- `sanitizeSettings` bounds/rounds persisted FOV, keeps the existing versioned `forest-chopper:settings:v1` key, and accepts older saved preferences with no FOV field as 75°. Reset Settings restores 75°. No world save or networking protocol is touched.
+- Extended `tests/settings.test.mjs` with sanitization boundaries and a realistic Settings DOM/callback test validating initialization with saved 85°, live change to 95°, persistence, callback order and reset to 75°. Updated diagnostics storage test for the expanded preference.
+- Real isolated debug Chrome touch 390×844: FOV 75→95 immediately changed the perspective projection matrix element 2.82→1.98 with wood unchanged; reloading restored 95°, and Reset returned FOV 75°/projection matrix 2.82. Normal `index.html` mobile rendered with FOV slider and without debug API or console errors; desktop 1366×768 had no warnings/errors. Screenshot `/tmp/forest-overnight-fov-mobile.webp`.
+- Full test suite validated before commit; no push.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.

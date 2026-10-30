@@ -1,20 +1,23 @@
 // Lightweight client-only preferences. No framework or new dependencies.
 import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
 const KEY = 'forest-chopper:settings:v1';
-const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true});
+const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75});
 
 export function sanitizeSettings(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const number = Number(source.mouseSensitivity);
+  const fov = Number(source.fov);
   return {
     mouseSensitivity: Number.isFinite(number) && number >= .4 && number <= 2.5
       ? Math.round(number * 10) / 10 : DEFAULT.mouseSensitivity,
     showFps: source.showFps === true,
     windEnabled: source.windEnabled !== false,
+    fov: Number.isFinite(fov) && fov >= 65 && fov <= 95
+      ? Math.round(fov / 5) * 5 : DEFAULT.fov,
   };
 }
 
-export function createSettings(doc = document, storage = null) {
+export function createSettings(doc = document, storage = null, onFovChange = null) {
   let persisted;
   try {
     const local = storage ?? window.localStorage;
@@ -54,6 +57,8 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   panel.innerHTML = `<h2>⚙ Настройки</h2>
     <label>Чувствительность обзора: <output id="fc-sensitivity-value"></output>
       <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
+    <label>Угол обзора (FOV): <output id="fc-fov-value"></output>°
+      <input id="fc-fov" type="range" min="65" max="95" step="5"></label>
     <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
     <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в кронах</label>
     <button id="fc-reset-settings" type="button">Сбросить настройки</button>`;
@@ -68,6 +73,8 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   const output = panel.querySelector('#fc-sensitivity-value');
   const checkbox = panel.querySelector('#fc-show-fps');
   const windCheckbox = panel.querySelector('#fc-wind-enabled');
+  const fovSlider = panel.querySelector('#fc-fov');
+  const fovOutput = panel.querySelector('#fc-fov-value');
   const networkLabel = () => connected ? `Ping ${latency === null ? '—' : latency + ' ms'}` : 'offline';
   const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
   function reflect() {
@@ -75,6 +82,8 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     output.textContent = String(state.mouseSensitivity.toFixed(1));
     checkbox.checked = state.showFps;
     windCheckbox.checked = state.windEnabled;
+    fovSlider.value = String(state.fov);
+    fovOutput.textContent = String(state.fov);
     fps.hidden = !state.showFps;
     renderFps();
   }
@@ -98,10 +107,16 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   };
   checkbox.onchange = () => {state.showFps = checkbox.checked;reflect();save();};
   windCheckbox.onchange = () => {state.windEnabled = windCheckbox.checked;reflect();save();};
+  fovSlider.oninput = () => {
+    state.fov = sanitizeSettings({...state,fov:Number(fovSlider.value)}).fov;
+    onFovChange?.(state.fov);
+    reflect();save();
+  };
   panel.querySelector('#fc-reset-settings').onclick = () => {
-    Object.assign(state, DEFAULT);reflect();save();
+    Object.assign(state, DEFAULT);onFovChange?.(state.fov);reflect();save();
   };
   reflect();
+  onFovChange?.(state.fov);
 
   let lastSample = null, frames = 0;
   function setConnected(online) {
@@ -128,5 +143,6 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   }
   return {get mouseSensitivity(){return state.mouseSensitivity;},
     get showFps(){return state.showFps;},
-    get windEnabled(){return state.windEnabled;}, tick, close, setConnected, setLatency};
+    get windEnabled(){return state.windEnabled;},
+    get fov(){return state.fov;}, tick, close, setConnected, setLatency};
 }

@@ -8,7 +8,7 @@ import {createPlayer} from './player.js?v=20261030-fire1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-no-scar3';
 import {createMinimap} from './minimap.js';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-hud1';
+import {createSettings} from './settings.js?v=20261030-fov1';
 import {createWind} from './wind.js';
 import {createLandmarks} from './landmarks.js?v=20261030-fire1';
 import {createOfflineSave} from './offline-save.js';
@@ -63,7 +63,7 @@ const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
 // Multiplayer: authoritative server state, client-side rendering.
 let socket=null,myId=null,lastMoveSent=0;const avatars=new Map();
 const notifications=createNotifications();
-const settings=createSettings();
+const settings=createSettings(document,null,fov=>{camera.fov=fov;camera.updateProjectionMatrix();});
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null;
 
