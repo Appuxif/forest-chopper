@@ -321,6 +321,16 @@ All ten items from the previously agreed *high and medium* shortlist are impleme
 10. P2.8 server team goal — the commit associated with this report.
 
 Known limitations: the new protocol features need the updated Python server deployed; existing public servers do not support them. The bench is decorative and deliberately does not implement sitting/collision. Neither deeper crafting/planting nor an economy was started.
+### 2026-10-30 — Mushroom size correction + real low-poly wildflowers
+
+- Follow-up to `bba578d`: mushroom size is now exactly **0.5×** its original seeded world scale on all axes (the four stem/cap/spot/ring models and their world coordinates are unchanged). Mushroom roots remain at ground level.
+- Removed the single yellow octahedron used for flower art. `src/flowers.js` creates four recognizable wildflower variants: **white daisy, yellow buttercup, pink bloom and blue bloom**; each has a tapered green stalk, two shaped leaves, seven slightly cupped petals and a raised golden/orange middle.
+- Performance: flower art is **a single vertex-colored Mesh per flower**, not 3–4 independent meshes. Four shared `BufferGeometry` objects and **one shared `MeshLambertMaterial`** are created at startup. All triangles (stem, leaves, petals, centre) share a draw call; no new per-chunk GPU resources, materials or extra decor slots. The old flower octahedron remains shared only by the tiny campfire sparks.
+- Flower size is adjusted to 65% of its former world scale to read as a plausible wildflower (rather than an avatar-sized blossom); mushroom scale is exactly half. World seed, decoration x/z coordinates, rock/grass/mushroom/flower slot probabilities, tree IDs, physics, multiplayer protocol and saves are unchanged. A new unused seed random channel `1100+i` picks flower palette.
+- New `tests/flowers.test.mjs` covers single-mesh rendering, multi-petal geometry, leaf/stalk/centre geometry, four separate vertex colors and bounded GPU allocations after 350 objects; adjusted existing chunk/landmarks tests cover 25 decor slots, exact half-size mushroom scaling, deterministic flower colors and no allocations while streaming. Full suite **83 Node and 14 Python tests** passed, as did source syntax/Python compilation and diff checks.
+- Isolated real desktop Chrome scene generated ~200 flowers and ~70 mushrooms across all four variants, with vertex colors enabled, 1 Mesh per flower, mushroom scale range 0.40–0.71, flower scale 0.52–0.94; visible daisy, colored wildflowers and stems verified in screenshots. Normal mobile at 390×844, DPR 2, reduced motion enabled loaded with touch controls, **no debug API and zero console errors/warnings**. Screenshot `/tmp/forest-overnight-flora-mobile.webp`.
+- No push or deployment, live server/world saves and untracked `.codex/` not touched.
+
 ### 2026-10-30 — Recognizable low-poly mushrooms (requested follow-up)
 
 - Replaced each original red mushroom sphere with one of four recognizable procedural Three.js models, in src/mushrooms.js: scarlet **fly agaric** with a cream stem and nine white spots; stocky brown **boletus**; pale green, ringed **death cap**; and wide funnel-shaped cream **milkcap**.

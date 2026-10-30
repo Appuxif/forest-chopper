@@ -30,6 +30,7 @@ function fixture(seed=321) {
     birchLeafMats:[sharedMat,sharedMat,sharedMat],birchTrunkMat:sharedMat,rareLeafMat:sharedMat,
     grassMat:sharedMat,rockMat:sharedMat,flowerMat:sharedMat,
     mushrooms:{create(index){const group=new THREE.Group();group.userData.mushroomSpecies=['fly_agaric','boletus','death_cap','milkcap'][index];group.add(new THREE.Mesh(sharedGeo,sharedMat));return group;}},
+    flowers:{create(index){const mesh=new THREE.Mesh(sharedGeo,sharedMat);mesh.userData.flowerSpecies=['daisy','buttercup','pink_wildflower','blue_wildflower'][index];return mesh;}},
     logGeo:sharedGeo,logMat:sharedMat,
     scene:{add(group){groups.push(group)},remove(){}}
   };
