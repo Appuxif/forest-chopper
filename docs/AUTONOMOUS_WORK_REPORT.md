@@ -127,10 +127,10 @@
 
 ## In progress / next
 
+- P1.9 mini-objectives, P1.10 multiplayer presence, P1.11 tree shapes and P1.12 flora are completed; see dated sections and commit bodies below.
 - Finish any remaining P0.4 subjective touch/UI review and P0.6 optional diagnostics.
-- P1.9 compact objectives.
-- P1.11/P1.12 cosmetic world variety and P1.10 multiplayer join/leave polishing.
-- P2 stretch mechanics only after stable P1; no push/deploy.
+- Next reasonable P2: small forest landmarks or another low-cost QoL improvement. Defer heavyweight mechanics needing protocol or world save changes.
+- No push/deploy.
 
 
 
