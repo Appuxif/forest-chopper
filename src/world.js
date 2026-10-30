@@ -1,6 +1,6 @@
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {treeCandidate,treeCanSpawn} from './tree-spacing.js?v=20261030-spacing-4m1';
-import {createTreeBatch} from './tree-instancing.js?v=20261030-classic-instancing1';
+import {createTreeBatch} from './tree-instancing.js?v=20261031-spruce-sway1';
 export function createWorld(ctx) {
 function rand(x,z,n=0){let v=Math.sin(x*127.1+z*311.7+n*78.233+ctx.seed)*43758.5453;return v-Math.floor(v)}
 // Shared white-tinted materials are reused across chunks and never disposed
@@ -18,8 +18,30 @@ trunk.scale.set(birch?scale*.78:scale,h,birch?scale*.78:scale);trunk.position.y=
 // Use an unused deterministic random index, never the indices used by tree_info.
 const variant=Math.floor(rand(x,z,701)*3);
 const rare=rand(x,z,702)>.985; // About 1.5% of trees: a visual discovery, no extra wood/HP.
-// Four foliage meshes for both species. Birches form clustered round low-poly crowns.
-for(let i=0;i<4;i++){
+// The two generated meshes share geometry and materials across every tree.
+const spruceModel=!birch&&ctx.spruceParts?.length;
+if(spruceModel){trunk.visible=false;trunk.userData.hitProxy=true;}
+
+let spruceHitMeshes=null;
+if(spruceModel){
+ // Generator's baseline height is 6m. Keep tree dimensions similar to the old
+ // procedural silhouettes: scale height independently of crown width.
+ for(const {geometry,material} of ctx.spruceParts){
+  const visual=new ctx.THREE.Mesh(geometry,material);
+  visual.scale.set(scale,h/6,scale);
+  visual.userData.spruceFoliage=!!material.map;
+  group.add(visual);
+ }
+ // Invisible low-poly colliders keep axe targeting cheap. They are excluded
+ // from GPU batches but still raycastable, exactly like hidden classic meshes.
+ const targetCrown=new ctx.THREE.Mesh(ctx.leafGeo,ctx.leafMats[0]);
+ targetCrown.scale.set(scale*2.8,h*.8,scale*2.8);
+ targetCrown.position.y=h*.63;targetCrown.visible=false;
+ targetCrown.userData.hitProxy=true;group.add(targetCrown);
+ spruceHitMeshes=[trunk,targetCrown];
+}
+// Four foliage meshes for the old conifers (fallback) and birches.
+if(!spruceModel)for(let i=0;i<4;i++){
  const palette=ctx.leafMats[Math.floor(rand(x,z,15+i)*4)];
  const birchPalette=birch?ctx.birchLeafMats[Math.floor(rand(x,z,731+i)*ctx.birchLeafMats.length)]:null;
  const foliage=new ctx.THREE.Mesh(birch?ctx.birchLeafGeo:ctx.leafGeo,rare?ctx.rareLeafMat:birch?birchPalette:palette);
@@ -41,7 +63,7 @@ for(let i=0;i<4;i++){
  group.add(foliage);
 }
 // Damage stays in HP (and the damage bar). No flat rectangle on the trunk.
-group.position.set(x,0,z);group.userData={id,x,z,h,scale,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant,rare,species:birch?'birch':'conifer'};ctx.scene.add(group);ctx.trees.set(id,group)}
+group.position.set(x,0,z);group.userData={id,x,z,h,scale,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant,rare,spruceModel:!!spruceModel,species:birch?'birch':'conifer'};if(spruceHitMeshes)group.userData.hitMeshes=spruceHitMeshes;ctx.scene.add(group);ctx.trees.set(id,group);ctx.spruceDiagnostics?.applyTree(group)}
 function enableDecorShadow(node){
  if(node.isMesh||node.geometry){node.castShadow=true;
    if(node.userData?.decorType==='rock')node.receiveShadow=true;}
@@ -58,6 +80,7 @@ for(let i=0;i<8;i++){
  if(!ctx.felled.has(id)){makeTree(x,z,id);newTrees.push(ctx.trees.get(id));}
 }
 decor.userData.treeBatch=createTreeBatch(ctx.THREE,decor,newTrees,classicBatchMaterials);
+ctx.spruceDiagnostics?.applyBatch(decor.userData.treeBatch);
 for(let i=0;i<25;i++){
  const x=cx*ctx.chunkSize+rand(cx,cz,100+i*2)*ctx.chunkSize;
  const z=cz*ctx.chunkSize+rand(cx,cz,101+i*2)*ctx.chunkSize;

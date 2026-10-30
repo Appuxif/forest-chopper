@@ -3,7 +3,7 @@ import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
 import {FPS_OPTIONS} from './frame-limiter.js';
 const KEY = 'forest-chopper:settings:v1';
 const CAMERA_80_MIGRATION = 'forest-chopper:camera-80-default:v1';
-const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, grassDensity: 25, grassDistance: 50, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 70, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80});
+const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 25, grassDistance: 50, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 70, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80});
 
 function validCameraNumber(value,min,max,fallback,digits=2){
   if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max)return fallback;
@@ -19,6 +19,12 @@ export function sanitizeSettings(value) {
     mouseSensitivity: Number.isFinite(number) && number >= .4 && number <= 2.5
       ? Math.round(number * 10) / 10 : DEFAULT.mouseSensitivity,
     showFps: source.showFps === true,
+    spruceFoliageVisible: source.spruceFoliageVisible !== false,
+    spruceFoliageShadows: source.spruceFoliageShadows !== false,
+    spruceFoliageDensity: Number.isInteger(source.spruceFoliageDensity)
+      && source.spruceFoliageDensity>=0 && source.spruceFoliageDensity<=100
+      && source.spruceFoliageDensity%5===0
+      ? source.spruceFoliageDensity : DEFAULT.spruceFoliageDensity,
     windEnabled: source.windEnabled !== false,
     dayCycleEnabled: source.dayCycleEnabled === true,
     autoSprint: source.autoSprint === true,
@@ -165,6 +171,12 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <input id="fc-shadow-contrast" type="range" min="0" max="100" step="5"></label>
     <small>Уменьшает фоновый свет внутри теней: 0% — мягкие, 100% — максимально контрастные. Применяется и днём, и ночью.</small>
     <small>Тени персонажей обновляются каждый кадр, тени деревьев — по отдельному таймеру.</small>
+    <h2>🌲 Диагностика хвои ели</h2>
+    <label><input id="fc-spruce-foliage-visible" type="checkbox"> Foliage Cards — отображать хвою</label>
+    <label><input id="fc-spruce-foliage-shadows" type="checkbox"> Foliage Shadows — тени от хвои</label>
+    <label>Плотность Foliage Cards: <output id="fc-spruce-foliage-density-value"></output>%
+      <input id="fc-spruce-foliage-density" type="range" min="0" max="100" step="5"></label>
+    <small>Прозрачные области хвои оптимизируются автоматически при старте. Плотность меняется без перегенерации леса.</small>
     <label>Угол обзора (FOV): <output id="fc-fov-value"></output>°
       <input id="fc-fov" type="range" min="65" max="95" step="5"></label>
     <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
@@ -214,7 +226,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <input id="fc-camera-distance" type="range" min="1.2" max="6" step="0.05"></label>
     </section>
     <section class="fc-settings-page" data-category="world" aria-label="Мир" hidden>
-    <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в кронах</label>
+    <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в деревьях</label>
     <label><input id="fc-day-cycle" type="checkbox"> Локальная смена дня и ночи</label>
     <small>Только визуально, цикл 8 минут. В сетевой игре у каждого своё время суток.</small>
     </section></div>
@@ -240,6 +252,10 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const sprintCheckbox = panel.querySelector('#fc-auto-sprint');
   const qualitySelect = panel.querySelector('#fc-quality');
   const fpsSelect = panel.querySelector('#fc-max-fps');
+  const spruceVisibleInput=panel.querySelector('#fc-spruce-foliage-visible');
+  const spruceShadowsInput=panel.querySelector('#fc-spruce-foliage-shadows');
+  const spruceDensityInput=panel.querySelector('#fc-spruce-foliage-density');
+  const spruceDensityValue=panel.querySelector('#fc-spruce-foliage-density-value');
   const shadowDistanceInput = panel.querySelector('#fc-shadow-distance');
   const shadowRefreshInput = panel.querySelector('#fc-shadow-refresh');
   const characterShadowsInput = panel.querySelector('#fc-character-shadows');
@@ -281,6 +297,10 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     sprintCheckbox.checked = state.autoSprint;
     qualitySelect.value = state.quality;
     fpsSelect.value = String(state.maxFps);
+    spruceVisibleInput.checked=state.spruceFoliageVisible;
+    spruceShadowsInput.checked=state.spruceFoliageShadows;
+    spruceDensityInput.value=String(state.spruceFoliageDensity);
+    spruceDensityValue.textContent=String(state.spruceFoliageDensity);
     shadowDistanceInput.value = String(state.shadowDistance);
     shadowRefreshInput.value = String(state.shadowRefreshSeconds);
     characterShadowsInput.checked = state.characterShadowsEnabled;
@@ -383,6 +403,20 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     lastSample=null;frames=0;lastRate=null;
     reflect();save();
   };
+  spruceVisibleInput.onchange=()=>{
+    state.spruceFoliageVisible=spruceVisibleInput.checked;
+    reflect();save();
+  };
+  spruceShadowsInput.onchange=()=>{
+    state.spruceFoliageShadows=spruceShadowsInput.checked;
+    reflect();save();
+  };
+  spruceDensityInput.oninput=()=>{
+    state.spruceFoliageDensity=sanitizeSettings({
+      ...state,spruceFoliageDensity:Number(spruceDensityInput.value),
+    }).spruceFoliageDensity;
+    reflect();save();
+  };
   shadowDistanceInput.oninput = () => {
     state.shadowDistance = sanitizeSettings({...state,
       shadowDistance:Number(shadowDistanceInput.value)}).shadowDistance;
@@ -478,6 +512,9 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get cameraDistance(){return state.cameraDistance;},
     get mouseSensitivity(){return state.mouseSensitivity;},
     get showFps(){return state.showFps;},
+    get spruceFoliageVisible(){return state.spruceFoliageVisible;},
+    get spruceFoliageShadows(){return state.spruceFoliageShadows;},
+    get spruceFoliageDensity(){return state.spruceFoliageDensity;},
     get windEnabled(){return state.windEnabled;},
     get dayCycleEnabled(){return state.dayCycleEnabled;},
     get autoSprint(){return state.autoSprint;},

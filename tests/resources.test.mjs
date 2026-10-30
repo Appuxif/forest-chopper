@@ -338,3 +338,45 @@ test('chunk generation keeps classic 5-mesh trees while enforcing 4m trunk spaci
     assert.ok((a.x-b.x)**2+(a.z-b.z)**2 >=16-1e-8);
   }
 });
+
+test('GLB spruce swaps only conifers while keeping cheap axe proxies and legacy birches',()=>{
+  const {ctx,sharedGeometry,sharedMaterial}=fixture();
+  const bark={type:'SpruceBark',shared:true},needles={type:'SpruceFoliage',shared:true};
+  const spruceMaterials=[sharedMaterial,{map:{uuid:'foliage-atlas'}}];
+  ctx.spruceParts=[{geometry:bark,material:spruceMaterials[0]},
+    {geometry:needles,material:spruceMaterials[1]}];
+  const world=createWorld(ctx);
+  let spruceCount=0,birchCount=0;
+  for(let i=0;i<80;i++){
+    const id='test:'+i;
+    world.makeTree(9+i*1.3,12+i*1.7,id);
+    const tree=ctx.trees.get(id);
+    if(tree.userData.species==='birch'){
+      birchCount++;
+      assert.equal(tree.children.length,5);
+      assert.equal(tree.userData.spruceModel,false);
+      assert.equal(tree.userData.hitMeshes,undefined);
+      continue;
+    }
+    spruceCount++;
+    assert.equal(tree.userData.spruceModel,true);
+    assert.equal(tree.children.length,4,
+      'one hidden trunk proxy, two GLB visual meshes, one hidden crown proxy');
+    assert.deepEqual(tree.userData.hitMeshes,[tree.children[0],tree.children[3]],
+      'axe tests cheap primitives instead of expensive imported GLB geometry');
+    assert.ok(tree.userData.hitMeshes.every(m=>m.visible===false));
+    assert.ok(tree.userData.hitMeshes.every(m=>m.userData.hitProxy));
+    assert.equal(tree.children[1].geometry,bark);
+    assert.equal(tree.children[2].geometry,needles);
+    assert.equal(tree.children[2].userData.spruceFoliage,true);
+    assert.equal(tree.children[1].scale.y,tree.userData.h/6);
+    assert.equal(tree.children[1].scale.x,tree.userData.scale);
+    assert.equal(tree.children[1].material,spruceMaterials[0]);
+    assert.equal(tree.children[2].material,spruceMaterials[1]);
+    assert.equal(tree.userData.id,id);
+    assert.equal(tree.userData.hp,tree.userData.maxHp);
+  }
+  assert.ok(spruceCount>50&&birchCount>5,'both tree species actually generated');
+  assert.equal(sharedGeometry.calls,0);
+  assert.equal(sharedMaterial.calls,0);
+});

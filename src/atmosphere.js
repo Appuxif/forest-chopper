@@ -244,7 +244,10 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
       for(const mesh of tree.children)mesh.castShadow=false;
     }
     for(const tree of next)if(!activeTrees.has(tree) && !tree.userData?.treeBatch){
-      for(const mesh of tree.children)mesh.castShadow=true;
+      for(const mesh of tree.children)
+        mesh.castShadow=mesh.userData?.spruceFoliage
+          ? settings.spruceFoliageVisible!==false && settings.spruceFoliageShadows!==false
+          : true;
     }
     activeTrees.clear();
     for(const tree of next)activeTrees.add(tree);

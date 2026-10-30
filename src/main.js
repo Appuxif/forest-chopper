@@ -1,6 +1,8 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261030-classic-instancing1';
-import {detachTreeForFall} from './tree-instancing.js?v=20261030-classic-instancing1';
+import {createWorld} from './world.js?v=20261030-spruce-diagnostics1';
+import {generateSpruceParts} from './spruce-model.js?v=20261031-procedural-spruce1';
+import {createSpruceDiagnostics} from './spruce-diagnostics.js?v=20261031-procedural-spruce1';
+import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
@@ -8,20 +10,20 @@ import {createMicroGrass} from './micro-grass.js?v=20261030-grass-density-shadow
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261030-grass-density-shadows1';
 import {createPhysics} from './physics.js?v=20261030-rock-collision1';
 import {createBuilding} from './building.js?v=20261030-built-shadows1';
-import {createChopping} from './chopping.js?v=20261030-classic-instancing1';
+import {createChopping} from './chopping.js?v=20261030-spruce-glb1';
 import {createControls} from './controls.js?v=20261030-classic-instancing1';
-import {createPlayer} from './player.js?v=20261030-camera-up-arc1';
+import {createPlayer} from './player.js?v=20261030-spruce-diagnostics1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-classic-instancing1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261030-camera-down80-1';
 import {applyQuality} from './quality.js';
-import {createWind} from './wind.js?v=20261030-classic-instancing1';
+import {createWind} from './wind.js?v=20261031-spruce-sway1';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
 import {createPlantInteraction} from './plant-interaction.js?v=20261030-grass-clearings1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
 import {createDayCycle} from './day-cycle.js?v=20261030-darker-night1';
-import {createAtmosphere} from './atmosphere.js?v=20261030-classic-instancing1';
+import {createAtmosphere} from './atmosphere.js?v=20261030-spruce-diagnostics1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
@@ -37,6 +39,7 @@ const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THR
 
 
 const {modelActors,CHOP_SPEED,createLumberjack,actorChop,tickActor,rootMotion}=await createAnimations(THREE);
+const spruceParts=generateSpruceParts();
 let ownAvatar=null,thirdPerson=true;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,280);camera.rotation.order='YXZ';const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'default'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;host.prepend(renderer.domElement);
@@ -251,6 +254,8 @@ const ctx={
  get renderer(){return renderer;},
  get requestJump(){return requestJump;},
  get rareLeafMat(){return rareLeafMat;},
+ get spruceParts(){return spruceParts;},
+ get spruceDiagnostics(){return spruceDiagnostics;},
  get rockColliders(){return rockColliders;},
  get rockGeo(){return rockGeo;},
  get rockMat(){return rockMat;},
@@ -289,6 +294,7 @@ const microGrass=createMicroGrass(ctx);
 const plantInteraction=createPlantInteraction(ctx);
 const wind=createWind(ctx);
 const landmarks=createLandmarks(ctx);
+const spruceDiagnostics=createSpruceDiagnostics(THREE,ctx);
 ({rand, makeTree, build, updateChunks}=createWorld(ctx));
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, placeError, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));

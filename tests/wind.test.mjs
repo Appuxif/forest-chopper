@@ -91,3 +91,61 @@ test('wind respects both reduce-motion and the persisted player preference immed
   assert.equal(wind.activeCount,0);
   assert.equal(moved.children[1].rotation.z,-.008);
 });
+
+test('procedural spruce wind sways trunk with needles and restores both on disable',()=>{
+  const bark={rotation:{x:0,z:0},userData:{}};
+  const foliage={rotation:{x:0,z:0},userData:{spruceFoliage:true}};
+  const proxy={rotation:{x:0,z:0},userData:{hitProxy:true}};
+  let instanceUpdates=0;
+  const spruce={
+    position:{x:7,z:9},rotation:{x:0,y:0,z:0},children:[proxy,bark,foliage,proxy],
+    userData:{spruceModel:true,treeBatch:{updateTree(){instanceUpdates++;}}},
+  };
+  const ctx={trees:new Map([['spruce',spruce]]),px:7,pz:9,
+    settings:{windEnabled:true}};
+  const wind=createWind(ctx,{intervalMs:150,motionQuery:{matches:false}});
+  wind.tick(1000);
+  assert.notEqual(foliage.rotation.z,0);
+  assert.notEqual(spruce.rotation.z,0,'root tilt sways the rigid bark with the crown');
+  assert.notEqual(spruce.rotation.x,0);
+  assert.equal(bark.rotation.z,0,'bark local geometry remains rigid');
+  assert.equal(proxy.rotation.z,0,'raycast hit proxies stay in local coordinates');
+  assert.equal(instanceUpdates,1);
+  ctx.settings.windEnabled=false;wind.tick(1200);
+  assert.equal(foliage.rotation.x,0);
+  assert.equal(foliage.rotation.z,0);
+  assert.equal(spruce.rotation.x,0);
+  assert.equal(spruce.rotation.z,0);
+  assert.equal(instanceUpdates,2);
+  assert.equal(wind.activeCount,0);
+});
+
+test('spruce wind resets only detached/felled tree without disturbing other swaying trees',()=>{
+  function spruce(id,x){
+    const bark={rotation:{x:0,z:0},userData:{}};
+    const foliage={rotation:{x:0,z:0},userData:{spruceFoliage:true}};
+    const tree={position:{x,z:9},rotation:{x:0,z:0},children:[bark,foliage],
+      userData:{spruceModel:true,treeBatch:{updateTree(){}}}};
+    return tree;
+  }
+  const a=spruce('a',4),b=spruce('b',8);
+  const ctx={trees:new Map([['a',a],['b',b]]),px:6,pz:9,
+    settings:{windEnabled:true}};
+  const wind=createWind(ctx,{motionQuery:{matches:false}});
+  wind.tick(1000);
+  assert.notEqual(a.rotation.z,0);
+  assert.notEqual(b.rotation.z,0);
+  const bSway=b.rotation.z;
+  a.userData.treeBatch=null;
+  wind.forget(a);
+  assert.equal(a.rotation.z,0);
+  assert.equal(a.children[1].rotation.z,0);
+  assert.equal(wind.activeCount,1);
+  assert.equal(b.rotation.z,bSway,'other tree still sways');
+  ctx.trees.delete('a');
+  a.rotation.z=.6; // Falling animation controls the root, not wind.
+  wind.tick(1200);
+  assert.equal(a.rotation.z,.6,'wind never overrides a detached tree falling');
+  wind.clear();
+  assert.equal(b.rotation.z,0);
+});

@@ -89,6 +89,7 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
  // The diagnostics FPS counter measures actual rendered frames, not sim ticks.
  if(!limiter.allow(now,ctx.settings.maxFps))return;
  ctx.settings.tick(now,ctx);
+ ctx.spruceDiagnostics?.tick();
  ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
  ctx.renderer.render(ctx.scene,ctx.camera);
 }

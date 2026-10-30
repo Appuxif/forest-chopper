@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {sanitizeSettings,createSettings} from '../src/settings.js';
 
 const defaults = {
-  mouseSensitivity:1,showFps:false,windEnabled:true,dayCycleEnabled:false,
+  mouseSensitivity:1,showFps:false,spruceFoliageVisible:true,spruceFoliageShadows:true,spruceFoliageDensity:100,windEnabled:true,dayCycleEnabled:false,
   autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:70,grassDensity:25,
   grassDistance:50,grassMinSize:2.5,grassMaxSize:5.5,grassWidth:1,
   grassTurnMin:-30,grassTurnMax:30,fov:75,
@@ -39,6 +39,17 @@ test('sensitivity boundaries are inclusive and persistence stays independent of 
   assert.equal(sanitizeSettings({shadowContrast:0}).shadowContrast,0);
   assert.equal(sanitizeSettings({shadowContrast:100}).shadowContrast,100);
   assert.equal(sanitizeSettings({shadowContrast:101}).shadowContrast,70);
+  assert.equal(sanitizeSettings({spruceFoliageVisible:false}).spruceFoliageVisible,false);
+  assert.equal(sanitizeSettings({spruceFoliageShadows:false}).spruceFoliageShadows,false);
+  assert.equal(sanitizeSettings({spruceFoliageShadows:0}).spruceFoliageShadows,true);
+  const old=sanitizeSettings({spruceFoliageOpaque:true,spruceFoliageMaterial:'basic',spruceFoliageTrimmed:false});
+  assert.equal('spruceFoliageOpaque' in old,false);
+  assert.equal('spruceFoliageMaterial' in old,false);
+  assert.equal('spruceFoliageTrimmed' in old,false);
+  for(const pct of [0,25,50,75,100])
+    assert.equal(sanitizeSettings({spruceFoliageDensity:pct}).spruceFoliageDensity,pct);
+  for(const invalid of [-5,101,22,35.5,'50',null])
+    assert.equal(sanitizeSettings({spruceFoliageDensity:invalid}).spruceFoliageDensity,100);
   assert.equal(sanitizeSettings({fov:65}).fov,65);
   assert.equal(sanitizeSettings({fov:95}).fov,95);
   assert.equal(sanitizeSettings({fov:62}).fov,75);
@@ -74,6 +85,21 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   };
   const settings=createSettings(doc,storage,fov=>updates.push(fov));
   assert.equal(settings.fov,85);
+  const foliage=element('#fc-spruce-foliage-visible');
+  const foliageShadows=element('#fc-spruce-foliage-shadows');
+  assert.equal(foliage.checked,true);
+  assert.equal(foliageShadows.checked,true);
+  const foliageDensity=element('#fc-spruce-foliage-density');
+  assert.equal(foliageDensity.value,'100');
+  foliageDensity.value='25';foliageDensity.oninput();
+  assert.equal(settings.spruceFoliageDensity,25);
+  assert.equal(element('#fc-spruce-foliage-density-value').textContent,'25');
+  assert.equal(writes.at(-1)[1].spruceFoliageDensity,25);
+  foliage.checked=false;foliage.onchange();
+  assert.equal(settings.spruceFoliageVisible,false);
+  assert.equal(writes.at(-1)[1].spruceFoliageVisible,false);
+  foliageShadows.checked=false;foliageShadows.onchange();
+  assert.equal(settings.spruceFoliageShadows,false);
   assert.deepEqual(updates,[85]);
   const radius=element('#fc-character-shadow-distance');
   assert.equal(radius.value,'30');
@@ -116,6 +142,9 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   assert.equal(settings.characterShadowDistance,30);
   assert.equal(settings.shadowContrast,70);
   assert.equal(settings.fov,75);
+  assert.equal(settings.spruceFoliageVisible,true);
+  assert.equal(settings.spruceFoliageShadows,true);
+  assert.equal(settings.spruceFoliageDensity,100);
   assert.equal(settings.cameraHeight,2.3);
   assert.equal(settings.cameraSide,.4);
   assert.equal(settings.cameraDistance,1.7);

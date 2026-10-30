@@ -11,7 +11,7 @@ export function createTreeBatch(THREE, parent, trees, sharedMaterials=new Map())
     tree.updateMatrixWorld?.(true);
     const recordsForTree = [];
     for (const original of tree.children) {
-      if (!original.isMesh && !original.geometry) continue;
+      if (original.userData?.hitProxy || (!original.isMesh && !original.geometry)) continue;
       let materials = groups.get(original.geometry);
       if (!materials) groups.set(original.geometry, materials = new Map());
       const source=original.material;
@@ -134,5 +134,7 @@ export function detachTreeForFall(ctx,tree) {
   const batch=tree?.userData?.treeBatch;
   if (!batch)return;
   batch.remove(tree);
+  ctx.wind?.forget?.(tree);
+  ctx.spruceDiagnostics?.applyTree(tree);
   ctx.atmosphere?.invalidateStaticShadows?.();
 }

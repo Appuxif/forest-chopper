@@ -147,6 +147,27 @@ test('wind updates the hidden originals and their instanced matrices; disabling 
   batch.dispose();
 });
 
+test('falling tree unregisters root sway before fall animation starts',()=>{
+  const parent=new Group(),geo=new Geometry(),cone=new Geometry();
+  const brown=new Material(0x795339),pine=new Material(0x214c30);
+  const treeGroup=tree(5,0,geo,brown,pine,cone);
+  const batch=createTreeBatch(THREE,parent,[treeGroup]);
+  const events=[];
+  const ctx={wind:{forget(t){
+    events.push('wind');
+    assert.equal(t.userData.treeBatch,null);
+    t.rotation.z=0;
+  }},atmosphere:{invalidateStaticShadows(){events.push('shadows');}}};
+  treeGroup.rotation.z=.01;
+  detachTreeForFall(ctx,treeGroup);
+  assert.equal(treeGroup.rotation.z,0);
+  assert.deepEqual(events,['wind','shadows']);
+  assert.equal(batch.meshes[0].count,0);
+  detachTreeForFall(ctx,treeGroup);
+  assert.deepEqual(events,['wind','shadows'],'repeat fall event does not reset rotation again');
+  batch.dispose();
+});
+
 test('without GPU instancing support original tree stays rendered',()=>{
   const parent=new Group(),geo=new Geometry(),t=tree(4,5,geo,new Material(0xffffff),new Material(0x224422));
   assert.equal(createTreeBatch({},parent,[t]),null);
