@@ -195,6 +195,14 @@
 - Isolated real Chrome browser: at 390×844 touch resolution with reduced-motion emulation, no nearby crowns moved. Switched to no-preference and verified 104/104 nearby leaf rotations changed while trunks remained fixed; unchecking wind restored every leaf to the exact neutral rotation and saved `windEnabled:false`. Normal `index.html` mobile with wind enabled loaded with no debug API or JS errors. Desktop 1366×768 also loaded without console errors. Screenshots `/tmp/forest-overnight-wind-{mobile,desktop}.webp`.
 - Validation: 43 Node tests, 5 Python tests, JS syntax checks and diff checks pass. No push; test world and network saves untouched.
 
+### P2.2 — Forest trail and directional signs (2026-10-30)
+
+- Added `src/landmarks.js`, a decorative, noninteractive west-east trail along world `z=0`. Each active trail chunk gets exactly one flat, shared 24×3.2 m earth-colored quad. No world geometry edits, tree spawn changes, collisions, physics or server messages.
+- Every third trail chunk is eligible for a simple wooden sign pointing toward the original spawn area `(0,0)`. A deterministic candidate search avoids positions within 3m of seeded tree trunks, including already felled trees; both directions reuse two shared sign textures and the same pole/board geometries and materials. Chunks have only the existing 25 flora meshes plus one trail mesh and at most one two-mesh signpost.
+- New `tests/landmarks.test.mjs` checks continuous path coverage across 15 chunks, deterministic sign positions and direction, shared materials/textures, no additional per-chunk allocations, 25 normal decoration items, and no disruption to seeded trees.
+- Real isolated Chrome debug page: 49 chunks yielded 7 trail segments, 3 signposts and 3 boards. Walked from origin to sign near `x=12,z=4.8` and visually verified visible path and readable board. Screenshot review exposed unrelated existing FPS/tutorial HUD overlap; separate P0.4 fix queued.
+- Normal mobile `index.html` tested at 390×844 with touch controls: scene loads, module version updated, no debug API, console error/warning count zero. Screenshot `/tmp/forest-overnight-landmarks-mobile.webp`. No gameplay/save/protocol schema changes and no push.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.

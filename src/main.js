@@ -1,5 +1,5 @@
 import {createAnimations} from './animations.js';
-import {createWorld} from './world.js?v=20261030-birch';
+import {createWorld} from './world.js?v=20261030-trail1';
 import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
@@ -10,6 +10,7 @@ import {createMinimap} from './minimap.js';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261030-wind1';
 import {createWind} from './wind.js';
+import {createLandmarks} from './landmarks.js';
 import {createOfflineSave} from './offline-save.js';
 import {createTutorial} from './tutorial.js';
 import {createProgress} from './progress.js';
@@ -123,6 +124,7 @@ const ctx={
  get lastHit(){return lastHit;}, set lastHit(value){lastHit=value;},
  get lastMoveSent(){return lastMoveSent;}, set lastMoveSent(value){lastMoveSent=value;},
  get lastTime(){return lastTime;}, set lastTime(value){lastTime=value;},
+ get landmarks(){return landmarks;},
  get leafGeo(){return leafGeo;},
  get leafMats(){return leafMats;},
  get loading(){return loading;},
@@ -196,6 +198,7 @@ const ctx={
  get yaw(){return yaw;}, set yaw(value){yaw=value;},
 };
 const wind=createWind(ctx);
+const landmarks=createLandmarks(ctx);
 ({rand, makeTree, build, updateChunks}=createWorld(ctx));
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
