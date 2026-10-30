@@ -36,7 +36,15 @@ class World:
         self.bots=BotManager(self);self.bot_token=bot_token
         if self.path.exists():
             try:
-                data=json.loads(self.path.read_text());self.seed=int(data['seed']);self.felled=set(data.get('felled',[]));self.damage={str(k):int(v) for k,v in data.get('damage',{}).items()};self.logs={int(k):v for k,v in data.get('logs',{}).items()};self.next_log=max(self.logs,default=0)+1
+                data=json.loads(self.path.read_text())
+                # Parse everything before committing anything; malformed saves must not
+                # silently create a mixed fresh/partially restored world.
+                seed=int(data['seed'])
+                felled=set(data.get('felled',[]))
+                damage={str(k):int(v) for k,v in data.get('damage',{}).items()}
+                logs={int(k):v for k,v in data.get('logs',{}).items()}
+                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs
+                self.next_log=max(logs,default=0)+1
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):

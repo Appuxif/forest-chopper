@@ -3,6 +3,7 @@ import asyncio
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from websockets.asyncio.server import serve
@@ -30,6 +31,20 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             if message['type'] == event:
                 return message
         self.fail(f'Expected event: {event}')
+
+    async def test_invalid_save_does_not_half_load_world(self):
+        # A syntactically valid but inconsistent save must not leave a partial seed/felled state.
+        self.path.write_text(json.dumps({
+            'seed': 9999, 'felled': ['0,0:0'],
+            'damage': {'0,0:1': 'not-a-number'},
+            'logs': {'2': {'x': 1, 'z': 2, 'y': .29, 'level': 0, 'orientation': 0}},
+        }))
+        with patch('forest_server.random.randrange', return_value=123456):
+            loaded = World(self.path)
+        self.assertEqual(loaded.seed, 123456)
+        self.assertFalse(loaded.felled)
+        self.assertFalse(loaded.damage)
+        self.assertFalse(loaded.logs)
 
     async def test_welcome_chat_join_leave_and_invalid_messages(self):
         async with connect(self.url) as alice:

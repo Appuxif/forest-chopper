@@ -49,6 +49,13 @@
 - Browser (isolated debug page) verified repeat event gating, chat input suppresses movement, Escape collapses + blurs, WASD resumes. No console errors. Mobile 390×844 no document horizontal overflow; desktop 1366×768. Screenshots: `/tmp/forest-overnight-p04-{mobile,desktop}.webp`.
 - Node 14/14, Python 3/3, all JS syntax and diff checks pass.
 
+### P0.5 — Atomic application of parsed saves (2026-10-30)
+
+- Regression test reproduced a real partial-restore bug: a JSON save with a valid seed/felled list but invalid damage value raised a parse error **after** overwriting in-memory seed/felled, leaving a mixed world.
+- `World.__init__` now parses seed, felled, damage and logs into locals and assigns the complete state only after parsing succeeds. The save schema, on-disk file and write logic are unchanged.
+- A temporary `test_world.py` case verifies an invalid save starts from a clean, randomly seeded world instead of mixing in partial persisted values.
+- Validation: Python 4/4, Node 14/14, Python compile and diff checks pass. No real saves touched.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.
