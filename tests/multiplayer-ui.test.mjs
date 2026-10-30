@@ -1,0 +1,127 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createMultiplayer} from '../src/multiplayer.js';
+
+function fixture() {
+  const previousWebSocket = globalThis.WebSocket;
+  class FakeWebSocket {
+    static OPEN = 1;
+    constructor(url) {this.url=url;this.readyState=1;this.sent=[];FakeWebSocket.instances.push(this);}
+    static instances=[];
+    send(data){this.sent.push(JSON.parse(data));}
+    close(){this.readyState=3;}
+    message(data){this.onmessage?.({data:JSON.stringify(data)});}
+  }
+  globalThis.WebSocket=FakeWebSocket;
+
+  const elements = new Map(), notifications = [];
+  function element(id) {
+    if (elements.has(id)) return elements.get(id);
+    const children=[];
+    const result={
+      value:'', textContent:'', style:{display:'none'}, checked:false,
+      children, classList:{contains:()=>true,toggle() {},add(){}},
+      setAttribute(){}, addEventListener(){}, blur(){},
+      append(...nodes){children.push(...nodes)},
+      replaceChildren(...nodes){children.splice(0,children.length,...nodes)},
+      closest(){return {style:{display:''}}}, remove(){},
+    };
+    if(id==='netmode')result.value='direct';
+    if(id==='neturl')result.value='ws://localhost:12345';
+    if(id==='netname')result.value='Tester';
+    elements.set(id,result);return result;
+  }
+  const docPrevious=globalThis.document;
+  globalThis.document={
+    createTextNode(text){return {textContent:text}},
+    createElement(tag){
+      if(tag==='canvas')return {width:0,height:0,getContext(){return {
+        measureText: text => ({width:text.length*20}),roundRect(){},beginPath(){},
+        fill(){},stroke(){},fillText(){},
+      }}};
+      return {textContent:'',className:'',children:[],append(...nodes){this.children.push(...nodes)}};
+    },
+  };
+  class Group {
+    constructor(){
+      this.children=[];
+      this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};
+    }
+    add(node){this.children.push(node)}
+    remove(node){this.children=this.children.filter(child=>child!==node)}
+  }
+  class Sprite extends Group {
+    constructor(material){super();this.material=material;this.scale={set(){}};}
+  }
+  class Texture {dispose(){this.disposed=true}}
+  class Material {constructor(args){Object.assign(this,args)}dispose(){this.disposed=true}}
+  class Vector3 {constructor(x,y,z){Object.assign(this,{x,y,z})}}
+  const scene={objects:new Set(),add(node){this.objects.add(node)},remove(node){this.objects.delete(node)}};
+  const ctx={
+    $:element, THREE:{Group,Sprite,CanvasTexture:Texture,SpriteMaterial:Material,Vector3,SRGBColorSpace:'srgb'},
+    scene, socket:null, myId:null, avatars:new Map(), modelActors:new Set(),
+    trees:new Map(), chunks:new Map(), falling:[],particles:[],placed:[],
+    felled:new Set(),treeDamage:new Map(),seed:1,wood:0,cuts:0,
+    offlineSave:{suspended:false,suspend(){this.suspended=true}},
+    settings:{setConnected(){},setLatency(){},close(){}},
+    progress:{resetPosition() {},record(){}},
+    tutorial:{complete(){}},
+    notify:(...args)=>notifications.push(args),
+    updateChunks(){},
+    disposePreview(){},
+    createLumberjack:()=>({group:new Group(),mixer:{stopAllAction(){}}}),
+    makeLog:()=>({position:{set(){}},rotation:{y:0}}),
+  };
+  const multiplayer=createMultiplayer(ctx);
+  return {
+    ctx, multiplayer, notifications, FakeWebSocket,
+    restore(){globalThis.WebSocket=previousWebSocket;globalThis.document=docPrevious},
+    get socket(){return FakeWebSocket.instances.at(-1)},
+  };
+}
+test('join/leave notifications are deduplicated and avatars cleaned up',async()=>{
+  const f=fixture();
+  try{
+    await f.ctx.$('connect').onclick();
+    const ws=f.socket;
+    assert.match(f.ctx.$('online').textContent,/Подключение/);
+    ws.onopen();
+    assert.equal(ws.sent[0].type,'hello');
+    ws.message({type:'welcome',id:1,seed:21,felled:[],damage:{},logs:[],
+      players:[{id:2,name:'Already here',x:1,z:0}],wood:0,cuts:0,chat:[]});
+    assert.equal(f.ctx.avatars.size,1);
+    assert.match(f.ctx.$('online').textContent,/2 игрока/);
+    assert.equal(f.notifications.length,0,'welcome should not announce the whole room');
+    ws.message({type:'join',player:{id:3,name:'New friend',x:2,z:1}});
+    ws.message({type:'join',player:{id:3,name:'New friend',x:2,z:1}});
+    assert.equal(f.ctx.avatars.size,2);
+    assert.match(f.ctx.$('online').textContent,/3 игрока/);
+    assert.equal(f.notifications.length,1);
+    assert.match(f.notifications[0][0],/New friend присоединился/);
+    ws.message({type:'leave',id:3});
+    ws.message({type:'leave',id:3});
+    assert.equal(f.ctx.avatars.size,1);
+    assert.equal(f.notifications.length,2);
+    assert.match(f.notifications[1][0],/New friend покинул/);
+    f.ctx.$('disconnect').onclick();
+    assert.equal(f.ctx.avatars.size,0);
+    assert.equal(f.ctx.myId,null);
+    assert.match(f.ctx.$('online').textContent,/Одиночная игра/);
+  }finally{f.restore()}
+});
+test('replaced sockets cannot repopulate stale avatars or overwrite state',async()=>{
+  const f=fixture();
+  try{
+    await f.ctx.$('connect').onclick();
+    const old=f.socket;
+    await f.ctx.$('connect').onclick();
+    const fresh=f.socket;
+    assert.notEqual(old,fresh);
+    old.message({type:'welcome',id:99,seed:222,felled:[],damage:{},logs:[],players:[],chat:[]});
+    assert.equal(f.ctx.myId,null);
+    assert.equal(f.ctx.seed,1);
+    fresh.message({type:'welcome',id:5,seed:55,felled:[],damage:{},logs:[],players:[],wood:0,cuts:0,chat:[]});
+    assert.equal(f.ctx.myId,5);
+    assert.equal(f.ctx.seed,55);
+  }finally{f.restore()}
+});

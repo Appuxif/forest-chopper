@@ -132,6 +132,17 @@
 - P1.11/P1.12 cosmetic world variety and P1.10 multiplayer join/leave polishing.
 - P2 stretch mechanics only after stable P1; no push/deploy.
 
+
+
+### P1.10 — Multiplayer presence, connection state, and safe reconnect (2026-10-30)
+
+- Added brief, deduplicated toasts for real remote player join/leave; no historical player flood after `welcome`, and duplicate join/leave messages do not repeat toasts.
+- Top HUD now shows amber `Подключение…` during direct WebSocket or PeerJS setup, correct Russian singular/plural counts for connected players, and returns to an explicit offline state after disconnect/failure.
+- Hardened WebSocket lifecycle: stale socket event handlers are detached on disconnect/reconnect, and incoming messages / hello / errors are ignored if the WebSocket is no longer the active one. Old rooms cannot populate an unrelated newly connected world.
+- Two new `tests/multiplayer-ui.test.mjs` cases simulate welcome, real join/leave, duplicate delivery, avatar cleanup and reconnect races without network dependencies.
+- Browser E2E on isolated `127.0.0.1:18942` temporary-world server: joined via real browser WebSocket, second guest joined and left. Verified `2 игрока → 1 игрок`, matching join/leave toasts, no errors, and no stale avatar. Repeated in 390×844 touch emulation. Screenshots: `/tmp/forest-overnight-p110-desktop.webp`, `/tmp/forest-overnight-p110-mobile.webp`. Browser emulation reloads the page, so mobile guest check was executed after rejoining.
+- Validation: Node tests 34/34; Python tests 5/5; all JS syntax, Python compilation and `git diff --check` PASS. No protocol changes, live game save untouched, no push.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.
