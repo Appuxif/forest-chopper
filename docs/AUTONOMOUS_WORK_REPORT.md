@@ -127,10 +127,10 @@
 
 ## In progress / next
 
-- P1.9 mini-objectives, P1.10 multiplayer presence, P1.11 tree shapes and P1.12 flora are completed; see dated sections and commit bodies below.
-- P0.6 optional local renderer diagnostics completed (see below); finish any remaining P0.4 subjective touch/UI review.
-- Next reasonable P2: small forest landmarks or another low-cost QoL improvement. Defer heavyweight mechanics needing protocol or world save changes.
-- No push/deploy.
+- Completed through this pass: P0.6 local diagnostics, P0.4 tutorial/HUD overlap, P2.1 wind, P2.2 trail/signs, P2.3 decorative campfire and P2.9 camera FOV; previous P1.9–P1.12 milestones are also complete.
+- Automated coverage now: 48 JavaScript and 5 Python tests; isolated desktop/mobile browsers verified. Existing `.codex/` remains untouched.
+- Remaining candidates: P2.4 optional day/night lighting, subjective mobile touch UX review and P2.8 cooperative map pings. Do not implement network-authoritative crafting, saplings or economy without separate protocol/save design and end-to-end tests.
+- No push/deploy, real world save or public multiplayer changes.
 
 
 
