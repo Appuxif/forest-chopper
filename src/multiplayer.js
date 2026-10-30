@@ -18,7 +18,8 @@ function sendChat(text){
  if(typeof text!=='string'||!text.trim()||!isOnline())return false;
  sendNet({type:'chat',text:text.trim().slice(0,400)});return true;
 }
-ctx.$('chattoggle').onclick=()=>{ctx.$('chatpanel').classList.toggle('collapsed');ctx.$('chatunread').textContent='';};
+ctx.$('chattoggle').onclick=()=>{const panel=ctx.$('chatpanel');panel.classList.toggle('collapsed');ctx.$('chatunread').textContent='';if(panel.classList.contains('collapsed'))ctx.$('chatinput').blur();};
+ctx.$('chatinput').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();ctx.$('chatpanel').classList.add('collapsed');ctx.$('chatinput').blur();}});
 ctx.$('chatform').onsubmit=e=>{e.preventDefault();if(sendChat(ctx.$('chatinput').value))ctx.$('chatinput').value='';};
 function syncWood(w,c){ctx.wood=w;ctx.$('wood').textContent=ctx.wood;if(c!==undefined){ctx.cuts=c;ctx.$('cut').textContent=ctx.cuts}}
 function clearWorld(){for(const t of ctx.trees.values()){ctx.scene.remove(t);ctx.disposeTree(t)}for(const g of ctx.chunks.values())ctx.scene.remove(g);for(const f of ctx.falling){ctx.scene.remove(f.tree);ctx.disposeTree(f.tree)}for(const p of ctx.particles)ctx.scene.remove(p.mesh);for(const p of ctx.placed)ctx.scene.remove(p.mesh);ctx.disposePreview();ctx.trees.clear();ctx.chunks.clear();ctx.falling.length=0;ctx.particles.length=0;ctx.placed.length=0;ctx.felled.clear();ctx.treeDamage.clear()}

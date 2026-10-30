@@ -42,6 +42,13 @@
 - JS syntax and existing 14 Node + 3 Python tests pass. Isolated Chrome debug page verified simulated blur clears WASD and joystick knob displacement. Full real touch gesture interaction and visual polish remain to be reviewed.
 - Existing mobile hint text and both HTML entrypoints match except for debug title; no text correction was necessary.
 
+### P0.4 — Keyboard repeat / chat-focus corrections (2026-10-30)
+
+- `B`, `V` and `R` no longer repeatedly toggle construction, camera, or log orientation when a key is held; repeated keyboard events are ignored for these toggles.
+- Closing chat now blurs the chat input. `Escape` closes it and restores the normal keyboard input path without requiring a mouse click on the canvas.
+- Browser (isolated debug page) verified repeat event gating, chat input suppresses movement, Escape collapses + blurs, WASD resumes. No console errors. Mobile 390×844 no document horizontal overflow; desktop 1366×768. Screenshots: `/tmp/forest-overnight-p04-{mobile,desktop}.webp`.
+- Node 14/14, Python 3/3, all JS syntax and diff checks pass.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.
