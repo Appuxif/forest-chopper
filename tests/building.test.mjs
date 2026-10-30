@@ -29,6 +29,8 @@ function setup(online = false) {
     isOnline: () => online,
     sendNet: data => sent.push(data),
     notify: (...args) => notifications.push(args),
+    offlineSave: {markDirty() {}},
+
   };
   return {ctx, sent, added, removed, notifications, $,
     building: createBuilding(ctx)};

@@ -90,6 +90,15 @@
 - Isolated temporary localhost world server: desktop FPS HUD displayed `Ping 8 ms`; mobile 390×844 after reconnect displayed `Ping 5 ms`, and manual disconnect immediately changed HUD to `offline`. No JS console errors. Mobile screenshot `/tmp/forest-overnight-ping-mobile-confirmed.webp`.
 - Full suite: Node 22/22, Python 5/5, JS syntax and diff checks pass. No production server or save touched.
 
+### P1.6 — Versioned offline world saves (2026-10-30)
+
+- New `src/offline-save.js` persists **only offline games** under `forest-chopper:offline-world:v1` in browser localStorage. Saves seed, felled IDs, damaged tree HP, all placed logs, wood/cut counters and position including height and camera angles. Stored content is versioned, bounded (~1.5 MB) and validated before any restore action.
+- After restoring, existing deterministic tree chunk IDs remain unchanged. Offline chopping now updates `treeDamage` while trees are damaged and clears that entry when felled, so chunk unload/reload keeps partial hits. Offline place/remove schedules save. Player movement autosaves periodically (~15 seconds) and final state is saved on `pagehide`; changes use a 900ms debounce.
+- `New forest` clears the offline save immediately, clears stale tree damage and starts a new seed; the fresh world can then autosave.
+- On authoritative online welcome, the last offline snapshot is flushed and autosave is suspended. The server world **never** overwrites it. After disconnect, the in-memory copy of the online world can still be played but is **not locally saved**; the network panel explicitly warns to start `New forest` to resume offline saving. Reloading restores the previous offline save.
+- `tests/offline-save.test.mjs` covers round-trip restore of trees/logs/wood/position/y, invalid data, limit checks, and multiplayer suspension/reset. Browser isolated debug: walked ~3.2 m, reloaded and preserved position; joined an isolated WebSocket world, confirmed offline seed/snapshot untouched while moving in multiplayer, disconnected/reloaded and recovered the offline position; then reset confirmed old save cleared and a new seed/save created. Normal `index.html` loaded with no debug API. No console errors.
+- Validation: Node 25/25, Python 5/5, JS syntax, Python compilation and diff checks PASS. Real server/world files were not touched.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.
@@ -101,8 +110,10 @@
 
 ## In progress / next
 
-- P0.4 — Polish keyboard/chat and touch UX.
-- P1 — Notifications, hit feedback, hints, and quality-of-life when P0 is stable.
+- Finish any remaining P0.4 subjective touch/UI review and P0.6 optional diagnostics.
+- P1.7 onboarding, P1.8 achievements, P1.9 compact objectives.
+- P1.11/P1.12 cosmetic world variety and P1.10 multiplayer join/leave polishing.
+- P2 stretch mechanics only after stable P1; no push/deploy.
 
 ## Git
 

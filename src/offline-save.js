@@ -1,0 +1,139 @@
+// Offline-only world snapshots. Server saves are independent and authoritative.
+// This module intentionally never reads/writes the multiplayer world JSON.
+export const OFFLINE_SAVE_KEY = 'forest-chopper:offline-world:v1';
+const MAX_BYTES = 1_500_000;
+const MAX_LOGS = 10_000;
+const MAX_TREES = 20_000;
+const validId = id => typeof id === 'string' && /^-?\d+,-?\d+:[0-7]$/.test(id) && id.length <= 35;
+const coordinate = n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 240000;
+const nonnegative = n => Number.isSafeInteger(n) && n >= 0 && n <= 10_000_000;
+
+export function parseOfflineSave(raw) {
+  if (typeof raw !== 'string' || raw.length > MAX_BYTES) return null;
+  try {
+    const data = JSON.parse(raw);
+    if (!data || data.version !== 1 || !Number.isInteger(data.seed)
+        || data.seed < 0 || data.seed > 999998
+        || !nonnegative(data.wood) || !nonnegative(data.cuts)
+        || !Array.isArray(data.felled) || data.felled.length > MAX_TREES
+        || !data.damage || typeof data.damage !== 'object' || Array.isArray(data.damage)
+        || !Array.isArray(data.logs) || data.logs.length > MAX_LOGS
+        || !data.position || !coordinate(data.position.x) || !coordinate(data.position.z)
+        || !Number.isFinite(data.position.y ?? 0) || (data.position.y ?? 0) < 0 || (data.position.y ?? 0) > 12
+        || !Number.isFinite(data.position.yaw) || Math.abs(data.position.yaw) > 1e6
+        || !Number.isFinite(data.position.pitch) || Math.abs(data.position.pitch) > 1.43)
+      return null;
+    if (data.felled.some(id => !validId(id))) return null;
+    const damage = Object.entries(data.damage);
+    if (damage.length > MAX_TREES || damage.some(([id,hp]) =>
+      !validId(id) || !Number.isInteger(hp) || hp < 1 || hp > 12)) return null;
+    const logs = [];
+    for (const log of data.logs) {
+      if (!log || !coordinate(log.x) || !coordinate(log.z)
+          || Math.abs(log.x * 2 - Math.round(log.x * 2)) > 1e-4
+          || Math.abs(log.z * 2 - Math.round(log.z * 2)) > 1e-4
+          || !Number.isInteger(log.level) || log.level < 0 || log.level >= 16
+          || (log.orientation !== 0 && log.orientation !== 1)) return null;
+      logs.push({x: log.x, z: log.z, level: log.level, orientation: log.orientation});
+    }
+    return {
+      seed: data.seed, wood: data.wood, cuts: data.cuts,
+      felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function createOfflineSave(ctx, {
+  storage = null,
+  setTimer = (fn, ms) => setTimeout(fn, ms),
+  clearTimer = id => clearTimeout(id),
+  now = () => performance.now(),
+} = {}) {
+  if (!storage) {
+    try {storage = window.localStorage;} catch { /* Storage blocked. */ }
+  }
+  let suspended = false, timer = null, lastWrite = now();
+
+  function snapshot() {
+    return {
+      version: 1, seed: ctx.seed, wood: ctx.wood, cuts: ctx.cuts,
+      position: {x: ctx.px, y: ctx.feetY, z: ctx.pz, yaw: ctx.yaw, pitch: ctx.pitch},
+      felled: [...ctx.felled], damage: Object.fromEntries(ctx.treeDamage),
+      logs: ctx.placed.map(({x,z,level,orientation}) => ({x,z,level,orientation})),
+    };
+  }
+  function save() {
+    if (suspended || !storage) return false;
+    const state = snapshot();
+    const payload = JSON.stringify(state);
+    if (payload.length > MAX_BYTES || state.logs.length > MAX_LOGS ||
+        state.felled.length > MAX_TREES || Object.keys(state.damage).length > MAX_TREES) {
+      console.warn('Forest Chopper: offline save exceeds the supported size.');
+      lastWrite = now();
+      return false;
+    }
+    try {
+      storage.setItem(OFFLINE_SAVE_KEY, payload);
+      lastWrite = now();
+      return true;
+    } catch {
+      console.warn('Forest Chopper: offline save could not be written.');
+      lastWrite = now();
+      return false;
+    }
+  }
+  function restore() {
+    if (!storage || suspended) return false;
+    let raw;
+    try {raw = storage.getItem(OFFLINE_SAVE_KEY);} catch {return false;}
+    const state = parseOfflineSave(raw);
+    if (!state) return false;
+    ctx.seed = state.seed;
+    ctx.wood = state.wood;ctx.cuts = state.cuts;
+    ctx.px = state.position.x;ctx.pz = state.position.z;
+    ctx.yaw = state.position.yaw;ctx.pitch = state.position.pitch;
+    ctx.feetY = state.position.y;ctx.verticalSpeed = 0;ctx.onGround = true;
+    ctx.felled.clear();for (const id of state.felled)ctx.felled.add(id);
+    ctx.treeDamage.clear();for (const [id,hp] of state.damage)ctx.treeDamage.set(id,hp);
+    for (const log of state.logs) {
+      const mesh = ctx.makeLog();
+      const y = ctx.logRadius + log.level * ctx.logRadius * 1.8;
+      mesh.position.set(log.x, y, log.z);
+      if (log.orientation === 1) mesh.rotation.y = Math.PI / 2;
+      ctx.scene.add(mesh);
+      ctx.placed.push({...log, y, mesh});
+    }
+    ctx.$('wood').textContent = ctx.wood;
+    ctx.$('cut').textContent = ctx.cuts;
+    return true;
+  }
+  function markDirty() {
+    if (suspended || !storage || timer !== null) return;
+    timer = setTimer(() => {timer = null;save();}, 900);
+  }
+  function tick(time) {
+    if (!suspended && storage && time - lastWrite > 15000) markDirty();
+  }
+  function suspend() {
+    if (suspended) return;
+    if (timer !== null) {clearTimer(timer);timer = null;}
+    save(); // Flush the offline world *before* server welcome replaces it.
+    suspended = true;
+  }
+  function reset() {
+    if (timer !== null) {clearTimer(timer);timer = null;}
+    suspended = false;
+    lastWrite = now();
+    try {storage?.removeItem(OFFLINE_SAVE_KEY);} catch { /* In-memory play still works. */ }
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => {
+      if (timer !== null) {clearTimer(timer);timer = null;}
+      save();
+    });
+  }
+  return {save, restore, markDirty, tick, suspend, reset,
+    get suspended() {return suspended;}};
+}

@@ -9,6 +9,7 @@ import {createMultiplayer} from './multiplayer.js';
 import {createMinimap} from './minimap.js';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js';
+import {createOfflineSave} from './offline-save.js';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 
@@ -39,6 +40,7 @@ const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
 let socket=null,myId=null,lastMoveSent=0;const avatars=new Map();
 const notifications=createNotifications();
 const settings=createSettings();
+let offlineSave=null;
 
 let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposeTree, disposePreview, releaseHitEffect, tickHitEffects, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
@@ -112,6 +114,7 @@ const ctx={
  get moveHorizontal(){return moveHorizontal;},
  get myId(){return myId;}, set myId(value){myId=value;},
  get onGround(){return onGround;}, set onGround(value){onGround=value;},
+ get offlineSave(){return offlineSave;},
  get orientation(){return orientation;}, set orientation(value){orientation=value;},
  get overlaps(){return overlaps;},
  get ownAvatar(){return ownAvatar;}, set ownAvatar(value){ownAvatar=value;},
@@ -166,6 +169,8 @@ const ctx={
 ({aimed, spawnChips, chop, tickHitEffects, releaseHitEffect}=createChopping(ctx));
 ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.group.visible=thirdPerson;}
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, chatHistory}=createMultiplayer(ctx));
+offlineSave=createOfflineSave(ctx);
+offlineSave.restore();
 ({toggleView, animate}=createPlayer(ctx));
 createMinimap(ctx);
 ({look}=createControls(ctx));
