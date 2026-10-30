@@ -53,7 +53,8 @@ function fixture() {
     birchLeafGeo: sharedGeometry, birchTrunkMat: sharedMaterial,
     birchLeafMats: [sharedMaterial,sharedMaterial,sharedMaterial],
     grassGeo: sharedGeometry, rockGeo: sharedGeometry,
-    flowerGeo: sharedGeometry, mushroomGeo: sharedGeometry,
+    flowerGeo: sharedGeometry,
+    mushrooms:{create(index){const group=new THREE.Group();group.userData.mushroomSpecies=['fly_agaric','boletus','death_cap','milkcap'][index];group.add(new THREE.Mesh(sharedGeometry,sharedMaterial));return group;}},
     trunkMats: [sharedMaterial, sharedMaterial, sharedMaterial],
     leafMats: [sharedMaterial, sharedMaterial, sharedMaterial, sharedMaterial],
     grassMat: sharedMaterial, rockMat: sharedMaterial,
@@ -163,11 +164,18 @@ test('deterministic mushrooms and flowers replace existing grass without extra m
       const decor=ctx.chunks.get(`${i},2`);
       assert.equal(decor.children.length,25,'same budget per chunk');
       const chunk=decor.children.map(mesh=>{
-        assert.equal(mesh.geometry,sharedGeometry);
-        assert.equal(mesh.material,sharedMaterial);
         const type=mesh.userData.decorType;
+        if(type==='mushroom'){
+          assert.equal(mesh.children.length,1,'factory stub models a shared-geometry cap');
+          assert.equal(mesh.children[0].geometry,sharedGeometry);
+          assert.equal(mesh.children[0].material,sharedMaterial);
+          assert.ok(['fly_agaric','boletus','death_cap','milkcap'].includes(mesh.userData.mushroomSpecies));
+        }else{
+          assert.equal(mesh.geometry,sharedGeometry);
+          assert.equal(mesh.material,sharedMaterial);
+        }
         counts[type]++;
-        return [type,mesh.position.x,mesh.position.y,mesh.position.z,mesh.scale.x];
+        return [type,mesh.userData.mushroomSpecies??null,mesh.position.x,mesh.position.y,mesh.position.z,mesh.scale.x];
       });
       rows.push(chunk);
     }
@@ -178,6 +186,9 @@ test('deterministic mushrooms and flowers replace existing grass without extra m
   assert.deepEqual(first,second,'seed and chunk coordinates reproduce the same flora');
   assert.equal(Object.values(first.counts).reduce((a,b)=>a+b,0),14*25);
   assert.ok(first.counts.flower>0 && first.counts.mushroom>0);
+  const species=new Set(first.rows.flat().filter(row=>row[0]==='mushroom').map(row=>row[1]));
+  assert.deepEqual([...species].sort(),['boletus','death_cap','fly_agaric','milkcap'],
+    'all four mushroom species must appear without new decoration slots');
   assert.ok(first.counts.grass>first.counts.flower,'avoid overwhelming the forest with bright decor');
 });
 

@@ -1,5 +1,6 @@
 import {createAnimations} from './animations.js';
-import {createWorld} from './world.js?v=20261030-trail1';
+import {createWorld} from './world.js?v=20261030-mushrooms1';
+import {createMushrooms} from './mushrooms.js';
 import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js?v=20261030-craft1';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
@@ -34,11 +35,12 @@ const hemisphere=new THREE.HemisphereLight(0xe1efff,0x45552b,2.1);scene.add(hemi
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000),new THREE.MeshLambertMaterial({color:0x547340}));ground.rotation.x=-Math.PI/2;scene.add(ground);
 const trunkGeo=new THREE.CylinderGeometry(.38,.6,1,9),leafGeo=new THREE.ConeGeometry(1,1,8),grassGeo=new THREE.ConeGeometry(.17,.6,3),rockGeo=new THREE.DodecahedronGeometry(1,0);
 // Shared tiny flora primitives: replace some grass meshes, never increase per-chunk object count.
-const flowerGeo=new THREE.OctahedronGeometry(.24,0),mushroomGeo=new THREE.SphereGeometry(.28,7,4);
+const flowerGeo=new THREE.OctahedronGeometry(.24,0);
+const mushrooms=createMushrooms(THREE); // Shared caps, stems and details for all four species.
 // Birch uses one shared low-poly crown geometry and a single bark texture for all trees.
 const birchLeafGeo=new THREE.IcosahedronGeometry(1,1);
 const trunkMats=[0x65442e,0x795339,0x543925].map(color=>new THREE.MeshLambertMaterial({color}));const leafMats=[0x214c30,0x30683a,0x3a7141,0x285e46].map(color=>new THREE.MeshLambertMaterial({color}));const grassMat=new THREE.MeshLambertMaterial({color:0x829b4c}),rockMat=new THREE.MeshLambertMaterial({color:0x808478});
-const flowerMat=new THREE.MeshLambertMaterial({color:0xf1bc67}),mushroomMat=new THREE.MeshLambertMaterial({color:0xa94c40});
+const flowerMat=new THREE.MeshLambertMaterial({color:0xf1bc67});
 const rareLeafMat=new THREE.MeshLambertMaterial({color:0xb1ced2}); // Shared frosty foliage, cosmetic only.
 const birchLeafMats=[0x6fa54b,0x83b753,0x98c367].map(color=>new THREE.MeshLambertMaterial({color}));
 const barkCanvas=document.createElement('canvas');barkCanvas.width=256;barkCanvas.height=512;
@@ -159,8 +161,7 @@ const ctx={
  get makeLog(){return makeLog;},
  get makeTree(){return makeTree;},
  get metal(){return metal;},
- get mushroomGeo(){return mushroomGeo;},
- get mushroomMat(){return mushroomMat;},
+ get mushrooms(){return mushrooms;},
  get modelActors(){return modelActors;},
  get notify(){return notifications.notify;},
  get moveHorizontal(){return moveHorizontal;},

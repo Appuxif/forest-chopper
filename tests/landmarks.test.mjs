@@ -8,7 +8,7 @@ function fixture(seed=321) {
   class Geometry {constructor(...args){this.args=args;assets.push(this)}}
   class Material {constructor(opts={}){this.opts=opts;assets.push(this)}}
   class Texture {constructor(canvas){this.canvas=canvas;assets.push(this)}}
-  class Group {constructor(){this.children=[];this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};this.userData={}}
+  class Group {constructor(){this.children=[];this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};this.rotation={x:0,y:0,z:0};this.scale={x:1,y:1,z:1,setScalar(n){this.x=this.y=this.z=n}};this.userData={}}
     add(node){this.children.push(node)}}
   class Mesh {constructor(geo,mat){this.geometry=geo;this.material=mat;this.userData={};
     this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};
@@ -28,7 +28,8 @@ function fixture(seed=321) {
     birchLeafGeo:sharedGeo,grassGeo:sharedGeo,flowerGeo:sharedGeo,mushroomGeo:sharedGeo,rockGeo:sharedGeo,
     trunkMats:[sharedMat,sharedMat,sharedMat],leafMats:[sharedMat,sharedMat,sharedMat,sharedMat],
     birchLeafMats:[sharedMat,sharedMat,sharedMat],birchTrunkMat:sharedMat,rareLeafMat:sharedMat,
-    grassMat:sharedMat,rockMat:sharedMat,flowerMat:sharedMat,mushroomMat:sharedMat,
+    grassMat:sharedMat,rockMat:sharedMat,flowerMat:sharedMat,
+    mushrooms:{create(index){const group=new THREE.Group();group.userData.mushroomSpecies=['fly_agaric','boletus','death_cap','milkcap'][index];group.add(new THREE.Mesh(sharedGeo,sharedMat));return group;}},
     logGeo:sharedGeo,logMat:sharedMat,
     scene:{add(group){groups.push(group)},remove(){}}
   };

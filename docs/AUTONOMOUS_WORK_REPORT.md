@@ -321,3 +321,12 @@ All ten items from the previously agreed *high and medium* shortlist are impleme
 10. P2.8 server team goal — the commit associated with this report.
 
 Known limitations: the new protocol features need the updated Python server deployed; existing public servers do not support them. The bench is decorative and deliberately does not implement sitting/collision. Neither deeper crafting/planting nor an economy was started.
+### 2026-10-30 — Recognizable low-poly mushrooms (requested follow-up)
+
+- Replaced each original red mushroom sphere with one of four recognizable procedural Three.js models, in src/mushrooms.js: scarlet **fly agaric** with a cream stem and nine white spots; stocky brown **boletus**; pale green, ringed **death cap**; and wide funnel-shaped cream **milkcap**.
+- Each model consists of three or four meshes; all instances reuse exactly 8 geometries and 11 materials initialized at client startup. Fly-agaric spots are nine small patches combined in ONE mesh instead of nine independent draw calls. No Blender, extra textures, or new dependencies.
+- Existing seeded decor positions, probability, 25 decoration slots/chunk, tree IDs, physics, multiplayer and saves are unchanged. A new deterministic channel (1000+i) picks mushroom species; other flora keep their original positions and counts.
+- New Node tests verify all four silhouettes, cap construction and nine white spots, stable resources over 150 rebuilt models. Original resource/chunk tests now assert reproducible species and unchanged decoration budgets.
+- Real isolated desktop Chrome: 49 loaded chunks contained 69 mushrooms (20 milkcaps, 19 boletes, 16 death caps, 14 fly agarics), all 3–4 meshes, four species visible in-game; fly agaric dots and brown bolete were visually inspected. GPU memory after initial render: approximately 74 geometries / 59 textures; traversal reused shared mushroom assets.
+- Normal mobile Chrome at 390x844 (DPR 2, reduced motion): WebGL and touch controls loaded, debug API absent, no browser warnings/errors. Screenshot /tmp/forest-overnight-mushrooms-mobile.webp.
+- Validation: 81 Node tests, 14 Python tests, all client syntax checks, Python compilation and git diff --check. Local overnight branch only; no push, production save/server writes, or .codex changes.
