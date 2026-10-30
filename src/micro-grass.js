@@ -147,7 +147,12 @@ function makeMaterial(THREE, player, near) {
       '#include <common>',
       '#include <common>\nuniform vec2 fcGrassPlayer;\nuniform vec4 fcGrassFade;\nuniform vec2 fcGrassSizeRange;\nuniform float fcGrassWidth;\nuniform vec2 fcGrassTurnRange;\nattribute float fcGrassCenterX;\nattribute vec2 fcGrassProfile;\nuniform vec4 fcGrassClearings[24];'
       + (near ? '\nuniform vec4 fcGrassActors[6];' : ''),
-    ).replace('#include <begin_vertex>', `#include <begin_vertex>
+    ).replace('#include <color_vertex>', `#include <color_vertex>
+    // Height-based ambient occlusion: dark roots, open illuminated tips.
+    // Far LOD uses a weaker gradient to avoid heavy dark bands at distance.
+    vColor.rgb *= mix(${near ? '0.53' : '0.68'},1.0,
+      smoothstep(0.0,0.21,position.y));`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
 #ifdef USE_INSTANCING
   float fcDistance = length(instanceMatrix[3].xz - fcGrassPlayer);
   float fcFadeIn = smoothstep(fcGrassFade.x, fcGrassFade.y, fcDistance);
@@ -247,6 +252,15 @@ export function createMicroGrass(ctx) {
       if(log.level===0)clearings.push({x:log.x,z:log.z,radius:1.15});
     clearings.sort((a,b)=>
       (a.x-x)**2+(a.z-z)**2-(b.x-x)**2-(b.z-z)**2);
+    const groundUniforms=ctx.ground?.material?.userData?.grassDensityUniforms;
+    if(groundUniforms){
+      const slots=groundUniforms.fcGroundGrassClearings.value;
+      for(let i=0;i<slots.length;i++){
+        const area=clearings[i];
+        if(area)slots[i].set(area.x,area.z,area.radius,1);
+        else slots[i].w=0;
+      }
+    }
     for(const layer of [near,far]){
       const slots=layer.material.userData.grassUniforms.fcGrassClearings.value;
       for(let i=0;i<slots.length;i++){
@@ -405,6 +419,8 @@ export function createMicroGrass(ctx) {
       ctx.settings?.grassDistance??MICRO_GRASS_RADIUS));
     const density=Math.max(1,Math.min(MICRO_GRASS_MAX_DENSITY,
       ctx.settings?.grassDensity??MICRO_GRASS_PER_CELL));
+    if(ctx.ground?.material?.userData?.grassDensityUniforms)
+      ctx.ground.material.userData.grassDensityUniforms.fcGroundGrassDensity.value=density;
     const cutoff=Math.min(radius,NEAR_END);
     near.material.userData.grassUniforms.fcGrassFade.value.set(
       -2,-1,Math.max(3,cutoff-7),cutoff);

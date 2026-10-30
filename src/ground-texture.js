@@ -3,6 +3,54 @@
 export const GROUND_TEXTURE_SIZE = 256;
 export const GROUND_TILE_METERS = 28;
 
+// Ground-only, procedural density shadows: no extra shadow render pass or
+// per-blade shadow map. Shared clearings match the instanced grass shader.
+export function enableGrassDensityShadows(THREE, material) {
+  const uniforms={
+    fcGroundGrassDensity:{value:25},
+    fcGroundGrassClearings:{value:Array.from({length:24},()=>new THREE.Vector4())},
+  };
+  material.onBeforeCompile=shader=>{
+    Object.assign(shader.uniforms,uniforms);
+    shader.vertexShader=shader.vertexShader.replace('#include <common>',
+      '#include <common>\nvarying vec2 fcGroundPosition;')
+      .replace('#include <worldpos_vertex>',
+        '#include <worldpos_vertex>\nfcGroundPosition=(modelMatrix*vec4(transformed,1.0)).xz;');
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
+      `#include <common>
+      varying vec2 fcGroundPosition;
+      uniform float fcGroundGrassDensity;
+      uniform vec4 fcGroundGrassClearings[24];
+      float fcGrassHash(vec2 p) {
+        return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);
+      }
+      float fcGrassNoise(vec2 p) {
+        vec2 cell=floor(p),f=fract(p);
+        f=f*f*(3.0-2.0*f);
+        return mix(mix(fcGrassHash(cell),fcGrassHash(cell+vec2(1.,0.)),f.x),
+          mix(fcGrassHash(cell+vec2(0.,1.)),fcGrassHash(cell+1.),f.x),f.y);
+      }`)
+      .replace('#include <map_fragment>',
+        `#include <map_fragment>
+        // Small-scale overlapping blades create an uneven soft ground shadow.
+        float fcCoverage=0.48*fcGrassNoise(fcGroundPosition*1.9)
+          +0.52*fcGrassNoise(fcGroundPosition*4.3);
+        float fcShadow=clamp((fcCoverage-0.28)*0.36,0.,0.22)
+          *clamp(fcGroundGrassDensity/25.,0.,1.5);
+        fcShadow*=smoothstep(1.68,2.1,abs(fcGroundPosition.y));
+        for(int i=0;i<24;++i){
+          vec4 area=fcGroundGrassClearings[i];
+          if(area.w>0.5){
+            fcShadow*=smoothstep(area.z-0.16,area.z+0.16,
+              distance(fcGroundPosition,area.xy));
+          }
+        }
+        diffuseColor.rgb*=1.0-fcShadow;`);
+  };
+  material.userData.grassDensityUniforms=uniforms;
+  return uniforms;
+}
+
 export function createGroundTexture(THREE, doc = document, renderer = null) {
   const size = GROUND_TEXTURE_SIZE;
   const canvas = doc.createElement('canvas');

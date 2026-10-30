@@ -3,8 +3,8 @@ import {createWorld} from './world.js?v=20261030-grass-clearings1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
-import {createMicroGrass} from './micro-grass.js?v=20261030-grass-clearings-fix1';
-import {createGroundTexture} from './ground-texture.js';
+import {createMicroGrass} from './micro-grass.js?v=20261030-grass-density-shadows1';
+import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261030-grass-density-shadows1';
 import {createPhysics} from './physics.js?v=20261030-rock-collision1';
 import {createBuilding} from './building.js?v=20261030-built-shadows1';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
@@ -41,7 +41,7 @@ const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.f
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,280);camera.rotation.order='YXZ';const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'default'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;host.prepend(renderer.domElement);
 const hemisphere=new THREE.HemisphereLight(0xe1efff,0x45552b,2.1);scene.add(hemisphere);const sun=new THREE.DirectionalLight(0xffe4a6,2.3);sun.position.set(35,75,20);scene.add(sun);
 const groundTexture=createGroundTexture(THREE,document,renderer);
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000),new THREE.MeshLambertMaterial({map:groundTexture}));ground.rotation.x=-Math.PI/2;scene.add(ground);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000),new THREE.MeshLambertMaterial({map:groundTexture}));ground.rotation.x=-Math.PI/2;enableGrassDensityShadows(THREE,ground.material);scene.add(ground);
 const trunkGeo=new THREE.CylinderGeometry(.38,.6,1,9),leafGeo=new THREE.ConeGeometry(1,1,8),rockGeo=new THREE.DodecahedronGeometry(1,0);
 // The tiny octahedron is still shared by campfire sparks, not used as flower art.
 const flowerGeo=new THREE.OctahedronGeometry(.24,0);
