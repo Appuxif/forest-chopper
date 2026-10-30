@@ -73,6 +73,14 @@
 - `tests/hit-effects.test.mjs` verifies 100 concurrent hits share a single material, proper restoration and idempotent release, reduced motion, and particle cap. Full suite now Node 20/20 + Python 4/4.
 - Isolated browser with actual rendered tree: hit effect module changed its trunk material, used no additional geometries, then restored the original; console errors zero. Subjective impact on chopping remains to be human-reviewed.
 
+### P1.4 + partial P1.5 — Local preferences and FPS HUD (2026-10-30)
+
+- New `src/settings.js` creates a compact settings menu shared by normal and debug HTML clients. It provides view sensitivity 0.4–2.5 (applies to mouse/touch camera movement), FPS visibility toggle, and reset to defaults; values are stored independently under `forest-chopper:settings:v1` in `localStorage` with parse-error fallback and strict validation.
+- Enabling FPS starts a lightweight 950ms rolling frame count. HUD is hidden when disabled and never fabricates a network ping. **Network RTT part of P1.5 remains outstanding.** Opening settings closes the network panel and vice versa.
+- `tests/settings.test.mjs` validates defaults, corrupted values, boundaries, and rejection of unrelated world fields.
+- Isolated browser validated mobile 390×844 and desktop 1366×768, persisted sensitivity=1.7 and FPS flag on reload, actual camera yaw change matching sensitivity, FPS display updates, no scrolling or console errors. Screenshots `/tmp/forest-overnight-settings-{mobile,desktop}.webp`.
+- Full suite: Node 22/22, Python 4/4, JS syntax and diff checks pass.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.

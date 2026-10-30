@@ -1,0 +1,109 @@
+// Lightweight client-only preferences. No framework or new dependencies.
+const KEY = 'forest-chopper:settings:v1';
+const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false});
+
+export function sanitizeSettings(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const number = Number(source.mouseSensitivity);
+  return {
+    mouseSensitivity: Number.isFinite(number) && number >= .4 && number <= 2.5
+      ? Math.round(number * 10) / 10 : DEFAULT.mouseSensitivity,
+    showFps: source.showFps === true,
+  };
+}
+
+export function createSettings(doc = document, storage = null) {
+  let persisted;
+  try {
+    const local = storage ?? window.localStorage;
+    persisted = JSON.parse(local.getItem(KEY) || 'null');
+    storage = local;
+  } catch {
+    persisted = null;
+    storage = null;
+  }
+  const state = sanitizeSettings(persisted);
+  const css = doc.createElement('style');
+  css.textContent = `
+.fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
+.fc-settings{position:fixed;z-index:17;top:96px;right:12px;width:min(290px,calc(100vw - 24px));max-height:calc(100dvh - 116px);overflow-y:auto;background:#10251ff2;color:white;border:1px solid #ffffff55;border-radius:12px;padding:14px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 10px 25px #0009}
+.fc-settings[hidden],.fc-fps[hidden]{display:none}
+.fc-settings h2{font-size:15px;margin:0 0 12px}
+.fc-settings label{display:block;margin:10px 0}
+.fc-settings input[type=range]{display:block;width:100%;margin-top:8px;accent-color:#8bd0a4}
+.fc-settings input[type=checkbox]{accent-color:#8bd0a4}
+.fc-settings button{border-radius:7px;padding:7px 10px}
+.fc-fps{position:fixed;z-index:5;top:320px;left:16px;border-radius:6px;padding:5px 8px;background:#10251fe8;color:#baf1ca;font:600 12px/1.3 ui-monospace,monospace;pointer-events:none}
+@media(max-width:450px){.fc-settings{top:96px}.fc-settings-toggle{padding:9px 10px}}
+`;
+  doc.head.append(css);
+  const toggle = doc.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'fc-settings-toggle';
+  toggle.textContent = '⚙ Настройки';
+  toggle.setAttribute('aria-expanded', 'false');
+  const panel = doc.createElement('section');
+  panel.className = 'fc-settings';
+  panel.hidden = true;
+  panel.setAttribute('aria-label', 'Настройки игры');
+  panel.innerHTML = `<h2>⚙ Настройки</h2>
+    <label>Чувствительность обзора: <output id="fc-sensitivity-value"></output>
+      <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
+    <label><input id="fc-show-fps" type="checkbox"> Показывать FPS</label>
+    <button id="fc-reset-settings" type="button">Сбросить настройки</button>`;
+  const fps = doc.createElement('div');
+  fps.className = 'fc-fps';
+  fps.setAttribute('aria-label', 'Частота кадров');
+  fps.hidden = !state.showFps;
+  fps.textContent = 'FPS —';
+  doc.body.append(toggle, panel, fps);
+
+  const range = panel.querySelector('#fc-sensitivity');
+  const output = panel.querySelector('#fc-sensitivity-value');
+  const checkbox = panel.querySelector('#fc-show-fps');
+  function reflect() {
+    range.value = state.mouseSensitivity;
+    output.textContent = String(state.mouseSensitivity.toFixed(1));
+    checkbox.checked = state.showFps;
+    fps.hidden = !state.showFps;
+    if (!state.showFps) fps.textContent = 'FPS —';
+  }
+  function save() {
+    try {storage?.setItem(KEY, JSON.stringify(state));}
+    catch { /* Private mode or blocked storage: keep preferences for this tab. */ }
+  }
+  function close() {
+    panel.hidden = true;
+    toggle.setAttribute('aria-expanded','false');
+  }
+  toggle.onclick = () => {
+    if (!panel.hidden) {close();return;}
+    doc.getElementById('network').style.display = 'none';
+    panel.hidden = false;
+    toggle.setAttribute('aria-expanded','true');
+  };
+  range.oninput = () => {
+    Object.assign(state, sanitizeSettings({...state, mouseSensitivity: Number(range.value)}));
+    reflect();save();
+  };
+  checkbox.onchange = () => {state.showFps = checkbox.checked;reflect();save();};
+  panel.querySelector('#fc-reset-settings').onclick = () => {
+    Object.assign(state, DEFAULT);reflect();save();
+  };
+  reflect();
+
+  let lastSample = null, frames = 0;
+  function tick(now) {
+    if (!state.showFps) {lastSample = null;frames = 0;return;}
+    if (lastSample === null) {lastSample = now;frames = 0;return;}
+    frames++;
+    if (now - lastSample >= 950) {
+      const rate = Math.round(frames * 1000 / (now - lastSample));
+      fps.textContent = `FPS ${Math.max(0, rate)}`;
+      frames = 0;
+      lastSample = now;
+    }
+  }
+  return {get mouseSensitivity(){return state.mouseSensitivity;},
+    get showFps(){return state.showFps;}, tick, close};
+}

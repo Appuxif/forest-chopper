@@ -89,7 +89,7 @@ mode.onchange=()=>{
  room.readOnly=!isGuest;
  ctx.$('connect').textContent=mode.value==='host'?'Создать комнату':isGuest?'Присоединиться':'Подключиться';
 };mode.onchange();
-ctx.$('nettoggle').onclick=()=>{ctx.$('network').style.display=ctx.$('network').style.display==='none'?'block':'none'};
+ctx.$('nettoggle').onclick=()=>{ctx.settings.close();ctx.$('network').style.display=ctx.$('network').style.display==='none'?'block':'none'};
 ctx.$('disconnect').onclick=closeNet;
 function connectSocket(ws) {
  ctx.socket=ws;

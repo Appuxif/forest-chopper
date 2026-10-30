@@ -8,6 +8,7 @@ import {createPlayer} from './player.js';
 import {createMultiplayer} from './multiplayer.js';
 import {createMinimap} from './minimap.js';
 import {createNotifications} from './notifications.js';
+import {createSettings} from './settings.js';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 
@@ -37,6 +38,7 @@ const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
 // Multiplayer: authoritative server state, client-side rendering.
 let socket=null,myId=null,lastMoveSent=0;const avatars=new Map();
 const notifications=createNotifications();
+const settings=createSettings();
 
 let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposeTree, disposePreview, releaseHitEffect, tickHitEffects, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
@@ -133,6 +135,7 @@ const ctx={
  get rockMat(){return rockMat;},
  get rootMotion(){return rootMotion;},
  get scene(){return scene;},
+ get settings(){return settings;},
  get seed(){return seed;}, set seed(value){seed=value;},
  get sendNet(){return sendNet;},
  get setMode(){return setMode;},
