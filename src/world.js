@@ -7,6 +7,7 @@ const scarMat=new ctx.THREE.MeshLambertMaterial({color:0xe0ad70,side:ctx.THREE.D
 group.position.set(x,0,z);group.userData={id,x,z,h,scale,hp:ctx.treeDamage.get(id)??maxHp,maxHp,scar,alive:true};if(group.userData.hp<maxHp){scar.visible=true;scar.scale.y=1+(1-group.userData.hp/maxHp)*2.2;}ctx.scene.add(group);ctx.trees.set(id,group)}
 // Only the scar owns its geometry and material. Trunks, foliage and decor use shared resources.
 function disposeTree(tree){
+ ctx.releaseHitEffect?.(tree);
  const scar=tree?.userData?.scar;
  if(!scar)return;
  scar.geometry.dispose();

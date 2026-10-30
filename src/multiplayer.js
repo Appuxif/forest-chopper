@@ -25,7 +25,7 @@ function syncWood(w,c){ctx.wood=w;ctx.$('wood').textContent=ctx.wood;if(c!==unde
 function clearWorld(){for(const t of ctx.trees.values()){ctx.scene.remove(t);ctx.disposeTree(t)}for(const g of ctx.chunks.values())ctx.scene.remove(g);for(const f of ctx.falling){ctx.scene.remove(f.tree);ctx.disposeTree(f.tree)}for(const p of ctx.particles)ctx.scene.remove(p.mesh);for(const p of ctx.placed)ctx.scene.remove(p.mesh);ctx.disposePreview();ctx.trees.clear();ctx.chunks.clear();ctx.falling.length=0;ctx.particles.length=0;ctx.placed.length=0;ctx.felled.clear();ctx.treeDamage.clear()}
 function addLog(data){if(ctx.placed.some(p=>p.id===data.id))return;const m=ctx.makeLog();m.position.set(data.x,data.y,data.z);if(data.orientation===1)m.rotation.y=Math.PI/2;ctx.scene.add(m);ctx.placed.push({...data,mesh:m})}
 function treeHit(id,hp){ctx.treeDamage.set(id,hp);const t=ctx.trees.get(id);if(t){t.userData.hp=hp;t.userData.scar.visible=true;t.userData.scar.scale.y=1+(1-hp/t.userData.maxHp)*2.2;ctx.spawnChips(t)}}
-function treeFell(id){ctx.felled.add(id);ctx.treeDamage.delete(id);const t=ctx.trees.get(id);if(t){ctx.trees.delete(id);ctx.falling.push({tree:t,elapsed:0,direction:Math.random()*Math.PI*2})}}
+function treeFell(id){ctx.felled.add(id);ctx.treeDamage.delete(id);const t=ctx.trees.get(id);if(t){ctx.trees.delete(id);ctx.spawnChips(t);ctx.falling.push({tree:t,elapsed:0,direction:Math.random()*Math.PI*2})}}
 // Camera-facing player names, kept above the character even as it turns or moves.
 function createNameTag(name) {
  const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;

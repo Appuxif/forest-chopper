@@ -65,6 +65,14 @@
 - Browser isolated debug: desktop 1366×768, mobile 390×844 with reduced motion, visible invalid-place warning, zero network/JS errors, mobile toast position adjusted to avoid all main buttons. Screenshots `/tmp/forest-overnight-toast-desktop.webp` and `/tmp/forest-overnight-toast-mobile-final.webp`.
 - Full suite: Node 17/17, Python 4/4, JS syntax and diff check pass.
 
+### P1.2 — Confirmed chopping feedback (2026-10-30)
+
+- New `src/hit-effects.js`: a shared golden hit-flash material (only one material for the entire session) and short-lived visual trunk pulse. Restores each tree's original shared material and scale when the effect expires or a tree is removed. Reduced-motion viewers see a color flash without movement.
+- Visual feedback starts with `spawnChips`, which is used on confirmed offline hits and authoritative online `tree_hit` events. Added chips to authoritative online `tree_fell` (the final blow), without changing health or reward rules.
+- Capped active chips at 96 across all hits; existing per-frame particle cleanup still removes expired chips. Animation tick and chunk/reset disposal also clear active tree hit effects.
+- `tests/hit-effects.test.mjs` verifies 100 concurrent hits share a single material, proper restoration and idempotent release, reduced motion, and particle cap. Full suite now Node 20/20 + Python 4/4.
+- Isolated browser with actual rendered tree: hit effect module changed its trunk material, used no additional geometries, then restored the original; console errors zero. Subjective impact on chopping remains to be human-reviewed.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.
