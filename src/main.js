@@ -13,7 +13,7 @@ import {createPlayer} from './player.js?v=20261030-fps-micro1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-teamgoal1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-grass-size-range2';
+import {createSettings} from './settings.js?v=20261030-settings-modal1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js';
 import {createLandmarks} from './landmarks.js?v=20261030-fire1';

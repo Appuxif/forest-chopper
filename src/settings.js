@@ -54,11 +54,24 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const css = doc.createElement('style');
   css.textContent = `
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
-.fc-settings{position:fixed;z-index:17;top:96px;right:12px;width:min(290px,calc(100vw - 24px));max-height:calc(100dvh - 116px);overflow-y:auto;background:#10251ff2;color:white;border:1px solid #ffffff55;border-radius:12px;padding:14px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 10px 25px #0009}
-.fc-settings[hidden],.fc-fps[hidden]{display:none}
+.fc-settings-backdrop{position:fixed;inset:0;z-index:28;background:#020f0bcc;backdrop-filter:blur(3px)}
+.fc-settings{position:fixed;z-index:29;left:50%;top:50%;transform:translate(-50%,-50%);width:min(700px,calc(100vw - 28px));max-height:min(680px,calc(100dvh - 28px));display:flex;flex-direction:column;overflow:hidden;background:#10251ff7;color:white;border:1px solid #ffffff55;border-radius:15px;padding:0;font:13px/1.45 system-ui,sans-serif;box-shadow:0 24px 70px #000b}
+.fc-settings[hidden],.fc-settings-backdrop[hidden],.fc-fps[hidden]{display:none}
+.fc-settings-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px 10px}
+.fc-settings-header h2{margin:0;font-size:18px}
+.fc-settings-close{font-size:23px;line-height:1;color:#e8fff0;background:#204336;border:1px solid #ffffff44;min-width:36px;min-height:36px}
+.fc-settings-tabs{display:flex;gap:6px;padding:6px 18px 12px;overflow-x:auto;border-bottom:1px solid #ffffff26;flex-shrink:0}
+.fc-settings .fc-settings-tab{flex:1 0 auto;min-width:90px;background:#19392d;color:#bbd7c5;border:1px solid #ffffff20}
+.fc-settings .fc-settings-tab[aria-selected=true]{background:#326849;color:white;border-color:#8bd0a4}
+.fc-settings-content{padding:9px 22px 18px;overflow-y:auto;overscroll-behavior:contain;min-height:120px;flex:1}
+.fc-settings-page[hidden]{display:none}
+.fc-settings-page{max-width:570px;margin:auto}
+.fc-settings-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 20px;border-top:1px solid #ffffff26}
+.fc-settings-footer small{margin:0!important}
+.fc-settings :focus-visible{outline:2px solid #a8eec0;outline-offset:3px}
 /* Onboarding takes priority: keep its text unobstructed until the player finishes/skips it. */
 body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
-.fc-settings h2{font-size:15px;margin:0 0 12px}
+.fc-settings h2{font-size:16px;margin:0 0 12px}
 .fc-settings label{display:block;margin:10px 0}
 .fc-settings small{display:block;color:#bed7c6;line-height:1.35;margin:-5px 0 9px}
 .fc-settings select{display:block;width:100%;padding:7px;background:#0c2619;color:white;border:1px solid #ffffff55;border-radius:6px;margin-top:6px}
@@ -73,7 +86,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
 .fc-angle-pair input[type=range]::-moz-range-thumb{width:17px;height:23px;border:2px solid #143c25;border-radius:6px;background:#96e3aa;cursor:ew-resize;pointer-events:auto}
 .fc-settings button{border-radius:7px;padding:7px 10px}
 .fc-fps{position:fixed;z-index:5;top:320px;left:16px;max-width:calc(100vw - 32px);border-radius:6px;padding:6px 8px;background:#10251fe8;color:#baf1ca;font:600 11px/1.5 ui-monospace,monospace;white-space:pre-line;pointer-events:none}
-@media(max-width:450px){.fc-settings{top:135px;max-height:calc(100dvh - 148px)}.fc-settings-toggle{top:95px;right:12px;padding:8px 10px}}
+@media(max-width:450px){.fc-settings{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:11px}.fc-settings-header{padding:11px 13px 7px}.fc-settings-tabs{padding:6px 10px 9px}.fc-settings .fc-settings-tab{min-width:80px;padding:8px 6px}.fc-settings-content{padding:7px 14px 12px}.fc-settings-footer{padding:9px 13px}.fc-settings-toggle{top:95px;right:12px;padding:8px 10px}}
 `;
   doc.head.append(css);
   const toggle = doc.createElement('button');
@@ -81,13 +94,26 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   toggle.className = 'fc-settings-toggle';
   toggle.textContent = '⚙ Настройки';
   toggle.setAttribute('aria-expanded', 'false');
+  const backdrop=doc.createElement('div');
+  backdrop.className='fc-settings-backdrop';
+  backdrop.hidden=true;
+  backdrop.setAttribute('aria-hidden','true');
   const panel = doc.createElement('section');
   panel.className = 'fc-settings';
   panel.hidden = true;
+  panel.setAttribute('role','dialog');
+  panel.setAttribute('aria-modal','true');
   panel.setAttribute('aria-label', 'Настройки игры');
-  panel.innerHTML = `<h2>⚙ Настройки</h2>
-    <label>Чувствительность обзора: <output id="fc-sensitivity-value"></output>
-      <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
+  panel.innerHTML = `<header class="fc-settings-header"><h2>⚙ Настройки игры</h2>
+      <button id="fc-settings-close" class="fc-settings-close" type="button" aria-label="Закрыть настройки">×</button></header>
+    <nav class="fc-settings-tabs" aria-label="Категории настроек">
+      <button type="button" class="fc-settings-tab" data-category="graphics" aria-selected="true">🎨 Графика</button>
+      <button type="button" class="fc-settings-tab" data-category="grass" aria-selected="false">🌿 Трава</button>
+      <button type="button" class="fc-settings-tab" data-category="controls" aria-selected="false">🎮 Управление</button>
+      <button type="button" class="fc-settings-tab" data-category="world" aria-selected="false">🌍 Мир</button>
+    </nav>
+    <div class="fc-settings-content">
+    <section class="fc-settings-page" data-category="graphics" aria-label="Графика">
     <label>Качество графики
       <select id="fc-quality"><option value="low">Экономный (GPU)</option><option value="balanced">Сбалансированный</option><option value="high">Высокий</option></select></label>
     <small>Меняет разрешение 3D-рендера, не затрагивая мир и управление.</small>
@@ -96,6 +122,11 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
       <option value="90">90 FPS</option><option value="120">120 FPS</option>
       <option value="144">144 FPS</option><option value="0">Без ограничения</option></select></label>
     <small>Ограничивает частоту отрисовки и обновления игры. По умолчанию 60 FPS.</small>
+    <label>Угол обзора (FOV): <output id="fc-fov-value"></output>°
+      <input id="fc-fov" type="range" min="65" max="95" step="5"></label>
+    <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
+    </section>
+    <section class="fc-settings-page" data-category="grass" aria-label="Трава" hidden>
     <label>Плотность мелкой травы: <output id="fc-grass-density-value"></output>
       <input id="fc-grass-density" type="range" min="1" max="50" step="1"></label>
     <label>Дальность мелкой травы: <output id="fc-grass-distance-value"></output> м
@@ -120,21 +151,26 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
           aria-label="Максимальный поворот, от 0 до 90 градусов">
       </span>
     </label>
-    <small>Меняется сразу; высокая плотность и дальность могут увеличить нагрузку.</small>
-    <label>Угол обзора (FOV): <output id="fc-fov-value"></output>°
-      <input id="fc-fov" type="range" min="65" max="95" step="5"></label>
-    <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
+    <small>Меняется сразу; высокая плотность и дальность могут увеличить нагрузку. На полянках действуют собственные параметры травы.</small>
+    </section>
+    <section class="fc-settings-page" data-category="controls" aria-label="Управление" hidden>
+    <label>Чувствительность обзора: <output id="fc-sensitivity-value"></output>
+      <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
     <label><input id="fc-auto-sprint" type="checkbox"> Автобег при движении</label>
+    </section>
+    <section class="fc-settings-page" data-category="world" aria-label="Мир" hidden>
     <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в кронах</label>
     <label><input id="fc-day-cycle" type="checkbox"> Локальная смена дня и ночи</label>
     <small>Только визуально, цикл 8 минут. В сетевой игре у каждого своё время суток.</small>
-    <button id="fc-reset-settings" type="button">Сбросить настройки</button>`;
+    </section></div>
+    <footer class="fc-settings-footer"><small>Изменения сохраняются автоматически</small>
+      <button id="fc-reset-settings" type="button">Сбросить всё</button></footer>`;
   const fps = doc.createElement('div');
   fps.className = 'fc-fps';
   fps.setAttribute('aria-label', 'Частота кадров');
   fps.hidden = !state.showFps;
   fps.textContent = 'FPS —';
-  doc.body.append(toggle, panel, fps);
+  doc.body.append(toggle,backdrop,panel,fps);
 
   const range = panel.querySelector('#fc-sensitivity');
   const output = panel.querySelector('#fc-sensitivity-value');
@@ -198,15 +234,51 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     try {storage?.setItem(KEY, JSON.stringify(state));}
     catch { /* Private mode or blocked storage: keep preferences for this tab. */ }
   }
-  function close() {
-    panel.hidden = true;
-    toggle.setAttribute('aria-expanded','false');
+  const tabButtons=Array.from(panel.querySelectorAll?.('.fc-settings-tab')??[]);
+  const pages=Array.from(panel.querySelectorAll?.('.fc-settings-page')??[]);
+  let activeCategory='graphics';
+  function activateCategory(category) {
+    if(!['graphics','grass','controls','world'].includes(category))return;
+    activeCategory=category;
+    for(const tab of tabButtons)tab.setAttribute('aria-selected',String(tab.dataset.category===category));
+    for(const page of pages)page.hidden=page.dataset.category!==category;
+    const content=panel.querySelector?.('.fc-settings-content');
+    if(content)content.scrollTop=0;
   }
+  for(const tab of tabButtons)tab.onclick=()=>activateCategory(tab.dataset.category);
+  function close() {
+    if(panel.hidden)return;
+    panel.hidden=true;
+    backdrop.hidden=true;
+    toggle.setAttribute('aria-expanded','false');
+    toggle.focus?.();
+  }
+  backdrop.onclick=close;
+  panel.querySelector('#fc-settings-close').onclick=close;
+  panel.addEventListener?.('keydown',event=>{
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();return;}
+    // Keep keyboard navigation inside the dialog, including on mobile keyboards.
+    if(event.key==='Tab'){
+      const focusable=Array.from(panel.querySelectorAll?.('button,input,select')??[])
+        .filter(node=>!node.disabled&&node.getClientRects?.().length);
+      if(focusable.length){
+        const first=focusable[0],last=focusable[focusable.length-1];
+        if(event.shiftKey&&doc.activeElement===first){event.preventDefault();last.focus();}
+        else if(!event.shiftKey&&doc.activeElement===last){event.preventDefault();first.focus();}
+      }
+    }
+    // Arrow keys and space should operate settings controls, not the character.
+    event.stopPropagation();
+  });
   toggle.onclick = () => {
-    if (!panel.hidden) {close();return;}
-    doc.getElementById('network').style.display = 'none';
-    panel.hidden = false;
+    if(!panel.hidden){close();return;}
+    const network=doc.getElementById?.('network');
+    if(network)network.style.display='none';
+    activateCategory(activeCategory);
+    backdrop.hidden=false;
+    panel.hidden=false;
     toggle.setAttribute('aria-expanded','true');
+    panel.querySelector('#fc-settings-close').focus?.();
   };
   range.oninput = () => {
     Object.assign(state, sanitizeSettings({...state, mouseSensitivity: Number(range.value)}));
