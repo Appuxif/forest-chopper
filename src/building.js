@@ -56,7 +56,7 @@ export function createBuilding(ctx) {
     // Recompute on the actual click; preview is refreshed only every few frames.
     const p = ctx.buildMode ? candidate() : null;
     const error = placeError(p);
-    if (error) { hint(error); return false; }
+    if (error) { hint(error); ctx.notify(error, 'warning'); return false; }
     ctx.placement = p;
     if (ctx.isOnline()) {
       ctx.sendNet({type: 'place', x: p.x, z: p.z, orientation: p.orientation});
@@ -69,19 +69,20 @@ export function createBuilding(ctx) {
     ctx.placed.push({...p, mesh});
     ctx.wood--;
     ctx.$('wood').textContent = ctx.wood;
+    ctx.notify('Бревно установлено · −1 🪵', 'success', 'log-placed');
     updatePreview();
     return true;
   }
 
   function removeLog() {
-    if (!ctx.buildMode) { hint('Сначала включите строительство'); return false; }
+    if (!ctx.buildMode) { hint('Сначала включите строительство'); ctx.notify('Сначала включите строительство', 'warning'); return false; }
     const p = candidate();
     let idx = -1;
     for (let i = ctx.placed.length - 1; i >= 0; i--) {
       const a = ctx.placed[i];
       if (Math.hypot(a.x - p.x, a.z - p.z) < 2.4) { idx = i; break; }
     }
-    if (idx < 0) { hint('Нет брёвен поблизости'); return false; }
+    if (idx < 0) { hint('Нет брёвен поблизости'); ctx.notify('Нет брёвен поблизости', 'warning'); return false; }
     const log = ctx.placed[idx];
     if (ctx.isOnline()) {
       if (log.id === undefined || log.id === null) return false;
@@ -92,6 +93,7 @@ export function createBuilding(ctx) {
     ctx.placed.splice(idx, 1);
     ctx.wood++;
     ctx.$('wood').textContent = ctx.wood;
+    ctx.notify('Бревно убрано · +1 🪵', 'success', 'log-removed');
     updatePreview();
     return true;
   }

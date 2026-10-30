@@ -56,6 +56,15 @@
 - A temporary `test_world.py` case verifies an invalid save starts from a clean, randomly seeded world instead of mixing in partial persisted values.
 - Validation: Python 4/4, Node 14/14, Python compile and diff checks pass. No real saves touched.
 
+### P1.1 — Local toasts for gameplay feedback (2026-10-30)
+
+- Added `src/notifications.js`: a small unobtrusive DOM notification manager with `info`, `success`, and `warning`, max three visible, 1.2s key-based deduplication, automatic dismissal, bounded dedup cache, `aria-live` status, CSS transitions and reduced-motion support. It intercepts no pointer events.
+- Both HTML clients share the new module through `main.js`; no new framework, build step or dependency. Connected building errors, offline placement/removal, actual offline tree reward, and server-confirmed multiplayer placement, removal, and tree-fell rewards; unexpected disconnection gets a warning.
+- A success toast is intentionally **not** emitted on sending an online action, only upon authoritative server reply.
+- Added `tests/notifications.test.mjs`: simultaneous toast cap, repeated-message suppression, expiry/fade cleanup, bounded event history. Building test now also asserts that online placement has no optimistic reward notification.
+- Browser isolated debug: desktop 1366×768, mobile 390×844 with reduced motion, visible invalid-place warning, zero network/JS errors, mobile toast position adjusted to avoid all main buttons. Screenshots `/tmp/forest-overnight-toast-desktop.webp` and `/tmp/forest-overnight-toast-mobile-final.webp`.
+- Full suite: Node 17/17, Python 4/4, JS syntax and diff check pass.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.
