@@ -1,6 +1,11 @@
 // Extracted from the original single-file game. Shared game state is passed explicitly.
+import {treeCandidate,treeCanSpawn} from './tree-spacing.js?v=20261030-spacing-4m1';
+import {createTreeBatch} from './tree-instancing.js?v=20261030-classic-instancing1';
 export function createWorld(ctx) {
 function rand(x,z,n=0){let v=Math.sin(x*127.1+z*311.7+n*78.233+ctx.seed)*43758.5453;return v-Math.floor(v)}
+// Shared white-tinted materials are reused across chunks and never disposed
+// while another batch may still reference them.
+const classicBatchMaterials=new Map();
 const birchLobes=[[-.35,.82,.1,1.55,1.35,1.35],[1.05,.81,-.25,1.32,1.1,1.25],
  [-1.2,.87,-.15,1.34,1.12,1.28],[.2,1.04,.45,1.44,1.25,1.35]];
 function makeTree(x,z,id){const group=new ctx.THREE.Group(),h=7.5+rand(x,z,4)*6.5,scale=.9+rand(x,z,5)*.65,maxHp=7+Math.floor(rand(x,z,8)*5);
@@ -45,7 +50,14 @@ function enableDecorShadow(node){
 function build(cx,cz){const key=cx+','+cz;if(ctx.chunks.has(key))return;const decor=new ctx.THREE.Group();ctx.scene.add(decor);ctx.chunks.set(key,decor);
 decor.userData.shadowDecor=[];decor.userData.reactivePlants=[];decor.userData.grassClearings=[];
 const rockColliders=[];
-for(let i=0;i<8;i++){const x=cx*ctx.chunkSize+rand(cx,cz,i*3)*ctx.chunkSize,z=cz*ctx.chunkSize+rand(cx,cz,i*3+1)*ctx.chunkSize;if(Math.hypot(x,z)<8)continue;const id=key+':'+i;if(!ctx.felled.has(id))makeTree(x,z,id)}
+const newTrees=[];
+for(let i=0;i<8;i++){
+ if(!treeCanSpawn(cx,cz,i,rand,ctx.chunkSize))continue;
+ const {x,z}=treeCandidate(cx,cz,i,rand,ctx.chunkSize);
+ const id=key+':'+i;
+ if(!ctx.felled.has(id)){makeTree(x,z,id);newTrees.push(ctx.trees.get(id));}
+}
+decor.userData.treeBatch=createTreeBatch(ctx.THREE,decor,newTrees,classicBatchMaterials);
 for(let i=0;i<25;i++){
  const x=cx*ctx.chunkSize+rand(cx,cz,100+i*2)*ctx.chunkSize;
  const z=cz*ctx.chunkSize+rand(cx,cz,101+i*2)*ctx.chunkSize;
@@ -90,7 +102,7 @@ for(const obj of decor.userData.reactivePlants){
 }
 ctx.rockColliders?.set(key,rockColliders);
 }
-function updateChunks(){const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);for(let x=cx-ctx.radius;x<=cx+ctx.radius;x++)for(let z=cz-ctx.radius;z<=cz+ctx.radius;z++)build(x,z);for(const [key,group] of ctx.chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>ctx.radius+1||Math.abs(z-cz)>ctx.radius+1){ctx.scene.remove(group);ctx.chunks.delete(key);ctx.rockColliders?.delete(key)}}for(const [key,t] of ctx.trees){if(Math.abs(t.position.x-ctx.px)>ctx.chunkSize*(ctx.radius+1.5)||Math.abs(t.position.z-ctx.pz)>ctx.chunkSize*(ctx.radius+1.5)){ctx.scene.remove(t);ctx.trees.delete(key)}}}
+function updateChunks(){const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);for(let x=cx-ctx.radius;x<=cx+ctx.radius;x++)for(let z=cz-ctx.radius;z<=cz+ctx.radius;z++)build(x,z);for(const [key,group] of ctx.chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>ctx.radius+1||Math.abs(z-cz)>ctx.radius+1){group.userData.treeBatch?.dispose();ctx.scene.remove(group);ctx.chunks.delete(key);ctx.rockColliders?.delete(key)}}for(const [key,t] of ctx.trees){if(Math.abs(t.position.x-ctx.px)>ctx.chunkSize*(ctx.radius+1.5)||Math.abs(t.position.z-ctx.pz)>ctx.chunkSize*(ctx.radius+1.5)){t.userData.treeBatch?.remove(t,false);ctx.scene.remove(t);ctx.trees.delete(key)}}}
 
 return {rand, makeTree, build, updateChunks};
 }

@@ -17,6 +17,7 @@ export function createWind(ctx, {
       leaf.rotation.x = bases[i].x;
       leaf.rotation.z = bases[i].z;
     }
+    tree.userData?.treeBatch?.updateTree(tree);
   }
 
   function clear() {
@@ -50,6 +51,7 @@ export function createWind(ctx, {
         tree.children[i+1].rotation.z = bases[i].z + wave * strength;
         tree.children[i+1].rotation.x = bases[i].x + wave * .35 * strength;
       }
+      tree.userData?.treeBatch?.updateTree(tree);
       bases.lastSeen=now;
       count++;
     }

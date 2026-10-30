@@ -307,3 +307,34 @@ test('birches have a consistent white-bark trunk and rounded shared canopy witho
   world.makeTree(firstBirch.x,firstBirch.z,firstBirch.id);
   assert.equal(ctx.trees.get(firstBirch.id).userData.hp,2,'damaged birch retains saved HP');
 });
+
+test('chunk generation keeps classic 5-mesh trees while enforcing 4m trunk spacing',async()=>{
+  const {treeCanSpawn,treeCandidate}=await import('../src/tree-spacing.js');
+  const {ctx}=fixture();
+  const world=createWorld(ctx);
+  const chunks=[];
+  for(let cx=-3;cx<=3;cx++)for(let cz=-3;cz<=3;cz++){
+    world.build(cx,cz);
+    chunks.push([cx,cz]);
+  }
+  const expected=[];
+  for(const [cx,cz] of chunks)for(let i=0;i<8;i++){
+    if(!treeCanSpawn(cx,cz,i,world.rand,ctx.chunkSize))continue;
+    const position=treeCandidate(cx,cz,i,world.rand,ctx.chunkSize);
+    expected.push([cx+','+cz+':'+i,position]);
+  }
+  assert.equal(ctx.trees.size,expected.length,'actual generated trees match deterministic filtered candidates');
+  for(const [id,point] of expected){
+    const tree=ctx.trees.get(id);
+    assert.ok(tree,id);
+    assert.equal(tree.position.x,point.x);
+    assert.equal(tree.position.z,point.z);
+    assert.equal(tree.children.length,5,'classic trunk and four foliage meshes retained');
+    assert.equal(tree.userData.modelVariant,undefined,'no newer growth template');
+  }
+  const trees=[...ctx.trees.values()];
+  for(let i=0;i<trees.length;i++)for(let j=i+1;j<trees.length;j++){
+    const a=trees[i].position,b=trees[j].position;
+    assert.ok((a.x-b.x)**2+(a.z-b.z)**2 >=16-1e-8);
+  }
+});

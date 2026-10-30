@@ -240,10 +240,10 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     const limit=Math.min(SHADOW_MAX_TREE_LIMIT,Math.max(SHADOW_TREE_LIMIT,
       Math.ceil(Math.PI*radius*radius/68)));
     const next=new Set(selectShadowTrees(trees,x,z,radius,limit));
-    for(const tree of activeTrees)if(!next.has(tree)){
+    for(const tree of activeTrees)if(!next.has(tree) && !tree.userData?.treeBatch){
       for(const mesh of tree.children)mesh.castShadow=false;
     }
-    for(const tree of next)if(!activeTrees.has(tree)){
+    for(const tree of next)if(!activeTrees.has(tree) && !tree.userData?.treeBatch){
       for(const mesh of tree.children)mesh.castShadow=true;
     }
     activeTrees.clear();
@@ -251,7 +251,9 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     activeDecor.clear();
     for(const decoration of getDecorShadowCasters(x,z,radius,SHADOW_DECOR_LIMIT))
       activeDecor.add(decoration);
-    treeShadowScene.children=[...activeTrees,...activeDecor,
+    const batchMeshes=new Set();
+    for(const tree of activeTrees)for(const mesh of tree.userData?.treeBatch?.meshes??[])batchMeshes.add(mesh);
+    treeShadowScene.children=[...activeTrees,...batchMeshes,...activeDecor,
       ...getBuiltShadowCasters(x,z,radius)];
   }
   function tick(now,x,z) {

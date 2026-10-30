@@ -1,5 +1,6 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261030-grass-clearings1';
+import {createWorld} from './world.js?v=20261030-classic-instancing1';
+import {detachTreeForFall} from './tree-instancing.js?v=20261030-classic-instancing1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
@@ -7,20 +8,20 @@ import {createMicroGrass} from './micro-grass.js?v=20261030-grass-density-shadow
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261030-grass-density-shadows1';
 import {createPhysics} from './physics.js?v=20261030-rock-collision1';
 import {createBuilding} from './building.js?v=20261030-built-shadows1';
-import {createChopping} from './chopping.js?v=20261030-camera-aim1';
-import {createControls} from './controls.js?v=20261030-camera-sliders1';
+import {createChopping} from './chopping.js?v=20261030-classic-instancing1';
+import {createControls} from './controls.js?v=20261030-classic-instancing1';
 import {createPlayer} from './player.js?v=20261030-camera-up-arc1';
-import {createMultiplayer} from './multiplayer.js?v=20261030-built-shadows1';
+import {createMultiplayer} from './multiplayer.js?v=20261030-classic-instancing1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261030-camera-down80-1';
 import {applyQuality} from './quality.js';
-import {createWind} from './wind.js';
+import {createWind} from './wind.js?v=20261030-classic-instancing1';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
 import {createPlantInteraction} from './plant-interaction.js?v=20261030-grass-clearings1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
 import {createDayCycle} from './day-cycle.js?v=20261030-darker-night1';
-import {createAtmosphere} from './atmosphere.js?v=20261030-built-shadows1';
+import {createAtmosphere} from './atmosphere.js?v=20261030-classic-instancing1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
@@ -109,10 +110,14 @@ const atmosphere=createAtmosphere({
   if(!fire)return [];
   const x=fire.position.x,z=fire.position.z,r=light.distance;
   const casters=selectDecorShadowCasters(chunks,x,z,r,36);
+  const batches=new Set();
   for(const tree of trees.values()){
-   if(Math.hypot(tree.position.x-x,tree.position.z-z)<r+3 && casters.length<52)
-    casters.push(tree);
+   if(Math.hypot(tree.position.x-x,tree.position.z-z)>=r+3 || casters.length>=52)continue;
+   if(tree.userData.treeBatch){
+    for(const mesh of tree.userData.treeBatch.meshes)batches.add(mesh);
+   }else casters.push(tree);
   }
+  casters.push(...batches);
   if(Math.hypot(px-x,pz-z)<r+2 && ownAvatar?.shadowMeshes)
    casters.push(...ownAvatar.shadowMeshes);
   for(const avatar of avatars.values()){
@@ -164,6 +169,7 @@ const ctx={
  get birchLeafGeo(){return birchLeafGeo;},
  get birchLeafMats(){return birchLeafMats;},
  get birchTrunkMat(){return birchTrunkMat;},
+ get detachTreeForFall(){return tree=>detachTreeForFall(ctx,tree);},
  get blade(){return blade;},
  get blocksPlayerAt(){return blocksPlayerAt;},
  get build(){return build;},

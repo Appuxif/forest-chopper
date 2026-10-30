@@ -7,6 +7,7 @@ import math
 import os
 import random
 import time
+from functools import lru_cache
 from pathlib import Path
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
@@ -18,13 +19,39 @@ def r(x,z,n,seed):
     v=math.sin(x*127.1+z*311.7+n*78.233+seed)*43758.5453
     return v-math.floor(v)
 
+TREE_MIN_DISTANCE = 4.0
+
+
+@lru_cache(maxsize=32768)
+def tree_can_spawn(cx, cz, index, seed):
+    # The matching client algorithm never depends on stream/load order.
+    x=cx*24+r(cx,cz,index*3,seed)*24
+    z=cz*24+r(cx,cz,index*3+1,seed)*24
+    if math.hypot(x,z)<8:
+        return False
+    priority=r(cx,cz,2000+index,seed)
+    for nx in range(cx-1,cx+2):
+        for nz in range(cz-1,cz+2):
+            for j in range(8):
+                if (nx,nz,j)==(cx,cz,index):
+                    continue
+                xx=nx*24+r(nx,nz,j*3,seed)*24
+                zz=nz*24+r(nx,nz,j*3+1,seed)*24
+                if math.hypot(xx,zz)<8 or (xx-x)**2+(zz-z)**2>=TREE_MIN_DISTANCE**2:
+                    continue
+                theirs=r(nx,nz,2000+j,seed)
+                if theirs<priority or (theirs==priority and (nx,nz,j)<(cx,cz,index)):
+                    return False
+    return True
+
+
 def tree_info(key,seed):
     try:
         chunk,index=key.split(':');cx,cz=map(int,chunk.split(','));i=int(index)
         if not (-10000<=cx<=10000 and -10000<=cz<=10000 and 0<=i<8):return None
         x=cx*24+r(cx,cz,i*3,seed)*24
         z=cz*24+r(cx,cz,i*3+1,seed)*24
-        if math.hypot(x,z)<8:return None
+        if not tree_can_spawn(cx,cz,i,seed):return None
         hp=7+int(r(x,z,8,seed)*5)
         return x,z,hp
     except (ValueError,TypeError):return None
