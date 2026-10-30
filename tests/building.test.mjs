@@ -30,6 +30,7 @@ function setup(online = false) {
     sendNet: data => sent.push(data),
     notify: (...args) => notifications.push(args),
     offlineSave: {markDirty() {}},
+    tutorial: {complete() {}},
 
   };
   return {ctx, sent, added, removed, notifications, $,

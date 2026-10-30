@@ -99,6 +99,14 @@
 - `tests/offline-save.test.mjs` covers round-trip restore of trees/logs/wood/position/y, invalid data, limit checks, and multiplayer suspension/reset. Browser isolated debug: walked ~3.2 m, reloaded and preserved position; joined an isolated WebSocket world, confirmed offline seed/snapshot untouched while moving in multiplayer, disconnected/reloaded and recovered the offline position; then reset confirmed old save cleared and a new seed/save created. Normal `index.html` loaded with no debug API. No console errors.
 - Validation: Node 25/25, Python 5/5, JS syntax, Python compilation and diff checks PASS. Real server/world files were not touched.
 
+### P1.7 — Three-step first-run onboarding (2026-10-30)
+
+- Added `src/tutorial.js`, a small nonblocking panel for: approach and aim at a tree, actually fell a tree, then actually place a log. Prompts switch between keyboard and touch wording. A Skip button persists the dismissal; completing all three hides the panel and shows a single success toast.
+- Progress is driven strictly by existing real game events (aimed-tree raycast, successful offline fall/server-confirmed own tree fall, successful offline place/server-confirmed own log_add). No timer-based or fabricated completion. It persists only under `forest-chopper:tutorial:v1` and does not interfere with world saves.
+- `tests/tutorial.test.mjs` verifies stage ordering and rejected irrelevant events; existing building mock updated for the tutorial hook.
+- Isolated browser end-to-end: fresh debug player navigated to a tree and aimed, step 1→2; chopped the same tree with 11 real hits, step 2→3 with +5 wood; placed one actual log, stage 3 completion, wood=4 and completion toast; reload remained completed. Separate 390×844 touch context verified the panel did not overlap main buttons and Skip persisted after reload. No browser console errors. Screenshot `/tmp/forest-overnight-tutorial-mobile.webp`.
+- Full suite: Node 26/26, Python 5/5, JS syntax and git diff checks pass.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.
@@ -111,7 +119,7 @@
 ## In progress / next
 
 - Finish any remaining P0.4 subjective touch/UI review and P0.6 optional diagnostics.
-- P1.7 onboarding, P1.8 achievements, P1.9 compact objectives.
+- P1.8 achievements, P1.9 compact objectives.
 - P1.11/P1.12 cosmetic world variety and P1.10 multiplayer join/leave polishing.
 - P2 stretch mechanics only after stable P1; no push/deploy.
 

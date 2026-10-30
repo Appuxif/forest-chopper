@@ -68,6 +68,7 @@ export function createBuilding(ctx) {
     ctx.scene.add(mesh);
     ctx.placed.push({...p, mesh});
     ctx.wood--;
+    ctx.tutorial.complete('log-placed');
     ctx.offlineSave.markDirty();
     ctx.$('wood').textContent = ctx.wood;
     ctx.notify('Бревно установлено · −1 🪵', 'success', 'log-placed');
