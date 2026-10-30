@@ -4,7 +4,7 @@ import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-no-scar3';
-import {createPlayer} from './player.js?v=20261030-sprint1';
+import {createPlayer} from './player.js?v=20261030-aim1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-map-ping1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
@@ -69,7 +69,7 @@ const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings});
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null;
 
-let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
+let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
  get $(){return $;},
  get chatHistory(){return chatHistory;},
@@ -161,7 +161,8 @@ const ctx={
  get placeLog(){return placeLog;},
  get placed(){return placed;},
  get progress(){return progress;},
- get placement(){return placement;}, set placement(value){placement=value;},
+ get placement(){return placement;},
+ get placeError(){return placeError;}, set placement(value){placement=value;},
  get preview(){return preview;}, set preview(value){preview=value;},
  get px(){return px;}, set px(value){px=value;},
  get pz(){return pz;}, set pz(value){pz=value;},
@@ -207,7 +208,7 @@ const wind=createWind(ctx);
 const landmarks=createLandmarks(ctx);
 ({rand, makeTree, build, updateChunks}=createWorld(ctx));
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
-({makeLog, overlaps, candidate, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
+({makeLog, overlaps, candidate, placeError, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
 ({aimed, spawnChips, chop}=createChopping(ctx));
 ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.group.visible=thirdPerson;}
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, chatHistory}=createMultiplayer(ctx));

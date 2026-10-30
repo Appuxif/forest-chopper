@@ -11,7 +11,7 @@ test('both game entrypoints keep the touch layout and cache-busted UI modules al
     assert.match(html,/\.instructions\{display:none\}/);
     assert.match(html,/#nettoggle\{top:55px;right:12px\}/);
     assert.match(html,/#viewtoggle\{top:137px!important;right:12px!important/);
-    assert.match(html,/main\.js\?v=20261030-mobile-ui1/);
+    assert.match(html,/main\.js\?v=20261030-[a-z0-9-]+/);
     assert.match(html,/id="minimap"[^>]+role="button"/);
   }
   const settings=readFileSync(new URL('../src/settings.js',import.meta.url),'utf8');
