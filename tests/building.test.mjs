@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createBuilding} from '../src/building.js';
 
 function setup(online = false) {
-  const sent = [], added = [], removed = [], notifications = [], elements = new Map();
+  const sent = [], added = [], removed = [], notifications = [], records = [], elements = new Map();
   class Mesh {
     constructor(geometry, material) {
       this.geometry = geometry;
@@ -31,9 +31,10 @@ function setup(online = false) {
     notify: (...args) => notifications.push(args),
     offlineSave: {markDirty() {}},
     tutorial: {complete() {}},
+    progress: {record: event => records.push(event)},
 
   };
-  return {ctx, sent, added, removed, notifications, $,
+  return {ctx, sent, added, removed, notifications, records, $,
     building: createBuilding(ctx)};
 }
 
@@ -71,7 +72,7 @@ for (const online of [false, true]) {
   });
 
   test(`${online ? 'online' : 'offline'}: valid placement uses current candidate, not stale preview`, () => {
-    const {ctx, sent, building, $, notifications} = setup(online);
+    const {ctx, sent, building, $, notifications, records} = setup(online);
     ctx.wood = 3;
     building.setMode(true);
     building.updatePreview();
@@ -82,9 +83,11 @@ for (const online of [false, true]) {
       assert.equal(ctx.wood, 3, 'online resources change only on server ack');
       assert.equal(ctx.placed.length, 0);
       assert.deepEqual(notifications, [], 'no success toast before server acknowledgement');
+      assert.deepEqual(records, [], 'no local achievement before server acknowledgement');
     } else {
       assert.equal(ctx.placed.length, 1);
       assert.equal(notifications[0][1], 'success');
+      assert.deepEqual(records, ['log-placed']);
       assert.equal(ctx.placed[0].x, 7);
       assert.equal(ctx.wood, 2);
       assert.equal($('wood').textContent, 2);

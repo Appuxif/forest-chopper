@@ -69,6 +69,7 @@ export function createBuilding(ctx) {
     ctx.placed.push({...p, mesh});
     ctx.wood--;
     ctx.tutorial.complete('log-placed');
+    ctx.progress.record('log-placed');
     ctx.offlineSave.markDirty();
     ctx.$('wood').textContent = ctx.wood;
     ctx.notify('Бревно установлено · −1 🪵', 'success', 'log-placed');

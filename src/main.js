@@ -11,6 +11,7 @@ import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js';
 import {createOfflineSave} from './offline-save.js';
 import {createTutorial} from './tutorial.js';
+import {createProgress} from './progress.js';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 
@@ -42,7 +43,7 @@ let socket=null,myId=null,lastMoveSent=0;const avatars=new Map();
 const notifications=createNotifications();
 const settings=createSettings();
 const tutorial=createTutorial({notify:notifications.notify});
-let offlineSave=null;
+let offlineSave=null,progress=null;
 
 let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposeTree, disposePreview, releaseHitEffect, tickHitEffects, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
@@ -124,6 +125,7 @@ const ctx={
  get pitch(){return pitch;}, set pitch(value){pitch=value;},
  get placeLog(){return placeLog;},
  get placed(){return placed;},
+ get progress(){return progress;},
  get placement(){return placement;}, set placement(value){placement=value;},
  get preview(){return preview;}, set preview(value){preview=value;},
  get px(){return px;}, set px(value){px=value;},
@@ -174,6 +176,7 @@ ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, chatHistory}=createMultiplayer(ctx));
 offlineSave=createOfflineSave(ctx);
 offlineSave.restore();
+progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}});
 ({toggleView, animate}=createPlayer(ctx));
 createMinimap(ctx);
 ({look}=createControls(ctx));

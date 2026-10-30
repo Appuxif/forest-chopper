@@ -107,6 +107,15 @@
 - Isolated browser end-to-end: fresh debug player navigated to a tree and aimed, step 1→2; chopped the same tree with 11 real hits, step 2→3 with +5 wood; placed one actual log, stage 3 completion, wood=4 and completion toast; reload remained completed. Separate 390×844 touch context verified the panel did not overlap main buttons and Skip persisted after reload. No browser console errors. Screenshot `/tmp/forest-overnight-tutorial-mobile.webp`.
 - Full suite: Node 26/26, Python 5/5, JS syntax and git diff checks pass.
 
+### P1.8 — Local lifetime statistics and achievements (2026-10-30)
+
+- Added `src/progress.js`: lightweight local-only progress panel with felled trees, placed logs, walked distance, seed-scoped unique chunks, and nine milestones (1/5/20/100 trees, 1/10 logs, 100/1000 m, 10 chunks). Unlocked achievements are derived from persisted counters, so they never toast twice after page reload. The panel explicitly labels stats `Локально` and makes no server-authoritative claims.
+- Counters update only from successful offline actions or authoritative own-player network messages; log placement is **not** counted when an online request has only been sent. Movement ignores teleports/deltas above 4 m and resets its baseline on world reset or welcome; chunks use world seed + coords to avoid false re-exploration across reloads.
+- Stats saved in a separate bounded/validated `forest-chopper:progress:v1` key, debounced and flushed on pagehide, independently from game saves/tutorial settings. UI is optional via `🏅 Прогресс` button and coexists with settings/network panels.
+- New `tests/progress.test.mjs` tests one-time unlock, persistence without duplicate notifications, accurate movement, anti-teleport skip, chunk uniqueness and invalid data. Building tests assert online placement cannot earn an achievement before server ack.
+- Isolated browser real gameplay: walked ~3.12 m and visited two chunks with counters persisted; felled a tree in seven confirmed hits -> `Первое дерево` unlocked; placed a real log -> `Начинающий строитель` unlocked; reload retained both achievements with no duplicate toasts. Mobile 390×844 progress panel fits viewport, nine milestones shown, console errors zero. Screenshots `/tmp/forest-overnight-achievements-{mobile,desktop}.webp`.
+- Validation: Node 29/29, Python 5/5, JS syntax and diff checks pass.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.
@@ -119,7 +128,7 @@
 ## In progress / next
 
 - Finish any remaining P0.4 subjective touch/UI review and P0.6 optional diagnostics.
-- P1.8 achievements, P1.9 compact objectives.
+- P1.9 compact objectives.
 - P1.11/P1.12 cosmetic world variety and P1.10 multiplayer join/leave polishing.
 - P2 stretch mechanics only after stable P1; no push/deploy.
 
