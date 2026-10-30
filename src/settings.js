@@ -1,7 +1,7 @@
 // Lightweight client-only preferences. No framework or new dependencies.
 import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
 const KEY = 'forest-chopper:settings:v1';
-const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false});
+const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true});
 
 export function sanitizeSettings(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -10,6 +10,7 @@ export function sanitizeSettings(value) {
     mouseSensitivity: Number.isFinite(number) && number >= .4 && number <= 2.5
       ? Math.round(number * 10) / 10 : DEFAULT.mouseSensitivity,
     showFps: source.showFps === true,
+    windEnabled: source.windEnabled !== false,
   };
 }
 
@@ -52,6 +53,7 @@ export function createSettings(doc = document, storage = null) {
     <label>Чувствительность обзора: <output id="fc-sensitivity-value"></output>
       <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
     <label><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
+    <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в кронах</label>
     <button id="fc-reset-settings" type="button">Сбросить настройки</button>`;
   const fps = doc.createElement('div');
   fps.className = 'fc-fps';
@@ -63,12 +65,14 @@ export function createSettings(doc = document, storage = null) {
   const range = panel.querySelector('#fc-sensitivity');
   const output = panel.querySelector('#fc-sensitivity-value');
   const checkbox = panel.querySelector('#fc-show-fps');
+  const windCheckbox = panel.querySelector('#fc-wind-enabled');
   const networkLabel = () => connected ? `Ping ${latency === null ? '—' : latency + ' ms'}` : 'offline';
   const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
   function reflect() {
     range.value = state.mouseSensitivity;
     output.textContent = String(state.mouseSensitivity.toFixed(1));
     checkbox.checked = state.showFps;
+    windCheckbox.checked = state.windEnabled;
     fps.hidden = !state.showFps;
     renderFps();
   }
@@ -91,6 +95,7 @@ export function createSettings(doc = document, storage = null) {
     reflect();save();
   };
   checkbox.onchange = () => {state.showFps = checkbox.checked;reflect();save();};
+  windCheckbox.onchange = () => {state.windEnabled = windCheckbox.checked;reflect();save();};
   panel.querySelector('#fc-reset-settings').onclick = () => {
     Object.assign(state, DEFAULT);reflect();save();
   };
@@ -120,5 +125,6 @@ export function createSettings(doc = document, storage = null) {
     }
   }
   return {get mouseSensitivity(){return state.mouseSensitivity;},
-    get showFps(){return state.showFps;}, tick, close, setConnected, setLatency};
+    get showFps(){return state.showFps;},
+    get windEnabled(){return state.windEnabled;}, tick, close, setConnected, setLatency};
 }

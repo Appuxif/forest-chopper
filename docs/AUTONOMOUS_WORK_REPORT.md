@@ -186,6 +186,15 @@
 - Real isolated browser: desktop debug showed `FPS 31 · offline / Draws 970 · Tri 50490 · Geom 66 · Tex 59 / Chunks 49 · Trees 389 · FX 0`; 390×844 touch viewport placed the 61.5-pixel HUD entirely inside the viewport without crossing movement/chop/build buttons, and browser console contained no errors. Screenshot `/tmp/forest-overnight-diagnostics-mobile.webp`.
 - Validation: 40/40 Node tests, 5/5 Python tests, JS syntax and `git diff --check`. Both HTML entrypoints and relevant module URLs versioned `20261030-diagnostics`. No push.
 
+### P2.1 — Gentle low-cost forest wind (2026-10-30)
+
+- Added `src/wind.js`: a subtle deterministic sine-wave sway of *foliage only*, preserving trunk rotations, materials, HP, raycast collision and all original birch crown yaws. Tree IDs, world/save/network protocol are unchanged. It animates at most 32 trees within 24 meters, with a throttled update every 150 ms; no new mesh/materials, per-frame geometry allocations, or growing particle arrays.
+- On chunk unload, felled tree, player movement, world reset or multiplayer world replacement, previously active leaves are restored to their original rotations, and stale tree references are released. Reset hooks clear active wind immediately.
+- Settings now offer `Лёгкий ветер в кронах` (on by default, stored in existing settings key with backward-compatible parsing). The system `prefers-reduced-motion: reduce` preference overrides the setting to stop wind automatically, including mid-session, with no additional listeners/timers.
+- Added `tests/wind.test.mjs` covering nearby cap, fixed trunks/birch orientation, unchanged GPU resources, frame throttle, reset/eviction, player setting and reduced-motion transitions; settings tests verify sanitized persistence.
+- Isolated real Chrome browser: at 390×844 touch resolution with reduced-motion emulation, no nearby crowns moved. Switched to no-preference and verified 104/104 nearby leaf rotations changed while trunks remained fixed; unchecking wind restored every leaf to the exact neutral rotation and saved `windEnabled:false`. Normal `index.html` mobile with wind enabled loaded with no debug API or JS errors. Desktop 1366×768 also loaded without console errors. Screenshots `/tmp/forest-overnight-wind-{mobile,desktop}.webp`.
+- Validation: 43 Node tests, 5 Python tests, JS syntax checks and diff checks pass. No push; test world and network saves untouched.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.

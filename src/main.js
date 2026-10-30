@@ -4,11 +4,12 @@ import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-no-scar3';
-import {createPlayer} from './player.js?v=20261030-diagnostics';
+import {createPlayer} from './player.js?v=20261030-wind1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-no-scar3';
 import {createMinimap} from './minimap.js';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-diagnostics';
+import {createSettings} from './settings.js?v=20261030-wind1';
+import {createWind} from './wind.js';
 import {createOfflineSave} from './offline-save.js';
 import {createTutorial} from './tutorial.js';
 import {createProgress} from './progress.js';
@@ -190,9 +191,11 @@ const ctx={
  get updatePing(){return updatePing;},
  get updatePreview(){return updatePreview;},
  get verticalSpeed(){return verticalSpeed;}, set verticalSpeed(value){verticalSpeed=value;},
+ get wind(){return wind;},
  get wood(){return wood;}, set wood(value){wood=value;},
  get yaw(){return yaw;}, set yaw(value){yaw=value;},
 };
+const wind=createWind(ctx);
 ({rand, makeTree, build, updateChunks}=createWorld(ctx));
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
