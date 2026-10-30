@@ -1,12 +1,16 @@
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js';
+import {createFrameLimiter} from './frame-limiter.js';
 export function createPlayer(ctx) {
+const limiter=createFrameLimiter();
+let lastWorldTick=-Infinity;
 function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;if(ctx.ownAvatar)ctx.ownAvatar.group.visible=ctx.thirdPerson;ctx.axe.visible=!ctx.thirdPerson;ctx.$('viewtoggle').textContent=ctx.thirdPerson?'👤 Камера: сзади':'👁 Камера: глаза'}
 ctx.$('viewtoggle').onclick=toggleView;ctx.axe.visible=false;
 
 function animate(now){
  requestAnimationFrame(animate);
+ if(!limiter.allow(now,ctx.settings.maxFps))return;
  const dt=Math.min(.05,(now-ctx.lastTime)/1000);ctx.lastTime=now;ctx.settings.tick(now,ctx);ctx.wind.tick(now);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
  let forward=(ctx.keys.KeyW||ctx.keys.ArrowUp?1:0)-(ctx.keys.KeyS||ctx.keys.ArrowDown?1:0)-ctx.joyY;
  let side=(ctx.keys.KeyD||ctx.keys.ArrowRight?1:0)-(ctx.keys.KeyA||ctx.keys.ArrowLeft?1:0)+ctx.joyX;
@@ -39,6 +43,7 @@ function animate(now){
   dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*speed*dt;
  }
  ctx.moveHorizontal(dx,dz);
+ ctx.microGrass?.tick();
  if(ctx.ownAvatar)ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
  ctx.camera.position.set(ctx.px,ctx.feetY+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
  if(ctx.thirdPerson){const back=4.2,raise=2.2;
@@ -49,7 +54,7 @@ function animate(now){
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;
 for(let i=ctx.falling.length-1;i>=0;i--){const f=ctx.falling[i];f.elapsed+=dt;const a=Math.min(1,f.elapsed/1.8);const angle=a*a*(Math.PI/2);f.tree.rotation.z=Math.sin(f.direction)*angle;f.tree.rotation.x=Math.cos(f.direction)*angle;if(f.elapsed>2.5){ctx.scene.remove(f.tree);ctx.falling.splice(i,1)}}
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}
-if(ctx.frame++%12===0){ctx.updatePing(now);ctx.offlineSave.tick(now);ctx.progress.trackPosition(ctx.px,ctx.pz,ctx.seed);ctx.discoveries.check(now);ctx.updateChunks();ctx.updatePreview();const t=ctx.buildMode?null:ctx.aimed();ctx.highlight.update(t);if(t)ctx.tutorial.complete('tree-aimed');updateCrosshair(ctx.$('crosshair'),aimState(ctx.buildMode,t,ctx.buildMode?ctx.placeError(ctx.placement):''));ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`${u.species==='birch'?'🌳 Берёза':'🌲 Дерево'} · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':''}if(ctx.isOnline()&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround})}for(const avatar of ctx.avatars.values()){
+ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx.offlineSave.tick(now);ctx.progress.trackPosition(ctx.px,ctx.pz,ctx.seed);ctx.discoveries.check(now);ctx.updateChunks();ctx.updatePreview();const t=ctx.buildMode?null:ctx.aimed();ctx.highlight.update(t);if(t)ctx.tutorial.complete('tree-aimed');updateCrosshair(ctx.$('crosshair'),aimState(ctx.buildMode,t,ctx.buildMode?ctx.placeError(ctx.placement):''));ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`${u.species==='birch'?'🌳 Берёза':'🌲 Дерево'} · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':''}if(ctx.isOnline()&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround})}for(const avatar of ctx.avatars.values()){
  const previousX=avatar.group.position.x,previousZ=avatar.group.position.z;
  avatar.group.position.lerp(avatar.goal,Math.min(1,dt*10));
  avatar.group.rotation.y+=Math.atan2(Math.sin(avatar.angle-avatar.group.rotation.y),Math.cos(avatar.angle-avatar.group.rotation.y))*Math.min(1,dt*8);

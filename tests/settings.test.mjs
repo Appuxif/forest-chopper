@@ -2,13 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {sanitizeSettings,createSettings} from '../src/settings.js';
 
+const defaults = {
+  mouseSensitivity:1,showFps:false,windEnabled:true,dayCycleEnabled:false,
+  autoSprint:false,quality:'balanced',maxFps:60,grassDensity:25,
+  grassDistance:50,grassMinSize:2.5,grassMaxSize:5.5,grassWidth:1,
+  grassTurnMin:-30,grassTurnMax:30,fov:75,
+};
+
 test('settings defaults and rejects invalid or corrupted saved values',()=>{
-  assert.deepEqual(sanitizeSettings(null), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false,quality:'balanced'});
-  assert.deepEqual(sanitizeSettings([]), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false,quality:'balanced'});
-  assert.deepEqual(sanitizeSettings({mouseSensitivity:999,showFps:'true'}), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false,quality:'balanced'});
-  assert.deepEqual(sanitizeSettings({mouseSensitivity:0,showFps:true}), {mouseSensitivity:1,showFps:true,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false,quality:'balanced'});
-  assert.deepEqual(sanitizeSettings({mouseSensitivity:'NaN',showFps:1}), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false,quality:'balanced'});
-  assert.deepEqual(sanitizeSettings({mouseSensitivity:'1.24',showFps:true}), {mouseSensitivity:1.2,showFps:true,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false,quality:'balanced'});
+  assert.deepEqual(sanitizeSettings(null), defaults);
+  assert.deepEqual(sanitizeSettings([]), defaults);
+  assert.deepEqual(sanitizeSettings({mouseSensitivity:999,showFps:'true'}), defaults);
+  assert.deepEqual(sanitizeSettings({mouseSensitivity:0,showFps:true}), {...defaults,showFps:true});
+  assert.deepEqual(sanitizeSettings({mouseSensitivity:'NaN',showFps:1}), defaults);
+  assert.deepEqual(sanitizeSettings({mouseSensitivity:'1.24',showFps:true}), {...defaults,mouseSensitivity:1.2,showFps:true});
 });
 test('sensitivity boundaries are inclusive and persistence stays independent of world state',()=>{
   assert.equal(sanitizeSettings({mouseSensitivity:.4}).mouseSensitivity,.4);
@@ -25,7 +32,7 @@ test('sensitivity boundaries are inclusive and persistence stays independent of 
   assert.equal(sanitizeSettings({fov:62}).fov,75);
   assert.equal(sanitizeSettings({fov:1000}).fov,75);
   assert.equal(sanitizeSettings({fov:82}).fov,80);
-  assert.deepEqual(Object.keys(sanitizeSettings({seed:123,logs:[1]})),['mouseSensitivity','showFps','windEnabled','dayCycleEnabled','autoSprint','quality','fov']);
+  assert.deepEqual(Object.keys(sanitizeSettings({seed:123,logs:[1]})),Object.keys(defaults));
 });
 
 test('FOV is restored, applied live and reset without affecting world saves',()=>{
@@ -74,4 +81,17 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   assert.equal(writes.at(-1)[1].autoSprint,true);
   element('#fc-reset-settings').onclick();
   assert.equal(settings.autoSprint,false);
+});
+
+test('grass defaults, saved ranges, clamps and reset use new preset only for regular grass',()=>{
+  assert.deepEqual(sanitizeSettings(null),defaults);
+  const adjusted=sanitizeSettings({grassDensity:39,grassDistance:100,grassMinSize:6,
+    grassMaxSize:3,grassWidth:.25,grassTurnMin:-90,grassTurnMax:90});
+  assert.deepEqual([adjusted.grassDensity,adjusted.grassDistance,adjusted.grassMinSize,
+    adjusted.grassMaxSize,adjusted.grassWidth,adjusted.grassTurnMin,adjusted.grassTurnMax],
+    [39,100,3,6,.25,-90,90]);
+  const invalid=sanitizeSettings({grassDensity:51,grassDistance:10,
+    grassMinSize:0,grassMaxSize:9,grassWidth:10,grassTurnMin:1,grassTurnMax:-1});
+  for(const key of ['grassDensity','grassDistance','grassMinSize','grassMaxSize',
+    'grassWidth','grassTurnMin','grassTurnMax'])assert.equal(invalid[key],defaults[key]);
 });

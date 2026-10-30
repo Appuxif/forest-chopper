@@ -3,15 +3,17 @@ import {createWorld} from './world.js?v=20261030-grass1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
+import {createMicroGrass} from './micro-grass.js?v=20261030-grass-interaction1';
+import {createGroundTexture} from './ground-texture.js';
 import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js?v=20261030-craft1';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-craft1';
-import {createPlayer} from './player.js?v=20261030-aim1';
+import {createPlayer} from './player.js?v=20261030-fps-micro1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-teamgoal1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-quality1';
+import {createSettings} from './settings.js?v=20261030-grass-size-range2';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js';
 import {createLandmarks} from './landmarks.js?v=20261030-fire1';
@@ -34,7 +36,8 @@ let ownAvatar=null,thirdPerson=true;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,280);camera.rotation.order='YXZ';const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'default'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;host.prepend(renderer.domElement);
 const hemisphere=new THREE.HemisphereLight(0xe1efff,0x45552b,2.1);scene.add(hemisphere);const sun=new THREE.DirectionalLight(0xffe4a6,2.3);sun.position.set(35,75,20);scene.add(sun);
-const ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000),new THREE.MeshLambertMaterial({color:0x547340}));ground.rotation.x=-Math.PI/2;scene.add(ground);
+const groundTexture=createGroundTexture(THREE,document,renderer);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000),new THREE.MeshLambertMaterial({map:groundTexture}));ground.rotation.x=-Math.PI/2;scene.add(ground);
 const trunkGeo=new THREE.CylinderGeometry(.38,.6,1,9),leafGeo=new THREE.ConeGeometry(1,1,8),rockGeo=new THREE.DodecahedronGeometry(1,0);
 // The tiny octahedron is still shared by campfire sparks, not used as flower art.
 const flowerGeo=new THREE.OctahedronGeometry(.24,0);
@@ -164,6 +167,7 @@ const ctx={
  get makeTree(){return makeTree;},
  get metal(){return metal;},
  get mushrooms(){return mushrooms;},
+ get microGrass(){return microGrass;},
  get modelActors(){return modelActors;},
  get notify(){return notifications.notify;},
  get moveHorizontal(){return moveHorizontal;},
@@ -221,6 +225,7 @@ const ctx={
  get wood(){return wood;}, set wood(value){wood=value;},
  get yaw(){return yaw;}, set yaw(value){yaw=value;},
 };
+const microGrass=createMicroGrass(ctx);
 const wind=createWind(ctx);
 const landmarks=createLandmarks(ctx);
 ({rand, makeTree, build, updateChunks}=createWorld(ctx));

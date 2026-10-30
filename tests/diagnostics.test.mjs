@@ -21,7 +21,7 @@ test('opt-in FPS overlay samples diagnostics once a second and never stores worl
   const nodes = new Map();
   function node(selector){
     if(!nodes.has(selector))nodes.set(selector,{
-      value:'',checked:false,hidden:false,textContent:'',
+      value:'',checked:false,hidden:false,textContent:'',style:{},
       setAttribute(){},querySelector:node,
     });
     return nodes.get(selector);
@@ -55,7 +55,7 @@ test('opt-in FPS overlay samples diagnostics once a second and never stores worl
   toggle.checked=false;
   toggle.onchange();
   assert.equal(fps.hidden,true);
-  assert.deepEqual(Object.keys(JSON.parse(storage.saved.at(-1)[1])).sort(),['mouseSensitivity','showFps','windEnabled','fov','dayCycleEnabled','autoSprint','quality'].sort());
+  assert.deepEqual(Object.keys(JSON.parse(storage.saved.at(-1)[1])).sort(),['mouseSensitivity','showFps','windEnabled','fov','dayCycleEnabled','autoSprint','quality','maxFps','grassDensity','grassDistance','grassMinSize','grassMaxSize','grassWidth','grassTurnMin','grassTurnMax'].sort());
   settings.tick(3100,ctx);
   assert.equal(settings.showFps,false);
 });
