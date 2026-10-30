@@ -8,13 +8,13 @@ import {createPlayer} from './player.js?v=20261030-sprint1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-map-ping1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-sprint1';
+import {createSettings} from './settings.js?v=20261030-mobile-ui1';
 import {createWind} from './wind.js';
 import {createLandmarks} from './landmarks.js?v=20261030-fire1';
 import {createDayCycle} from './day-cycle.js';
 import {createOfflineSave} from './offline-save.js';
 import {createTutorial} from './tutorial.js';
-import {createProgress} from './progress.js';
+import {createProgress} from './progress.js?v=20261030-mobile-ui1';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 

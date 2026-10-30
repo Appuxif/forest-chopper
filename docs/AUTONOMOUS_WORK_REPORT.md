@@ -127,10 +127,10 @@
 
 ## In progress / next
 
-- Completed through this pass: P0.6 local diagnostics, P0.4 tutorial/HUD overlap, P2.1 wind, P2.2 trail/signs, P2.3 decorative campfire and P2.9 camera FOV; previous P1.9–P1.12 milestones are also complete.
-- Automated coverage now: 48 JavaScript and 5 Python tests; isolated desktop/mobile browsers verified. Existing `.codex/` remains untouched.
-- Remaining candidates: P2.4 optional day/night lighting, subjective mobile touch UX review and P2.8 cooperative map pings. Do not implement network-authoritative crafting, saplings or economy without separate protocol/save design and end-to-end tests.
-- No push/deploy, real world save or public multiplayer changes.
+- Completed: core P0/P1 backlog and lightweight P2 atmosphere/landmarks/campfire/rare trees, optional local day/night cycle (P2.4), co-op minimap pings (P2.8), camera FOV and auto sprint (P2.9), plus responsive mobile HUD corrections. See detailed dated implementation sections and commit bodies below.
+- Automated coverage: **58 Node / 6 Python** tests; isolated desktop 1366×768, mobile 390×844 and narrow 320×640 browsers checked. The existing untracked `.codex/` remains untouched.
+- Remaining nontrivial P2 proposals: persistent recipes/bench (P2.5), sapling restoration (P2.6) and economy (P2.10) need a separate authoritative server protocol/save design with migration and tests; P3 ideas remain future scope. Subjective visual/game-feel review is still a human acceptance check.
+- No push/deploy, no writes to real saves or changes to a running public server. New `map_ping` protocol code is committed locally only.
 
 
 
@@ -249,6 +249,13 @@
 - Added pure `src/map-pings.js`: bounded TTL store and coordinate conversion respecting the canvas' CSS/mobile scaling. Reused the 150ms minimap redraw interval; no new polling timer, GPU geometry or saved data. Both HTML entrypoints have descriptive accessible labels, a small online-only hint and module cache refresh.
 - New 2 Node state/coordinate tests, 1 mocked multiplayer test (server ack, anti-spam, stale socket/room clearing) and a Python integration test on an isolated temporary world, including sender attribution, broadcast to both users, invalid/NaN/far coordinate rejection, rate limit and no saved JSON. Full suites: **57 Node / 6 Python passed**.
 - Real isolated localhost WebSocket server and **two different browser contexts**, one debug and one normal mobile 390×844: both joined `2 игрока`. Touch pointerdown on the debug client's minimap sent a marker at ~12m, and each received an exact gold pixel `[255,225,145,255]` at the target map coordinate; the receiving client showed `📍 Scout A отметил точку`. Normal client has no debug API. Screenshot `/tmp/forest-overnight-map-ping-mobile.webp`. No browser console warnings/errors. No push, live multiplayer or live save touched.
+
+### P0.4 follow-up — Responsive mobile HUD without overlapping controls (2026-10-30)
+
+- Real touch screenshots exposed desktop-oriented instructions and buttons overlapping at 390px. Hide only the redundant keyboard hint when the narrow touch layout is active, slightly shrink the left resources header, and stack the right actions (New Forest, Online, Settings, Camera, Progress) vertically at distinct top positions. The minimap stays tappable, and small screens retain readable resource/status counts.
+- Move the Settings and Achievements panels below their respective toggle buttons on narrow screens. Keep their maximum heights within the viewport with scrolling instead of hiding the close control behind a modal. Desktop positions/styles remain unchanged. Both HTML entrypoints and modified JS module URLs use the same cache version.
+- Real isolated Chrome at 390×844 and **320×640**: all five top-right actions have zero mutual intersections, no intersections with the resource header; Progress panel stays within the viewport (y=222..627 at 320×640), Settings y=135..500 at 390×844. Desktop 1366×768 keeps visible keyboard instructions and original button positions. No console warnings/errors. Screenshot `/tmp/forest-overnight-mobile-layout-fixed.webp`.
+- New `tests/mobile-layout.test.mjs` ensures both entrypoints carry the narrow-screen CSS and module revision, and that progress/settings mobile panel offsets remain in place. Full suite: **58 Node / 6 Python**, syntax and diff checks passed. No game rules/server/save changes, no push.
 
 ## Git
 

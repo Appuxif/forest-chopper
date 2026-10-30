@@ -45,7 +45,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
 .fc-settings input[type=checkbox]{accent-color:#8bd0a4}
 .fc-settings button{border-radius:7px;padding:7px 10px}
 .fc-fps{position:fixed;z-index:5;top:320px;left:16px;max-width:calc(100vw - 32px);border-radius:6px;padding:6px 8px;background:#10251fe8;color:#baf1ca;font:600 11px/1.5 ui-monospace,monospace;white-space:pre-line;pointer-events:none}
-@media(max-width:450px){.fc-settings{top:96px}.fc-settings-toggle{padding:9px 10px}}
+@media(max-width:450px){.fc-settings{top:135px;max-height:calc(100dvh - 148px)}.fc-settings-toggle{top:95px;right:12px;padding:8px 10px}}
 `;
   doc.head.append(css);
   const toggle = doc.createElement('button');

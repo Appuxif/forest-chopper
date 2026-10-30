@@ -76,6 +76,7 @@ export function createProgress({
 .fc-objective{padding:9px 10px;margin:0 0 11px;border:1px solid #8ab89a55;border-radius:8px;background:#193c2a}
 .fc-objective strong{display:block;color:#bcf4c9}
 .fc-objective button{margin-top:7px;border-radius:6px;padding:4px 8px;font-size:12px}
+@media(max-width:650px){.fc-progress-toggle{top:180px;right:12px;padding:8px 10px;font-size:11px}.fc-progress-panel{top:222px;max-height:calc(100dvh - 235px)}}
 `;
   doc.head.append(style);
   const button=doc.createElement('button');
