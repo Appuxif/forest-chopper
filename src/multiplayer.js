@@ -81,7 +81,10 @@ function addAvatar(p){if(p.id===ctx.myId)return;
   return;
  }
  const actor=ctx.createLumberjack();const group=actor?actor.group:new ctx.THREE.Group();
- if(!actor){const mesh=new ctx.THREE.Mesh(new ctx.THREE.CapsuleGeometry(.34,1.1,4,8),new ctx.THREE.MeshLambertMaterial({color:0x557d96}));mesh.position.y=1.0;group.add(mesh)}
+ // Remote characters render on layer 1, separate from trees (0) and local (3).
+ // All their skinned meshes stay visible in both first- and third-person views.
+ if(actor)actor.visual.traverse(node=>{if(node.isMesh)node.layers.set(1);});
+ if(!actor){const mesh=new ctx.THREE.Mesh(new ctx.THREE.CapsuleGeometry(.34,1.1,4,8),new ctx.THREE.MeshLambertMaterial({color:0x557d96}));mesh.position.y=1.0;mesh.castShadow=true;mesh.layers.set(1);group.add(mesh)}
  const tag=createNameTag(p.name);group.add(tag);
  group.position.set(p.x,p.y||0,p.z);ctx.scene.add(group);
  ctx.avatars.set(p.id,{group,actor,tag,name:p.name||'Игрок',goal:new ctx.THREE.Vector3(p.x,p.y||0,p.z),angle:p.yaw||0,jumping:!!p.jumping});ctx.playerList?.render();}

@@ -38,7 +38,7 @@ export function createDayCycle(ctx, {
     fog:scene.fog?.color.clone() ?? null,
     sunColor:sun.color.clone(),
     ambient:hemisphere.intensity,
-    sun:sun.intensity,
+    sun:ctx.atmosphere?.sunIntensity ?? sun.intensity,
   };
   let startedAt=null,lastSample=-Infinity,active=false;
   function restore(){
@@ -47,7 +47,8 @@ export function createDayCycle(ctx, {
       if(original.fog&&scene.fog)scene.fog.color.copy(original.fog);
       sun.color.copy(original.sunColor);
       hemisphere.intensity=original.ambient;
-      sun.intensity=original.sun;
+      if(ctx.atmosphere?.setSunIntensity)ctx.atmosphere.setSunIntensity(original.sun);
+      else sun.intensity=original.sun;
     }
     ctx.atmosphere?.restore();
     active=false;
@@ -60,7 +61,8 @@ export function createDayCycle(ctx, {
     if(scene.fog)scene.fog.color.copy(scene.background);
     sun.color.copy(colors[a].sun).lerp(colors[b].sun,t);
     hemisphere.intensity=ambient;
-    sun.intensity=sunIntensity;
+    if(ctx.atmosphere?.setSunIntensity)ctx.atmosphere.setSunIntensity(sunIntensity);
+    else sun.intensity=sunIntensity;
     ctx.atmosphere?.setPhase(phase);
     active=true;
   }

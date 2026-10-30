@@ -1,4 +1,4 @@
-import {createAnimations} from './animations.js';
+import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
 import {createWorld} from './world.js?v=20261030-grass1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
@@ -9,16 +9,16 @@ import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js?v=20261030-craft1';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-craft1';
-import {createPlayer} from './player.js?v=20261030-atmosphere1';
-import {createMultiplayer} from './multiplayer.js?v=20261030-teamgoal1';
+import {createPlayer} from './player.js?v=20261030-character-shadow-12m1';
+import {createMultiplayer} from './multiplayer.js?v=20261030-character-shadow-12m1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-settings-modal1';
+import {createSettings} from './settings.js?v=20261030-shadow-controls-restored1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js';
 import {createLandmarks} from './landmarks.js?v=20261030-fire1';
-import {createDayCycle} from './day-cycle.js?v=20261030-atmosphere1';
-import {createAtmosphere} from './atmosphere.js?v=20261030-atmosphere1';
+import {createDayCycle} from './day-cycle.js?v=20261030-dual-shadows1';
+import {createAtmosphere} from './atmosphere.js?v=20261030-shadow-controls-restored1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
 import {createCrafting} from './crafting.js';
@@ -81,7 +81,21 @@ const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
 let socket=null,myId=null,lastMoveSent=0;const avatars=new Map();
 const notifications=createNotifications();
 const settings=createSettings(document,null,fov=>{camera.fov=fov;camera.updateProjectionMatrix();},quality=>applyQuality(renderer,quality,devicePixelRatio,innerWidth,innerHeight));
-const atmosphere=createAtmosphere({THREE,renderer,scene,camera,sun,ground,settings,trees});
+const atmosphere=createAtmosphere({
+ THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
+ getCharacterShadowCasters(radius){
+  const casters=ownAvatar?.shadowMeshes ? [...ownAvatar.shadowMeshes] : [];
+  const radiusSq=radius*radius;
+  for(const avatar of avatars.values()){
+   const p=avatar.group.position;
+   if((p.x-px)**2+(p.z-pz)**2>radiusSq)continue;
+   if(avatar.actor?.shadowMeshes)casters.push(...avatar.actor.shadowMeshes);
+   else for(const mesh of avatar.group.children)
+    if(mesh.isMesh && mesh.castShadow)casters.push(mesh);
+  }
+  return casters;
+ },
+});
 const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere});
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null;
@@ -235,7 +249,14 @@ const landmarks=createLandmarks(ctx);
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, placeError, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
 ({aimed, spawnChips, chop}=createChopping(ctx));
-ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.group.visible=thirdPerson;}
+ownAvatar=createLumberjack();if(ownAvatar){
+ // Layer 3 is local-only (hidden in first person); layer 1 remains enabled
+ // for remote players. Both layers are visible to the character shadow light.
+ ownAvatar.visual.traverse(node=>{if(node.isMesh)node.layers.set(3);});
+ camera.layers.enable(1);
+ camera.layers.enable(3);
+ scene.add(ownAvatar.group);
+}
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));
 const emotes=createEmotes(ctx);
 const playerList=createPlayerList(ctx);

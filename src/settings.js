@@ -2,7 +2,7 @@
 import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
 import {FPS_OPTIONS} from './frame-limiter.js';
 const KEY = 'forest-chopper:settings:v1';
-const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, grassDensity: 25, grassDistance: 50, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30});
+const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, grassDensity: 25, grassDistance: 50, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowFps: 20});
 
 export function sanitizeSettings(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -17,6 +17,15 @@ export function sanitizeSettings(value) {
     autoSprint: source.autoSprint === true,
     quality: ['low','balanced','high'].includes(source.quality) ? source.quality : DEFAULT.quality,
     maxFps: FPS_OPTIONS.includes(source.maxFps) ? source.maxFps : DEFAULT.maxFps,
+    shadowDistance: Number.isInteger(source.shadowDistance) && source.shadowDistance >= 20
+      && source.shadowDistance <= 100 ? source.shadowDistance : DEFAULT.shadowDistance,
+    shadowRefreshSeconds: Number.isFinite(source.shadowRefreshSeconds)
+      && source.shadowRefreshSeconds >= 1 && source.shadowRefreshSeconds <= 5
+      ? Math.round(source.shadowRefreshSeconds * 2) / 2 : DEFAULT.shadowRefreshSeconds,
+    characterShadowFps: Number.isInteger(source.characterShadowFps)
+      && source.characterShadowFps >= 0 && source.characterShadowFps <= 60
+      && source.characterShadowFps % 5 === 0 ? source.characterShadowFps
+      : source.characterShadowsEnabled === false ? 0 : DEFAULT.characterShadowFps,
     grassDensity: Number.isInteger(source.grassDensity) && source.grassDensity >= 1
       && source.grassDensity <= 50 ? source.grassDensity : DEFAULT.grassDensity,
     grassDistance: Number.isInteger(source.grassDistance) && source.grassDistance >= 12
@@ -69,8 +78,6 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 .fc-settings-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 20px;border-top:1px solid #ffffff26}
 .fc-settings-footer small{margin:0!important}
 .fc-settings :focus-visible{outline:2px solid #a8eec0;outline-offset:3px}
-/* Onboarding takes priority: keep its text unobstructed until the player finishes/skips it. */
-body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
 .fc-settings h2{font-size:16px;margin:0 0 12px}
 .fc-settings label{display:block;margin:10px 0}
 .fc-settings small{display:block;color:#bed7c6;line-height:1.35;margin:-5px 0 9px}
@@ -85,7 +92,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
 .fc-angle-pair input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:17px;height:23px;border:2px solid #143c25;border-radius:6px;background:#96e3aa;cursor:ew-resize;pointer-events:auto}
 .fc-angle-pair input[type=range]::-moz-range-thumb{width:17px;height:23px;border:2px solid #143c25;border-radius:6px;background:#96e3aa;cursor:ew-resize;pointer-events:auto}
 .fc-settings button{border-radius:7px;padding:7px 10px}
-.fc-fps{position:fixed;z-index:5;top:320px;left:16px;max-width:calc(100vw - 32px);border-radius:6px;padding:6px 8px;background:#10251fe8;color:#baf1ca;font:600 11px/1.5 ui-monospace,monospace;white-space:pre-line;pointer-events:none}
+.fc-fps{position:fixed;z-index:9;top:320px;left:16px;max-width:calc(100vw - 32px);border-radius:6px;padding:6px 8px;background:#10251fe8;color:#baf1ca;font:600 11px/1.5 ui-monospace,monospace;white-space:pre-line;pointer-events:none}
 @media(max-width:450px){.fc-settings{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:11px}.fc-settings-header{padding:11px 13px 7px}.fc-settings-tabs{padding:6px 10px 9px}.fc-settings .fc-settings-tab{min-width:80px;padding:8px 6px}.fc-settings-content{padding:7px 14px 12px}.fc-settings-footer{padding:9px 13px}.fc-settings-toggle{top:95px;right:12px;padding:8px 10px}}
 `;
   doc.head.append(css);
@@ -122,6 +129,13 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
       <option value="90">90 FPS</option><option value="120">120 FPS</option>
       <option value="144">144 FPS</option><option value="0">Без ограничения</option></select></label>
     <small>Ограничивает частоту отрисовки и обновления игры. По умолчанию 60 FPS.</small>
+    <label>Дальность теней от деревьев: <output id="fc-shadow-distance-value"></output> м
+      <input id="fc-shadow-distance" type="range" min="20" max="100" step="1"></label>
+    <label>Обновлять тени деревьев каждые: <output id="fc-shadow-refresh-value"></output> с
+      <input id="fc-shadow-refresh" type="range" min="1" max="5" step="0.5"></label>
+    <label>Обновление теней персонажей: <output id="fc-character-shadow-fps-value"></output>
+      <input id="fc-character-shadow-fps" type="range" min="0" max="60" step="5"></label>
+    <small>0 FPS — выключить тени персонажей. Карта: 60×60 м, разрешение 512/1024/2048 px в зависимости от качества. Тени деревьев обновляются отдельно.</small>
     <label>Угол обзора (FOV): <output id="fc-fov-value"></output>°
       <input id="fc-fov" type="range" min="65" max="95" step="5"></label>
     <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
@@ -179,6 +193,12 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   const sprintCheckbox = panel.querySelector('#fc-auto-sprint');
   const qualitySelect = panel.querySelector('#fc-quality');
   const fpsSelect = panel.querySelector('#fc-max-fps');
+  const shadowDistanceInput = panel.querySelector('#fc-shadow-distance');
+  const shadowRefreshInput = panel.querySelector('#fc-shadow-refresh');
+  const characterShadowFpsInput = panel.querySelector('#fc-character-shadow-fps');
+  const characterShadowFpsValue = panel.querySelector('#fc-character-shadow-fps-value');
+  const shadowDistanceValue = panel.querySelector('#fc-shadow-distance-value');
+  const shadowRefreshValue = panel.querySelector('#fc-shadow-refresh-value');
   const grassDensityInput = panel.querySelector('#fc-grass-density');
   const grassDistanceInput = panel.querySelector('#fc-grass-distance');
   const grassDensityValue = panel.querySelector('#fc-grass-density-value');
@@ -207,6 +227,12 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     sprintCheckbox.checked = state.autoSprint;
     qualitySelect.value = state.quality;
     fpsSelect.value = String(state.maxFps);
+    shadowDistanceInput.value = String(state.shadowDistance);
+    shadowRefreshInput.value = String(state.shadowRefreshSeconds);
+    characterShadowFpsInput.value = String(state.characterShadowFps);
+    characterShadowFpsValue.textContent = state.characterShadowFps === 0 ? 'Выключено' : state.characterShadowFps+' FPS';
+    shadowDistanceValue.textContent = String(state.shadowDistance);
+    shadowRefreshValue.textContent = String(state.shadowRefreshSeconds);
     grassDensityInput.value = String(state.grassDensity);
     grassDistanceInput.value = String(state.grassDistance);
     grassDensityValue.textContent = String(state.grassDensity);
@@ -294,6 +320,21 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     lastSample=null;frames=0;lastRate=null;
     reflect();save();
   };
+  shadowDistanceInput.oninput = () => {
+    state.shadowDistance = sanitizeSettings({...state,
+      shadowDistance:Number(shadowDistanceInput.value)}).shadowDistance;
+    reflect();save();
+  };
+  shadowRefreshInput.oninput = () => {
+    state.shadowRefreshSeconds = sanitizeSettings({...state,
+      shadowRefreshSeconds:Number(shadowRefreshInput.value)}).shadowRefreshSeconds;
+    reflect();save();
+  };
+  characterShadowFpsInput.oninput = () => {
+    state.characterShadowFps = sanitizeSettings({...state,
+      characterShadowFps:Number(characterShadowFpsInput.value)}).characterShadowFps;
+    reflect();save();
+  };
   grassDensityInput.oninput = () => {
     state.grassDensity = sanitizeSettings({...state, grassDensity:Number(grassDensityInput.value)}).grassDensity;
     reflect();save();
@@ -367,6 +408,9 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     get fov(){return state.fov;},
     get quality(){return state.quality;},
     get maxFps(){return state.maxFps;},
+    get shadowDistance(){return state.shadowDistance;},
+    get shadowRefreshSeconds(){return state.shadowRefreshSeconds;},
+    get characterShadowFps(){return state.characterShadowFps;},
     get grassDensity(){return state.grassDensity;},
     get grassDistance(){return state.grassDistance;},
     get grassMinSize(){return state.grassMinSize;},

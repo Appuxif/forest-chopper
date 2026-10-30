@@ -1,9 +1,14 @@
 // Lightweight local atmosphere and a bounded shadow budget for trees.
 // Everything is cosmetic: no network state, world generation, or time sync.
 export const SHADOW_TREE_LIMIT = 34;
-export const SHADOW_TREE_RADIUS = 39;
-export const SHADOW_UPDATE_MS = 260;
+export const SHADOW_TREE_RADIUS = 60;
+export const SHADOW_UPDATE_MS = 1000;
+export const SHADOW_MAX_TREE_LIMIT = 480;
 export const SHADOW_MAP_SIZES = Object.freeze({low:512,balanced:1024,high:2048});
+// Half-extent: 30 metres in each direction = 60x60m shadow coverage.
+export const CHARACTER_SHADOW_RADIUS = 30;
+export const CHARACTER_SHADOW_MAP_SIZES = Object.freeze({low:512,balanced:1024,high:2048});
+export const CHARACTER_SHADOW_FPS = 20;
 
 export function celestialDirections(phase) {
   const f = Number.isFinite(phase) ? ((phase % 1) + 1) % 1 : 0;
@@ -37,7 +42,8 @@ export function selectShadowTrees(trees, x, z, radius=SHADOW_TREE_RADIUS,
   return nearby.slice(0,limit).map(item=>item.tree);
 }
 
-export function createAtmosphere({THREE,renderer,scene,camera,sun,ground,settings,trees}) {
+export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
+  getCharacterShadowCasters=()=>[]}) {
   const skyMaterial=new THREE.ShaderMaterial({
     uniforms:{
       horizon:{value:new THREE.Color(0xa4c8be)},
@@ -87,23 +93,82 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,ground,setting
   moonBody.renderOrder=-190;
   scene.add(sunBody,moonBody);
 
+  // Real tree and character shadows, separate maps and refresh cadences.
+  const initialSunIntensity=sun.intensity;
+  const characterLight=new THREE.DirectionalLight(sun.color,initialSunIntensity*.5);
+  scene.add(characterLight,characterLight.target);
+  for(const light of [sun,characterLight,hemisphere]){
+    light?.layers.enable(1); // remote characters
+    light?.layers.enable(3); // local character, hidden in first person
+  }
   renderer.shadowMap.enabled=true;
   renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-  renderer.shadowMap.autoUpdate=false;
+  renderer.shadowMap.autoUpdate=true;
   sun.castShadow=true;
+  sun.shadow.autoUpdate=false;
+  characterLight.castShadow=true;
+  characterLight.shadow.autoUpdate=false;
+  characterLight.shadow.bias=-.00012;
+  characterLight.shadow.normalBias=.035;
+  characterLight.shadow.radius=1.6;
+  const characterCamera=characterLight.shadow.camera;
+  characterCamera.left=-CHARACTER_SHADOW_RADIUS;
+  characterCamera.right=CHARACTER_SHADOW_RADIUS;
+  characterCamera.top=CHARACTER_SHADOW_RADIUS;
+  characterCamera.bottom=-CHARACTER_SHADOW_RADIUS;
+  characterCamera.near=.5;
+  characterCamera.far=100;
+  characterCamera.updateProjectionMatrix();
+
+  // Three.js r170 uses the *view camera* layers during shadow map rendering,
+  // not the shadow camera layers. We give each light only its actual casters.
+  // This avoids traversing the forest on every character shadow update.
+  const treeShadowScene=new THREE.Group();
+  const characterShadowScene=new THREE.Group();
+  const originalShadowRender=renderer.shadowMap.render;
+  renderer.shadowMap.render=function(lights,shadowScene,viewCamera){
+    const oldMask=viewCamera.layers.mask;
+    try{
+      for(const light of lights){
+        if(light.shadow?.autoUpdate===false && !light.shadow.needsUpdate)continue;
+        if(light===sun){
+          viewCamera.layers.mask=1; // tree meshes only
+          originalShadowRender.call(this,[light],treeShadowScene,viewCamera);
+        }else if(light===characterLight){
+          characterShadowScene.children=getCharacterShadowCasters(CHARACTER_SHADOW_RADIUS);
+          viewCamera.layers.mask=(1<<1)|(1<<3); // remote and local skinned meshes
+          originalShadowRender.call(this,[light],characterShadowScene,viewCamera);
+        }else{
+          viewCamera.layers.mask=oldMask;
+          originalShadowRender.call(this,[light],shadowScene,viewCamera);
+        }
+      }
+    }finally{
+      viewCamera.layers.mask=oldMask;
+    }
+  };
   sun.shadow.bias=-.00012;
   sun.shadow.normalBias=.035;
   sun.shadow.radius=2.2;
-  sun.shadow.camera.left=-45;
-  sun.shadow.camera.right=45;
-  sun.shadow.camera.top=45;
-  sun.shadow.camera.bottom=-45;
+  sun.shadow.camera.left=-72;
+  sun.shadow.camera.right=72;
+  sun.shadow.camera.top=72;
+  sun.shadow.camera.bottom=-72;
   sun.shadow.camera.near=.5;
-  sun.shadow.camera.far=190;
+  sun.shadow.camera.far=220;
   sun.shadow.camera.updateProjectionMatrix();
   ground.receiveShadow=true;
   scene.add(sun.target);
   let quality=null, phase=0, lastUpdate=-Infinity, centerX=Infinity,centerZ=Infinity;
+  let shadowRadius=null, refreshInterval=null,lastCharacterUpdate=-Infinity;
+  let totalSunIntensity=initialSunIntensity;
+  let characterShadowsEnabled=true;
+  function setSunIntensity(total){
+    totalSunIntensity=total;
+    sun.intensity=characterShadowsEnabled?total*.5:total;
+    characterLight.intensity=characterShadowsEnabled?total*.5:0;
+  }
+  setSunIntensity(initialSunIntensity);
   let lightingChanged=true;
   const activeTrees=new Set();
   const zenithDay=new THREE.Color(0x78b0d0);
@@ -118,6 +183,12 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,ground,setting
     quality=settings.quality;
     const size=shadowMapSizeForQuality(quality);
     sun.shadow.mapSize.set(size,size);
+    const characterSize=CHARACTER_SHADOW_MAP_SIZES[quality]??CHARACTER_SHADOW_MAP_SIZES.balanced;
+    characterLight.shadow.mapSize.set(characterSize,characterSize);
+    if(characterLight.shadow.map){
+      characterLight.shadow.map.dispose();
+      characterLight.shadow.map=null;
+    }
     if(sun.shadow.map){
       sun.shadow.map.dispose();
       sun.shadow.map=null;
@@ -130,6 +201,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,ground,setting
     sunVector.set(dirs.sun.x,dirs.sun.y,dirs.sun.z);
     moonVector.set(dirs.moon.x,dirs.moon.y,dirs.moon.z);
     skyMaterial.uniforms.sunDir.value.copy(sunVector);
+    characterLight.color.copy(sun.color);
     const daylight=Math.max(0,Math.min(1,(dirs.sun.y+.16)/.42));
     const night=1-(daylight*daylight*(3-2*daylight));
     skyMaterial.uniforms.horizon.value.copy(scene.background);
@@ -137,14 +209,17 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,ground,setting
     skyMaterial.uniforms.night.value=night;
     sunBody.visible=dirs.sun.y>-.10;
     moonBody.visible=dirs.moon.y>-.10;
-    // A single directional light doubles as cool moonlight at night; this
-    // keeps the shadow map count at one and aligns it with the visible body.
+    // Both shadow maps follow the same sun/moon direction.
     const source=dirs.sun.y>=0 ? dirs.sun : dirs.moon;
     lightDir.set(source.x,Math.max(.16,source.y),source.z).normalize();
     lightingChanged=true;
   }
-  function refreshCasters(x,z) {
-    const next=new Set(selectShadowTrees(trees,x,z));
+  function refreshCasters(x,z,radius) {
+    // Expand the caster budget with the *area*: keeping a fixed 34-tree cap
+    // would leave most of a 100 m shadow circle empty.
+    const limit=Math.min(SHADOW_MAX_TREE_LIMIT,Math.max(SHADOW_TREE_LIMIT,
+      Math.ceil(Math.PI*radius*radius/68)));
+    const next=new Set(selectShadowTrees(trees,x,z,radius,limit));
     for(const tree of activeTrees)if(!next.has(tree)){
       for(const mesh of tree.children)mesh.castShadow=false;
     }
@@ -153,17 +228,58 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,ground,setting
     }
     activeTrees.clear();
     for(const tree of next)activeTrees.add(tree);
+    treeShadowScene.children=[...activeTrees];
   }
   function tick(now,x,z) {
     dome.position.copy(camera.position);
     sunBody.position.copy(camera.position).addScaledVector(sunVector,210);
     moonBody.position.copy(camera.position).addScaledVector(moonVector,210);
-    if(now-lastUpdate<SHADOW_UPDATE_MS &&
-      Math.hypot(x-centerX,z-centerZ)<2 && !lightingChanged)return;
+    const radius=Math.max(20,Math.min(100,settings.shadowDistance??SHADOW_TREE_RADIUS));
+    const interval=Math.max(1000,Math.min(5000,
+      (settings.shadowRefreshSeconds??SHADOW_UPDATE_MS/1000)*1000));
+    const settingsChanged=radius!==shadowRadius || interval!==refreshInterval ||
+      quality!==settings.quality;
+    const treeDue=settingsChanged || now-lastUpdate>=interval;
+    const characterFps=Math.max(0,Math.min(60,
+      settings.characterShadowFps??CHARACTER_SHADOW_FPS));
+    const wantCharacters=characterFps>0;
+    if(characterShadowsEnabled!==wantCharacters){
+      characterShadowsEnabled=wantCharacters;
+      characterLight.castShadow=wantCharacters;
+      characterLight.visible=wantCharacters;
+      characterLight.shadow.needsUpdate=false;
+      lastCharacterUpdate=-Infinity;
+      setSunIntensity(totalSunIntensity);
+    }
+    // The tree pass takes priority; player shadow updates use their own
+    // adjustable 5–60 FPS cadence, or skip entirely at 0 FPS.
+    if(characterShadowsEnabled && !treeDue &&
+      now-lastCharacterUpdate>=1000/characterFps){
+      lastCharacterUpdate=now;
+      characterLight.target.position.set(x,0,z);
+      characterLight.position.copy(characterLight.target.position)
+        .addScaledVector(lightDir,35);
+      characterLight.target.updateMatrixWorld();
+      characterLight.updateMatrixWorld();
+      characterLight.shadow.needsUpdate=true;
+    }
+    // Tree map still updates only once per selected 1–5s interval.
+    if(!treeDue)return;
+    // Refresh on schedule even while the local player stands still:
+    // remote players (and idle animations) can keep moving independently.
     lastUpdate=now;
     centerX=x;centerZ=z;
+    if(radius!==shadowRadius){
+      shadowRadius=radius;
+      const extent=radius+12;
+      Object.assign(sun.shadow.camera,{
+        left:-extent,right:extent,top:extent,bottom:-extent,
+        far:Math.max(190,96+radius*2),
+      });
+    }
+    refreshInterval=interval;
     applyQuality();
-    refreshCasters(x,z);
+    refreshCasters(x,z,radius);
     // Shadows track the player rather than spending resolution on distant forest.
     targetPosition.set(x,0,z);
     sun.target.position.copy(targetPosition);
@@ -171,7 +287,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,ground,setting
     sun.target.updateMatrixWorld();
     sun.updateMatrixWorld();
     sun.shadow.camera.updateProjectionMatrix();
-    renderer.shadowMap.needsUpdate=true;
+    sun.shadow.needsUpdate=true;
     lightingChanged=false;
   }
   function restore() {
@@ -180,15 +296,23 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,ground,setting
   function dispose(){
     for(const tree of activeTrees)for(const mesh of tree.children)mesh.castShadow=false;
     activeTrees.clear();
-    scene.remove(dome,sunBody,moonBody);
+    treeShadowScene.children=[];
+    characterShadowScene.children=[];
+    renderer.shadowMap.render=originalShadowRender;
+    scene.remove(dome,sunBody,moonBody,characterLight,characterLight.target);
     dome.geometry.dispose();
     skyMaterial.dispose();
     bodyGeometry.dispose();
     solarMaterial.dispose();
     lunarMaterial.dispose();
     ground.receiveShadow=false;
+    characterLight.shadow.dispose();
+    sun.intensity=initialSunIntensity;
+    renderer.shadowMap.autoUpdate=false;
   }
   setPhase(0);
-  return {tick,setPhase,restore,dispose,dome,sunBody,moonBody,
+  return {tick,setPhase,restore,dispose,setSunIntensity,dome,sunBody,moonBody,characterLight,
+    get lightDirection(){return lightDir;},
+    get sunIntensity(){return totalSunIntensity;},
     get phase(){return phase;},get shadowCasters(){return activeTrees.size;}};
 }

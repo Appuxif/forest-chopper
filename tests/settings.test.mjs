@@ -4,7 +4,7 @@ import {sanitizeSettings,createSettings} from '../src/settings.js';
 
 const defaults = {
   mouseSensitivity:1,showFps:false,windEnabled:true,dayCycleEnabled:false,
-  autoSprint:false,quality:'balanced',maxFps:60,grassDensity:25,
+  autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowFps:20,grassDensity:25,
   grassDistance:50,grassMinSize:2.5,grassMaxSize:5.5,grassWidth:1,
   grassTurnMin:-30,grassTurnMax:30,fov:75,
 };

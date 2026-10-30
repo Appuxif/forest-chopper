@@ -56,6 +56,11 @@ console.info('Lumberjack animation layers (expected lower=18, upper=21)',Object.
 function createLumberjack(){
  if(!modelScene)return null;
  const group=new THREE.Group(),visual=cloneModel(modelScene);
+ // Reuse the actual animated skinned meshes in the character-only shadow pass.
+ const shadowMeshes=[];
+ visual.traverse(node=>{
+  if(node.isMesh){node.castShadow=true;shadowMeshes.push(node);}
+ });
  visual.rotation.y=Math.PI;group.add(visual);
  const mixer=new THREE.AnimationMixer(visual);
  const lower={},upper={};
@@ -64,7 +69,7 @@ function createLumberjack(){
   if(clips.upper.tracks.length)upper[name]=mixer.clipAction(clips.upper);
  }
  if(upper.Chop2){upper.Chop2.setLoop(THREE.LoopOnce,1);upper.Chop2.clampWhenFinished=true;}
- const actor={group,visual,mixer,lower,upper,lowerState:'',upperState:'',chopEnd:0,rmTimes:{}};
+ const actor={group,visual,shadowMeshes,mixer,lower,upper,lowerState:'',upperState:'',chopEnd:0,rmTimes:{}};
  actor.actions={...lower,Chop2:upper.Chop2};
  modelActors.add(actor);
  transitionLayer(actor,'lower','Idle');transitionLayer(actor,'upper','Idle');

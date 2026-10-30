@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   celestialDirections,shadowMapSizeForQuality,selectShadowTrees,
   createAtmosphere,SHADOW_TREE_LIMIT,SHADOW_TREE_RADIUS,SHADOW_UPDATE_MS,
+  CHARACTER_SHADOW_RADIUS,CHARACTER_SHADOW_MAP_SIZES,CHARACTER_SHADOW_FPS,
 } from '../src/atmosphere.js';
 
 test('celestial positions follow the 8-minute cycle: sun by day, moon by night',()=>{
@@ -47,6 +48,7 @@ function fixture(){
       this.r=((hex>>16)&255)/255;this.g=((hex>>8)&255)/255;this.b=(hex&255)/255;
     }
     copy(other){Object.assign(this,{r:other.r,g:other.g,b:other.b});return this;}
+    clone(){return new Color().copy(this);}
     lerp(other,t){this.r+=(other.r-this.r)*t;this.g+=(other.g-this.g)*t;this.b+=(other.b-this.b)*t;return this;}
   }
   class Vector3 {
@@ -56,6 +58,24 @@ function fixture(){
     addScaledVector(v,s){this.x+=v.x*s;this.y+=v.y*s;this.z+=v.z*s;return this;}
     normalize(){const n=Math.hypot(this.x,this.y,this.z);this.x/=n;this.y/=n;this.z/=n;return this;}
   }
+  class Layers {
+    constructor(){this.mask=1;}
+    set(n){this.mask=1<<n;}
+    enable(n){this.mask|=1<<n;}
+    test(other){return (this.mask & other.mask)!==0;}
+  }
+  class DirectionalLight {
+    constructor(color=new Color(0xffe4a6),intensity=2.3){
+      this.color=color.clone();this.intensity=intensity;
+      this.position=new Vector3();this.layers=new Layers();this.castShadow=false;
+      this.target={position:new Vector3(),updateMatrixWorld(){}};
+      this.shadow={mapSize:{set(x,y){this.x=x;this.y=y;}},
+        camera:{layers:new Layers(),updateProjectionMatrix(){}},map:null,
+        dispose(){this.disposed=true;}};
+    }
+    updateMatrixWorld(){}
+  }
+  class Group {constructor(){this.children=[];this.layers=new Layers();this.visible=true;}}
   class Geometry{constructor(){this.disposed=false;}dispose(){this.disposed=true;}}
   class Material{constructor(options){this.options=options;this.disposed=false;Object.assign(this,options);}dispose(){this.disposed=true;}}
   class ShaderMaterial extends Material{}
@@ -71,66 +91,97 @@ function fixture(){
     add(...objects){this.children.push(...objects);},
     remove(...objects){this.children=this.children.filter(c=>!objects.includes(c));},
   };
-  const camera={position:new Vector3(2,3,4)};
-  const sun={
-    position:new Vector3(),target:{position:new Vector3(),updateMatrixWorld(){}},
-    castShadow:false,updateMatrixWorld(){},
-    shadow:{
-      mapSize:{set(x,y){this.x=x;this.y=y;}},
-      camera:{updateProjectionMatrix(){}},
-      map:null,
-    },
-  };
-  const renderer={shadowMap:{}};
+  const camera={position:new Vector3(2,3,4),layers:new Layers()};
+  camera.layers.enable(1);camera.layers.enable(3);
+  const sun=new DirectionalLight();
+  const hemisphere={layers:new Layers()};
+  const renders=[];
+  const renderer={shadowMap:{render(lights,shadowScene,viewCamera){
+    renders.push({light:lights[0],count:shadowScene.children.length,mask:viewCamera.layers.mask});
+  }}};
   const ground={receiveShadow:false};
-  const settings={quality:'balanced'};
+  const settings={quality:'balanced',shadowDistance:60,shadowRefreshSeconds:1,
+    characterShadowFps:20};
   const trees=new Map();
   for(let i=0;i<65;i++)trees.set(i,{position:{x:i*.75,z:0},
     children:Array.from({length:5},()=>({castShadow:false}))});
   const THREE={Color,Vector3,SphereGeometry:Geometry,MeshBasicMaterial:Material,
-    ShaderMaterial,Mesh,BackSide:1,PCFSoftShadowMap:2};
-  const atmosphere=createAtmosphere({THREE,renderer,scene,camera,sun,ground,settings,trees});
-  return {scene,renderer,ground,sun,trees,settings,atmosphere,camera};
+    ShaderMaterial,Mesh,Group,DirectionalLight,BackSide:1,PCFSoftShadowMap:2};
+  const characters=[{layers:new Layers(),castShadow:true},{layers:new Layers(),castShadow:true}];
+  characters[0].layers.set(1);characters[1].layers.set(3);
+  const atmosphere=createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
+    getCharacterShadowCasters:()=>characters});
+  return {scene,renderer,renders,ground,sun,trees,settings,atmosphere,camera};
 }
 
-test('atmosphere shares a single shadow map and refreshes only near moving trees',()=>{
+test('trees and nearby skinned players use independent shadow maps',()=>{
   const f=fixture();
-  assert.equal(f.renderer.shadowMap.autoUpdate,false);
   assert.equal(f.renderer.shadowMap.enabled,true);
+  assert.equal(f.renderer.shadowMap.autoUpdate,true);
   assert.equal(f.sun.castShadow,true);
+  assert.equal(f.sun.shadow.autoUpdate,false);
+  const charLight=f.atmosphere.characterLight;
+  assert.equal(charLight.castShadow,true);
+  assert.equal(charLight.shadow.camera.left,-CHARACTER_SHADOW_RADIUS);
+  assert.equal(charLight.shadow.camera.right,CHARACTER_SHADOW_RADIUS);
+  assert.equal(charLight.shadow.camera.top,30);
+  assert.deepEqual(CHARACTER_SHADOW_MAP_SIZES,{low:512,balanced:1024,high:2048});
+  assert.equal(f.atmosphere.sunIntensity,2.3);
   assert.equal(f.ground.receiveShadow,true);
   assert.equal(f.atmosphere.sunBody.visible,true);
   assert.equal(f.atmosphere.moonBody.visible,false);
   f.atmosphere.tick(0,0,0);
   assert.equal(f.sun.shadow.mapSize.x,1024);
-  assert.equal(f.sun.shadow.mapSize.y,1024);
-  assert.ok(f.atmosphere.shadowCasters<=SHADOW_TREE_LIMIT);
+  assert.equal(charLight.shadow.mapSize.x,1024);
+  assert.ok(f.atmosphere.shadowCasters<=480);
   assert.ok(f.atmosphere.shadowCasters>0);
+  assert.ok(f.atmosphere.lightDirection.y>0);
   const oldCasters=[...f.trees.values()].filter(t=>t.children[0].castShadow);
   assert.equal(oldCasters.length,f.atmosphere.shadowCasters);
-  f.renderer.shadowMap.needsUpdate=false;
-  f.atmosphere.tick(SHADOW_UPDATE_MS-1,0,0);
-  assert.equal(f.renderer.shadowMap.needsUpdate,false,'stationary time below throttle does not redraw');
+  f.sun.shadow.needsUpdate=false;
+  charLight.shadow.needsUpdate=false;
+  f.atmosphere.tick(1000/CHARACTER_SHADOW_FPS,0,0);
+  assert.equal(f.sun.shadow.needsUpdate,false,'character updates do not refresh trees');
+  assert.equal(charLight.shadow.needsUpdate,true);
+  f.renderer.shadowMap.render([f.sun,charLight],f.scene,f.camera);
+  assert.equal(f.renders.length,1,'only the due character map redraws');
+  assert.equal(f.renders[0].light,charLight);
+  assert.equal(f.renders[0].count,2,'only character meshes enter the fast pass');
+  assert.equal(f.renders[0].mask,(1<<1)|(1<<3));
+  assert.equal(f.camera.layers.mask,(1)|(1<<1)|(1<<3),'view camera restored');
+  charLight.shadow.needsUpdate=false;
   f.atmosphere.tick(SHADOW_UPDATE_MS,70,0);
-  assert.equal(f.renderer.shadowMap.needsUpdate,true);
-  assert.ok(f.trees.get(0).children.every(m=>!m.castShadow),'distant trees release their shadow slots');
+  assert.equal(f.sun.shadow.needsUpdate,true);
+  f.renderer.shadowMap.render([f.sun,charLight],f.scene,f.camera);
+  assert.equal(f.renders.at(-1).light,f.sun);
+  assert.ok(f.renders.at(-1).count>0,'only nearby tree groups enter the slow pass');
+  assert.ok(f.trees.get(0).children.every(m=>!m.castShadow));
   f.settings.quality='high';
   f.atmosphere.tick(SHADOW_UPDATE_MS*2,70,0);
   assert.equal(f.sun.shadow.mapSize.x,2048);
+  assert.equal(charLight.shadow.mapSize.x,2048);
   f.settings.quality='low';
   f.atmosphere.tick(SHADOW_UPDATE_MS*3,70,0);
   assert.equal(f.sun.shadow.mapSize.x,512);
-
+  assert.equal(charLight.shadow.mapSize.x,512);
+  f.settings.characterShadowFps=0;
+  f.atmosphere.tick(SHADOW_UPDATE_MS*3+1,70,0);
+  assert.equal(charLight.castShadow,false);
+  assert.equal(f.sun.intensity,2.3);
+  f.settings.characterShadowFps=20;
+  f.atmosphere.tick(SHADOW_UPDATE_MS*3+2,70,0);
+  assert.equal(charLight.castShadow,true);
+  f.atmosphere.setSunIntensity(.9);
+  assert.equal(f.atmosphere.sunIntensity,.9);
   f.atmosphere.setPhase(.5);
   f.atmosphere.tick(SHADOW_UPDATE_MS*4,70,0);
   assert.equal(f.atmosphere.sunBody.visible,false);
   assert.equal(f.atmosphere.moonBody.visible,true);
-  assert.ok(f.sun.position.y>0,'moonlight uses visible sky direction');
+  assert.ok(f.sun.position.y>0);
   f.atmosphere.restore();
   f.atmosphere.tick(SHADOW_UPDATE_MS*5,70,0);
   assert.equal(f.atmosphere.sunBody.visible,true);
   assert.equal(f.atmosphere.moonBody.visible,false);
-
   f.atmosphere.dispose();
   assert.equal(f.atmosphere.shadowCasters,0);
   assert.equal(f.ground.receiveShadow,false);

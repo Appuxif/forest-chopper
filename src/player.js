@@ -5,7 +5,12 @@ import {createFrameLimiter} from './frame-limiter.js';
 export function createPlayer(ctx) {
 const limiter=createFrameLimiter();
 let lastWorldTick=-Infinity;
-function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;if(ctx.ownAvatar)ctx.ownAvatar.group.visible=ctx.thirdPerson;ctx.axe.visible=!ctx.thirdPerson;ctx.$('viewtoggle').textContent=ctx.thirdPerson?'👤 Камера: сзади':'👁 Камера: глаза'}
+function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
+ // Hide the local avatar from the main camera only; keep it visible to
+ // the shadow camera even when playing in first person.
+ if(ctx.thirdPerson)ctx.camera.layers.enable(3);else ctx.camera.layers.disable(3);
+ ctx.axe.visible=!ctx.thirdPerson;
+ ctx.$('viewtoggle').textContent=ctx.thirdPerson?'👤 Камера: сзади':'👁 Камера: глаза'}
 ctx.$('viewtoggle').onclick=toggleView;ctx.axe.visible=false;
 
 function animate(now){
@@ -50,8 +55,8 @@ function animate(now){
   ctx.camera.position.set(ctx.px+Math.sin(ctx.yaw)*back,ctx.feetY+1.8+raise+Math.max(0,-Math.sin(ctx.pitch))*1.5,ctx.pz+Math.cos(ctx.yaw)*back);
   ctx.camera.lookAt(ctx.px,ctx.feetY+1.65+Math.tan(ctx.pitch)*3,ctx.pz);
  }
- ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
- // Local mixer and position were updated above, before camera rendering.
+ // The real skinned meshes are reused by the small character shadow pass.
+ // Both shadow maps are scheduled after all local/remote pose updates.
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;
 for(let i=ctx.falling.length-1;i>=0;i--){const f=ctx.falling[i];f.elapsed+=dt;const a=Math.min(1,f.elapsed/1.8);const angle=a*a*(Math.PI/2);f.tree.rotation.z=Math.sin(f.direction)*angle;f.tree.rotation.x=Math.cos(f.direction)*angle;if(f.elapsed>2.5){ctx.scene.remove(f.tree);ctx.falling.splice(i,1)}}
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}
@@ -72,7 +77,9 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
    const rate=remoteMotion==='Run'?2.35:remoteMotion==='Walk'?2.25:remoteMotion.startsWith('Strafe')?4:1;
    ctx.tickActor(avatar.actor,dt,remoteMotion,avatar.jumping,rate);
   }
- }ctx.renderer.render(ctx.scene,ctx.camera)}requestAnimationFrame(animate);
+ }
+ ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
+ ctx.renderer.render(ctx.scene,ctx.camera)}requestAnimationFrame(animate);
 
 return {toggleView, animate};
 }
