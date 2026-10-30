@@ -1,5 +1,5 @@
-// Fixed-rate frame scheduler. requestAnimationFrame still runs at refresh rate,
-// but expensive scene updates/rendering happen only on accepted timestamps.
+// Render-only FPS cap. requestAnimationFrame and simulation run every display
+// tick; this scheduler decides only when to draw a new frame.
 export const FPS_OPTIONS = Object.freeze([30,60,90,120,144,0]); // 0 = unlimited
 
 export function createFrameLimiter() {

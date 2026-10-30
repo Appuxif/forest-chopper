@@ -63,7 +63,7 @@ function fixture() {
     flowerMat: sharedMaterial, mushroomMat: sharedMaterial,
     rareLeafMat: sharedMaterial, logGeo: sharedGeometry,
     logMat: sharedMaterial, endMat: sharedMaterial,
-    trees: new Map(), chunks: new Map(), felled: new Set(),
+    trees: new Map(), chunks: new Map(), rockColliders:new Map(), felled: new Set(),
     treeDamage: new Map(), seed: 321, chunkSize: 24, radius: 0,
     px: 0, pz: 0, yaw: 0, orientation: 0, placed: [],
     wood: 5, logRadius: .29, buildMode: false, preview: null,
@@ -79,6 +79,7 @@ test('130 chunk cycles keep shared resources and never create growing rectangula
     ctx.px = 40 + i * 220;
     ctx.pz = 40 + i * 220;
     world.updateChunks();
+    assert.equal(ctx.rockColliders.size,ctx.chunks.size,'rock colliders unload with chunks');
     for (const tree of ctx.trees.values()) {
       assert.equal(tree.children.length, 5, 'one trunk and four foliage meshes only');
       assert.equal(tree.userData.scar, undefined);
@@ -155,7 +156,7 @@ test('three visual tree silhouettes are deterministic without altering gameplay 
   assert.deepEqual(created,[sharedGeometry,sharedMaterial],'variants reuse existing GPU resources');
 });
 
-test('deterministic mushrooms and flowers replace existing grass without extra meshes or collisions', () => {
+test('deterministic flowers, shrubs, mushrooms and rocks retain seeded slots and shared meshes', () => {
   function snapshot() {
     const {ctx,created,sharedGeometry,sharedMaterial} = fixture();
     const world = createWorld(ctx);
@@ -165,6 +166,12 @@ test('deterministic mushrooms and flowers replace existing grass without extra m
       world.build(i,2);
       const decor=ctx.chunks.get(`${i},2`);
       assert.equal(decor.children.length,25,'same budget per chunk');
+      assert.equal(decor.userData.shadowDecor.length,25,'every decor type is a shadow caster');
+      assert.equal(ctx.rockColliders.get(`${i},2`).length,
+        decor.children.filter(mesh=>mesh.userData.decorType==='rock').length,
+        'rock collisions share the decorative world seed');
+      assert.equal(decor.userData.reactivePlants.length,
+        decor.children.filter(mesh=>['grass','flower'].includes(mesh.userData.decorType)).length);
       const chunk=decor.children.map(mesh=>{
         const type=mesh.userData.decorType;
         if(type==='mushroom'){

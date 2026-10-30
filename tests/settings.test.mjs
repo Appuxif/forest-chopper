@@ -4,7 +4,7 @@ import {sanitizeSettings,createSettings} from '../src/settings.js';
 
 const defaults = {
   mouseSensitivity:1,showFps:false,windEnabled:true,dayCycleEnabled:false,
-  autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowFps:20,grassDensity:25,
+  autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:70,grassDensity:25,
   grassDistance:50,grassMinSize:2.5,grassMaxSize:5.5,grassWidth:1,
   grassTurnMin:-30,grassTurnMax:30,fov:75,
 };
@@ -27,6 +27,17 @@ test('sensitivity boundaries are inclusive and persistence stays independent of 
   assert.equal(sanitizeSettings({dayCycleEnabled:'true'}).dayCycleEnabled,false);
   assert.equal(sanitizeSettings({autoSprint:true}).autoSprint,true);
   assert.equal(sanitizeSettings({autoSprint:'true'}).autoSprint,false);
+  assert.equal(sanitizeSettings({characterShadowFps:0}).characterShadowsEnabled,false,
+    'old 0 FPS setting migrates to disabled shadows');
+  assert.equal(sanitizeSettings({characterShadowFps:20}).characterShadowsEnabled,true);
+  assert.equal(sanitizeSettings({characterShadowsEnabled:false}).characterShadowsEnabled,false);
+  assert.equal(sanitizeSettings({characterShadowDistance:10}).characterShadowDistance,10);
+  assert.equal(sanitizeSettings({characterShadowDistance:100}).characterShadowDistance,100);
+  assert.equal(sanitizeSettings({characterShadowDistance:101}).characterShadowDistance,30);
+  assert.equal(sanitizeSettings({characterShadowDistance:5}).characterShadowDistance,30);
+  assert.equal(sanitizeSettings({shadowContrast:0}).shadowContrast,0);
+  assert.equal(sanitizeSettings({shadowContrast:100}).shadowContrast,100);
+  assert.equal(sanitizeSettings({shadowContrast:101}).shadowContrast,70);
   assert.equal(sanitizeSettings({fov:65}).fov,65);
   assert.equal(sanitizeSettings({fov:95}).fov,95);
   assert.equal(sanitizeSettings({fov:62}).fov,75);
@@ -54,6 +65,18 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   const settings=createSettings(doc,storage,fov=>updates.push(fov));
   assert.equal(settings.fov,85);
   assert.deepEqual(updates,[85]);
+  const radius=element('#fc-character-shadow-distance');
+  assert.equal(radius.value,'30');
+  radius.value='100';radius.oninput();
+  assert.equal(settings.characterShadowDistance,100);
+  assert.equal(element('#fc-character-shadow-distance-value').textContent,'100');
+  assert.equal(writes.at(-1)[1].characterShadowDistance,100);
+  const contrast=element('#fc-shadow-contrast');
+  assert.equal(contrast.value,'70');
+  contrast.value='95';contrast.oninput();
+  assert.equal(settings.shadowContrast,95);
+  assert.equal(element('#fc-shadow-contrast-value').textContent,'95');
+  assert.equal(writes.at(-1)[1].shadowContrast,95);
   const input=element('#fc-fov');
   assert.equal(input.value,'85');
   input.value='95';
@@ -64,6 +87,8 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   assert.equal(writes.at(-1)[1].fov,95);
   assert.equal(writes.at(-1)[1].seed,undefined);
   element('#fc-reset-settings').onclick();
+  assert.equal(settings.characterShadowDistance,30);
+  assert.equal(settings.shadowContrast,70);
   assert.equal(settings.fov,75);
   assert.deepEqual(updates,[85,95,75]);
   assert.equal(writes.at(-1)[1].fov,75);

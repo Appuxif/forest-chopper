@@ -7,7 +7,7 @@ function fixture(seed=321) {
   const assets=[], groups=[];
   class Geometry {constructor(...args){this.args=args;assets.push(this)}}
   class Material {constructor(opts={}){this.opts=opts;assets.push(this)}}
-  class Texture {constructor(canvas){this.canvas=canvas;assets.push(this)}}
+  class Texture {constructor(canvas){this.canvas=canvas;this.repeat={set(x,y){this.x=x;this.y=y}};assets.push(this)}}
   class Group {constructor(){this.children=[];this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};this.rotation={x:0,y:0,z:0};this.scale={x:1,y:1,z:1,setScalar(n){this.x=this.y=this.z=n}};this.userData={}}
     add(node){this.children.push(node)}}
   class Mesh {constructor(geo,mat){this.geometry=geo;this.material=mat;this.userData={};
@@ -15,7 +15,10 @@ function fixture(seed=321) {
     this.scale={x:1,y:1,z:1,set(x,y,z){Object.assign(this,{x,y,z})},setScalar(v){this.x=this.y=this.z=v}};
     this.rotation={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};}}
   const doc={createElement:()=>({
-    width:0,height:0,getContext(){return {fillRect(){},strokeRect(){},fillText(){},set fillStyle(v){},set strokeStyle(v){},
+    width:0,height:0,getContext(){return {fillRect(){},strokeRect(){},fillText(){},
+      beginPath(){},arc(){},ellipse(){},fill(){},
+      createRadialGradient(){return {addColorStop(){}}},
+      set fillStyle(v){},set strokeStyle(v){},
       set lineWidth(v){},set font(v){},set textAlign(v){},set textBaseline(v){}}}
   })};
   const sharedGeo=new Geometry('shared'),sharedMat=new Material();
@@ -78,7 +81,11 @@ test('continuous, seed-stable trail uses exactly one shared quad per z=0 chunk',
   assert.equal(new Set(f.posts.map(x=>x[3])).size,1,'posts share geometry');
   assert.equal(new Set(f.board.map(x=>x[4])).size,1,'boards share geometry');
   assert.ok(new Set(f.board.map(x=>x[5])).size<=2,'only two globally shared sign textures/materials');
-  assert.equal(f.assets.length,15,'shared resources: 2 fixture, 5 geometries, 6 materials, 2 textures');
+  assert.equal(f.assets.length,16,'shared resources: 2 fixture, 5 geometries, 6 materials, 3 textures');
+  const trail=f.ctx.chunks.get('0,0').children.find(m=>m.userData.landmark==='trail');
+  assert.equal(trail.receiveShadow,true,'visible trail surface must receive tree shadows');
+  assert.equal(trail.material.opts.map.repeat.x,3,'texture repeats cleanly over 24 m chunks');
+  assert.equal(trail.material.opts.map.repeat.y,3.2/8,'texture scale stays consistent across width');
 });
 
 test('signs face the trail, avoid seeded trunks and do not depend on fallen tree state',()=>{

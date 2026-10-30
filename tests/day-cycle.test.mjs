@@ -36,14 +36,14 @@ test('phase interpolation is continuous, cyclic and keeps a readable light floor
   assert.equal(DAY_CYCLE_MS,480000);
   for(const point of [0,.1,.22,.23,.3,.43,.5,.57,.7,.77,.95,.9999,1,2,-.5,NaN]){
     const v=dayPhaseValues(point);
-    assert.ok(v.ambient>=.945 && v.ambient<=2.1);
-    assert.ok(v.sun>=.455 && v.sun<=2.3);
+    assert.ok(v.ambient>=.49 && v.ambient<=2.1);
+    assert.ok(v.sun>=.30 && v.sun<=2.3);
     assert.ok(v.t>=0&&v.t<=1);
   }
   assert.deepEqual(dayPhaseValues(0),dayPhaseValues(1));
   assert.deepEqual(dayPhaseValues(.5),dayPhaseValues(1.5));
-  assert.equal(dayPhaseValues(.5).sun,.455);
-  assert.equal(dayPhaseValues(.5).ambient,.945);
+  assert.equal(dayPhaseValues(.5).sun,.30);
+  assert.equal(dayPhaseValues(.5).ambient,.49);
   assert.ok(dayPhaseValues(.23).sun>dayPhaseValues(.5).sun);
 });
 
@@ -60,8 +60,8 @@ test('opt-in visual cycle throttles color changes and fully restores baseline on
   f.cycle.tick(1000+DAY_CYCLE_MS*.5);
   const night=snapshot(f);
   assert.notDeepEqual(night,original);
-  assert.equal(night.ambient,1.35*.7);
-  assert.ok(Math.abs(night.sun-.65*.7)<1e-10);
+  assert.equal(night.ambient,.49);
+  assert.ok(Math.abs(night.sun-.30)<1e-10);
   assert.deepEqual(night.sky,night.fog,'sky and fog must match to avoid horizon seam');
   f.cycle.tick(1000+DAY_CYCLE_MS*.5+100);
   assert.deepEqual(snapshot(f),night,'throttled call must not change render state');
@@ -132,4 +132,31 @@ test('atmosphere follows phases and resets to noon when day cycle is disabled',(
   f.settings.dayCycleEnabled=false;
   cycle.tick(100+DAY_CYCLE_MS*.5+1);
   assert.equal(values.at(-1),'reset');
+});
+
+
+test('shadow contrast is not applied twice when toggling the day cycle',()=>{
+  const f=fixture();
+  const contrast=.545; // default 70% contrast reduces ambient contribution
+  let originalAmbient=2.1;
+  f.hemisphere.intensity=originalAmbient*contrast;
+  const atmosphere={
+    get ambientIntensity(){return originalAmbient},
+    get sunIntensity(){return 2.3},
+    setAmbientIntensity(value){originalAmbient=value;f.hemisphere.intensity=value*contrast},
+    setSunIntensity(value){f.sun.intensity=value},
+    setPhase(){},restore(){},
+  };
+  const ctx={THREE:f.THREE,scene:f.scene,hemisphere:f.hemisphere,sun:f.sun,
+    settings:f.settings,atmosphere};
+  const cycle=createDayCycle(ctx,{motionQuery:f.motionQuery});
+  f.settings.dayCycleEnabled=true;
+  cycle.tick(100);
+  cycle.tick(100+DAY_CYCLE_MS*.5);
+  assert.ok(Math.abs(f.hemisphere.intensity-.49*contrast)<1e-10);
+  f.settings.dayCycleEnabled=false;
+  cycle.tick(101+DAY_CYCLE_MS*.5);
+  assert.equal(atmosphere.ambientIntensity,2.1);
+  assert.ok(Math.abs(f.hemisphere.intensity-2.1*contrast)<1e-10,
+    'restoring the cycle must never compound the shadow contrast factor');
 });

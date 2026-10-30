@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   celestialDirections,shadowMapSizeForQuality,selectShadowTrees,
   createAtmosphere,SHADOW_TREE_LIMIT,SHADOW_TREE_RADIUS,SHADOW_UPDATE_MS,
-  CHARACTER_SHADOW_RADIUS,CHARACTER_SHADOW_MAP_SIZES,CHARACTER_SHADOW_FPS,
+  CHARACTER_SHADOW_RADIUS,CHARACTER_SHADOW_MAP_SIZES,
 } from '../src/atmosphere.js';
 
 test('celestial positions follow the 8-minute cycle: sun by day, moon by night',()=>{
@@ -94,14 +94,15 @@ function fixture(){
   const camera={position:new Vector3(2,3,4),layers:new Layers()};
   camera.layers.enable(1);camera.layers.enable(3);
   const sun=new DirectionalLight();
-  const hemisphere={layers:new Layers()};
+  const hemisphere={layers:new Layers(),intensity:2.1};
   const renders=[];
   const renderer={shadowMap:{render(lights,shadowScene,viewCamera){
     renders.push({light:lights[0],count:shadowScene.children.length,mask:viewCamera.layers.mask});
+    lights[0].shadow.needsUpdate=false;
   }}};
   const ground={receiveShadow:false};
   const settings={quality:'balanced',shadowDistance:60,shadowRefreshSeconds:1,
-    characterShadowFps:20};
+    characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:70};
   const trees=new Map();
   for(let i=0;i<65;i++)trees.set(i,{position:{x:i*.75,z:0},
     children:Array.from({length:5},()=>({castShadow:false}))});
@@ -111,7 +112,7 @@ function fixture(){
   characters[0].layers.set(1);characters[1].layers.set(3);
   const atmosphere=createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
     getCharacterShadowCasters:()=>characters});
-  return {scene,renderer,renders,ground,sun,trees,settings,atmosphere,camera};
+  return {scene,renderer,renders,ground,sun,hemisphere,trees,settings,atmosphere,camera};
 }
 
 test('trees and nearby skinned players use independent shadow maps',()=>{
@@ -127,10 +128,13 @@ test('trees and nearby skinned players use independent shadow maps',()=>{
   assert.equal(charLight.shadow.camera.top,30);
   assert.deepEqual(CHARACTER_SHADOW_MAP_SIZES,{low:512,balanced:1024,high:2048});
   assert.equal(f.atmosphere.sunIntensity,2.3);
+  assert.equal(f.atmosphere.ambientIntensity,2.1,'raw ambient remains accessible for cycle restore');
   assert.equal(f.ground.receiveShadow,true);
   assert.equal(f.atmosphere.sunBody.visible,true);
   assert.equal(f.atmosphere.moonBody.visible,false);
   f.atmosphere.tick(0,0,0);
+  assert.equal(charLight.shadow.camera.left,-54,'30m detail + 16m proxy + 8m margin');
+  assert.ok(Math.abs(f.hemisphere.intensity-2.1*(1-.65*.7))<1e-9);
   assert.equal(f.sun.shadow.mapSize.x,1024);
   assert.equal(charLight.shadow.mapSize.x,1024);
   assert.ok(f.atmosphere.shadowCasters<=480);
@@ -140,21 +144,25 @@ test('trees and nearby skinned players use independent shadow maps',()=>{
   assert.equal(oldCasters.length,f.atmosphere.shadowCasters);
   f.sun.shadow.needsUpdate=false;
   charLight.shadow.needsUpdate=false;
-  f.atmosphere.tick(1000/CHARACTER_SHADOW_FPS,0,0);
+  f.atmosphere.tick(1000/144,0,0);
   assert.equal(f.sun.shadow.needsUpdate,false,'character updates do not refresh trees');
   assert.equal(charLight.shadow.needsUpdate,true);
   f.renderer.shadowMap.render([f.sun,charLight],f.scene,f.camera);
   assert.equal(f.renders.length,1,'only the due character map redraws');
   assert.equal(f.renders[0].light,charLight);
   assert.equal(f.renders[0].count,2,'only character meshes enter the fast pass');
-  assert.equal(f.renders[0].mask,(1<<1)|(1<<3));
+  assert.equal(f.renders[0].mask,(1<<1)|(1<<3)|(1<<4));
   assert.equal(f.camera.layers.mask,(1)|(1<<1)|(1<<3),'view camera restored');
-  charLight.shadow.needsUpdate=false;
+  f.atmosphere.tick(1000/144*2,0,0);
+  assert.equal(charLight.shadow.needsUpdate,true,'character map redraws on every rendered frame');
+  f.renderer.shadowMap.render([f.sun,charLight],f.scene,f.camera);
+  const beforeTree=f.renders.length;
   f.atmosphere.tick(SHADOW_UPDATE_MS,70,0);
   assert.equal(f.sun.shadow.needsUpdate,true);
+  assert.equal(charLight.shadow.needsUpdate,true);
   f.renderer.shadowMap.render([f.sun,charLight],f.scene,f.camera);
-  assert.equal(f.renders.at(-1).light,f.sun);
-  assert.ok(f.renders.at(-1).count>0,'only nearby tree groups enter the slow pass');
+  assert.deepEqual(f.renders.slice(beforeTree).map(r=>r.light),[f.sun,charLight]);
+  assert.ok(f.renders.at(-2).count>0,'only nearby tree groups enter the slow pass');
   assert.ok(f.trees.get(0).children.every(m=>!m.castShadow));
   f.settings.quality='high';
   f.atmosphere.tick(SHADOW_UPDATE_MS*2,70,0);
@@ -164,11 +172,23 @@ test('trees and nearby skinned players use independent shadow maps',()=>{
   f.atmosphere.tick(SHADOW_UPDATE_MS*3,70,0);
   assert.equal(f.sun.shadow.mapSize.x,512);
   assert.equal(charLight.shadow.mapSize.x,512);
-  f.settings.characterShadowFps=0;
+  // Radius changes resize and recenter the character-only shadow camera.
+  f.settings.characterShadowDistance=100;
+  f.atmosphere.tick(SHADOW_UPDATE_MS*3+.5,70,0);
+  assert.equal(charLight.shadow.camera.left,-124);
+  assert.equal(charLight.shadow.camera.right,124);
+  assert.ok(charLight.shadow.camera.far>300);
+  f.settings.shadowContrast=0;
+  f.atmosphere.tick(SHADOW_UPDATE_MS*3+.6,70,0);
+  assert.equal(f.hemisphere.intensity,2.1);
+  f.settings.shadowContrast=100;
+  f.atmosphere.tick(SHADOW_UPDATE_MS*3+.7,70,0);
+  assert.ok(Math.abs(f.hemisphere.intensity-2.1*.35)<1e-9);
+  f.settings.characterShadowsEnabled=false;
   f.atmosphere.tick(SHADOW_UPDATE_MS*3+1,70,0);
   assert.equal(charLight.castShadow,false);
   assert.equal(f.sun.intensity,2.3);
-  f.settings.characterShadowFps=20;
+  f.settings.characterShadowsEnabled=true;
   f.atmosphere.tick(SHADOW_UPDATE_MS*3+2,70,0);
   assert.equal(charLight.castShadow,true);
   f.atmosphere.setSunIntensity(.9);
@@ -183,6 +203,7 @@ test('trees and nearby skinned players use independent shadow maps',()=>{
   assert.equal(f.atmosphere.sunBody.visible,true);
   assert.equal(f.atmosphere.moonBody.visible,false);
   f.atmosphere.dispose();
+  assert.equal(f.hemisphere.intensity,2.1,'disposal restores original ambient light');
   assert.equal(f.atmosphere.shadowCasters,0);
   assert.equal(f.ground.receiveShadow,false);
   assert.ok(f.trees.values().every(t=>t.children.every(c=>!c.castShadow)));

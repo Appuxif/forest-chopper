@@ -1,14 +1,15 @@
 // Lightweight local atmosphere and a bounded shadow budget for trees.
 // Everything is cosmetic: no network state, world generation, or time sync.
+import {snapCharacterShadowCenter,CHARACTER_SHADOW_PROXY_EXTRA} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 export const SHADOW_TREE_LIMIT = 34;
 export const SHADOW_TREE_RADIUS = 60;
 export const SHADOW_UPDATE_MS = 1000;
 export const SHADOW_MAX_TREE_LIMIT = 480;
+export const SHADOW_DECOR_LIMIT = 200;
 export const SHADOW_MAP_SIZES = Object.freeze({low:512,balanced:1024,high:2048});
 // Half-extent: 30 metres in each direction = 60x60m shadow coverage.
 export const CHARACTER_SHADOW_RADIUS = 30;
 export const CHARACTER_SHADOW_MAP_SIZES = Object.freeze({low:512,balanced:1024,high:2048});
-export const CHARACTER_SHADOW_FPS = 20;
 
 export function celestialDirections(phase) {
   const f = Number.isFinite(phase) ? ((phase % 1) + 1) % 1 : 0;
@@ -43,7 +44,7 @@ export function selectShadowTrees(trees, x, z, radius=SHADOW_TREE_RADIUS,
 }
 
 export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
-  getCharacterShadowCasters=()=>[]}) {
+  getCharacterShadowCasters=()=>[],getDecorShadowCasters=()=>[]}) {
   const skyMaterial=new THREE.ShaderMaterial({
     uniforms:{
       horizon:{value:new THREE.Color(0xa4c8be)},
@@ -93,8 +94,10 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   moonBody.renderOrder=-190;
   scene.add(sunBody,moonBody);
 
-  // Real tree and character shadows, separate maps and refresh cadences.
+  // Static forest is cached; actual animated character silhouettes are drawn
+  // every rendered frame. PCF-soft filtering applies to both maps.
   const initialSunIntensity=sun.intensity;
+  const initialAmbientIntensity=hemisphere.intensity;
   const characterLight=new THREE.DirectionalLight(sun.color,initialSunIntensity*.5);
   scene.add(characterLight,characterLight.target);
   for(const light of [sun,characterLight,hemisphere]){
@@ -136,7 +139,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
           originalShadowRender.call(this,[light],treeShadowScene,viewCamera);
         }else if(light===characterLight){
           characterShadowScene.children=getCharacterShadowCasters(CHARACTER_SHADOW_RADIUS);
-          viewCamera.layers.mask=(1<<1)|(1<<3); // remote and local skinned meshes
+          viewCamera.layers.mask=(1<<1)|(1<<3)|(1<<4); // remote, local, shadow-only LOD
           originalShadowRender.call(this,[light],characterShadowScene,viewCamera);
         }else{
           viewCamera.layers.mask=oldMask;
@@ -160,8 +163,15 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   ground.receiveShadow=true;
   scene.add(sun.target);
   let quality=null, phase=0, lastUpdate=-Infinity, centerX=Infinity,centerZ=Infinity;
-  let shadowRadius=null, refreshInterval=null,lastCharacterUpdate=-Infinity;
+  let shadowRadius=null, refreshInterval=null, characterShadowExtent=null;
   let totalSunIntensity=initialSunIntensity;
+  let baseAmbientIntensity=initialAmbientIntensity;
+  function setAmbientIntensity(value){
+    baseAmbientIntensity=value;
+    const contrast=Math.max(0,Math.min(100,settings.shadowContrast??70));
+    hemisphere.intensity=value*(1-.65*contrast/100);
+  }
+  setAmbientIntensity(baseAmbientIntensity);
   let characterShadowsEnabled=true;
   function setSunIntensity(total){
     totalSunIntensity=total;
@@ -171,6 +181,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   setSunIntensity(initialSunIntensity);
   let lightingChanged=true;
   const activeTrees=new Set();
+  const activeDecor=new Set();
   const zenithDay=new THREE.Color(0x78b0d0);
   const zenithNight=new THREE.Color(0x101a34);
   const targetPosition=new THREE.Vector3();
@@ -228,7 +239,10 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     }
     activeTrees.clear();
     for(const tree of next)activeTrees.add(tree);
-    treeShadowScene.children=[...activeTrees];
+    activeDecor.clear();
+    for(const decoration of getDecorShadowCasters(x,z,radius,SHADOW_DECOR_LIMIT))
+      activeDecor.add(decoration);
+    treeShadowScene.children=[...activeTrees,...activeDecor];
   }
   function tick(now,x,z) {
     dome.position.copy(camera.position);
@@ -240,25 +254,38 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     const settingsChanged=radius!==shadowRadius || interval!==refreshInterval ||
       quality!==settings.quality;
     const treeDue=settingsChanged || now-lastUpdate>=interval;
-    const characterFps=Math.max(0,Math.min(60,
-      settings.characterShadowFps??CHARACTER_SHADOW_FPS));
-    const wantCharacters=characterFps>0;
+    // Apply the map size before snapping its centre to texels.
+    if(quality!==settings.quality)applyQuality();
+    const wantCharacters=settings.characterShadowsEnabled!==false;
     if(characterShadowsEnabled!==wantCharacters){
       characterShadowsEnabled=wantCharacters;
       characterLight.castShadow=wantCharacters;
       characterLight.visible=wantCharacters;
       characterLight.shadow.needsUpdate=false;
-      lastCharacterUpdate=-Infinity;
       setSunIntensity(totalSunIntensity);
     }
-    // The tree pass takes priority; player shadow updates use their own
-    // adjustable 5–60 FPS cadence, or skip entirely at 0 FPS.
-    if(characterShadowsEnabled && !treeDue &&
-      now-lastCharacterUpdate>=1000/characterFps){
-      lastCharacterUpdate=now;
-      characterLight.target.position.set(x,0,z);
+    // Update the ambient component every rendered frame, including while the
+    // day/night cycle is paused, so the contrast slider applies immediately.
+    setAmbientIntensity(baseAmbientIntensity);
+    // Scale the shadow frustum with the selected full-detail radius. The next
+    // 16 metres are used by proxy shadows, plus a small projection margin.
+    if(characterShadowsEnabled){
+      const detailedRadius=Math.max(10,Math.min(100,
+        settings.characterShadowDistance??CHARACTER_SHADOW_RADIUS));
+      const extent=detailedRadius+CHARACTER_SHADOW_PROXY_EXTRA+8;
+      if(extent!==characterShadowExtent){
+        characterShadowExtent=extent;
+        Object.assign(characterCamera,{
+          left:-extent,right:extent,top:extent,bottom:-extent,
+          far:Math.max(120,extent*3+50),
+        });
+        characterCamera.updateProjectionMatrix();
+      }
+      const center=snapCharacterShadowCenter(x,z,lightDir,
+        extent*2,characterLight.shadow.mapSize.x);
+      characterLight.target.position.set(center.x,center.y,center.z);
       characterLight.position.copy(characterLight.target.position)
-        .addScaledVector(lightDir,35);
+        .addScaledVector(lightDir,Math.max(35,characterShadowExtent*1.2));
       characterLight.target.updateMatrixWorld();
       characterLight.updateMatrixWorld();
       characterLight.shadow.needsUpdate=true;
@@ -278,7 +305,6 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
       });
     }
     refreshInterval=interval;
-    applyQuality();
     refreshCasters(x,z,radius);
     // Shadows track the player rather than spending resolution on distant forest.
     targetPosition.set(x,0,z);
@@ -296,6 +322,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   function dispose(){
     for(const tree of activeTrees)for(const mesh of tree.children)mesh.castShadow=false;
     activeTrees.clear();
+    activeDecor.clear();
     treeShadowScene.children=[];
     characterShadowScene.children=[];
     renderer.shadowMap.render=originalShadowRender;
@@ -307,12 +334,15 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     lunarMaterial.dispose();
     ground.receiveShadow=false;
     characterLight.shadow.dispose();
+    hemisphere.intensity=initialAmbientIntensity;
     sun.intensity=initialSunIntensity;
     renderer.shadowMap.autoUpdate=false;
   }
   setPhase(0);
-  return {tick,setPhase,restore,dispose,setSunIntensity,dome,sunBody,moonBody,characterLight,
+  return {tick,setPhase,restore,dispose,setSunIntensity,setAmbientIntensity,dome,sunBody,moonBody,characterLight,
     get lightDirection(){return lightDir;},
     get sunIntensity(){return totalSunIntensity;},
-    get phase(){return phase;},get shadowCasters(){return activeTrees.size;}};
+    get ambientIntensity(){return baseAmbientIntensity;},
+    get phase(){return phase;},get shadowCasters(){return activeTrees.size;},
+    get decorShadowCasters(){return activeDecor.size;}};
 }

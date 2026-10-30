@@ -1,24 +1,27 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261030-grass1';
+import {createWorld} from './world.js?v=20261030-decor-collisions1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
 import {createMicroGrass} from './micro-grass.js?v=20261030-grass-interaction1';
 import {createGroundTexture} from './ground-texture.js';
-import {createPhysics} from './physics.js';
+import {createPhysics} from './physics.js?v=20261030-rock-collision1';
 import {createBuilding} from './building.js?v=20261030-craft1';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-craft1';
-import {createPlayer} from './player.js?v=20261030-character-shadow-12m1';
-import {createMultiplayer} from './multiplayer.js?v=20261030-character-shadow-12m1';
+import {createPlayer} from './player.js?v=20261030-plant-bend1';
+import {createMultiplayer} from './multiplayer.js?v=20261030-rock-reset1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-shadow-controls-restored1';
+import {createSettings} from './settings.js?v=20261030-shadow-contrast1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js';
-import {createLandmarks} from './landmarks.js?v=20261030-fire1';
-import {createDayCycle} from './day-cycle.js?v=20261030-dual-shadows1';
-import {createAtmosphere} from './atmosphere.js?v=20261030-shadow-controls-restored1';
+import {createLandmarks} from './landmarks.js?v=20261030-trail-texture1';
+import {createPlantInteraction} from './plant-interaction.js?v=20261030-flora-bend1';
+import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
+import {createDayCycle} from './day-cycle.js?v=20261030-darker-night1';
+import {createAtmosphere} from './atmosphere.js?v=20261030-shadow-contrast1';
+import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
 import {createCrafting} from './crafting.js';
@@ -63,7 +66,7 @@ for(let i=0;i<68;i++){
 }
 const birchBarkTexture=new THREE.CanvasTexture(barkCanvas);birchBarkTexture.colorSpace=THREE.SRGBColorSpace;
 const birchTrunkMat=new THREE.MeshLambertMaterial({map:birchBarkTexture});
-const trees=new Map(),chunks=new Map(),felled=new Set(),falling=[],particles=[],keys={},treeDamage=new Map();let seed=(Math.random()*999999)|0,px=0,pz=0,yaw=0,pitch=0,wood=0,cuts=0,joyX=0,joyY=0,swing=0,lastHit=0,drag=null,frame=0,lastTime=performance.now();const chunkSize=24,radius=3;
+const trees=new Map(),chunks=new Map(),rockColliders=new Map(),felled=new Set(),falling=[],particles=[],keys={},treeDamage=new Map();let seed=(Math.random()*999999)|0,px=0,pz=0,yaw=0,pitch=0,wood=0,cuts=0,joyX=0,joyY=0,swing=0,lastHit=0,drag=null,frame=0,lastTime=performance.now();const chunkSize=24,radius=3;
 
 scene.add(camera);const axe=new THREE.Group();camera.add(axe);const handle=new THREE.Mesh(new THREE.CylinderGeometry(.045,.065,1.3,8),new THREE.MeshLambertMaterial({color:0x99623b}));handle.rotation.z=-.2;axe.add(handle);const metal=new THREE.MeshStandardMaterial({color:0xc2cbd0,metalness:.65,roughness:.35});const head=new THREE.Mesh(new THREE.BoxGeometry(.48,.32,.15),metal);head.position.set(-.18,.58,0);axe.add(head);const blade=new THREE.Mesh(new THREE.CylinderGeometry(.26,.26,.15,3),metal);blade.rotation.x=Math.PI/2;blade.rotation.z=Math.PI/2;blade.position.set(-.44,.58,0);axe.add(blade);axe.position.set(.72,-.7,-1.1);axe.rotation.z=-.25;
 
@@ -83,17 +86,12 @@ const notifications=createNotifications();
 const settings=createSettings(document,null,fov=>{camera.fov=fov;camera.updateProjectionMatrix();},quality=>applyQuality(renderer,quality,devicePixelRatio,innerWidth,innerHeight));
 const atmosphere=createAtmosphere({
  THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
- getCharacterShadowCasters(radius){
-  const casters=ownAvatar?.shadowMeshes ? [...ownAvatar.shadowMeshes] : [];
-  const radiusSq=radius*radius;
-  for(const avatar of avatars.values()){
-   const p=avatar.group.position;
-   if((p.x-px)**2+(p.z-pz)**2>radiusSq)continue;
-   if(avatar.actor?.shadowMeshes)casters.push(...avatar.actor.shadowMeshes);
-   else for(const mesh of avatar.group.children)
-    if(mesh.isMesh && mesh.castShadow)casters.push(mesh);
-  }
-  return casters;
+ getCharacterShadowCasters(){
+  return selectCharacterShadowCasters(ownAvatar,avatars.values(),px,pz,
+    {near:settings.characterShadowDistance});
+ },
+ getDecorShadowCasters(x,z,radius,limit){
+  return selectDecorShadowCasters(chunks,x,z,radius,limit);
  },
 });
 const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere});
@@ -185,6 +183,7 @@ const ctx={
  get metal(){return metal;},
  get mushrooms(){return mushrooms;},
  get microGrass(){return microGrass;},
+ get plantInteraction(){return plantInteraction;},
  get modelActors(){return modelActors;},
  get notify(){return notifications.notify;},
  get moveHorizontal(){return moveHorizontal;},
@@ -211,6 +210,7 @@ const ctx={
  get renderer(){return renderer;},
  get requestJump(){return requestJump;},
  get rareLeafMat(){return rareLeafMat;},
+ get rockColliders(){return rockColliders;},
  get rockGeo(){return rockGeo;},
  get rockMat(){return rockMat;},
  get rootMotion(){return rootMotion;},
@@ -243,6 +243,7 @@ const ctx={
  get yaw(){return yaw;}, set yaw(value){yaw=value;},
 };
 const microGrass=createMicroGrass(ctx);
+const plantInteraction=createPlantInteraction(ctx);
 const wind=createWind(ctx);
 const landmarks=createLandmarks(ctx);
 ({rand, makeTree, build, updateChunks}=createWorld(ctx));

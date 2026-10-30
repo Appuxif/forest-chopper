@@ -37,7 +37,14 @@ for(let i=0;i<4;i++){
 }
 // Damage stays in HP (and the damage bar). No flat rectangle on the trunk.
 group.position.set(x,0,z);group.userData={id,x,z,h,scale,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant,rare,species:birch?'birch':'conifer'};ctx.scene.add(group);ctx.trees.set(id,group)}
+function enableDecorShadow(node){
+ if(node.isMesh||node.geometry){node.castShadow=true;
+   if(node.userData?.decorType==='rock')node.receiveShadow=true;}
+ for(const child of node.children??[])enableDecorShadow(child);
+}
 function build(cx,cz){const key=cx+','+cz;if(ctx.chunks.has(key))return;const decor=new ctx.THREE.Group();ctx.scene.add(decor);ctx.chunks.set(key,decor);
+decor.userData.shadowDecor=[];decor.userData.reactivePlants=[];
+const rockColliders=[];
 for(let i=0;i<8;i++){const x=cx*ctx.chunkSize+rand(cx,cz,i*3)*ctx.chunkSize,z=cz*ctx.chunkSize+rand(cx,cz,i*3+1)*ctx.chunkSize;if(Math.hypot(x,z)<8)continue;const id=key+':'+i;if(!ctx.felled.has(id))makeTree(x,z,id)}
 for(let i=0;i<25;i++){
  const x=cx*ctx.chunkSize+rand(cx,cz,100+i*2)*ctx.chunkSize;
@@ -65,11 +72,21 @@ for(let i=0;i<25;i++){
  obj.position.set(x,height,z);obj.scale.setScalar(scale);
  obj.rotation.y=rand(cx,cz,i+500)*6.28;
  obj.userData.decorType=type;
+ enableDecorShadow(obj);
+ decor.userData.shadowDecor.push(obj);
+ if(type==='grass'||type==='flower')decor.userData.reactivePlants.push(obj);
+ if(type==='rock'){
+  obj.receiveShadow=true;
+  // Convex faceted boulder approximated by a circular footprint and flat
+  // upper contact patch. The renderer continues to use the real dodecahedron.
+  rockColliders.push({x,z,radius:scale*.84,bottom:0,top:.19+scale*.78});
+ }
  decor.add(obj);
 }
 ctx.landmarks?.decorate(decor,cx,cz);
+ctx.rockColliders?.set(key,rockColliders);
 }
-function updateChunks(){const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);for(let x=cx-ctx.radius;x<=cx+ctx.radius;x++)for(let z=cz-ctx.radius;z<=cz+ctx.radius;z++)build(x,z);for(const [key,group] of ctx.chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>ctx.radius+1||Math.abs(z-cz)>ctx.radius+1){ctx.scene.remove(group);ctx.chunks.delete(key)}}for(const [key,t] of ctx.trees){if(Math.abs(t.position.x-ctx.px)>ctx.chunkSize*(ctx.radius+1.5)||Math.abs(t.position.z-ctx.pz)>ctx.chunkSize*(ctx.radius+1.5)){ctx.scene.remove(t);ctx.trees.delete(key)}}}
+function updateChunks(){const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);for(let x=cx-ctx.radius;x<=cx+ctx.radius;x++)for(let z=cz-ctx.radius;z<=cz+ctx.radius;z++)build(x,z);for(const [key,group] of ctx.chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>ctx.radius+1||Math.abs(z-cz)>ctx.radius+1){ctx.scene.remove(group);ctx.chunks.delete(key);ctx.rockColliders?.delete(key)}}for(const [key,t] of ctx.trees){if(Math.abs(t.position.x-ctx.px)>ctx.chunkSize*(ctx.radius+1.5)||Math.abs(t.position.z-ctx.pz)>ctx.chunkSize*(ctx.radius+1.5)){ctx.scene.remove(t);ctx.trees.delete(key)}}}
 
 return {rand, makeTree, build, updateChunks};
 }

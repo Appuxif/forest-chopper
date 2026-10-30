@@ -1,9 +1,13 @@
+import {createTrailTexture} from './trail-texture.js';
 // Shared low-poly navigation cues. The trail is purely visual:
 // tree spawn coordinates, collision, server and save state remain unchanged.
 export function createLandmarks(ctx,doc=document) {
   const THREE=ctx.THREE;
   const trailGeometry=new THREE.PlaneGeometry(ctx.chunkSize,3.2);
-  const trailMaterial=new THREE.MeshLambertMaterial({color:0x977f5a,side:THREE.DoubleSide});
+  const trailMaterial=new THREE.MeshLambertMaterial({
+    map:createTrailTexture(THREE,doc,ctx.chunkSize,ctx.renderer),
+    side:THREE.DoubleSide,
+  });
   const poleGeometry=new THREE.CylinderGeometry(.115,.15,2.1,6);
   const poleMaterial=new THREE.MeshLambertMaterial({color:0x76553b});
   const boardGeometry=new THREE.PlaneGeometry(3.0,.8);
@@ -52,13 +56,14 @@ export function createLandmarks(ctx,doc=document) {
       const a=i*Math.PI/3;
       const rock=new THREE.Mesh(ctx.rockGeo,ctx.rockMat);
       rock.position.set(Math.cos(a)*.87,.16,Math.sin(a)*.87);
-      rock.scale.setScalar(.19);fire.add(rock);
+      rock.scale.setScalar(.19);rock.castShadow=true;fire.add(rock);
     }
     for(let i=0;i<3;i++){
       const log=new THREE.Mesh(ctx.logGeo,ctx.logMat);
       log.position.set(0,.15,0);
       log.rotation.set(0,i*Math.PI/3,Math.PI/2);
       log.scale.set(.34,.42,.34);
+      log.castShadow=true;
       fire.add(log);
     }
     const flame=new THREE.Mesh(flameGeometry,flameMaterial);
@@ -76,6 +81,7 @@ export function createLandmarks(ctx,doc=document) {
       fire.add(spark);sparks.push(spark);
     }
     parent.add(fire);
+    parent.userData?.shadowDecor?.push(fire);
     activeFire={parent,flame,inner,light,sparks};
     lastFireTick=-Infinity;
   }
@@ -103,6 +109,9 @@ export function createLandmarks(ctx,doc=document) {
     const trail=new THREE.Mesh(trailGeometry,trailMaterial);
     trail.rotation.x=-Math.PI/2;
     trail.position.set(cx*ctx.chunkSize+ctx.chunkSize/2,.025,0);
+    // This plane covers the real ground; without receiveShadow trees cannot
+    // darken the trail even though the ground below receives shadows.
+    trail.receiveShadow=true;
     trail.userData.landmark='trail';
     group.add(trail);
     if(cx===0)createCampfire(group);
@@ -114,12 +123,16 @@ export function createLandmarks(ctx,doc=document) {
     const pole=new THREE.Mesh(poleGeometry,poleMaterial);
     pole.position.set(position.x,1.05,position.z);
     pole.userData.landmark='signpost';
+    pole.castShadow=true;
     group.add(pole);
+    group.userData?.shadowDecor?.push(pole);
     const board=new THREE.Mesh(boardGeometry,boardMaterials[cx<0?1:0]);
     board.position.set(position.x,2.0,position.z);
     board.rotation.y=Math.PI; // Facing the trail to the south; readable from the path.
     board.userData.landmark='signboard';
+    board.castShadow=true;
     group.add(board);
+    group.userData?.shadowDecor?.push(board);
   }
   return {decorate,signPosition,tick};
 }

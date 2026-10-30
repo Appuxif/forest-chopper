@@ -4,8 +4,8 @@ export const DAY_CYCLE_MS = 8 * 60 * 1000;
 const PHASES = Object.freeze([
   {at:0,    sky:0xa4c8be, ambient:2.1, sun:2.3, sunlight:0xffe4a6},
   {at:.23,  sky:0xc18d80, ambient:1.85,sun:1.5, sunlight:0xffba86},
-  {at:.43,  sky:0x38485d, ambient:.945,sun:.455, sunlight:0xb5ceef},
-  {at:.57,  sky:0x38485d, ambient:.945,sun:.455, sunlight:0xb5ceef},
+  {at:.43,  sky:0x242c44, ambient:.49,sun:.30, sunlight:0xb5ceef},
+  {at:.57,  sky:0x242c44, ambient:.49,sun:.30, sunlight:0xb5ceef},
   {at:.77,  sky:0xa3acb9, ambient:1.78,sun:1.4, sunlight:0xffcda0},
   {at:1,    sky:0xa4c8be, ambient:2.1, sun:2.3, sunlight:0xffe4a6},
 ]);
@@ -37,7 +37,7 @@ export function createDayCycle(ctx, {
     sky:scene.background.clone(),
     fog:scene.fog?.color.clone() ?? null,
     sunColor:sun.color.clone(),
-    ambient:hemisphere.intensity,
+    ambient:ctx.atmosphere?.ambientIntensity ?? hemisphere.intensity,
     sun:ctx.atmosphere?.sunIntensity ?? sun.intensity,
   };
   let startedAt=null,lastSample=-Infinity,active=false;
@@ -46,7 +46,8 @@ export function createDayCycle(ctx, {
       scene.background.copy(original.sky);
       if(original.fog&&scene.fog)scene.fog.color.copy(original.fog);
       sun.color.copy(original.sunColor);
-      hemisphere.intensity=original.ambient;
+      if(ctx.atmosphere?.setAmbientIntensity)ctx.atmosphere.setAmbientIntensity(original.ambient);
+      else hemisphere.intensity=original.ambient;
       if(ctx.atmosphere?.setSunIntensity)ctx.atmosphere.setSunIntensity(original.sun);
       else sun.intensity=original.sun;
     }
@@ -60,7 +61,8 @@ export function createDayCycle(ctx, {
     scene.background.copy(colors[a].sky).lerp(colors[b].sky,t);
     if(scene.fog)scene.fog.color.copy(scene.background);
     sun.color.copy(colors[a].sun).lerp(colors[b].sun,t);
-    hemisphere.intensity=ambient;
+    if(ctx.atmosphere?.setAmbientIntensity)ctx.atmosphere.setAmbientIntensity(ambient);
+    else hemisphere.intensity=ambient;
     if(ctx.atmosphere?.setSunIntensity)ctx.atmosphere.setSunIntensity(sunIntensity);
     else sun.intensity=sunIntensity;
     ctx.atmosphere?.setPhase(phase);

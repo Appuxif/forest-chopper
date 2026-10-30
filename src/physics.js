@@ -1,4 +1,5 @@
 // Extracted from the original single-file game. Shared game state is passed explicitly.
+import {rockBlocksPlayer,highestRockSupport,standingOnRock} from './rock-collisions.js';
 export function createPhysics(ctx) {
 function logFootprint(p,x,z,extra=0){
  // Logs lie horizontally along X (orientation 0) or Z (orientation 1).
@@ -14,7 +15,8 @@ function blocksPlayerAt(x,z,feet){
    if(!logFootprint(p,x,z,ctx.PLAYER_RADIUS))continue;
    if(feet<logTop(p)-.045 && feet+ctx.PLAYER_HEIGHT>logBottom(p)+.045)return true;
  }
- return false;
+ return rockBlocksPlayer(ctx.rockColliders,ctx.chunkSize,x,z,feet,
+   ctx.PLAYER_RADIUS,ctx.PLAYER_HEIGHT);
 }
 function moveHorizontal(dx,dz){
  // Axis-by-axis so walls allow sliding and diagonal movement does not stick.
@@ -42,13 +44,17 @@ function simulateVertical(dt){
      const top=logTop(p);
      if(previous>=top-.09&&next<=top+.02&&top>support)support=top;
    }
+   support=Math.max(support,highestRockSupport(ctx.rockColliders,ctx.chunkSize,
+     ctx.px,ctx.pz,previous,next,ctx.PLAYER_RADIUS));
    if(next<=support){next=support;ctx.verticalSpeed=0;ctx.onGround=true}
    else ctx.onGround=false;
  }
  ctx.feetY=Math.max(0,next);
  // Leave an edge naturally; grounded is true only while supported.
  if(ctx.onGround&&ctx.feetY>0){
-   const hasSupport=ctx.placed.some(p=>logFootprint(p,ctx.px,ctx.pz,ctx.PLAYER_RADIUS*.65)&&Math.abs(logTop(p)-ctx.feetY)<.08);
+   const hasSupport=ctx.placed.some(p=>logFootprint(p,ctx.px,ctx.pz,ctx.PLAYER_RADIUS*.65)&&Math.abs(logTop(p)-ctx.feetY)<.08)
+     || standingOnRock(ctx.rockColliders,ctx.chunkSize,ctx.px,ctx.pz,
+       ctx.feetY,ctx.PLAYER_RADIUS);
    if(!hasSupport)ctx.onGround=false;
  }
 }

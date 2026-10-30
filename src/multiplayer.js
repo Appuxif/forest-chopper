@@ -47,7 +47,7 @@ ctx.$('chattoggle').onclick=()=>{const panel=ctx.$('chatpanel');panel.classList.
 ctx.$('chatinput').addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();ctx.$('chatpanel').classList.add('collapsed');ctx.$('chatinput').blur();}});
 ctx.$('chatform').onsubmit=e=>{e.preventDefault();if(sendChat(ctx.$('chatinput').value))ctx.$('chatinput').value='';};
 function syncWood(w,c){ctx.wood=w;ctx.$('wood').textContent=ctx.wood;if(c!==undefined){ctx.cuts=c;ctx.$('cut').textContent=ctx.cuts}}
-function clearWorld(){ctx.highlight?.clear();ctx.wind?.clear();ctx.crafting?.clear();for(const t of ctx.trees.values())ctx.scene.remove(t);for(const g of ctx.chunks.values())ctx.scene.remove(g);for(const f of ctx.falling)ctx.scene.remove(f.tree);for(const p of ctx.particles)ctx.scene.remove(p.mesh);for(const p of ctx.placed)ctx.scene.remove(p.mesh);ctx.disposePreview();ctx.trees.clear();ctx.chunks.clear();ctx.falling.length=0;ctx.particles.length=0;ctx.placed.length=0;ctx.felled.clear();ctx.treeDamage.clear()}
+function clearWorld(){ctx.highlight?.clear();ctx.wind?.clear();ctx.crafting?.clear();ctx.plantInteraction?.clear();ctx.rockColliders?.clear();for(const t of ctx.trees.values())ctx.scene.remove(t);for(const g of ctx.chunks.values())ctx.scene.remove(g);for(const f of ctx.falling)ctx.scene.remove(f.tree);for(const p of ctx.particles)ctx.scene.remove(p.mesh);for(const p of ctx.placed)ctx.scene.remove(p.mesh);ctx.disposePreview();ctx.trees.clear();ctx.chunks.clear();ctx.falling.length=0;ctx.particles.length=0;ctx.placed.length=0;ctx.felled.clear();ctx.treeDamage.clear()}
 function addLog(data){if(ctx.placed.some(p=>p.id===data.id))return;const m=ctx.makeLog();m.position.set(data.x,data.y,data.z);if(data.orientation===1)m.rotation.y=Math.PI/2;ctx.scene.add(m);ctx.placed.push({...data,mesh:m})}
 function treeHit(id,hp){ctx.treeDamage.set(id,hp);const t=ctx.trees.get(id);if(t){t.userData.hp=hp;ctx.spawnChips(t)}}
 function treeFell(id){ctx.felled.add(id);ctx.treeDamage.delete(id);const t=ctx.trees.get(id);if(t){ctx.trees.delete(id);ctx.spawnChips(t);ctx.falling.push({tree:t,elapsed:0,direction:Math.random()*Math.PI*2})}}
@@ -83,13 +83,26 @@ function addAvatar(p){if(p.id===ctx.myId)return;
  const actor=ctx.createLumberjack();const group=actor?actor.group:new ctx.THREE.Group();
  // Remote characters render on layer 1, separate from trees (0) and local (3).
  // All their skinned meshes stay visible in both first- and third-person views.
- if(actor)actor.visual.traverse(node=>{if(node.isMesh)node.layers.set(1);});
- if(!actor){const mesh=new ctx.THREE.Mesh(new ctx.THREE.CapsuleGeometry(.34,1.1,4,8),new ctx.THREE.MeshLambertMaterial({color:0x557d96}));mesh.position.y=1.0;mesh.castShadow=true;mesh.layers.set(1);group.add(mesh)}
+ if(actor?.visual)actor.visual.traverse(node=>{if(node.isMesh)node.layers.set(1);});
+ const shadowMeshes=actor?.shadowMeshes ?? [];
+ if(!actor){const mesh=new ctx.THREE.Mesh(new ctx.THREE.CapsuleGeometry(.34,1.1,4,8),new ctx.THREE.MeshLambertMaterial({color:0x557d96}));mesh.position.y=1.0;mesh.castShadow=true;mesh.layers.set(1);group.add(mesh);shadowMeshes.push(mesh)}
+ // Cheap shadow-only capsule for distant characters: it follows the avatar
+ // group, but layer 4 is never enabled on the main camera.
+ let shadowProxy=null;
+ if(ctx.THREE.Mesh && ctx.THREE.CapsuleGeometry && ctx.THREE.MeshBasicMaterial){
+  shadowProxy=new ctx.THREE.Mesh(
+   new ctx.THREE.CapsuleGeometry(.32,1.05,2,5),
+   new ctx.THREE.MeshBasicMaterial({color:0x000000}));
+  shadowProxy.position.y=1.0;
+  shadowProxy.layers.set(4);
+  shadowProxy.castShadow=true;
+  group.add(shadowProxy);
+ }
  const tag=createNameTag(p.name);group.add(tag);
  group.position.set(p.x,p.y||0,p.z);ctx.scene.add(group);
- ctx.avatars.set(p.id,{group,actor,tag,name:p.name||'Игрок',goal:new ctx.THREE.Vector3(p.x,p.y||0,p.z),angle:p.yaw||0,jumping:!!p.jumping});ctx.playerList?.render();}
+ ctx.avatars.set(p.id,{group,actor,tag,shadowMeshes,shadowProxy,shadowLod:'off',name:p.name||'Игрок',goal:new ctx.THREE.Vector3(p.x,p.y||0,p.z),angle:p.yaw||0,jumping:!!p.jumping});ctx.playerList?.render();}
 
-function removeAvatar(id){const a=ctx.avatars.get(id);if(a){ctx.scene.remove(a.group);a.tag.material.map.dispose();a.tag.material.dispose();if(a.actor){a.actor.mixer.stopAllAction();ctx.modelActors.delete(a.actor)}else{for(const child of a.group.children){if(child.geometry)child.geometry.dispose();if(child.material&&child!==a.tag)child.material.dispose()}}ctx.avatars.delete(id);ctx.playerList?.render()}}
+function removeAvatar(id){const a=ctx.avatars.get(id);if(a){ctx.scene.remove(a.group);a.tag.material.map.dispose();a.tag.material.dispose();if(a.shadowProxy){a.group.remove(a.shadowProxy);a.shadowProxy.geometry.dispose();a.shadowProxy.material.dispose()}if(a.actor){a.actor.mixer.stopAllAction();ctx.modelActors.delete(a.actor)}else{for(const child of a.group.children){if(child.geometry)child.geometry.dispose();if(child.material&&child!==a.tag)child.material.dispose()}}ctx.avatars.delete(id);ctx.playerList?.render()}}
 let peer=null, guestConnection=null;
 const bridges=new Set();
 let generation=0;

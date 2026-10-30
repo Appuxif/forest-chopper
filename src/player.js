@@ -15,8 +15,12 @@ ctx.$('viewtoggle').onclick=toggleView;ctx.axe.visible=false;
 
 function animate(now){
  requestAnimationFrame(animate);
- if(!limiter.allow(now,ctx.settings.maxFps))return;
- const dt=Math.min(.05,(now-ctx.lastTime)/1000);ctx.lastTime=now;ctx.settings.tick(now,ctx);ctx.wind.tick(now);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
+ // Physics, Root Motion and animation mixers run on every display tick,
+ // independently of the user-selected render FPS cap.
+ if(!Number.isFinite(now))return;
+ const dt=Math.max(0,Math.min(.05,(now-ctx.lastTime)/1000));
+ ctx.lastTime=now;
+ ctx.wind.tick(now);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
  let forward=(ctx.keys.KeyW||ctx.keys.ArrowUp?1:0)-(ctx.keys.KeyS||ctx.keys.ArrowDown?1:0)-ctx.joyY;
  let side=(ctx.keys.KeyD||ctx.keys.ArrowRight?1:0)-(ctx.keys.KeyA||ctx.keys.ArrowLeft?1:0)+ctx.joyX;
  const len=Math.max(1,Math.hypot(forward,side));forward/=len;side/=len;
@@ -49,14 +53,15 @@ function animate(now){
  }
  ctx.moveHorizontal(dx,dz);
  ctx.microGrass?.tick();
+ ctx.plantInteraction?.tick(dt);
  if(ctx.ownAvatar)ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
  ctx.camera.position.set(ctx.px,ctx.feetY+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
  if(ctx.thirdPerson){const back=4.2,raise=2.2;
   ctx.camera.position.set(ctx.px+Math.sin(ctx.yaw)*back,ctx.feetY+1.8+raise+Math.max(0,-Math.sin(ctx.pitch))*1.5,ctx.pz+Math.cos(ctx.yaw)*back);
   ctx.camera.lookAt(ctx.px,ctx.feetY+1.65+Math.tan(ctx.pitch)*3,ctx.pz);
  }
- // The real skinned meshes are reused by the small character shadow pass.
- // Both shadow maps are scheduled after all local/remote pose updates.
+ // The real skinned meshes cast shadows on every rendered frame.
+ // The shadow pass runs after both local and remote animation poses update.
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;
 for(let i=ctx.falling.length-1;i>=0;i--){const f=ctx.falling[i];f.elapsed+=dt;const a=Math.min(1,f.elapsed/1.8);const angle=a*a*(Math.PI/2);f.tree.rotation.z=Math.sin(f.direction)*angle;f.tree.rotation.x=Math.cos(f.direction)*angle;if(f.elapsed>2.5){ctx.scene.remove(f.tree);ctx.falling.splice(i,1)}}
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}
@@ -78,8 +83,13 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
    ctx.tickActor(avatar.actor,dt,remoteMotion,avatar.jumping,rate);
   }
  }
+ // Only GPU rendering and its shadow-map refresh are FPS-limited.
+ // The diagnostics FPS counter measures actual rendered frames, not sim ticks.
+ if(!limiter.allow(now,ctx.settings.maxFps))return;
+ ctx.settings.tick(now,ctx);
  ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
- ctx.renderer.render(ctx.scene,ctx.camera)}requestAnimationFrame(animate);
+ ctx.renderer.render(ctx.scene,ctx.camera);
+}
 
 return {toggleView, animate};
 }
