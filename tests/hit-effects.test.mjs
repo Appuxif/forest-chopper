@@ -3,78 +3,94 @@ import assert from 'node:assert/strict';
 import {createHitEffects} from '../src/hit-effects.js';
 import {createChopping} from '../src/chopping.js';
 
-test('repeated confirmed hits share one highlight and restore original material and scale', () => {
+function treeFixture() {
+  const trunkMaterial = {name: 'shared-trunk-material'};
+  const trunk = {material: trunkMaterial, scale: {x: 1.3, z: 1.3}};
+  const color = {
+    hex: 0xe0ad70,
+    getHex() {return this.hex;},
+    setHex(hex) {this.hex = hex;},
+  };
+  const scar = {material: {color}, visible: false, scale: {x: 1, y: 1}};
+  return {tree: {children: [trunk, scar], userData: {scar}}, trunk, trunkMaterial, scar};
+}
+
+test('confirmed hits highlight only the scar, leaving the entire trunk unchanged', () => {
   let materials = 0;
-  class Material {constructor(){materials++;}}
-  const original = {name:'trunk-shared-material'};
-  const ctx = {THREE:{MeshLambertMaterial:Material}};
+  const ctx = {THREE: {MeshLambertMaterial: class {constructor() {materials++;}}}};
   const fx = createHitEffects(ctx);
-  const trees = Array.from({length:100},()=>({
-    children:[{material:original,scale:{x:1.3,z:1.3}}],
-    userData:{},
-  }));
-  for(const tree of trees) {
+  const fixtures = Array.from({length:100},treeFixture);
+  for (const {tree, trunk, trunkMaterial, scar} of fixtures) {
     fx.pulse(tree);
     fx.pulse(tree);
+    assert.equal(trunk.material, trunkMaterial);
+    assert.equal(trunk.scale.x, 1.3);
+    assert.equal(scar.visible, true);
+    assert.equal(scar.material.color.getHex(), 0xffd49a);
   }
-  assert.equal(materials,1,'not a new GPU material per hit');
-  assert.equal(fx.activeCount,100);
+  assert.equal(materials, 0, 'no material allocations per hit');
+  assert.equal(fx.activeCount, 100);
   fx.tick(.075);
-  assert.ok(trees[0].children[0].scale.x>1.3);
+  assert.ok(fixtures[0].scar.scale.x > 1);
+  assert.equal(fixtures[0].trunk.scale.x, 1.3);
   fx.tick(.075);
-  assert.equal(fx.activeCount,0);
-  for(const tree of trees){
-    assert.equal(tree.children[0].material,original);
-    assert.equal(tree.children[0].scale.x,1.3);
-    assert.equal(tree.children[0].scale.z,1.3);
-    assert.equal(tree.userData.hitEffect,undefined);
+  assert.equal(fx.activeCount, 0);
+  for (const {tree, trunk, trunkMaterial, scar} of fixtures) {
+    assert.equal(trunk.material, trunkMaterial);
+    assert.equal(trunk.scale.x, 1.3);
+    assert.equal(scar.material.color.getHex(), 0xe0ad70);
+    assert.equal(scar.scale.x, 1);
+    assert.equal(tree.userData.hitEffect, undefined);
   }
-  fx.pulse(trees[0]);
-  fx.release(trees[0]);
-  fx.release(trees[0]); // safe when a chunk is unloaded after falling
-  assert.equal(fx.activeCount,0);
-  assert.equal(trees[0].children[0].material,original);
+  fx.pulse(fixtures[0].tree);
+  fx.release(fixtures[0].tree);
+  fx.release(fixtures[0].tree);
+  assert.equal(fx.activeCount, 0);
+  assert.equal(fixtures[0].scar.material.color.getHex(), 0xe0ad70);
 });
 
-test('reduced motion keeps hit feedback static and restores trunk state',()=>{
-  const previous=globalThis.matchMedia;
-  globalThis.matchMedia=()=>({matches:true});
+test('reduced motion keeps the scar size static, restores color and ignores missing scar', () => {
+  const previous = globalThis.matchMedia;
+  globalThis.matchMedia = () => ({matches: true});
   try {
-    const original={name:'tree-material'};
-    const tree={children:[{material:original,scale:{x:1,z:1}}],userData:{}};
-    const fx=createHitEffects({THREE:{MeshLambertMaterial:class {}}});
+    const {tree, trunk, scar} = treeFixture();
+    const fx = createHitEffects({});
     fx.pulse(tree);
     fx.tick(.075);
-    assert.equal(tree.children[0].scale.x,1);
-    assert.notEqual(tree.children[0].material,original);
+    assert.equal(scar.scale.x, 1);
+    assert.equal(trunk.scale.x, 1.3);
+    assert.equal(scar.material.color.getHex(), 0xffd49a);
     fx.tick(.075);
-    assert.equal(tree.children[0].material,original);
-  } finally {if(previous===undefined)delete globalThis.matchMedia;else globalThis.matchMedia=previous;}
+    assert.equal(scar.material.color.getHex(), 0xe0ad70);
+    fx.pulse({children: [trunk], userData: {}});
+    assert.equal(fx.activeCount, 0);
+  } finally {
+    if (previous === undefined) delete globalThis.matchMedia;
+    else globalThis.matchMedia = previous;
+  }
 });
 
-test('wood chips cap at 96 active particles across repeated hits',()=>{
-  const shared={color: 1};
+test('wood chips cap at 96 active particles across repeated hits', () => {
   class Mesh {
     constructor(geometry, material) {
-      this.geometry=geometry;this.material=material;
-      this.position={set(x,y,z){Object.assign(this,{x,y,z})}};
-      this.scale={x:1,z:1};
+      this.geometry = geometry; this.material = material;
+      this.position = {set(x,y,z){Object.assign(this,{x,y,z});}};
     }
   }
-  const ctx={
-    THREE:{
-      MeshLambertMaterial:class{constructor(){}},
-      BoxGeometry:class{},
-      Raycaster:class{constructor(){this.far=0;}},
+  const ctx = {
+    THREE: {
+      MeshLambertMaterial: class {},
+      BoxGeometry: class {},
+      Raycaster: class {constructor(){this.far=0;}},
       Mesh,
     },
-    scene:{add(){}},
-    particles:[],
+    scene: {add(){}},
+    particles: [],
   };
-  const chops=createChopping(ctx);
-  const tree={children:[new Mesh(null,shared)],userData:{},
-    position:{x:3,z:4}};
-  for(let i=0;i<100;i++)chops.spawnChips(tree);
+  const chops = createChopping(ctx);
+  const {tree} = treeFixture();
+  tree.position = {x:3,z:4};
+  for (let i=0;i<100;i++) chops.spawnChips(tree);
   assert.equal(ctx.particles.length,96);
-  assert.equal(chops.tickHitEffects instanceof Function,true);
+  assert.equal(typeof chops.tickHitEffects,'function');
 });

@@ -135,3 +135,11 @@
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.
+
+### Follow-up — Localize the axe hit highlight (2026-10-30)
+
+- Player feedback: the entire tree trunk was flashing gold on hit because `hit-effects.js` temporarily swapped the whole trunk's shared material and inflated its width for 150 ms.
+- The feedback now brightens only the existing per-tree scar material for 150 ms and gently expands that small scar (unless reduced motion is requested). Tree trunk material and trunk scale never change. The original scar color/width are restored, including on repeated hit or chunk release. This allocates zero new materials per impact and leaves chips, HP, rewards, and networking untouched.
+- Automated tests verify 100 concurrent active scars without allocating materials; trunk state unchanged during and after pulse; reset/idempotent release; reduced-motion behavior and 96-chip cap.
+- Isolated Chrome debug page with real Three.js tree: trunk material identity stayed unchanged while only scar color temporarily changed; original scar color restored, active effects returned to zero and renderer geometries stayed 63. No human aesthetic assessment claimed.
+- Regression suite: Node 30/30, Python 5/5, all source JS syntax, `git diff --check`: passed. The phone-facing HTTP server on LAN port 18742 remains untouched; refreshing the browser loads updated code.
