@@ -5,8 +5,8 @@ import {createBuilding} from './building.js';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-no-scar3';
 import {createPlayer} from './player.js?v=20261030-sprint1';
-import {createMultiplayer} from './multiplayer.js?v=20261030-no-scar3';
-import {createMinimap} from './minimap.js';
+import {createMultiplayer} from './multiplayer.js?v=20261030-map-ping1';
+import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261030-sprint1';
 import {createWind} from './wind.js';
@@ -69,11 +69,14 @@ const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings});
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null;
 
-let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
+let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
  get $(){return $;},
  get chatHistory(){return chatHistory;},
+ get clearMapPings(){return clearMapPings;},
  get sendChat(){return sendChat;},
+ get sendMapPing(){return sendMapPing;},
+ get showMapPing(){return showMapPing;},
  get CHOP_SPEED(){return CHOP_SPEED;},
  get GRAVITY(){return GRAVITY;},
  get JUMP_SPEED(){return JUMP_SPEED;},
@@ -207,12 +210,12 @@ const landmarks=createLandmarks(ctx);
 ({makeLog, overlaps, candidate, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
 ({aimed, spawnChips, chop}=createChopping(ctx));
 ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.group.visible=thirdPerson;}
-({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, chatHistory}=createMultiplayer(ctx));
+({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, chatHistory}=createMultiplayer(ctx));
 offlineSave=createOfflineSave(ctx);
 offlineSave.restore();
 progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}});
 ({toggleView, animate}=createPlayer(ctx));
-createMinimap(ctx);
+({showMapPing,clearMapPings}=createMinimap(ctx));
 ({look}=createControls(ctx));
 if (location.pathname.endsWith('/index_debug.html')) {
   const { installDebug } = await import('./debug.js');

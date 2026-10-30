@@ -86,6 +86,41 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(asyncio.TimeoutError):
                     await asyncio.wait_for(alice.recv(), .08)
 
+    async def test_map_pings_are_ephemeral_validated_and_rate_limited(self):
+        async with connect(self.url) as alice:
+            welcome = await self.receive(alice, 'welcome')
+            await alice.send(json.dumps({'type': 'hello', 'name': 'Sender'}))
+            async with connect(self.url) as bob:
+                await self.receive(bob, 'welcome')
+                # The server decides who authored the marker; client-supplied identities are ignored.
+                await alice.send(json.dumps({
+                    'type': 'map_ping', 'x': 12.345, 'z': -4.44,
+                    'name': 'Forged', 'by': 9999,
+                }))
+                a = await self.receive(alice, 'map_ping')
+                b = await self.receive(bob, 'map_ping')
+                self.assertEqual(a, b)
+                self.assertEqual(a, {'type': 'map_ping', 'by': welcome['id'],
+                                     'name': 'Sender', 'x': 12.3, 'z': -4.4})
+                self.assertFalse(self.path.exists(), 'map pings do not persist world state')
+                await alice.send(json.dumps({'type': 'map_ping', 'x': 13, 'z': 0}))
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(bob.recv(), .08)
+
+                player = next(p for p in self.world.clients.values() if p['id'] == welcome['id'])
+                for x, z in ((float('nan'), 0), (float('inf'), 0),
+                             (200000, 0), (56, 0), ('invalid', 0)):
+                    player['last_map_ping'] = 0
+                    await alice.send(json.dumps({'type': 'map_ping', 'x': x, 'z': z}))
+                    with self.assertRaises(asyncio.TimeoutError):
+                        await asyncio.wait_for(bob.recv(), .06)
+                player['last_map_ping'] = 0
+                await alice.send(json.dumps({'type': 'map_ping', 'x': 20, 'z': -10}))
+                response = await self.receive(bob, 'map_ping')
+                self.assertEqual((response['x'], response['z']), (20, -10))
+                self.assertEqual(len(self.world.chat), 0)
+                self.assertFalse(self.path.exists())
+
     async def test_hits_save_and_restore_world(self):
         async with connect(self.url) as ws:
             await self.receive(ws, 'welcome')

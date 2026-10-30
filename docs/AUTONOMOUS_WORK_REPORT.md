@@ -242,6 +242,14 @@
 - Real isolated Chrome on touch 390×844: moving forward for 900ms covered approximately 1.10m with auto sprint off and 2.67m with it on (2.42× in this short root-motion sample; not a guaranteed movement multiplier), without holding Shift. Normal mobile `index.html` loads with auto sprint initially disabled, no debug API and no console errors. Screenshot `/tmp/forest-overnight-autosprint-mobile.webp`.
 - Validation: Node 54/54, Python 5/5, source JS syntax and `git diff --check` PASS; no production world/server changes and no push.
 
+### P2.8 — Server-validated cooperative minimap pings (2026-10-30)
+
+- Extended the existing WebSocket protocol with the **separate** ephemeral `map_ping` event (not the RTT `ping/pong`). The Python server validates finite map coordinates within 55 m of the sending player's authoritative position and the ±240000 world bounds, limits each player to one marker per 2 seconds, and broadcasts trusted sender ID/name plus x/z rounded to 0.1m. No chat messages, stored markers, gameplay costs, bot API changes, schema migrations or writes to production saves.
+- The existing minimap is now tap/click accessible on desktop/touch, with `Enter`/`Space` placing a marker at the player's position for keyboard navigation. Only a successful server broadcast displays a gold pin and optional short remote-player toast. Pings disappear after 8 seconds, are capped at 32, show direction at the minimap edge for distant teammates and are cleared on disconnect/reconnect. Clicking offline produces a brief explanation instead of sending data.
+- Added pure `src/map-pings.js`: bounded TTL store and coordinate conversion respecting the canvas' CSS/mobile scaling. Reused the 150ms minimap redraw interval; no new polling timer, GPU geometry or saved data. Both HTML entrypoints have descriptive accessible labels, a small online-only hint and module cache refresh.
+- New 2 Node state/coordinate tests, 1 mocked multiplayer test (server ack, anti-spam, stale socket/room clearing) and a Python integration test on an isolated temporary world, including sender attribution, broadcast to both users, invalid/NaN/far coordinate rejection, rate limit and no saved JSON. Full suites: **57 Node / 6 Python passed**.
+- Real isolated localhost WebSocket server and **two different browser contexts**, one debug and one normal mobile 390×844: both joined `2 игрока`. Touch pointerdown on the debug client's minimap sent a marker at ~12m, and each received an exact gold pixel `[255,225,145,255]` at the target map coordinate; the receiving client showed `📍 Scout A отметил точку`. Normal client has no debug API. Screenshot `/tmp/forest-overnight-map-ping-mobile.webp`. No browser console warnings/errors. No push, live multiplayer or live save touched.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.

@@ -1,4 +1,5 @@
 // Lightweight 2D minimap: local player stays centered, north points up.
+import {createMapPings,mapPointToWorld} from './map-pings.js';
 export function createMinimap(ctx) {
   const canvas = ctx.$('minimap');
   const g = canvas.getContext('2d');
@@ -6,6 +7,7 @@ export function createMinimap(ctx) {
   const center = size / 2;
   const radius = center - 12;
   const range = 55; // world meters to the edge of the circular map
+  const pings=createMapPings();
   const metersToPixels = radius / range;
   const position = (x, z) => [center + (x - ctx.px) * metersToPixels,
     center + (z - ctx.pz) * metersToPixels];
@@ -45,6 +47,16 @@ export function createMinimap(ctx) {
         g.beginPath();g.arc(px,py,6.7,0,Math.PI*2);g.stroke();
       }
     }
+    // Co-op pings: short-lived gold rings, clamped to the minimap edge when far away.
+    for(const pin of pings.active()){
+      const [x,y]=position(pin.x,pin.z);
+      const dx=x-center,dy=y-center,d=Math.hypot(dx,dy);
+      const factor=d>radius-9?(radius-9)/d:1;
+      const px=center+dx*factor,py=center+dy*factor;
+      circle(px,py,4,'#ffe191');
+      g.strokeStyle='#eab95a';g.lineWidth=2;
+      g.beginPath();g.arc(px,py,8,0,Math.PI*2);g.stroke();
+    }
     // Own position and view direction (forward is -sin(yaw), -cos(yaw)).
     const angle=ctx.yaw;
     const dx=-Math.sin(angle),dy=-Math.cos(angle);
@@ -61,7 +73,22 @@ export function createMinimap(ctx) {
     g.font='bold 12px system-ui';g.textAlign='center';g.fillStyle='#e6ffe9';
     g.fillText('N',center,13);
   }
+  canvas.addEventListener('pointerdown',e=>{
+    if(!ctx.isOnline()){
+      ctx.notify('📍 Метки доступны только в сетевой игре','info','map-ping-offline');
+      return;
+    }
+    const world=mapPointToWorld(e.clientX,e.clientY,canvas.getBoundingClientRect(),ctx.px,ctx.pz,size,range);
+    if(world)ctx.sendMapPing(world.x,world.z);
+    e.stopPropagation();
+  });
+  canvas.addEventListener('keydown',e=>{
+    if(e.code!=='Enter'&&e.code!=='Space')return;
+    e.preventDefault();
+    if(ctx.isOnline())ctx.sendMapPing(Math.round(ctx.px*10)/10,Math.round(ctx.pz*10)/10);
+  });
   draw();
   const timer=setInterval(draw,150);
   window.addEventListener('pagehide',()=>clearInterval(timer),{once:true});
+  return {showMapPing:pings.receive,clearMapPings:pings.clear,activePings:pings.active};
 }

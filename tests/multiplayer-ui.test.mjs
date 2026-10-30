@@ -14,7 +14,8 @@ function fixture() {
   }
   globalThis.WebSocket=FakeWebSocket;
 
-  const elements = new Map(), notifications = [];
+  const elements = new Map(), notifications = [], pings=[];
+  let clearedPings=0;
   function element(id) {
     if (elements.has(id)) return elements.get(id);
     const children=[];
@@ -61,12 +62,14 @@ function fixture() {
     $:element, THREE:{Group,Sprite,CanvasTexture:Texture,SpriteMaterial:Material,Vector3,SRGBColorSpace:'srgb'},
     scene, socket:null, myId:null, avatars:new Map(), modelActors:new Set(),
     trees:new Map(), chunks:new Map(), falling:[],particles:[],placed:[],
-    felled:new Set(),treeDamage:new Map(),seed:1,wood:0,cuts:0,
+    felled:new Set(),treeDamage:new Map(),seed:1,wood:0,cuts:0,px:0,pz:0,
     offlineSave:{suspended:false,suspend(){this.suspended=true}},
     settings:{setConnected(){},setLatency(){},close(){}},
     progress:{resetPosition() {},record(){}},
     tutorial:{complete(){}},
     notify:(...args)=>notifications.push(args),
+    showMapPing:data=>{pings.push(data);return true},
+    clearMapPings:()=>{clearedPings++;pings.length=0},
     updateChunks(){},
     disposePreview(){},
     createLumberjack:()=>({group:new Group(),mixer:{stopAllAction(){}}}),
@@ -74,7 +77,8 @@ function fixture() {
   };
   const multiplayer=createMultiplayer(ctx);
   return {
-    ctx, multiplayer, notifications, FakeWebSocket,
+    ctx, multiplayer, notifications, pings, FakeWebSocket,
+    get clearedPings(){return clearedPings;},
     restore(){globalThis.WebSocket=previousWebSocket;globalThis.document=docPrevious},
     get socket(){return FakeWebSocket.instances.at(-1)},
   };
@@ -123,5 +127,31 @@ test('replaced sockets cannot repopulate stale avatars or overwrite state',async
     fresh.message({type:'welcome',id:5,seed:55,felled:[],damage:{},logs:[],players:[],wood:0,cuts:0,chat:[]});
     assert.equal(f.ctx.myId,5);
     assert.equal(f.ctx.seed,55);
+  }finally{f.restore()}
+});
+
+test('map markers are acknowledged by server, never optimistic, and cleared on disconnect',async()=>{
+  const f=fixture();
+  try{
+    await f.ctx.$('connect').onclick();
+    const ws=f.socket;
+    ws.message({type:'welcome',id:1,seed:21,felled:[],damage:{},logs:[],players:[],wood:0,cuts:0,chat:[]});
+    assert.equal(f.pings.length,0);
+    assert.equal(f.multiplayer.sendMapPing(12.3,-4.4),true);
+    assert.deepEqual(ws.sent.at(-1),{type:'map_ping',x:12.3,z:-4.4});
+    assert.equal(f.pings.length,0,'client must wait for a confirmed server marker');
+    assert.equal(f.multiplayer.sendMapPing(13,0),false,'client rate limit');
+    assert.equal(f.multiplayer.sendMapPing(100,0),false,'out-of-range coordinates are rejected');
+    ws.message({type:'map_ping',by:1,name:'Tester',x:12.3,z:-4.4});
+    assert.equal(f.pings.length,1);
+    assert.equal(f.notifications.length,0,'own marker does not spam toasts');
+    ws.message({type:'map_ping',by:2,name:'Bob',x:9,z:-2});
+    assert.equal(f.pings.length,2);
+    assert.match(f.notifications[0][0],/Bob отметил точку/);
+    f.ctx.$('disconnect').onclick();
+    assert.equal(f.pings.length,0);
+    assert.ok(f.clearedPings>=1);
+    ws.message({type:'map_ping',by:3,name:'OldRoom',x:0,z:0});
+    assert.equal(f.pings.length,0,'stale room messages must not reappear');
   }finally{f.restore()}
 });
