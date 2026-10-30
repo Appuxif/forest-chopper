@@ -4,13 +4,14 @@ import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-no-scar3';
-import {createPlayer} from './player.js?v=20261030-fire1';
+import {createPlayer} from './player.js?v=20261030-daycycle1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-no-scar3';
 import {createMinimap} from './minimap.js';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-fov1';
+import {createSettings} from './settings.js?v=20261030-daycycle1';
 import {createWind} from './wind.js';
 import {createLandmarks} from './landmarks.js?v=20261030-fire1';
+import {createDayCycle} from './day-cycle.js';
 import {createOfflineSave} from './offline-save.js';
 import {createTutorial} from './tutorial.js';
 import {createProgress} from './progress.js';
@@ -22,7 +23,7 @@ const {modelActors,CHOP_SPEED,createLumberjack,actorChop,tickActor,rootMotion}=a
 let ownAvatar=null,thirdPerson=true;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,280);camera.rotation.order='YXZ';const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'default'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;host.prepend(renderer.domElement);
-scene.add(new THREE.HemisphereLight(0xe1efff,0x45552b,2.1));const sun=new THREE.DirectionalLight(0xffe4a6,2.3);sun.position.set(35,75,20);scene.add(sun);
+const hemisphere=new THREE.HemisphereLight(0xe1efff,0x45552b,2.1);scene.add(hemisphere);const sun=new THREE.DirectionalLight(0xffe4a6,2.3);sun.position.set(35,75,20);scene.add(sun);
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000),new THREE.MeshLambertMaterial({color:0x547340}));ground.rotation.x=-Math.PI/2;scene.add(ground);
 const trunkGeo=new THREE.CylinderGeometry(.38,.6,1,9),leafGeo=new THREE.ConeGeometry(1,1,8),grassGeo=new THREE.ConeGeometry(.17,.6,3),rockGeo=new THREE.DodecahedronGeometry(1,0);
 // Shared tiny flora primitives: replace some grass meshes, never increase per-chunk object count.
@@ -64,6 +65,7 @@ const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
 let socket=null,myId=null,lastMoveSent=0;const avatars=new Map();
 const notifications=createNotifications();
 const settings=createSettings(document,null,fov=>{camera.fov=fov;camera.updateProjectionMatrix();});
+const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings});
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null;
 
@@ -102,6 +104,7 @@ const ctx={
  get createLumberjack(){return createLumberjack;},
  get disposePreview(){return disposePreview;},
  get cuts(){return cuts;}, set cuts(value){cuts=value;},
+ get dayCycle(){return dayCycle;},
  get drag(){return drag;}, set drag(value){drag=value;},
  get endMat(){return endMat;},
  get falling(){return falling;},

@@ -1,7 +1,7 @@
 // Lightweight client-only preferences. No framework or new dependencies.
 import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
 const KEY = 'forest-chopper:settings:v1';
-const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75});
+const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false});
 
 export function sanitizeSettings(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -12,6 +12,7 @@ export function sanitizeSettings(value) {
       ? Math.round(number * 10) / 10 : DEFAULT.mouseSensitivity,
     showFps: source.showFps === true,
     windEnabled: source.windEnabled !== false,
+    dayCycleEnabled: source.dayCycleEnabled === true,
     fov: Number.isFinite(fov) && fov >= 65 && fov <= 95
       ? Math.round(fov / 5) * 5 : DEFAULT.fov,
   };
@@ -38,6 +39,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
 .fc-settings h2{font-size:15px;margin:0 0 12px}
 .fc-settings label{display:block;margin:10px 0}
+.fc-settings small{display:block;color:#bed7c6;line-height:1.35;margin:-5px 0 9px}
 .fc-settings input[type=range]{display:block;width:100%;margin-top:8px;accent-color:#8bd0a4}
 .fc-settings input[type=checkbox]{accent-color:#8bd0a4}
 .fc-settings button{border-radius:7px;padding:7px 10px}
@@ -61,6 +63,8 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
       <input id="fc-fov" type="range" min="65" max="95" step="5"></label>
     <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
     <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в кронах</label>
+    <label><input id="fc-day-cycle" type="checkbox"> Локальная смена дня и ночи</label>
+    <small>Только визуально, цикл 8 минут. В сетевой игре у каждого своё время суток.</small>
     <button id="fc-reset-settings" type="button">Сбросить настройки</button>`;
   const fps = doc.createElement('div');
   fps.className = 'fc-fps';
@@ -73,6 +77,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   const output = panel.querySelector('#fc-sensitivity-value');
   const checkbox = panel.querySelector('#fc-show-fps');
   const windCheckbox = panel.querySelector('#fc-wind-enabled');
+  const dayCheckbox = panel.querySelector('#fc-day-cycle');
   const fovSlider = panel.querySelector('#fc-fov');
   const fovOutput = panel.querySelector('#fc-fov-value');
   const networkLabel = () => connected ? `Ping ${latency === null ? '—' : latency + ' ms'}` : 'offline';
@@ -82,6 +87,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     output.textContent = String(state.mouseSensitivity.toFixed(1));
     checkbox.checked = state.showFps;
     windCheckbox.checked = state.windEnabled;
+    dayCheckbox.checked = state.dayCycleEnabled;
     fovSlider.value = String(state.fov);
     fovOutput.textContent = String(state.fov);
     fps.hidden = !state.showFps;
@@ -107,6 +113,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   };
   checkbox.onchange = () => {state.showFps = checkbox.checked;reflect();save();};
   windCheckbox.onchange = () => {state.windEnabled = windCheckbox.checked;reflect();save();};
+  dayCheckbox.onchange = () => {state.dayCycleEnabled = dayCheckbox.checked;reflect();save();};
   fovSlider.oninput = () => {
     state.fov = sanitizeSettings({...state,fov:Number(fovSlider.value)}).fov;
     onFovChange?.(state.fov);
@@ -144,5 +151,6 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   return {get mouseSensitivity(){return state.mouseSensitivity;},
     get showFps(){return state.showFps;},
     get windEnabled(){return state.windEnabled;},
+    get dayCycleEnabled(){return state.dayCycleEnabled;},
     get fov(){return state.fov;}, tick, close, setConnected, setLatency};
 }

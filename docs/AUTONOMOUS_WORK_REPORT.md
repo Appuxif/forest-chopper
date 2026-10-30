@@ -226,6 +226,14 @@
 - Real isolated debug Chrome touch 390×844: FOV 75→95 immediately changed the perspective projection matrix element 2.82→1.98 with wood unchanged; reloading restored 95°, and Reset returned FOV 75°/projection matrix 2.82. Normal `index.html` mobile rendered with FOV slider and without debug API or console errors; desktop 1366×768 had no warnings/errors. Screenshot `/tmp/forest-overnight-fov-mobile.webp`.
 - Full test suite validated before commit; no push.
 
+### P2.4 — Optional local day/night lighting cycle (2026-10-30)
+
+- Added a lightweight local-only eight-minute day → dusk → night → dawn cycle to the existing Three.js background/fog and two shared lights. Daytime remains the original palette. Night brightness is deliberately capped to keep trees, paths and player readable (hemisphere ≥1.35 and directional ≥0.65). No mesh, shader, texture, collider, shadow caster or world-generation changes.
+- New Settings checkbox `Локальная смена дня и ночи`, **off by default**, with explicit note that multiplayer clients have independent visual time. Existing `forest-chopper:settings:v1` values migrate to disabled; Reset restores normal daytime. Reduced-motion preference immediately disables the animated cycle and restores exactly the original colors/intensities.
+- New `src/day-cycle.js` uses a small reusable color palette, throttles interpolation to 300 ms, and maintains no per-frame GPU allocations. Pure phase interpolation and actual controller are covered by four tests: smooth wrapping/brightness floor, opt-in and live reset, reduced-motion override and continuity across dusk/dawn. Existing settings tests validate boolean sanitization and persistence.
+- Real isolated Chrome debug client: default bright sky `#a4c8be`, simulated actual night phase `#506685` with fog matching, hemisphere 1.35 and sun 0.65; desktop and 390×844 touch screenshot confirm HUD stays readable, no JavaScript errors. Actual checkbox was toggled on/off and persisted; normal mobile entrypoint loaded without debug API or console warnings. Screenshot `/tmp/forest-overnight-daycycle-night-mobile.webp`.
+- Tests: Node 52/52, Python 5/5, all client syntax and diff checks PASS. Local save and server protocol unchanged; no push.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.
