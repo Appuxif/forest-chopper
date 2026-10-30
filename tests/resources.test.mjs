@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {createWorld} from '../src/world.js';
 import {createBuilding} from '../src/building.js';
 
-// Lightweight Three.js doubles; count resources owned by tree scars / previews.
-// Shared terrain/tree/log geometry and materials must never be disposed on unload.
+// Lightweight Three.js doubles; check that tree geometry/materials are shared.
+// Only the temporary building preview should allocate a unique material.
 function fixture() {
   const created = [], disposed = [];
   class Resource {
@@ -64,30 +64,34 @@ function fixture() {
   return {ctx, created, disposed, sharedGeometry, sharedMaterial};
 }
 
-test('100+ chunk unloads dispose unique scar resources but keep shared objects', () => {
+test('130 chunk cycles keep shared resources and never create growing rectangular scars', () => {
   const {ctx, created, sharedGeometry, sharedMaterial} = fixture();
   const world = createWorld(ctx);
   for (let i = 0; i < 130; i++) {
     ctx.px = 40 + i * 220;
     ctx.pz = 40 + i * 220;
     world.updateChunks();
-  }
-  const activeScars = [...ctx.trees.values()].map(t => t.userData.scar);
-  assert.ok(created.length > 200, 'test must generate many unique resources');
-  for (const resource of created) {
-    if (resource === sharedGeometry || resource === sharedMaterial) {
-      assert.equal(resource.calls, 0, 'shared resource must not be disposed');
-    } else if (activeScars.some(s => s.geometry === resource || s.material === resource)) {
-      assert.equal(resource.calls, 0, 'live tree resource must not be disposed');
-    } else {
-      assert.equal(resource.calls, 1, 'unloaded tree scar must be disposed once');
+    for (const tree of ctx.trees.values()) {
+      assert.equal(tree.children.length, 5, 'one trunk and four foliage meshes only');
+      assert.equal(tree.userData.scar, undefined);
     }
   }
-  for (const tree of ctx.trees.values()) {
-    world.disposeTree(tree);
-    world.disposeTree(tree); // Idempotent on reset, disconnect, etc.
-  }
-  assert.ok(created.every(r => r === sharedGeometry || r === sharedMaterial || r.calls === 1));
+  assert.ok(ctx.trees.size > 0, 'test actually builds trees');
+  assert.deepEqual(created, [sharedGeometry, sharedMaterial], 'no individual tree geometry/material');
+  assert.equal(sharedGeometry.calls, 0);
+  assert.equal(sharedMaterial.calls, 0);
+});
+
+test('restoring a damaged tree preserves HP without recreating the rectangular overlay', () => {
+  const {ctx, created, sharedGeometry, sharedMaterial} = fixture();
+  const world = createWorld(ctx);
+  ctx.treeDamage.set('0,0:0', 3);
+  world.makeTree(12, 12, '0,0:0');
+  const tree = ctx.trees.get('0,0:0');
+  assert.equal(tree.userData.hp, 3);
+  assert.equal(tree.children.length, 5);
+  assert.equal(tree.userData.scar, undefined);
+  assert.deepEqual(created, [sharedGeometry, sharedMaterial]);
 });
 
 test('preview cycles dispose only owned preview material, never shared log geometry', () => {

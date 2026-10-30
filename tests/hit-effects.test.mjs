@@ -20,11 +20,8 @@ function setup(online=false) {
   class Vector3 {normalize() {return this;}}
   const material={name:'shared trunk material'};
   const trunk=new Mesh({},material);
-  const scarColor={hex:0xe0ad70,getHex(){return this.hex;},setHex(n){this.hex=n;}};
-  const scar=new Mesh({}, {color:scarColor});
-  scar.visible=false;
-  const tree={children:[trunk,scar],position:{x:2,z:0},rotation:{x:0,y:0,z:0},
-    userData:{id:'0,0:1',hp:5,maxHp:5,scar,x:2,z:0}};
+  const tree={children:[trunk],position:{x:2,z:0},rotation:{x:0,y:0,z:0},
+    userData:{id:'0,0:1',hp:5,maxHp:5,x:2,z:0}};
   const ctx={
     THREE:{Mesh,Raycaster,Vector3,BoxGeometry:class {},MeshLambertMaterial:class {}},
     thirdPerson:true,px:0,pz:0,yaw:0,pitch:0,
@@ -34,18 +31,17 @@ function setup(online=false) {
     treeDamage:damage,isOnline:()=>online,sendNet:data=>sent.push(data),
     offlineSave:{markDirty(){}},
   };
-  return {ctx,tree,trunk,scar,material,sent,damage,sceneObjects, chopping:createChopping(ctx)};
+  return {ctx,tree,trunk,material,sent,damage,sceneObjects, chopping:createChopping(ctx)};
 }
 
 test('offline successful chop keeps entire trunk material, scale and rotation constant',()=>{
   const f=setup();
-  const {trunk,scar,tree,material,ctx,chopping}=f;
+  const {trunk,tree,material,ctx,chopping}=f;
   const originalTrunkScale={...trunk.scale};
   const originalTrunkRotation={...tree.rotation};
   chopping.chop();
   assert.equal(tree.userData.hp,4);
-  assert.equal(scar.visible,true);
-  assert.equal(scar.material.color.getHex(),0xe0ad70);
+  assert.equal(tree.userData.scar,undefined,'no rectangular damage overlay');
   assert.equal(trunk.material,material,'no full-trunk flash');
   assert.deepEqual(trunk.scale,originalTrunkScale,'no full-trunk scaling');
   assert.deepEqual(tree.rotation,originalTrunkRotation,'no abrupt whole-tree tilt');
@@ -59,7 +55,7 @@ test('online chop sends request but waits for authoritative tree_hit to show fee
   f.chopping.chop();
   assert.deepEqual(f.sent,[{type:'hit',tree:'0,0:1'}]);
   assert.equal(f.tree.userData.hp,5);
-  assert.equal(f.scar.visible,false);
+  assert.equal(f.tree.userData.scar,undefined);
   assert.equal(f.ctx.particles.length,0);
   assert.equal(f.trunk.material,f.material);
 });
@@ -70,7 +66,7 @@ test('chip effects remain bounded and do not flash even with 100 rapid impacts',
   assert.equal(f.ctx.particles.length,96);
   assert.equal(f.sceneObjects.length,96);
   assert.equal(f.trunk.material,f.material);
-  assert.equal(f.scar.material.color.getHex(),0xe0ad70);
+  assert.equal(f.tree.userData.scar,undefined);
 });
 
 test('previous cached hit effect API is inert for compatibility',()=>{
@@ -80,6 +76,6 @@ test('previous cached hit effect API is inert for compatibility',()=>{
   fx.tick(.075);
   fx.release(f.tree);
   assert.equal(f.trunk.material,f.material);
-  assert.equal(f.scar.material.color.getHex(),0xe0ad70);
+  assert.equal(f.tree.userData.scar,undefined);
   assert.equal(fx.activeCount,0);
 });

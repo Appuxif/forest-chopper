@@ -1,11 +1,11 @@
 import {createAnimations} from './animations.js';
-import {createWorld} from './world.js';
+import {createWorld} from './world.js?v=20261030-no-scar3';
 import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js';
-import {createChopping} from './chopping.js?v=20261030-no-flash2';
-import {createControls} from './controls.js';
-import {createPlayer} from './player.js?v=20261030-no-flash2';
-import {createMultiplayer} from './multiplayer.js';
+import {createChopping} from './chopping.js?v=20261030-no-scar3';
+import {createControls} from './controls.js?v=20261030-no-scar3';
+import {createPlayer} from './player.js?v=20261030-no-scar3';
+import {createMultiplayer} from './multiplayer.js?v=20261030-no-scar3';
 import {createMinimap} from './minimap.js';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js';
@@ -45,7 +45,7 @@ const settings=createSettings();
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null;
 
-let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposeTree, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
+let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
  get $(){return $;},
  get chatHistory(){return chatHistory;},
@@ -75,7 +75,6 @@ const ctx={
  get clearWorld(){return clearWorld;},
  get closeNet(){return closeNet;},
  get createLumberjack(){return createLumberjack;},
- get disposeTree(){return disposeTree;},
  get disposePreview(){return disposePreview;},
  get cuts(){return cuts;}, set cuts(value){cuts=value;},
  get drag(){return drag;}, set drag(value){drag=value;},
@@ -166,7 +165,7 @@ const ctx={
  get wood(){return wood;}, set wood(value){wood=value;},
  get yaw(){return yaw;}, set yaw(value){yaw=value;},
 };
-({rand, makeTree, build, updateChunks, disposeTree}=createWorld(ctx));
+({rand, makeTree, build, updateChunks}=createWorld(ctx));
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
 ({aimed, spawnChips, chop}=createChopping(ctx));
