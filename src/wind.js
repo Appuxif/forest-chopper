@@ -1,5 +1,4 @@
-// Gentle wind: spruces sway slightly from the roots (bark + foliage), with
-// extra movement in needles; birch keeps its existing foliage-only sway.
+// Legacy low-poly crown sway only. Procedural trees bend together on the GPU.
 // No new meshes/draw calls, throttled to nearby trees and reduced-motion aware.
 export function createWind(ctx, {
   intervalMs = 150,
@@ -51,6 +50,7 @@ export function createWind(ctx, {
     let count = 0;
     for (const tree of ctx.trees.values()) {
       if (count >= maxTrees) break;
+      if(tree.userData?.spruceModel||tree.userData?.birchModel)continue;
       const dx = tree.position.x - ctx.px, dz = tree.position.z - ctx.pz;
       if (dx * dx + dz * dz > radiusSquared || (!tree.userData?.spruceModel && tree.children.length < 5)) continue;
       let bases = active.get(tree);

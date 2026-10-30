@@ -1,7 +1,9 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261030-spruce-diagnostics1';
-import {generateSpruceParts} from './spruce-model.js?v=20261031-procedural-spruce1';
-import {createSpruceDiagnostics} from './spruce-diagnostics.js?v=20261031-procedural-spruce1';
+import {createWorld} from './world.js?v=20261031-spruce-bark1';
+import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
+import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
+import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
+import {createSpruceDiagnostics} from './spruce-diagnostics.js?v=20261031-spruce-bark1';
 import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
@@ -40,6 +42,8 @@ const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THR
 
 const {modelActors,CHOP_SPEED,createLumberjack,actorChop,tickActor,rootMotion}=await createAnimations(THREE);
 const spruceParts=generateSpruceParts();
+const birchParts=generateBirchParts();
+const treeWindShader=createTreeWindShader({motionQuery:typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false}});
 let ownAvatar=null,thirdPerson=true;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,280);camera.rotation.order='YXZ';const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'default'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;host.prepend(renderer.domElement);
@@ -255,6 +259,8 @@ const ctx={
  get requestJump(){return requestJump;},
  get rareLeafMat(){return rareLeafMat;},
  get spruceParts(){return spruceParts;},
+ get birchParts(){return birchParts;},
+ get treeWindShader(){return treeWindShader;},
  get spruceDiagnostics(){return spruceDiagnostics;},
  get rockColliders(){return rockColliders;},
  get rockGeo(){return rockGeo;},

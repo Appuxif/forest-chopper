@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createTreeBatch,detachTreeForFall} from '../src/tree-instancing.js';
 import {createWind} from '../src/wind.js';
+import {createTreeWindShader} from '../src/tree-wind-shader.js';
 
 class Color{
   constructor(hex=0xffffff){this.isColor=true;this.set(hex);}
@@ -172,4 +173,47 @@ test('without GPU instancing support original tree stays rendered',()=>{
   const parent=new Group(),geo=new Geometry(),t=tree(4,5,geo,new Material(0xffffff),new Material(0x224422));
   assert.equal(createTreeBatch({},parent,[t]),null);
   assert.ok(t.children.every(p=>p.visible));
+});
+
+
+test('instanced procedural wood and foliage share GPU wind with shadow depth shaders',()=>{
+  const parent=new Group(),woodGeo=new Geometry(),leafGeo=new Geometry();
+  const wood=new Material(0x795339),leaves=new Material(0x245c36,{uuid:'atlas'});
+  leaves.alphaTest=.4;
+  const make=(x)=>{
+    const tree=new Group();tree.position.x=x;tree.userData={spruceModel:true};
+    tree.add(new Mesh(woodGeo,wood));
+    tree.add(new Mesh(leafGeo,leaves));
+    return tree;
+  };
+  let depthCreated=0;
+  class Depth{
+    constructor(opts){Object.assign(this,opts);this.userData={};depthCreated++;}
+  }
+  const graphics={...THREE,MeshDepthMaterial:Depth,RGBADepthPacking:3201};
+  const wind=createTreeWindShader({motionQuery:{matches:false}});
+  const cache=new Map();
+  const batch1=createTreeBatch(graphics,parent,[make(1),make(2)],cache,wind);
+  const batch2=createTreeBatch(graphics,new Group(),[make(4)],cache,wind);
+  assert.equal(batch1.meshes.length,2);
+  assert.equal(batch2.meshes.length,2);
+  assert.equal(depthCreated,2,'depth materials are shared across chunks');
+  for(const batch of [batch1,batch2])for(const mesh of batch.meshes){
+    assert.equal(mesh.material.userData.fcWindHeight,6);
+    assert.equal(mesh.customDepthMaterial.userData.fcWindHeight,6);
+    assert.equal(typeof mesh.material.onBeforeCompile,'function');
+    assert.equal(mesh.customDepthMaterial.alphaTest,mesh.material.alphaTest);
+  }
+  const leaf=batch1.meshes.find(m=>m.geometry===leafGeo);
+  assert.equal(leaf.customDepthMaterial.map,leaves.map);
+  const compiled={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>'};
+  leaf.material.onBeforeCompile(compiled);
+  assert.match(compiled.vertexShader,/transformed.z \+= fcOffset/);
+  assert.equal(compiled.uniforms.fcWindTime,wind.uniforms.fcWindTime);
+  const fixed=batch1.meshes.map(mesh=>mesh.matrices.map(m=>({...m})));
+  wind.tick(1000,0,0);
+  wind.tick(2000,1,1);
+  assert.deepEqual(batch1.meshes.map(mesh=>mesh.matrices),fixed,
+    'no CPU instance transforms update when GPU time changes');
+  batch1.dispose();batch2.dispose();
 });

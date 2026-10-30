@@ -1,7 +1,7 @@
 // Render the original five meshes per tree as per-chunk InstancedMeshes.
 // Logical tree groups remain (hidden) for raycasts, wind and falling animations.
 // Share geometry and material style; per-instance colors preserve original palettes.
-export function createTreeBatch(THREE, parent, trees, sharedMaterials=new Map()) {
+export function createTreeBatch(THREE, parent, trees, sharedMaterials=new Map(), treeWindShader=null) {
   // Minimal Three.js doubles in logic-only tests do not implement GPU rendering.
   if (!THREE.InstancedMesh || !trees.length) return null;
   const groups = new Map(), records = new Map(), meshes = [];
@@ -45,6 +45,28 @@ export function createTreeBatch(THREE, parent, trees, sharedMaterials=new Map())
   for (const materials of groups.values()) for (const group of materials.values()) {
     const mesh = new THREE.InstancedMesh(group.geometry, group.material, group.originals.length);
     mesh.castShadow = true;
+    const procedural=group.originals[0]?.tree?.userData;
+    if(treeWindShader && (procedural?.spruceModel||procedural?.birchModel)){
+      const height=procedural.spruceModel?6:8;
+      if(!group.material.userData?.fcWindHeight)
+        treeWindShader.decorate(group.material,height);
+      // Shadow alpha cutouts and trunk geometry use the same deformation.
+      if(THREE.MeshDepthMaterial){
+        const depthKey='tree-wind-depth:'+group.geometry.uuid;
+        let depth=sharedMaterials.get(depthKey);
+        if(!depth){
+          depth=new THREE.MeshDepthMaterial({
+            depthPacking:THREE.RGBADepthPacking,
+            map:group.material.map,
+            alphaTest:group.material.alphaTest,
+            side:group.material.side,
+          });
+          treeWindShader.decorate(depth,height);
+          sharedMaterials.set(depthKey,depth);
+        }
+        mesh.customDepthMaterial=depth;
+      }
+    }
     mesh.instanceMatrix.setUsage?.(THREE.DynamicDrawUsage);
     mesh.count = group.originals.length;
     group.mesh = mesh;

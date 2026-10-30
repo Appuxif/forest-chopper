@@ -26,7 +26,7 @@ const THREE={BufferAttribute};
 function fixture(){
   const geometry=new Geometry(),barkGeometry={};
   const atlas={image:{width:512,height:512}},material={map:atlas,alphaTest:.45,type:'MeshStandardMaterial'};
-  const barkMat={vertexColors:true,type:'MeshLambertMaterial'};
+  const barkMat={vertexColors:true,map:{uuid:'spruce-bark'},alphaTest:0,type:'MeshLambertMaterial'};
   const settings={spruceFoliageVisible:true,spruceFoliageShadows:true,spruceFoliageDensity:100};
   const foliageMesh={geometry,material,visible:true,castShadow:true,
     computeBoundingSphere(){this.bounds=(this.bounds??0)+1;}};
@@ -54,6 +54,8 @@ test('generated spruce preserves original texture/material and bark while toggli
   assert.equal(f.foliageMesh.castShadow,false);
   assert.equal(f.barkMesh.visible,true);
   assert.equal(f.barkMesh.castShadow,true);
+  assert.equal(f.barkMesh.material.map.uuid,'spruce-bark',
+    'textured bark must never be treated as foliage');
   assert.equal(f.foliageMesh.material,f.material);
   assert.equal(f.foliageMesh.geometry,f.geometry);
   f.settings.spruceFoliageVisible=true;

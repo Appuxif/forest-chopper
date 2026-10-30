@@ -342,7 +342,7 @@ test('chunk generation keeps classic 5-mesh trees while enforcing 4m trunk spaci
 test('GLB spruce swaps only conifers while keeping cheap axe proxies and legacy birches',()=>{
   const {ctx,sharedGeometry,sharedMaterial}=fixture();
   const bark={type:'SpruceBark',shared:true},needles={type:'SpruceFoliage',shared:true};
-  const spruceMaterials=[sharedMaterial,{map:{uuid:'foliage-atlas'}}];
+  const spruceMaterials=[{...sharedMaterial,map:{uuid:'spruce-bark'}},{map:{uuid:'foliage-atlas'},alphaTest:.45}];
   ctx.spruceParts=[{geometry:bark,material:spruceMaterials[0]},
     {geometry:needles,material:spruceMaterials[1]}];
   const world=createWorld(ctx);
@@ -369,6 +369,8 @@ test('GLB spruce swaps only conifers while keeping cheap axe proxies and legacy 
     assert.equal(tree.children[1].geometry,bark);
     assert.equal(tree.children[2].geometry,needles);
     assert.equal(tree.children[2].userData.spruceFoliage,true);
+    assert.equal(tree.children[1].userData.spruceFoliage,false,
+      'bark may have a color map but must not be hidden by foliage controls');
     assert.equal(tree.children[1].scale.y,tree.userData.h/6);
     assert.equal(tree.children[1].scale.x,tree.userData.scale);
     assert.equal(tree.children[1].material,spruceMaterials[0]);
@@ -379,4 +381,40 @@ test('GLB spruce swaps only conifers while keeping cheap axe proxies and legacy 
   assert.ok(spruceCount>50&&birchCount>5,'both tree species actually generated');
   assert.equal(sharedGeometry.calls,0);
   assert.equal(sharedMaterial.calls,0);
+});
+
+
+test('procedural birch uses shared bark, branch, leaf meshes with low-cost axe hit proxies',()=>{
+  const {ctx,sharedGeometry}=fixture();
+  const parts=[
+    {geometry:{kind:'birch-trunk'},material:{map:{uuid:'bark'}}},
+    {geometry:{kind:'birch-branches'},material:{color:{},alphaTest:0}},
+    {geometry:{kind:'birch-foliage'},material:{map:{uuid:'leaves'},alphaTest:.38},foliage:true},
+  ];
+  ctx.birchParts=parts;
+  const world=createWorld(ctx);
+  let count=0;
+  for(let i=0;i<100;i++){
+    const x=6+i*1.13,z=8+i*1.37;
+    world.makeTree(x,z,'birch:'+i);
+    const tree=ctx.trees.get('birch:'+i);
+    if(tree.userData.species==='birch'){
+      count++;
+      assert.equal(tree.userData.birchModel,true);
+      assert.equal(tree.userData.spruceModel,false);
+      assert.equal(tree.children.length,5); // proxy, 3 visuals, crown hit proxy
+      assert.deepEqual(tree.userData.hitMeshes,[tree.children[0],tree.children[4]]);
+      assert.ok(tree.userData.hitMeshes.every(m=>m.userData.hitProxy));
+      assert.deepEqual(tree.children.slice(1,4).map(m=>m.geometry),parts.map(p=>p.geometry));
+      assert.equal(tree.children[1].userData.proceduralFoliage,false,
+        'bark texture must not be classified as transparent leaves');
+      assert.equal(tree.children[3].userData.proceduralFoliage,true);
+      assert.equal(tree.children[1].scale.y,tree.userData.h/8);
+      assert.equal(tree.userData.maxHp,7+Math.floor(world.rand(x,z,8)*5));
+    }else{
+      assert.equal(tree.children.length,5,'classic conifer fallback stays unchanged');
+      assert.equal(tree.children[0].geometry,sharedGeometry);
+    }
+  }
+  assert.ok(count>12&&count<36);
 });

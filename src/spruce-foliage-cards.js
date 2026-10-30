@@ -3,7 +3,7 @@
  * Ported from Three.js JSON Studio generator, no UI dependencies.
  * Units: 1 unit = 1 meter. The atlas uses an HTML canvas (browser only).
  *
- * Two meshes per tree: wood + foliage cards; 2 draw calls in the base render pass.
+ * Two meshes per tree: textured bark/branches + foliage cards; 2 draw calls per tree in the base render pass.
  * Leaves are alpha-tested quads; hidden secondary twigs still supply attachment positions.
  *
  * For many trees: generate a few seed variants once and instance their meshes,
@@ -31,11 +31,12 @@ function tangentFrame(d) {
   return [right, up];
 }
 function createBatchedBuilder() {
-  const pos=[], norm=[], colors=[], indices=[];
-  const colorVertex=(p, n, color) => {
+  const pos=[], norm=[], colors=[], uvs=[], indices=[];
+  const colorVertex=(p, n, color, u=0, v=0) => {
     pos.push(p.x,p.y,p.z);
     norm.push(n.x,n.y,n.z);
     colors.push(color.r,color.g,color.b);
+    uvs.push(u,v);
   };
   return {
     triangleCount:()=>indices.length / 3,
@@ -44,22 +45,24 @@ function createBatchedBuilder() {
       g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
       g.setAttribute('normal',new THREE.Float32BufferAttribute(norm,3));
       g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+      g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
       g.setIndex(indices);
       g.computeBoundingSphere();
       return g;
     },
     // Tapered tube (frustum), open ends so adjacent segments can meet.
-    cylinder(from,to,r0,r1,sides,color) {
+    cylinder(from,to,r0,r1,sides,color,v0=0,v1=null) {
       const diff=to.clone().sub(from);
       if(diff.lengthSq()<1e-9)return;
       const d=unit(diff);
+      if(v1===null)v1=v0+Math.sqrt(diff.lengthSq())/.55;
       const [u,v]=tangentFrame(d);
       const first=pos.length/3;
       for(let i=0;i<=sides;i++) {
         const angle=i*2*Math.PI/sides;
         const n=u.clone().multiplyScalar(Math.cos(angle)).addScaledVector(v,Math.sin(angle));
-        colorVertex(from.clone().addScaledVector(n,r0),n,color);
-        colorVertex(to.clone().addScaledVector(n,r1),n,color);
+        colorVertex(from.clone().addScaledVector(n,r0),n,color,i/sides,v0);
+        colorVertex(to.clone().addScaledVector(n,r1),n,color,i/sides,v1);
       }
       for(let i=0;i<sides;i++) {
         const j=first+2*i;
@@ -94,6 +97,50 @@ function createBatchedBuilder() {
   };
 }
 
+
+
+// Deterministic spruce bark. Light grayscale pigments multiply the existing
+// bark vertex colors, preserving the brown palette of trunk and branches.
+// Repeating longitudinal fissures + short flaky plates; one shared texture.
+function createBarkTexture(seed, maxAnisotropy=4) {
+  const rng=createRNG(seed+23811);
+  const canvas=document.createElement('canvas');
+  canvas.width=256;canvas.height=512;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#eee9df';ctx.fillRect(0,0,256,512);
+  // Narrow vertical grain and irregular shadow channels.
+  for(let i=0;i<165;i++){
+    const x=between(rng,0,256);
+    const y=between(rng,-50,512);
+    const length=between(rng,28,230);
+    const width=between(rng,.6,3.8);
+    const dark=rng()<.72;
+    ctx.strokeStyle=dark
+      ?'rgba(40,28,20,'+between(rng,.09,.30)+')'
+      :'rgba(255,251,228,'+between(rng,.14,.38)+')';
+    ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(x,y);
+    ctx.bezierCurveTo(x+between(rng,-5,5),y+length*.35,
+      x+between(rng,-7,7),y+length*.7,
+      x+between(rng,-4,4),y+length);
+    ctx.stroke();
+  }
+  // Bark flakes: little offset horizontal cracks between vertical ridges.
+  for(let i=0;i<780;i++){
+    const x=between(rng,0,256),y=between(rng,0,512);
+    const length=between(rng,1.8,13), thick=between(rng,.5,2.2);
+    ctx.fillStyle=rng()<.65
+      ?'rgba(45,28,20,'+between(rng,.08,.27)+')'
+      :'rgba(255,249,223,'+between(rng,.16,.45)+')';
+    ctx.fillRect(x,y,length,thick);
+  }
+  const texture=new THREE.CanvasTexture(canvas);
+  texture.colorSpace=THREE.SRGBColorSpace;
+  texture.wrapS=THREE.RepeatWrapping;texture.wrapT=THREE.RepeatWrapping;
+  texture.minFilter=THREE.LinearMipmapLinearFilter;
+  texture.magFilter=THREE.LinearFilter;
+  texture.anisotropy=Math.min(4,Math.max(1,maxAnisotropy));
+  return texture;
+}
 
 
 function createNeedleAtlas(seed, baseColor, accentColor, maxAnisotropy=4) {
@@ -200,7 +247,7 @@ function buildFoliageCardsSpruce(spec={}, options={}) {
   const tree=new THREE.Group();tree.name=spec.name || 'Spruce Foliage Cards';
   const radial=a=>new THREE.Vector3(Math.cos(a),0,Math.sin(a));
   const trunk=t=>new THREE.Vector3(0,H*t,0);
-  wood.cylinder(trunk(0),trunk(1),R,.001,8,bark);
+  wood.cylinder(trunk(0),trunk(1),R,.001,8,bark,0,H/.55);
   const named=Array.isArray(p.branchesPerWhorl)?p.branchesPerWhorl:[];
   const levels=Math.round(num(p.levels,2));
   const branchesPerWhorl=w=>{
@@ -243,7 +290,8 @@ function buildFoliageCardsSpruce(spec={}, options={}) {
       for(let i=0;i<5;i++){
         const u=i/5,v=(i+1)/5;
         wood.cylinder(points[i],points[i+1],
-          Math.max(.002,radius*Math.pow(1-u,.9)),Math.max(.0015,radius*Math.pow(1-v,.9)),cfg.primarySides,bark);
+          Math.max(.002,radius*Math.pow(1-u,.9)),Math.max(.0015,radius*Math.pow(1-v,.9)),cfg.primarySides,bark,
+          len*u/.55,len*v/.55);
       }
       const shoots=[];
       if(levels>=2 && pairsPerMain>0){
@@ -263,7 +311,7 @@ function buildFoliageCardsSpruce(spec={}, options={}) {
               .addScaledVector(side,flip*lateral)
               .add(new THREE.Vector3(0,lift+between(rng,-.018,.018),0)));
             const tip=base.clone().addScaledVector(dir,len2);
-            if(showSecondaryBranches) wood.cylinder(base,tip,r2,r2*.12,cfg.secondarySides,bark);
+            if(showSecondaryBranches) wood.cylinder(base,tip,r2,r2*.12,cfg.secondarySides,bark,0,len2/.55);
             shoots.push({from:base.clone(),to:tip,dir,len:len2});
           }
         }
@@ -324,7 +372,10 @@ function buildFoliageCardsSpruce(spec={}, options={}) {
     }
     atlas=createNeedleAtlas(num(p.seed,7),leaf,accent,options.maxAnisotropy);
   }
-  const woodMesh=new THREE.Mesh(wood.geometry(),new THREE.MeshLambertMaterial({vertexColors:true}));
+  const woodMesh=new THREE.Mesh(wood.geometry(),new THREE.MeshLambertMaterial({
+    vertexColors:true,
+    map:createBarkTexture(num(p.seed,7),options.maxAnisotropy),
+  }));
   woodMesh.name='Ствол и ветви';
   tree.add(woodMesh);
   if(atlas && positions.length){

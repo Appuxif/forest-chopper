@@ -1,7 +1,7 @@
 // Runtime forest spruce. Generate a single shared template once per page load:
 // all placed spruces use its geometry/material via per-chunk GPU instancing.
 // No saved GLB or mesh regeneration while moving/chopping.
-import {createSpruce, SPRUCE_PRESET} from './spruce-foliage-cards.js?v=20261031-procedural-spruce1';
+import {createSpruce, SPRUCE_PRESET} from './spruce-foliage-cards.js?v=20261031-spruce-bark1';
 import {trimSpruceFoliageGeometry} from './spruce-foliage-opt.js?v=20261031-procedural-spruce1';
 
 export function generateSpruceParts() {
@@ -12,7 +12,7 @@ export function generateSpruceParts() {
       if(!mesh.isMesh || !mesh.geometry?.getAttribute('position'))continue;
       const {geometry,material}=mesh;
       const part={geometry,material};
-      if(material.map?.image && geometry.getAttribute('uv')){
+      if(material.alphaTest>0 && material.map?.image && geometry.getAttribute('uv')){
         try{
           const canvas=material.map.image;
           const context=canvas.getContext('2d',{willReadFrequently:true});
@@ -25,9 +25,14 @@ export function generateSpruceParts() {
           }
         }catch(error){console.warn('Procedural spruce foliage trim unavailable',error);}
       }
+      geometry.boundingSphere && (part.geometry.boundingSphere.radius+=.45);
+      if(material.alphaTest>0){
+        part.rareMaterial=material.clone();
+        part.rareMaterial.color.set(0xb1ced2);
+      }
       parts.push(part);
     }
-    if(parts.length!==2 || !parts.some(p=>p.material.map))
+    if(parts.length!==2 || !parts.some(p=>p.material.alphaTest>0))
       throw new Error('Spruce generator must provide wood and foliage meshes');
     console.info('Procedural spruce ready',template.userData.spruceStats);
     return parts;

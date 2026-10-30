@@ -1,7 +1,7 @@
 // Live foliage visibility, shadow and density controls. Spruce card geometry
 // is alpha-trimmed permanently at generation; no GLB/material overrides.
 export function createSpruceDiagnostics(THREE,ctx){
-  const foliage=ctx.spruceParts?.find(part=>!!part.material?.map);
+  const foliage=ctx.spruceParts?.find(part=>part.material?.alphaTest>0);
   if(!foliage)return {tick(){},applyBatch(){},applyTree(){}};
   const originalGeometry=foliage.geometry;
   const sourceIndices=originalGeometry.index?.array;

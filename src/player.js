@@ -24,7 +24,7 @@ function animate(now){
  if(!Number.isFinite(now))return;
  const dt=Math.max(0,Math.min(.05,(now-ctx.lastTime)/1000));
  ctx.lastTime=now;
- ctx.wind.tick(now);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
+ ctx.wind.tick(now);ctx.treeWindShader?.tick(now,ctx.px,ctx.pz,ctx.settings.windEnabled);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
  let forward=(ctx.keys.KeyW||ctx.keys.ArrowUp?1:0)-(ctx.keys.KeyS||ctx.keys.ArrowDown?1:0)-ctx.joyY;
  let side=(ctx.keys.KeyD||ctx.keys.ArrowRight?1:0)-(ctx.keys.KeyA||ctx.keys.ArrowLeft?1:0)+ctx.joyX;
  const len=Math.max(1,Math.hypot(forward,side));forward/=len;side/=len;
