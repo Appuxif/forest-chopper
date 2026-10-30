@@ -52,13 +52,14 @@ function fixture() {
     THREE, scene, $, trunkGeo: sharedGeometry, leafGeo: sharedGeometry,
     birchLeafGeo: sharedGeometry, birchTrunkMat: sharedMaterial,
     birchLeafMats: [sharedMaterial,sharedMaterial,sharedMaterial],
-    grassGeo: sharedGeometry, rockGeo: sharedGeometry,
+    rockGeo: sharedGeometry,
+    grasses:{create(shape,palette){const mesh=new THREE.Mesh(sharedGeometry,sharedMaterial);mesh.userData.grassShape=['meadow','lush','sedge','fan'][shape];mesh.userData.grassPalette=['forest','fresh','dry'][palette];return mesh;}},
     flowerGeo: sharedGeometry,
     mushrooms:{create(index){const group=new THREE.Group();group.userData.mushroomSpecies=['fly_agaric','boletus','death_cap','milkcap'][index];group.add(new THREE.Mesh(sharedGeometry,sharedMaterial));return group;}},
     flowers:{create(index){const mesh=new THREE.Mesh(sharedGeometry,sharedMaterial);mesh.userData.flowerSpecies=['daisy','buttercup','pink_wildflower','blue_wildflower'][index];return mesh;}},
     trunkMats: [sharedMaterial, sharedMaterial, sharedMaterial],
     leafMats: [sharedMaterial, sharedMaterial, sharedMaterial, sharedMaterial],
-    grassMat: sharedMaterial, rockMat: sharedMaterial,
+    rockMat: sharedMaterial,
     flowerMat: sharedMaterial, mushroomMat: sharedMaterial,
     rareLeafMat: sharedMaterial, logGeo: sharedGeometry,
     logMat: sharedMaterial, endMat: sharedMaterial,
@@ -182,6 +183,11 @@ test('deterministic mushrooms and flowers replace existing grass without extra m
           assert.equal(mesh.scale.x,oldScale*.5,'every mushroom is exactly 50% of its previous size');
           assert.equal(mesh.position.y,0,'mushroom base must sit on the ground');
         }
+        if(type==='grass'){
+          assert.equal(mesh.position.y,0,'grass tuft roots must sit at ground level');
+          assert.ok(['meadow','lush','sedge','fan'].includes(mesh.userData.grassShape));
+          assert.ok(['forest','fresh','dry'].includes(mesh.userData.grassPalette));
+        }
         if(type==='flower'){
           assert.equal(mesh.position.y,0,'flower stem must start at ground level');
           const slot=decor.children.indexOf(mesh);
@@ -191,7 +197,8 @@ test('deterministic mushrooms and flowers replace existing grass without extra m
           assert.equal(mesh.geometry,sharedGeometry);
           assert.equal(mesh.material,sharedMaterial);
         }
-        return [type,mesh.userData.mushroomSpecies??mesh.userData.flowerSpecies??null,mesh.position.x,mesh.position.y,mesh.position.z,mesh.scale.x];
+        return [type,mesh.userData.mushroomSpecies??mesh.userData.flowerSpecies??mesh.userData.grassShape??null,
+          mesh.userData.grassPalette??null,mesh.position.x,mesh.position.y,mesh.position.z,mesh.scale.x];
       });
       rows.push(chunk);
     }
@@ -208,6 +215,12 @@ test('deterministic mushrooms and flowers replace existing grass without extra m
   const flowerSpecies=new Set(first.rows.flat().filter(row=>row[0]==='flower').map(row=>row[1]));
   assert.deepEqual([...flowerSpecies].sort(),['blue_wildflower','buttercup','daisy','pink_wildflower'],
     'all four flower colors must appear deterministically');
+  const grassShapes=new Set(first.rows.flat().filter(row=>row[0]==='grass').map(row=>row[1]));
+  const grassPalettes=new Set(first.rows.flat().filter(row=>row[0]==='grass').map(row=>row[2]));
+  assert.deepEqual([...grassShapes].sort(),['fan','lush','meadow','sedge'],
+    'all four tuft silhouettes must appear without adding decoration slots');
+  assert.deepEqual([...grassPalettes].sort(),['dry','forest','fresh'],
+    'regional coloration includes all three grass palettes');
   assert.ok(first.counts.grass>first.counts.flower,'avoid overwhelming the forest with bright decor');
 });
 

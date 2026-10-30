@@ -1,7 +1,8 @@
 import {createAnimations} from './animations.js';
-import {createWorld} from './world.js?v=20261030-flowers1';
+import {createWorld} from './world.js?v=20261030-grass1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
+import {createGrass} from './grass.js';
 import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js?v=20261030-craft1';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
@@ -34,14 +35,15 @@ const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.f
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,280);camera.rotation.order='YXZ';const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'default'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;host.prepend(renderer.domElement);
 const hemisphere=new THREE.HemisphereLight(0xe1efff,0x45552b,2.1);scene.add(hemisphere);const sun=new THREE.DirectionalLight(0xffe4a6,2.3);sun.position.set(35,75,20);scene.add(sun);
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(2000,2000),new THREE.MeshLambertMaterial({color:0x547340}));ground.rotation.x=-Math.PI/2;scene.add(ground);
-const trunkGeo=new THREE.CylinderGeometry(.38,.6,1,9),leafGeo=new THREE.ConeGeometry(1,1,8),grassGeo=new THREE.ConeGeometry(.17,.6,3),rockGeo=new THREE.DodecahedronGeometry(1,0);
+const trunkGeo=new THREE.CylinderGeometry(.38,.6,1,9),leafGeo=new THREE.ConeGeometry(1,1,8),rockGeo=new THREE.DodecahedronGeometry(1,0);
 // The tiny octahedron is still shared by campfire sparks, not used as flower art.
 const flowerGeo=new THREE.OctahedronGeometry(.24,0);
 const mushrooms=createMushrooms(THREE);
 const flowers=createFlowers(THREE); // Shared stalks, petals and centres; no per-chunk GPU allocations.
+const grasses=createGrass(THREE); // One shared vertex-colored mesh per tuft; four silhouettes.
 // Birch uses one shared low-poly crown geometry and a single bark texture for all trees.
 const birchLeafGeo=new THREE.IcosahedronGeometry(1,1);
-const trunkMats=[0x65442e,0x795339,0x543925].map(color=>new THREE.MeshLambertMaterial({color}));const leafMats=[0x214c30,0x30683a,0x3a7141,0x285e46].map(color=>new THREE.MeshLambertMaterial({color}));const grassMat=new THREE.MeshLambertMaterial({color:0x829b4c}),rockMat=new THREE.MeshLambertMaterial({color:0x808478});
+const trunkMats=[0x65442e,0x795339,0x543925].map(color=>new THREE.MeshLambertMaterial({color}));const leafMats=[0x214c30,0x30683a,0x3a7141,0x285e46].map(color=>new THREE.MeshLambertMaterial({color}));const rockMat=new THREE.MeshLambertMaterial({color:0x808478});
 const rareLeafMat=new THREE.MeshLambertMaterial({color:0xb1ced2}); // Shared frosty foliage, cosmetic only.
 const birchLeafMats=[0x6fa54b,0x83b753,0x98c367].map(color=>new THREE.MeshLambertMaterial({color}));
 const barkCanvas=document.createElement('canvas');barkCanvas.width=256;barkCanvas.height=512;
@@ -133,8 +135,7 @@ const ctx={
  get frame(){return frame;}, set frame(value){frame=value;},
  get flowerGeo(){return flowerGeo;},
  get flowers(){return flowers;},
- get grassGeo(){return grassGeo;},
- get grassMat(){return grassMat;},
+ get grasses(){return grasses;},
  get ground(){return ground;},
  get handle(){return handle;},
  get head(){return head;},

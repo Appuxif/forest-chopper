@@ -45,14 +45,18 @@ for(let i=0;i<25;i++){
  const isRock=rand(cx,cz,300+i)>.86;
  // Only swap a few existing grass meshes, with separate deterministic indices.
  const type=isRock?'rock':rand(cx,cz,800+i)>.94?'mushroom':rand(cx,cz,900+i)>.79?'flower':'grass';
- const geometry=type==='rock'?ctx.rockGeo:ctx.grassGeo;
- const material=type==='rock'?ctx.rockMat:ctx.grassMat;
- // Spare channels select decorative variants without moving any flora slots.
+ // Spare random channels select art only; existing seeded slots never move.
  const mushroomSpecies=Math.floor(rand(cx,cz,1000+i)*4);
  const flowerSpecies=Math.floor(rand(cx,cz,1100+i)*4);
+ const grassShape=Math.floor(rand(cx,cz,1200+i)*4);
+ // Broad 3-chunk color patches, with occasional locally mixed tufts.
+ const regionX=Math.floor(x/(ctx.chunkSize*3)),regionZ=Math.floor(z/(ctx.chunkSize*3));
+ const basePalette=Math.floor(rand(regionX,regionZ,1300)*3);
+ const palette=rand(cx,cz,1400+i)<.82?basePalette:Math.floor(rand(cx,cz,1500+i)*3);
  const obj=type==='mushroom'?ctx.mushrooms.create(mushroomSpecies):
-   type==='flower'?ctx.flowers.create(flowerSpecies):new ctx.THREE.Mesh(geometry,material);
- const height=type==='rock'?.19:type==='mushroom'||type==='flower'?0:.3;
+   type==='flower'?ctx.flowers.create(flowerSpecies):
+   type==='grass'?ctx.grasses.create(grassShape,palette):new ctx.THREE.Mesh(ctx.rockGeo,ctx.rockMat);
+ const height=type==='rock'?.19:0;
  const baseScale=type==='rock'?.35+rand(cx,cz,i)*.5:
    type==='grass'?.7+rand(cx,cz,i)*.9:.8+rand(cx,cz,i)*.65;
  // Half-size mushrooms on all axes; flower roots sit at ground level.
