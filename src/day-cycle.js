@@ -4,8 +4,8 @@ export const DAY_CYCLE_MS = 8 * 60 * 1000;
 const PHASES = Object.freeze([
   {at:0,    sky:0xa4c8be, ambient:2.1, sun:2.3, sunlight:0xffe4a6},
   {at:.23,  sky:0xc18d80, ambient:1.85,sun:1.5, sunlight:0xffba86},
-  {at:.43,  sky:0x506685, ambient:1.35,sun:.65, sunlight:0xb5ceef},
-  {at:.57,  sky:0x506685, ambient:1.35,sun:.65, sunlight:0xb5ceef},
+  {at:.43,  sky:0x38485d, ambient:.945,sun:.455, sunlight:0xb5ceef},
+  {at:.57,  sky:0x38485d, ambient:.945,sun:.455, sunlight:0xb5ceef},
   {at:.77,  sky:0xa3acb9, ambient:1.78,sun:1.4, sunlight:0xffcda0},
   {at:1,    sky:0xa4c8be, ambient:2.1, sun:2.3, sunlight:0xffe4a6},
 ]);
@@ -49,6 +49,7 @@ export function createDayCycle(ctx, {
       hemisphere.intensity=original.ambient;
       sun.intensity=original.sun;
     }
+    ctx.atmosphere?.restore();
     active=false;
     startedAt=null;
     lastSample=-Infinity;
@@ -60,6 +61,7 @@ export function createDayCycle(ctx, {
     sun.color.copy(colors[a].sun).lerp(colors[b].sun,t);
     hemisphere.intensity=ambient;
     sun.intensity=sunIntensity;
+    ctx.atmosphere?.setPhase(phase);
     active=true;
   }
   function tick(now){

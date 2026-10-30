@@ -36,13 +36,14 @@ test('phase interpolation is continuous, cyclic and keeps a readable light floor
   assert.equal(DAY_CYCLE_MS,480000);
   for(const point of [0,.1,.22,.23,.3,.43,.5,.57,.7,.77,.95,.9999,1,2,-.5,NaN]){
     const v=dayPhaseValues(point);
-    assert.ok(v.ambient>=1.35 && v.ambient<=2.1);
-    assert.ok(v.sun>=.65 && v.sun<=2.3);
+    assert.ok(v.ambient>=.945 && v.ambient<=2.1);
+    assert.ok(v.sun>=.455 && v.sun<=2.3);
     assert.ok(v.t>=0&&v.t<=1);
   }
   assert.deepEqual(dayPhaseValues(0),dayPhaseValues(1));
   assert.deepEqual(dayPhaseValues(.5),dayPhaseValues(1.5));
-  assert.equal(dayPhaseValues(.5).sun,.65);
+  assert.equal(dayPhaseValues(.5).sun,.455);
+  assert.equal(dayPhaseValues(.5).ambient,.945);
   assert.ok(dayPhaseValues(.23).sun>dayPhaseValues(.5).sun);
 });
 
@@ -59,7 +60,8 @@ test('opt-in visual cycle throttles color changes and fully restores baseline on
   f.cycle.tick(1000+DAY_CYCLE_MS*.5);
   const night=snapshot(f);
   assert.notDeepEqual(night,original);
-  assert.ok(night.ambient>=1.35&&night.sun>=.65);
+  assert.equal(night.ambient,1.35*.7);
+  assert.ok(Math.abs(night.sun-.65*.7)<1e-10);
   assert.deepEqual(night.sky,night.fog,'sky and fog must match to avoid horizon seam');
   f.cycle.tick(1000+DAY_CYCLE_MS*.5+100);
   assert.deepEqual(snapshot(f),night,'throttled call must not change render state');
@@ -113,4 +115,21 @@ test('color palette changes smoothly through dusk and dawn without abrupt jumps'
     assert.ok(Math.abs(y.sun-x.sun)<.09);
   }
   f.cycle.restore();
+});
+
+test('atmosphere follows phases and resets to noon when day cycle is disabled',()=>{
+  const values=[];
+  const f=fixture();
+  // A stand-in for the optional rendering layer; verifies the cycle drives it.
+  const scene=f.scene;
+  const ctx={THREE:f.THREE,scene,hemisphere:f.hemisphere,sun:f.sun,
+    settings:f.settings,atmosphere:{setPhase(value){values.push(value)},restore(){values.push('reset')}}};
+  const cycle=createDayCycle(ctx,{motionQuery:f.motionQuery});
+  f.settings.dayCycleEnabled=true;
+  cycle.tick(100);
+  cycle.tick(100+DAY_CYCLE_MS*.5);
+  assert.ok(Math.abs(values.at(-1)-.5)<1e-9);
+  f.settings.dayCycleEnabled=false;
+  cycle.tick(100+DAY_CYCLE_MS*.5+1);
+  assert.equal(values.at(-1),'reset');
 });

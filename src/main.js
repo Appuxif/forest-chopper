@@ -9,7 +9,7 @@ import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js?v=20261030-craft1';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-craft1';
-import {createPlayer} from './player.js?v=20261030-fps-micro1';
+import {createPlayer} from './player.js?v=20261030-atmosphere1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-teamgoal1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
@@ -17,7 +17,8 @@ import {createSettings} from './settings.js?v=20261030-settings-modal1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js';
 import {createLandmarks} from './landmarks.js?v=20261030-fire1';
-import {createDayCycle} from './day-cycle.js';
+import {createDayCycle} from './day-cycle.js?v=20261030-atmosphere1';
+import {createAtmosphere} from './atmosphere.js?v=20261030-atmosphere1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
 import {createCrafting} from './crafting.js';
@@ -80,7 +81,8 @@ const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
 let socket=null,myId=null,lastMoveSent=0;const avatars=new Map();
 const notifications=createNotifications();
 const settings=createSettings(document,null,fov=>{camera.fov=fov;camera.updateProjectionMatrix();},quality=>applyQuality(renderer,quality,devicePixelRatio,innerWidth,innerHeight));
-const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings});
+const atmosphere=createAtmosphere({THREE,renderer,scene,camera,sun,ground,settings,trees});
+const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere});
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null;
 
@@ -130,6 +132,7 @@ const ctx={
  get disposePreview(){return disposePreview;},
  get cuts(){return cuts;}, set cuts(value){cuts=value;},
  get dayCycle(){return dayCycle;},
+ get atmosphere(){return atmosphere;},
  get drag(){return drag;}, set drag(value){drag=value;},
  get endMat(){return endMat;},
  get falling(){return falling;},
@@ -247,7 +250,7 @@ progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}})
 ({showMapPing,clearMapPings}=createMinimap(ctx));
 ({look}=createControls(ctx));
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js');
+  const { installDebug } = await import('./debug.js?v=20261030-atmosphere1');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

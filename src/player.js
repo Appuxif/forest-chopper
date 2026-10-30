@@ -50,6 +50,7 @@ function animate(now){
   ctx.camera.position.set(ctx.px+Math.sin(ctx.yaw)*back,ctx.feetY+1.8+raise+Math.max(0,-Math.sin(ctx.pitch))*1.5,ctx.pz+Math.cos(ctx.yaw)*back);
   ctx.camera.lookAt(ctx.px,ctx.feetY+1.65+Math.tan(ctx.pitch)*3,ctx.pz);
  }
+ ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
  // Local mixer and position were updated above, before camera rendering.
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;
 for(let i=ctx.falling.length-1;i>=0;i--){const f=ctx.falling[i];f.elapsed+=dt;const a=Math.min(1,f.elapsed/1.8);const angle=a*a*(Math.PI/2);f.tree.rotation.z=Math.sin(f.direction)*angle;f.tree.rotation.x=Math.cos(f.direction)*angle;if(f.elapsed>2.5){ctx.scene.remove(f.tree);ctx.falling.splice(i,1)}}

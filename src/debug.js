@@ -304,6 +304,8 @@ export function installDebug(ctx) {
     },
     // Explicitly debug-only access for inspection of bones, materials and animation tracks.
     scene: ctx.scene, camera: ctx.camera, renderer: ctx.renderer,
+    get dayCycle() { return ctx.dayCycle; },
+    get atmosphere() { return ctx.atmosphere; },
     get player() { return ctx.ownAvatar; },
     get rootMotion() { return ctx.rootMotion; },
     help: 'startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
