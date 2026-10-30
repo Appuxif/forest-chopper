@@ -44,7 +44,6 @@ function animate(now){
   ctx.camera.lookAt(ctx.px,ctx.feetY+1.65+Math.tan(ctx.pitch)*3,ctx.pz);
  }
  // Local mixer and position were updated above, before camera rendering.
- ctx.tickHitEffects(dt);
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;
 for(let i=ctx.falling.length-1;i>=0;i--){const f=ctx.falling[i];f.elapsed+=dt;const a=Math.min(1,f.elapsed/1.8);const angle=a*a*(Math.PI/2);f.tree.rotation.z=Math.sin(f.direction)*angle;f.tree.rotation.x=Math.cos(f.direction)*angle;if(f.elapsed>2.5){ctx.scene.remove(f.tree);ctx.disposeTree(f.tree);ctx.falling.splice(i,1)}}
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}

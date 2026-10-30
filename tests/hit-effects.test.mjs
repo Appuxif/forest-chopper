@@ -1,96 +1,85 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHitEffects} from '../src/hit-effects.js';
 import {createChopping} from '../src/chopping.js';
+import {createHitEffects} from '../src/hit-effects.js';
 
-function treeFixture() {
-  const trunkMaterial = {name: 'shared-trunk-material'};
-  const trunk = {material: trunkMaterial, scale: {x: 1.3, z: 1.3}};
-  const color = {
-    hex: 0xe0ad70,
-    getHex() {return this.hex;},
-    setHex(hex) {this.hex = hex;},
-  };
-  const scar = {material: {color}, visible: false, scale: {x: 1, y: 1}};
-  return {tree: {children: [trunk, scar], userData: {scar}}, trunk, trunkMaterial, scar};
-}
-
-test('confirmed hits highlight only the scar, leaving the entire trunk unchanged', () => {
-  let materials = 0;
-  const ctx = {THREE: {MeshLambertMaterial: class {constructor() {materials++;}}}};
-  const fx = createHitEffects(ctx);
-  const fixtures = Array.from({length:100},treeFixture);
-  for (const {tree, trunk, trunkMaterial, scar} of fixtures) {
-    fx.pulse(tree);
-    fx.pulse(tree);
-    assert.equal(trunk.material, trunkMaterial);
-    assert.equal(trunk.scale.x, 1.3);
-    assert.equal(scar.visible, true);
-    assert.equal(scar.material.color.getHex(), 0xffd49a);
-  }
-  assert.equal(materials, 0, 'no material allocations per hit');
-  assert.equal(fx.activeCount, 100);
-  fx.tick(.075);
-  assert.ok(fixtures[0].scar.scale.x > 1);
-  assert.equal(fixtures[0].trunk.scale.x, 1.3);
-  fx.tick(.075);
-  assert.equal(fx.activeCount, 0);
-  for (const {tree, trunk, trunkMaterial, scar} of fixtures) {
-    assert.equal(trunk.material, trunkMaterial);
-    assert.equal(trunk.scale.x, 1.3);
-    assert.equal(scar.material.color.getHex(), 0xe0ad70);
-    assert.equal(scar.scale.x, 1);
-    assert.equal(tree.userData.hitEffect, undefined);
-  }
-  fx.pulse(fixtures[0].tree);
-  fx.release(fixtures[0].tree);
-  fx.release(fixtures[0].tree);
-  assert.equal(fx.activeCount, 0);
-  assert.equal(fixtures[0].scar.material.color.getHex(), 0xe0ad70);
-});
-
-test('reduced motion keeps the scar size static, restores color and ignores missing scar', () => {
-  const previous = globalThis.matchMedia;
-  globalThis.matchMedia = () => ({matches: true});
-  try {
-    const {tree, trunk, scar} = treeFixture();
-    const fx = createHitEffects({});
-    fx.pulse(tree);
-    fx.tick(.075);
-    assert.equal(scar.scale.x, 1);
-    assert.equal(trunk.scale.x, 1.3);
-    assert.equal(scar.material.color.getHex(), 0xffd49a);
-    fx.tick(.075);
-    assert.equal(scar.material.color.getHex(), 0xe0ad70);
-    fx.pulse({children: [trunk], userData: {}});
-    assert.equal(fx.activeCount, 0);
-  } finally {
-    if (previous === undefined) delete globalThis.matchMedia;
-    else globalThis.matchMedia = previous;
-  }
-});
-
-test('wood chips cap at 96 active particles across repeated hits', () => {
+function setup(online=false) {
+  const sent=[], damage=new Map(), sceneObjects=[];
   class Mesh {
-    constructor(geometry, material) {
-      this.geometry = geometry; this.material = material;
-      this.position = {set(x,y,z){Object.assign(this,{x,y,z});}};
+    constructor(geometry,material) {
+      this.geometry=geometry;this.material=material;
+      this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z});}};
+      this.rotation={x:0,y:0,z:0};
+      this.scale={x:1,y:1,z:1};
     }
   }
-  const ctx = {
-    THREE: {
-      MeshLambertMaterial: class {},
-      BoxGeometry: class {},
-      Raycaster: class {constructor(){this.far=0;}},
-      Mesh,
-    },
-    scene: {add(){}},
-    particles: [],
+  class Raycaster {
+    set() {}
+    intersectObjects(objects) {return objects.length ? [{distance:2}] : [];}
+  }
+  class Vector3 {normalize() {return this;}}
+  const material={name:'shared trunk material'};
+  const trunk=new Mesh({},material);
+  const scarColor={hex:0xe0ad70,getHex(){return this.hex;},setHex(n){this.hex=n;}};
+  const scar=new Mesh({}, {color:scarColor});
+  scar.visible=false;
+  const tree={children:[trunk,scar],position:{x:2,z:0},rotation:{x:0,y:0,z:0},
+    userData:{id:'0,0:1',hp:5,maxHp:5,scar,x:2,z:0}};
+  const ctx={
+    THREE:{Mesh,Raycaster,Vector3,BoxGeometry:class {},MeshLambertMaterial:class {}},
+    thirdPerson:true,px:0,pz:0,yaw:0,pitch:0,
+    trees:new Map([[tree.userData.id,tree]]),scene:{add(mesh){sceneObjects.push(mesh);}},
+    particles:[],CHOP_SPEED:1,lastHit:-100000,swing:0,ownAvatar:null,
+    actorChop(){},buildMode:false,wood:0,cuts:0,
+    treeDamage:damage,isOnline:()=>online,sendNet:data=>sent.push(data),
+    offlineSave:{markDirty(){}},
   };
-  const chops = createChopping(ctx);
-  const {tree} = treeFixture();
-  tree.position = {x:3,z:4};
-  for (let i=0;i<100;i++) chops.spawnChips(tree);
-  assert.equal(ctx.particles.length,96);
-  assert.equal(typeof chops.tickHitEffects,'function');
+  return {ctx,tree,trunk,scar,material,sent,damage,sceneObjects, chopping:createChopping(ctx)};
+}
+
+test('offline successful chop keeps entire trunk material, scale and rotation constant',()=>{
+  const f=setup();
+  const {trunk,scar,tree,material,ctx,chopping}=f;
+  const originalTrunkScale={...trunk.scale};
+  const originalTrunkRotation={...tree.rotation};
+  chopping.chop();
+  assert.equal(tree.userData.hp,4);
+  assert.equal(scar.visible,true);
+  assert.equal(scar.material.color.getHex(),0xe0ad70);
+  assert.equal(trunk.material,material,'no full-trunk flash');
+  assert.deepEqual(trunk.scale,originalTrunkScale,'no full-trunk scaling');
+  assert.deepEqual(tree.rotation,originalTrunkRotation,'no abrupt whole-tree tilt');
+  assert.equal(ctx.particles.length,7,'wood chips still appear');
+  assert.equal(f.damage.get('0,0:1'),4);
+  assert.equal(chopping.tickHitEffects,undefined,'no per-frame flash animation');
+});
+
+test('online chop sends request but waits for authoritative tree_hit to show feedback',()=>{
+  const f=setup(true);
+  f.chopping.chop();
+  assert.deepEqual(f.sent,[{type:'hit',tree:'0,0:1'}]);
+  assert.equal(f.tree.userData.hp,5);
+  assert.equal(f.scar.visible,false);
+  assert.equal(f.ctx.particles.length,0);
+  assert.equal(f.trunk.material,f.material);
+});
+
+test('chip effects remain bounded and do not flash even with 100 rapid impacts',()=>{
+  const f=setup();
+  for(let i=0;i<100;i++)f.chopping.spawnChips(f.tree);
+  assert.equal(f.ctx.particles.length,96);
+  assert.equal(f.sceneObjects.length,96);
+  assert.equal(f.trunk.material,f.material);
+  assert.equal(f.scar.material.color.getHex(),0xe0ad70);
+});
+
+test('previous cached hit effect API is inert for compatibility',()=>{
+  const f=setup();
+  const fx=createHitEffects(f.ctx);
+  fx.pulse(f.tree);
+  fx.tick(.075);
+  fx.release(f.tree);
+  assert.equal(f.trunk.material,f.material);
+  assert.equal(f.scar.material.color.getHex(),0xe0ad70);
+  assert.equal(fx.activeCount,0);
 });

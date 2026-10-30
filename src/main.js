@@ -2,9 +2,9 @@ import {createAnimations} from './animations.js';
 import {createWorld} from './world.js';
 import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js';
-import {createChopping} from './chopping.js';
+import {createChopping} from './chopping.js?v=20261030-no-flash2';
 import {createControls} from './controls.js';
-import {createPlayer} from './player.js';
+import {createPlayer} from './player.js?v=20261030-no-flash2';
 import {createMultiplayer} from './multiplayer.js';
 import {createMinimap} from './minimap.js';
 import {createNotifications} from './notifications.js';
@@ -45,7 +45,7 @@ const settings=createSettings();
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null;
 
-let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposeTree, disposePreview, releaseHitEffect, tickHitEffects, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
+let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposeTree, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
  get $(){return $;},
  get chatHistory(){return chatHistory;},
@@ -137,8 +137,6 @@ const ctx={
  get renderer(){return renderer;},
  get requestJump(){return requestJump;},
  get rockGeo(){return rockGeo;},
- get releaseHitEffect(){return releaseHitEffect;},
- get tickHitEffects(){return tickHitEffects;},
  get rockMat(){return rockMat;},
  get rootMotion(){return rootMotion;},
  get scene(){return scene;},
@@ -171,7 +169,7 @@ const ctx={
 ({rand, makeTree, build, updateChunks, disposeTree}=createWorld(ctx));
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
-({aimed, spawnChips, chop, tickHitEffects, releaseHitEffect}=createChopping(ctx));
+({aimed, spawnChips, chop}=createChopping(ctx));
 ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.group.visible=thirdPerson;}
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, chatHistory}=createMultiplayer(ctx));
 offlineSave=createOfflineSave(ctx);

@@ -143,3 +143,13 @@ Small task-scoped commits on `overnight`. Detailed commit bodies include the che
 - Automated tests verify 100 concurrent active scars without allocating materials; trunk state unchanged during and after pulse; reset/idempotent release; reduced-motion behavior and 96-chip cap.
 - Isolated Chrome debug page with real Three.js tree: trunk material identity stayed unchanged while only scar color temporarily changed; original scar color restored, active effects returned to zero and renderer geometries stayed 63. No human aesthetic assessment claimed.
 - Regression suite: Node 30/30, Python 5/5, all source JS syntax, `git diff --check`: passed. The phone-facing HTTP server on LAN port 18742 remains untouched; refreshing the browser loads updated code.
+
+### Follow-up 2 — Eliminate all transient tree flashing after mobile feedback (2026-10-30)
+
+- User still saw the entire trunk blink after the previous scar-only flash patch. Verified that the LAN-facing HTTP server serves the updated source, and reproduced a real offline hit through the debug browser to inspect material/scale/rotation changes.
+- Found two remaining visible sudden changes: the 150 ms golden scar recolor and an independent random `tree.rotation.z` change at every offline hit. Removed BOTH completely. Persistent scar damage, bounded wood chips, axe animations, HP/rewards and authoritative multiplayer confirmation remain.
+- Removed hit-effects polling and runtime effect allocations. `src/hit-effects.js` is now an inert compatibility shim for older cached modules; current `chopping.js` does not import it.
+- Cache bust: both HTML entrypoints now reference `main.js?v=20261030-no-flash2`, and main imports revisioned chopping/player modules. The new URL query `?fix=20261030-no-flash2` also avoids a cached HTML document on mobile. LAN web server stays up without restart.
+- Added regression checks for unchanged trunk material/scale/rotation, unchanged scar color, wood-chip output and cap, online pre-ack behavior, and inert legacy effect compatibility.
+- Real browser via `http://192.168.1.147:18742`: verified versioned module URLs, then approached an actual tree and hit it. HP 9→8, scar stayed the same color, trunk material/scale and group rotation stayed identical immediately and after 100 ms, and scar remained visible. Mobile 390x844 rendering and normal entrypoint (no debug API) loaded without console warnings/errors.
+- Checks: Node 31/31, Python 5/5, all src JS syntax, Python compilation and git diff checks PASS. This confirms removal of the implemented flash; actual phone-browser rendering remains a user acceptance check.
