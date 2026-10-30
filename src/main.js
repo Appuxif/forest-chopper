@@ -16,6 +16,7 @@ import {createDayCycle} from './day-cycle.js';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
 import {createCrafting} from './crafting.js';
+import {createInteractionHighlight} from './interaction-highlight.js';
 import {createOfflineSave} from './offline-save.js?v=20261030-craft1';
 import {createTutorial} from './tutorial.js';
 import {createProgress} from './progress.js?v=20261030-mobile-ui1';
@@ -84,6 +85,7 @@ const ctx={
  get emotes(){return emotes;},
  get playerList(){return playerList;},
  get crafting(){return crafting;},
+ get highlight(){return highlight;},
  get showMapPing(){return showMapPing;},
  get CHOP_SPEED(){return CHOP_SPEED;},
  get GRAVITY(){return GRAVITY;},
@@ -223,6 +225,7 @@ ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.
 const emotes=createEmotes(ctx);
 const playerList=createPlayerList(ctx);
 const crafting=createCrafting(ctx);
+const highlight=createInteractionHighlight(ctx);
 offlineSave=createOfflineSave(ctx);
 offlineSave.restore();
 progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}});
