@@ -12,6 +12,12 @@ export const ACHIEVEMENTS = [
   {id:'walk-1000',title:'Путешественник · 1 км',metric:'distance',goal:1000},
   {id:'explore-10',title:'Исследователь · 10 чанков',metric:'chunks',goal:10},
 ];
+export const OBJECTIVES = [
+  {id:'cut-3',title:'Срубите 3 дерева',metric:'trees',goal:3},
+  {id:'build-5',title:'Поставьте 5 брёвен',metric:'logs',goal:5},
+  {id:'walk-100',title:'Пройдите 100 метров',metric:'distance',goal:100},
+  {id:'explore-4',title:'Откройте 4 новых чанка',metric:'chunks',goal:4},
+];
 const validCount = n => Number.isSafeInteger(n) && n >= 0 && n <= 10_000_000;
 
 export function parseProgress(raw) {
@@ -22,7 +28,15 @@ export function parseProgress(raw) {
         || !Array.isArray(data.visited) || data.visited.length>5000
         || data.visited.some(key=>typeof key!=='string' || key.length>50
           || !/^\d+:-?\d+,-?\d+$/.test(key))) return null;
-    return {trees:data.trees,logs:data.logs,distance:data.distance,visited:[...new Set(data.visited)]};
+    const objective=data.objective;
+    const savedObjective=objective && Number.isInteger(objective.index)
+      && objective.index>=0 && objective.index<=OBJECTIVES.length
+      && Number.isFinite(objective.baseline) && objective.baseline>=0
+      && objective.baseline<=10_000_000
+      && (objective.index===OBJECTIVES.length || objective.baseline <=
+        (OBJECTIVES[objective.index].metric==='chunks' ? new Set(data.visited).size : data[OBJECTIVES[objective.index].metric])) ? objective : null;
+    return {trees:data.trees,logs:data.logs,distance:data.distance,
+      visited:[...new Set(data.visited)],objective:savedObjective};
   } catch {return null;}
 }
 
@@ -43,6 +57,9 @@ export function createProgress({
     trees:restored?.trees??0, logs:restored?.logs??0, distance:restored?.distance??0,
   };
   const visited=new Set(restored?.visited??[]);
+  const metricValue=metric=>metric==='chunks'?visited.size:state[metric];
+  let objectiveIndex=restored?.objective?.index??0;
+  let objectiveBaseline=restored?.objective?.baseline??metricValue(OBJECTIVES[objectiveIndex]?.metric??'trees');
   const unlocked=new Set(ACHIEVEMENTS.filter(a=>(a.metric==='chunks' ? visited.size : state[a.metric])>=a.goal).map(a=>a.id));
   let previous={x:start.x,z:start.z}, timer=null;
 
@@ -56,6 +73,9 @@ export function createProgress({
 .fc-progress-panel ul{margin:0;padding:0;list-style:none}
 .fc-progress-panel li{padding:5px 0;border-top:1px solid #ffffff1f;opacity:.66}
 .fc-progress-panel li[data-unlocked=true]{color:#b5f3c5;opacity:1}
+.fc-objective{padding:9px 10px;margin:0 0 11px;border:1px solid #8ab89a55;border-radius:8px;background:#193c2a}
+.fc-objective strong{display:block;color:#bcf4c9}
+.fc-objective button{margin-top:7px;border-radius:6px;padding:4px 8px;font-size:12px}
 `;
   doc.head.append(style);
   const button=doc.createElement('button');
@@ -68,12 +88,22 @@ export function createProgress({
   const heading=doc.createElement('h2');heading.textContent='🏅 Достижения';
   const summary=doc.createElement('p');
   const list=doc.createElement('ul');
-  panel.append(heading,summary,list);
+  const objectiveBox=doc.createElement('div');objectiveBox.className='fc-objective';
+  const objectiveTitle=doc.createElement('strong');
+  const objectiveText=doc.createElement('span');
+  const skipObjectiveButton=doc.createElement('button');
+  skipObjectiveButton.type='button';skipObjectiveButton.textContent='Пропустить цель';
+  objectiveBox.append(objectiveTitle,objectiveText,skipObjectiveButton);
+  panel.append(heading,summary,objectiveBox,list);
   doc.body.append(button,panel);
 
   function render() {
     if (panel.hidden) return;
     summary.textContent=`Локально: 🌲 ${state.trees} · 🪵 ${state.logs} · 🚶 ${Math.floor(state.distance)} м · 🧭 ${visited.size} чанков`;
+    const objective=OBJECTIVES[objectiveIndex];
+    objectiveTitle.textContent=objective ? `Цель ${objectiveIndex+1}/${OBJECTIVES.length}: ${objective.title}` : 'Все мини-цели выполнены!';
+    objectiveText.textContent=objective ? `Прогресс: ${Math.min(objective.goal,Math.max(0,Math.floor(metricValue(objective.metric)-objectiveBaseline)))}/${objective.goal}` : 'Можно продолжать исследовать лес.';
+    skipObjectiveButton.hidden=!objective;
     list.replaceChildren(...ACHIEVEMENTS.map(a=>{
       const item=doc.createElement('li');
       item.dataset.unlocked=String(unlocked.has(a.id));
@@ -84,7 +114,8 @@ export function createProgress({
   function persist() {
     if (!storage) return;
     try {
-      storage.setItem(PROGRESS_KEY,JSON.stringify({version:1,...state,visited:[...visited]}));
+      storage.setItem(PROGRESS_KEY,JSON.stringify({version:1,...state,visited:[...visited],
+        objective:{index:objectiveIndex,baseline:objectiveBaseline}}));
     } catch { /* Disabled storage does not prevent play. */ }
   }
   function schedule() {
@@ -101,11 +132,26 @@ export function createProgress({
       }
     }
   }
+  function advanceObjective() {
+    const current=OBJECTIVES[objectiveIndex];
+    if(!current || metricValue(current.metric)-objectiveBaseline<current.goal)return;
+    notify(`Цель выполнена: ${current.title}`,'success',`objective-${current.id}`);
+    objectiveIndex++;
+    objectiveBaseline=metricValue(OBJECTIVES[objectiveIndex]?.metric??'trees');
+    schedule();
+  }
+  function skipObjective() {
+    if(objectiveIndex>=OBJECTIVES.length)return false;
+    objectiveIndex++;
+    objectiveBaseline=metricValue(OBJECTIVES[objectiveIndex]?.metric??'trees');
+    schedule();render();return true;
+  }
+  skipObjectiveButton.onclick=skipObjective;
   function record(event) {
     if(event==='tree-fell')state.trees++;
     else if(event==='log-placed')state.logs++;
     else return false;
-    unlockNew();schedule();render();return true;
+    unlockNew();advanceObjective();schedule();render();return true;
   }
   function resetPosition(x,z) {
     previous=Number.isFinite(x)&&Number.isFinite(z)?{x,z}:null;
@@ -118,7 +164,7 @@ export function createProgress({
       const distance=Math.hypot(x-previous.x,z-previous.z);
       if(distance>0 && distance<=4){state.distance=Math.round((state.distance+distance)*100)/100;schedule();}
     }
-    previous={x,z};unlockNew();render();
+    previous={x,z};unlockNew();advanceObjective();render();
   }
   function close(){panel.hidden=true;button.setAttribute('aria-expanded','false');}
   button.onclick=()=>{
@@ -135,7 +181,11 @@ export function createProgress({
     if(timer!==null){clearTimer(timer);timer=null;}
     persist();
   });
-  return {record,trackPosition,resetPosition,close,
+  return {record,trackPosition,resetPosition,close,skipObjective,
+    get objective(){const current=OBJECTIVES[objectiveIndex];return current
+      ? {index:objectiveIndex,title:current.title,goal:current.goal,
+        progress:Math.min(current.goal,Math.max(0,Math.floor(metricValue(current.metric)-objectiveBaseline)))}
+      : {index:objectiveIndex,done:true};},
     get stats(){return {...state,chunks:visited.size};},
     get unlocked(){return [...unlocked];}};
 }

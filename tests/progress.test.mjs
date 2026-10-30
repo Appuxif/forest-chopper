@@ -38,7 +38,7 @@ test('achievements unlock once on actual tree and log events; persist without re
   for(let i=0;i<4;i++)f.progress.record('tree-fell');
   assert.equal(f.progress.stats.trees,5);
   assert.equal(f.progress.unlocked.includes('five-trees'),true);
-  assert.equal(f.toasts.length,3);
+  assert.equal(f.toasts.length,4); // includes the first completed mini-objective
   f.flush();
   const snapshot=f.store.get(PROGRESS_KEY);
   assert.equal(JSON.parse(snapshot).trees,5);
@@ -46,6 +46,29 @@ test('achievements unlock once on actual tree and log events; persist without re
   assert.equal(after.progress.stats.trees,5);
   assert.equal(after.progress.unlocked.includes('five-trees'),true);
   assert.equal(after.toasts.length,0,'reload must not repeat unlocked toasts');
+});
+
+test('four mini-objectives use the shared counters, skip and persist their relative baseline',()=>{
+  const f=fixture();
+  assert.equal(f.progress.objective.index,0);
+  for(let i=0;i<3;i++)f.progress.record('tree-fell');
+  assert.equal(f.progress.objective.index,1);
+  assert.equal(f.progress.objective.progress,0);
+  for(let i=0;i<5;i++)f.progress.record('log-placed');
+  assert.equal(f.progress.objective.index,2);
+  assert.equal(f.progress.objective.goal,100);
+  assert.equal(f.progress.skipObjective(),true);
+  assert.equal(f.progress.objective.index,3);
+  for(let i=0;i<4;i++){
+    f.progress.resetPosition(i*24,0);
+    f.progress.trackPosition(i*24,0,33);
+  }
+  assert.deepEqual(f.progress.objective,{index:4,done:true});
+  assert.equal(f.progress.skipObjective(),false);
+  f.flush();
+  const reloaded=fixture(f.store.get(PROGRESS_KEY));
+  assert.deepEqual(reloaded.progress.objective,{index:4,done:true});
+  assert.equal(reloaded.toasts.length,0);
 });
 
 test('movement excludes jumps/teleports, counts unique seed-scoped chunks',()=>{
