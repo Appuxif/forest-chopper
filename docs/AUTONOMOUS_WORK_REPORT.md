@@ -151,6 +151,14 @@
 - Real isolated browser `index_debug.html`: 387 loaded trees split into 135 standard / 113 slender / 139 broad; each has exactly 5 meshes; renderer geometries remained 63. Tested at mobile 390×844 and desktop 1366×768 with no console warnings/errors. Screenshots `/tmp/forest-overnight-p111-{mobile,desktop}.webp`.
 - Validation: Node 35/35; Python 5/5; JS syntax and `git diff --check` PASS. Visual appeal remains a subjective human review item. No push.
 
+### P1.12 — Flowers and mushrooms among chunk decorations (2026-10-30)
+
+- Introduced two lightweight shared low-poly meshes (small golden flower and reddish mushroom). Each is substituted for a deterministic subset of existing grass decorations, not added on top of them; each chunk still has exactly 25 decoration meshes.
+- Trees, tree IDs, HP, positions, rock locations, buildable logs, collision, seed compatibility, multiplayer messages, and server save are unchanged. Flora is purely decorative, has no collision or fake collection affordance.
+- Added a resource regression covering 14 chunks: same seed and coords reproduce exact flora types/scales/positions, flowers and mushrooms both occur, grass remains the majority, and no per-decoration GPU allocations happen.
+- In the real browser with 49 loaded chunks: 762 grass, 183 rocks, 216 flowers and 64 mushrooms; all chunks remain at 25 meshes and renderer geometry count increases only by the two globally shared primitives (63 → 65). Desktop 1366×768 and mobile 390×844 both loaded without console errors. Screenshots `/tmp/forest-overnight-p112-{desktop,mobile}.webp`.
+- Validation: Node 36/36, Python 5/5, all source JS syntax and diff checks PASS. Visual taste remains a human review item. No push.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.

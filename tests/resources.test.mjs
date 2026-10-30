@@ -51,9 +51,11 @@ function fixture() {
   const ctx = {
     THREE, scene, $, trunkGeo: sharedGeometry, leafGeo: sharedGeometry,
     grassGeo: sharedGeometry, rockGeo: sharedGeometry,
+    flowerGeo: sharedGeometry, mushroomGeo: sharedGeometry,
     trunkMats: [sharedMaterial, sharedMaterial, sharedMaterial],
     leafMats: [sharedMaterial, sharedMaterial, sharedMaterial, sharedMaterial],
-    grassMat: sharedMaterial, rockMat: sharedMaterial, logGeo: sharedGeometry,
+    grassMat: sharedMaterial, rockMat: sharedMaterial,
+    flowerMat: sharedMaterial, mushroomMat: sharedMaterial, logGeo: sharedGeometry,
     logMat: sharedMaterial, endMat: sharedMaterial,
     trees: new Map(), chunks: new Map(), felled: new Set(),
     treeDamage: new Map(), seed: 321, chunkSize: 24, radius: 0,
@@ -145,4 +147,33 @@ test('three visual tree silhouettes are deterministic without altering gameplay 
   }
   assert.deepEqual([...variants].sort(),[0,1,2]);
   assert.deepEqual(created,[sharedGeometry,sharedMaterial],'variants reuse existing GPU resources');
+});
+
+test('deterministic mushrooms and flowers replace existing grass without extra meshes or collisions', () => {
+  function snapshot() {
+    const {ctx,created,sharedGeometry,sharedMaterial} = fixture();
+    const world = createWorld(ctx);
+    const counts = {grass:0,rock:0,flower:0,mushroom:0};
+    const rows=[];
+    for(let i=0;i<14;i++){
+      world.build(i,2);
+      const decor=ctx.chunks.get(`${i},2`);
+      assert.equal(decor.children.length,25,'same budget per chunk');
+      const chunk=decor.children.map(mesh=>{
+        assert.equal(mesh.geometry,sharedGeometry);
+        assert.equal(mesh.material,sharedMaterial);
+        const type=mesh.userData.decorType;
+        counts[type]++;
+        return [type,mesh.position.x,mesh.position.y,mesh.position.z,mesh.scale.x];
+      });
+      rows.push(chunk);
+    }
+    assert.deepEqual(created,[sharedGeometry,sharedMaterial],'no per-decoration resource allocation');
+    return {rows,counts};
+  }
+  const first=snapshot(),second=snapshot();
+  assert.deepEqual(first,second,'seed and chunk coordinates reproduce the same flora');
+  assert.equal(Object.values(first.counts).reduce((a,b)=>a+b,0),14*25);
+  assert.ok(first.counts.flower>0 && first.counts.mushroom>0);
+  assert.ok(first.counts.grass>first.counts.flower,'avoid overwhelming the forest with bright decor');
 });

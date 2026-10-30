@@ -19,7 +19,22 @@ for(let i=0;i<4;i++){
 group.position.set(x,0,z);group.userData={id,x,z,h,scale,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant};ctx.scene.add(group);ctx.trees.set(id,group)}
 function build(cx,cz){const key=cx+','+cz;if(ctx.chunks.has(key))return;const decor=new ctx.THREE.Group();ctx.scene.add(decor);ctx.chunks.set(key,decor);
 for(let i=0;i<8;i++){const x=cx*ctx.chunkSize+rand(cx,cz,i*3)*ctx.chunkSize,z=cz*ctx.chunkSize+rand(cx,cz,i*3+1)*ctx.chunkSize;if(Math.hypot(x,z)<8)continue;const id=key+':'+i;if(!ctx.felled.has(id))makeTree(x,z,id)}
-for(let i=0;i<25;i++){const x=cx*ctx.chunkSize+rand(cx,cz,100+i*2)*ctx.chunkSize,z=cz*ctx.chunkSize+rand(cx,cz,101+i*2)*ctx.chunkSize,isRock=rand(cx,cz,300+i)>.86;const obj=new ctx.THREE.Mesh(isRock?ctx.rockGeo:ctx.grassGeo,isRock?ctx.rockMat:ctx.grassMat);obj.position.set(x,isRock?.19:.3,z);obj.scale.setScalar(isRock?.35+rand(cx,cz,i)*.5:.7+rand(cx,cz,i)*.9);obj.rotation.y=rand(cx,cz,i+500)*6.28;decor.add(obj)}}
+for(let i=0;i<25;i++){
+ const x=cx*ctx.chunkSize+rand(cx,cz,100+i*2)*ctx.chunkSize;
+ const z=cz*ctx.chunkSize+rand(cx,cz,101+i*2)*ctx.chunkSize;
+ const isRock=rand(cx,cz,300+i)>.86;
+ // Only swap a few existing grass meshes, with separate deterministic indices.
+ const type=isRock?'rock':rand(cx,cz,800+i)>.94?'mushroom':rand(cx,cz,900+i)>.79?'flower':'grass';
+ const geometry=type==='rock'?ctx.rockGeo:type==='mushroom'?ctx.mushroomGeo:type==='flower'?ctx.flowerGeo:ctx.grassGeo;
+ const material=type==='rock'?ctx.rockMat:type==='mushroom'?ctx.mushroomMat:type==='flower'?ctx.flowerMat:ctx.grassMat;
+ const obj=new ctx.THREE.Mesh(geometry,material);
+ const height=type==='rock'?.19:type==='mushroom'?.22:type==='flower'?.31:.3;
+ const scale=type==='rock'?.35+rand(cx,cz,i)*.5:type==='grass'?.7+rand(cx,cz,i)*.9:.8+rand(cx,cz,i)*.65;
+ obj.position.set(x,height,z);obj.scale.setScalar(scale);
+ obj.rotation.y=rand(cx,cz,i+500)*6.28;
+ obj.userData.decorType=type;
+ decor.add(obj);
+}}
 function updateChunks(){const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);for(let x=cx-ctx.radius;x<=cx+ctx.radius;x++)for(let z=cz-ctx.radius;z<=cz+ctx.radius;z++)build(x,z);for(const [key,group] of ctx.chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>ctx.radius+1||Math.abs(z-cz)>ctx.radius+1){ctx.scene.remove(group);ctx.chunks.delete(key)}}for(const [key,t] of ctx.trees){if(Math.abs(t.position.x-ctx.px)>ctx.chunkSize*(ctx.radius+1.5)||Math.abs(t.position.z-ctx.pz)>ctx.chunkSize*(ctx.radius+1.5)){ctx.scene.remove(t);ctx.trees.delete(key)}}}
 
 return {rand, makeTree, build, updateChunks};
