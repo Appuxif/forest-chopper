@@ -130,7 +130,7 @@ class World:
             await self.bot_handler(ws);return
         if len(self.clients)+len(self.bots.bots)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
-        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0}
+        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0}
         self.clients[ws]=player
         await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'chat':self.chat[-40:]})
         try:
@@ -159,6 +159,11 @@ class World:
                     player['last_map_ping']=now
                     await self.broadcast({'type':'map_ping','by':uid,'name':player['name'],
                                           'x':round(x,1),'z':round(z,1)})
+                elif kind=='emote':
+                    mood=data.get('kind')
+                    if mood not in ('wave','thumbs_up') or now-player['last_emote']<1.5:continue
+                    player['last_emote']=now
+                    await self.broadcast({'type':'emote','by':uid,'kind':mood})
                 elif kind=='chat':
                     message=data.get('text')
                     if not isinstance(message,str):continue

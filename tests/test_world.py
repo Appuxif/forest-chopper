@@ -177,6 +177,30 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(self.world.logs)
                 self.assertFalse(World(self.path).logs)
 
+    async def test_emotes_are_trusted_ephemeral_and_throttled(self):
+        async with connect(self.url) as sender:
+            welcome=await self.receive(sender,'welcome')
+            async with connect(self.url) as receiver:
+                await self.receive(receiver,'welcome')
+                await sender.send(json.dumps({'type':'emote','kind':'wave','by':9999}))
+                expected={'type':'emote','by':welcome['id'],'kind':'wave'}
+                self.assertEqual(await self.receive(receiver,'emote'),expected)
+                self.assertEqual(await self.receive(sender,'emote'),expected)
+                await sender.send(json.dumps({'type':'emote','kind':'thumbs_up'}))
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(receiver.recv(),.07)
+                player=next(p for p in self.world.clients.values() if p['id']==welcome['id'])
+                for bad in ('dance','',None,123,[],{}):
+                    player['last_emote']=0
+                    await sender.send(json.dumps({'type':'emote','kind':bad}))
+                    with self.assertRaises(asyncio.TimeoutError):
+                        await asyncio.wait_for(receiver.recv(),.035)
+                player['last_emote']=0
+                await sender.send(json.dumps({'type':'emote','kind':'thumbs_up'}))
+                self.assertEqual((await self.receive(receiver,'emote'))['kind'],'thumbs_up')
+                self.assertFalse(self.world.chat)
+                self.assertFalse(self.path.exists(),'emotes must not write a save')
+
     async def test_hits_save_and_restore_world(self):
         async with connect(self.url) as ws:
             await self.receive(ws, 'welcome')

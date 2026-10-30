@@ -7,7 +7,7 @@ ctx.$('viewtoggle').onclick=toggleView;ctx.axe.visible=false;
 
 function animate(now){
  requestAnimationFrame(animate);
- const dt=Math.min(.05,(now-ctx.lastTime)/1000);ctx.lastTime=now;ctx.settings.tick(now,ctx);ctx.wind.tick(now);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);
+ const dt=Math.min(.05,(now-ctx.lastTime)/1000);ctx.lastTime=now;ctx.settings.tick(now,ctx);ctx.wind.tick(now);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
  let forward=(ctx.keys.KeyW||ctx.keys.ArrowUp?1:0)-(ctx.keys.KeyS||ctx.keys.ArrowDown?1:0)-ctx.joyY;
  let side=(ctx.keys.KeyD||ctx.keys.ArrowRight?1:0)-(ctx.keys.KeyA||ctx.keys.ArrowLeft?1:0)+ctx.joyX;
  const len=Math.max(1,Math.hypot(forward,side));forward/=len;side/=len;

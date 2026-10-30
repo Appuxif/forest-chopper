@@ -20,6 +20,14 @@ function sendMapPing(x,z){
  sendNet({type:'map_ping',x,z});
  return true;
 }
+let lastEmoteAt=-Infinity;
+function sendEmote(kind){
+ if(!isOnline() || !['wave','thumbs_up'].includes(kind) ||
+    performance.now()-lastEmoteAt<1700)return false;
+ lastEmoteAt=performance.now();
+ sendNet({type:'emote',kind});
+ return true;
+}
 const chatHistory=[];
 function receiveChat(message) {
  if (!message || !Number.isInteger(message.id) || typeof message.text!=='string') return;
@@ -85,7 +93,7 @@ let generation=0;
 function closeNet(){
  generation++;
  pendingPing=null;lastPingAt=0;lastMapPingAt=-Infinity;ctx.settings.setConnected(false);
- ctx.clearMapPings?.();
+ ctx.clearMapPings?.();ctx.emotes?.clear();lastEmoteAt=-Infinity;
  chatHistory.length=0;ctx.$('chatmessages').replaceChildren();ctx.$('chatunread').textContent='';
  for(const stop of bridges)stop();bridges.clear();
  if(guestConnection){guestConnection.close();guestConnection=null}
@@ -124,7 +132,7 @@ function connectSocket(ws) {
  ws.onopen=()=>{if(ctx.socket===ws)ws.send(JSON.stringify({type:'hello',name:ctx.$('netname').value}))};
  ws.onerror=()=>{if(ctx.socket===ws)status('Ошибка соединения. Проверьте сервер, адрес и сеть.')};
  ws.onclose=()=>{if(ctx.socket===ws){const wasConnected=ctx.myId!==null;closeNet();status('Соединение потеряно. Переподключитесь: сетевой мир не сохраняется локально.');if(wasConnected)ctx.notify('Соединение потеряно', 'warning', 'connection-lost')}};
- ws.onmessage=e=>{if(ctx.socket!==ws)return;let d;try{d=JSON.parse(e.data)}catch{return}switch(d.type){case 'pong':if(pendingPing&&d.nonce===pendingPing.nonce){const rtt=Math.max(0,performance.now()-pendingPing.at);pendingPing=null;ctx.settings.setLatency(rtt)}break;case 'chat':receiveChat(d);break;case 'map_ping':if(ctx.showMapPing?.(d) && d.by!==ctx.myId)ctx.notify('📍 '+String(d.name||'Игрок').slice(0,22)+' отметил точку','info','map-ping-'+d.by);break;case 'welcome':for(const message of d.chat||[])receiveChat(message);ctx.myId=d.id;ctx.offlineSave.suspend();clearWorld();ctx.seed=d.seed;for(const id of d.felled)ctx.felled.add(id);for(const [id,hp] of Object.entries(d.damage||{}))ctx.treeDamage.set(id,hp);for(const log of d.logs)addLog(log);for(const p of d.players)addAvatar(p);ctx.px=ctx.pz=0;ctx.progress.resetPosition(0,0);ctx.feetY=ctx.verticalSpeed=0;ctx.onGround=true;syncWood(d.wood,d.cuts);ctx.settings.setConnected(true);ctx.updateChunks();updateOnlineCount();ctx.$('netstatus').textContent='Подключено! Мир общий и сохраняется на сервере.';break;case 'join':{const fresh=ctx.myId!==null && d.player?.id!==ctx.myId && !ctx.avatars.has(d.player?.id);addAvatar(d.player);updateOnlineCount();if(fresh)ctx.notify(`${String(d.player?.name||'Игрок').slice(0,22)} присоединился к игре`,'info',`player-join-${d.player.id}`);break}case 'leave':{const avatar=ctx.avatars.get(d.id);removeAvatar(d.id);updateOnlineCount();if(avatar && ctx.myId!==null)ctx.notify(`${avatar.name} покинул игру`,'info',`player-leave-${d.id}`);break}case 'move':{const a=ctx.avatars.get(d.id);if(a){a.goal.set(d.x,d.y||0,d.z);a.angle=d.yaw;a.jumping=!!d.jumping}break}case 'tree_hit':treeHit(d.tree,d.hp);for(const a of ctx.avatars.values()){if(Math.hypot(a.group.position.x-(ctx.trees.get(d.tree)?.position.x??9999),a.group.position.z-(ctx.trees.get(d.tree)?.position.z??9999))<5)ctx.actorChop(a.actor)}break;case 'tree_fell':treeFell(d.tree);if(d.by===ctx.myId){syncWood(d.wood,d.cuts);ctx.$('target').textContent='+5 🪵 Древесина';ctx.notify('+5 🪵 Древесина','success','tree-reward');ctx.tutorial.complete('tree-fell');ctx.progress.record('tree-fell')}break;case 'log_add':addLog(d.log);if(d.by===ctx.myId){syncWood(d.wood);ctx.notify('Бревно установлено · −1 🪵','success','log-placed');ctx.tutorial.complete('log-placed');ctx.progress.record('log-placed')}break;case 'log_remove':{const i=ctx.placed.findIndex(p=>p.id===d.id);if(i>=0){ctx.scene.remove(ctx.placed[i].mesh);ctx.placed.splice(i,1)}if(d.by===ctx.myId){syncWood(d.wood);ctx.notify('Бревно убрано · +1 🪵','success','log-removed')}break}}};
+ ws.onmessage=e=>{if(ctx.socket!==ws)return;let d;try{d=JSON.parse(e.data)}catch{return}switch(d.type){case 'pong':if(pendingPing&&d.nonce===pendingPing.nonce){const rtt=Math.max(0,performance.now()-pendingPing.at);pendingPing=null;ctx.settings.setLatency(rtt)}break;case 'chat':receiveChat(d);break;case 'emote':ctx.emotes?.receive(d);break;case 'map_ping':if(ctx.showMapPing?.(d) && d.by!==ctx.myId)ctx.notify('📍 '+String(d.name||'Игрок').slice(0,22)+' отметил точку','info','map-ping-'+d.by);break;case 'welcome':for(const message of d.chat||[])receiveChat(message);ctx.myId=d.id;ctx.offlineSave.suspend();clearWorld();ctx.seed=d.seed;for(const id of d.felled)ctx.felled.add(id);for(const [id,hp] of Object.entries(d.damage||{}))ctx.treeDamage.set(id,hp);for(const log of d.logs)addLog(log);for(const p of d.players)addAvatar(p);ctx.px=ctx.pz=0;ctx.progress.resetPosition(0,0);ctx.feetY=ctx.verticalSpeed=0;ctx.onGround=true;syncWood(d.wood,d.cuts);ctx.settings.setConnected(true);ctx.updateChunks();updateOnlineCount();ctx.$('netstatus').textContent='Подключено! Мир общий и сохраняется на сервере.';break;case 'join':{const fresh=ctx.myId!==null && d.player?.id!==ctx.myId && !ctx.avatars.has(d.player?.id);addAvatar(d.player);updateOnlineCount();if(fresh)ctx.notify(`${String(d.player?.name||'Игрок').slice(0,22)} присоединился к игре`,'info',`player-join-${d.player.id}`);break}case 'leave':{const avatar=ctx.avatars.get(d.id);removeAvatar(d.id);updateOnlineCount();if(avatar && ctx.myId!==null)ctx.notify(`${avatar.name} покинул игру`,'info',`player-leave-${d.id}`);break}case 'move':{const a=ctx.avatars.get(d.id);if(a){a.goal.set(d.x,d.y||0,d.z);a.angle=d.yaw;a.jumping=!!d.jumping}break}case 'tree_hit':treeHit(d.tree,d.hp);for(const a of ctx.avatars.values()){if(Math.hypot(a.group.position.x-(ctx.trees.get(d.tree)?.position.x??9999),a.group.position.z-(ctx.trees.get(d.tree)?.position.z??9999))<5)ctx.actorChop(a.actor)}break;case 'tree_fell':treeFell(d.tree);if(d.by===ctx.myId){syncWood(d.wood,d.cuts);ctx.$('target').textContent='+5 🪵 Древесина';ctx.notify('+5 🪵 Древесина','success','tree-reward');ctx.tutorial.complete('tree-fell');ctx.progress.record('tree-fell')}break;case 'log_add':addLog(d.log);if(d.by===ctx.myId){syncWood(d.wood);ctx.notify('Бревно установлено · −1 🪵','success','log-placed');ctx.tutorial.complete('log-placed');ctx.progress.record('log-placed')}break;case 'log_remove':{const i=ctx.placed.findIndex(p=>p.id===d.id);if(i>=0){ctx.scene.remove(ctx.placed[i].mesh);ctx.placed.splice(i,1)}if(d.by===ctx.myId){syncWood(d.wood);ctx.notify('Бревно убрано · +1 🪵','success','log-removed')}break}}};
 }
 ctx.$('connect').onclick=async()=>{
  closeNet();const token=generation;
@@ -164,5 +172,5 @@ ctx.$('connect').onclick=async()=>{
  }catch(err){if(token===generation){closeNet();status('Подключение не удалось: '+err.message);ctx.notify('Не удалось подключиться','warning','connection-error')}}
 };
 
-return {isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, chatHistory};
+return {isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory};
 }

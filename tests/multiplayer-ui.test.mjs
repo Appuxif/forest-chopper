@@ -70,6 +70,7 @@ function fixture() {
     notify:(...args)=>notifications.push(args),
     showMapPing:data=>{pings.push(data);return true},
     clearMapPings:()=>{clearedPings++;pings.length=0},
+    emotes:{received:[],receive(d){this.received.push(d)},clear(){this.received.length=0}},
     updateChunks(){},
     disposePreview(){},
     createLumberjack:()=>({group:new Group(),mixer:{stopAllAction(){}}}),
@@ -154,4 +155,22 @@ test('map markers are acknowledged by server, never optimistic, and cleared on d
     ws.message({type:'map_ping',by:3,name:'OldRoom',x:0,z:0});
     assert.equal(f.pings.length,0,'stale room messages must not reappear');
   }finally{f.restore()}
+});
+
+test('emote outbound requests are whitelisted and received only after server ack',async()=>{
+ const f=fixture();
+ try{
+  await f.ctx.$('connect').onclick();
+  const ws=f.socket;
+  ws.message({type:'welcome',id:1,seed:21,felled:[],damage:{},logs:[],players:[],wood:0,cuts:0,chat:[]});
+  assert.equal(f.multiplayer.sendEmote('wave'),true);
+  assert.deepEqual(ws.sent.at(-1),{type:'emote',kind:'wave'});
+  assert.equal(f.ctx.emotes.received.length,0);
+  assert.equal(f.multiplayer.sendEmote('thumbs_up'),false,'anti spam');
+  assert.equal(f.multiplayer.sendEmote('bogus'),false);
+  ws.message({type:'emote',by:1,kind:'wave'});
+  assert.equal(f.ctx.emotes.received.length,1);
+  f.ctx.$('disconnect').onclick();
+  assert.equal(f.ctx.emotes.received.length,0);
+ }finally{f.restore()}
 });
