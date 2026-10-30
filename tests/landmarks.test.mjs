@@ -12,13 +12,16 @@ function fixture(seed=321) {
     add(node){this.children.push(node)}}
   class Mesh {constructor(geo,mat){this.geometry=geo;this.material=mat;this.userData={};
     this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};
-    this.scale={set(){},setScalar(){}};this.rotation={x:0,y:0,z:0};}}
+    this.scale={x:1,y:1,z:1,set(x,y,z){Object.assign(this,{x,y,z})},setScalar(v){this.x=this.y=this.z=v}};
+    this.rotation={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};}}
   const doc={createElement:()=>({
     width:0,height:0,getContext(){return {fillRect(){},strokeRect(){},fillText(){},set fillStyle(v){},set strokeStyle(v){},
       set lineWidth(v){},set font(v){},set textAlign(v){},set textBaseline(v){}}}
   })};
   const sharedGeo=new Geometry('shared'),sharedMat=new Material();
-  const THREE={Mesh,Group,PlaneGeometry:Geometry,CylinderGeometry:Geometry,MeshLambertMaterial:Material,
+  class PointLight {constructor(color,intensity,distance,decay){Object.assign(this,{color,intensity,distance,decay});this.position={set(){}};}}
+  const THREE={Mesh,Group,PlaneGeometry:Geometry,CylinderGeometry:Geometry,ConeGeometry:Geometry,
+    MeshLambertMaterial:Material,PointLight,
     CanvasTexture:Texture,SRGBColorSpace:'srgb',DoubleSide:2};
   const ctx={THREE,seed,chunkSize:24,px:0,pz:0,radius:1,trees:new Map(),chunks:new Map(),
     felled:new Set(),treeDamage:new Map(),trunkGeo:sharedGeo,leafGeo:sharedGeo,
@@ -26,6 +29,7 @@ function fixture(seed=321) {
     trunkMats:[sharedMat,sharedMat,sharedMat],leafMats:[sharedMat,sharedMat,sharedMat,sharedMat],
     birchLeafMats:[sharedMat,sharedMat,sharedMat],birchTrunkMat:sharedMat,rareLeafMat:sharedMat,
     grassMat:sharedMat,rockMat:sharedMat,flowerMat:sharedMat,mushroomMat:sharedMat,
+    logGeo:sharedGeo,logMat:sharedMat,
     scene:{add(group){groups.push(group)},remove(){}}
   };
   const world=createWorld(ctx);
@@ -45,7 +49,8 @@ function generated(seed=321){
     const plants=chunk.children.filter(obj=>obj.userData.decorType);
     assert.equal(plants.length,25,'landmarks cannot replace or duplicate flora slots');
     assert.equal(special.filter(x=>x.userData.landmark==='trail').length,cz===0?1:0);
-    const sign=special.filter(x=>x.userData.landmark!=='trail');
+    const sign=special.filter(x=>['signpost','signboard'].includes(x.userData.landmark));
+    assert.equal(special.filter(x=>x.userData.landmark==='campfire').length,cx===0&&cz===0?1:0);
     assert.ok(sign.length===0||sign.length===2,'each sign has a post and board');
     assert.ok(!sign.length||cx%3===0&&cz===0);
     for(const mesh of special){
@@ -70,7 +75,7 @@ test('continuous, seed-stable trail uses exactly one shared quad per z=0 chunk',
   assert.equal(new Set(f.posts.map(x=>x[3])).size,1,'posts share geometry');
   assert.equal(new Set(f.board.map(x=>x[4])).size,1,'boards share geometry');
   assert.ok(new Set(f.board.map(x=>x[5])).size<=2,'only two globally shared sign textures/materials');
-  assert.equal(f.assets.length,11,'two fixture resources plus 3 geometries, 4 materials and 2 textures');
+  assert.equal(f.assets.length,15,'shared resources: 2 fixture, 5 geometries, 6 materials, 2 textures');
 });
 
 test('signs face the trail, avoid seeded trunks and do not depend on fallen tree state',()=>{
@@ -93,4 +98,61 @@ test('signs face the trail, avoid seeded trunks and do not depend on fallen tree
   const first=generated(567);
   assert.ok(first.board.every(x=>x[3]===Math.PI),'all signboards face toward the trail');
   assert.ok(first.ctx.trees.size>0,'trees still generated at their original positions');
+});
+
+test('one decorative campfire at the trailhead reuses assets and never changes world rules',()=>{
+  const f=fixture(101);
+  f.world.build(0,0);
+  f.world.build(1,0);
+  f.world.build(0,1);
+  const fires=[...f.ctx.chunks.values()].flatMap(g=>g.children).filter(x=>x.userData.landmark==='campfire');
+  assert.equal(fires.length,1);
+  const fire=fires[0];
+  assert.deepEqual([fire.position.x,fire.position.y,fire.position.z],[5,0,5]);
+  assert.equal(fire.children.length,15,'six rocks, three logs, two flames, one light and three sparks');
+  const rock=fire.children.slice(0,6);
+  const logs=fire.children.slice(6,9);
+  assert.ok(rock.every(x=>x.geometry===f.ctx.rockGeo && x.material===f.ctx.rockMat));
+  assert.ok(logs.every(x=>x.geometry===f.ctx.logGeo && x.material===f.ctx.logMat));
+  assert.equal(fire.children.filter(x=>x.geometry).length,14);
+  assert.equal(fire.children.filter(x=>x.intensity!==undefined).length,1,'one low-radius point light');
+  const seed=f.ctx.seed,treeCount=f.ctx.trees.size,assetCount=f.assets.length;
+  f.landmarks.tick(1000);
+  assert.equal(f.ctx.seed,seed);
+  assert.equal(f.ctx.trees.size,treeCount);
+  assert.equal(f.ctx.felled.size,0);
+  assert.equal(f.assets.length,assetCount,'animation creates no materials or geometry');
+  f.ctx.chunks.delete('0,0');
+  f.landmarks.tick(1300);
+  assert.equal(f.assets.length,assetCount,'chunk unload releases the fire without disposing shared assets');
+});
+
+test('campfire flicker is bounded and reduced-motion stops all fire movement immediately',()=>{
+  const old=globalThis.matchMedia;
+  const reduced={matches:true};
+  globalThis.matchMedia=()=>reduced;
+  try{
+    const f=fixture();
+    f.world.build(0,0);
+    const fire=f.ctx.chunks.get('0,0').children.find(x=>x.userData.landmark==='campfire');
+    const flame=fire.children[9],inner=fire.children[10],light=fire.children[11];
+    const sparks=fire.children.slice(12);
+    f.landmarks.tick(2000);
+    assert.equal(flame.scale.y,1);
+    assert.equal(inner.scale.y,1);
+    assert.equal(light.intensity,.65);
+    reduced.matches=false;
+    f.landmarks.tick(2150);
+    assert.ok(Math.abs(flame.scale.y-1)>.001);
+    assert.ok(light.intensity>.5&&light.intensity<.8);
+    const yBefore=flame.scale.y;
+    f.landmarks.tick(2200);
+    assert.equal(flame.scale.y,yBefore,'fire updates are rate-limited');
+    reduced.matches=true;
+    f.landmarks.tick(2201);
+    assert.equal(flame.scale.y,1);
+    assert.equal(inner.scale.y,1);
+    assert.equal(light.intensity,.65);
+    assert.deepEqual(sparks.map((s,i)=>s.position.y),[.95,1.08,1.21]);
+  }finally{globalThis.matchMedia=old;}
 });

@@ -7,6 +7,13 @@ export function createLandmarks(ctx,doc=document) {
   const poleGeometry=new THREE.CylinderGeometry(.115,.15,2.1,6);
   const poleMaterial=new THREE.MeshLambertMaterial({color:0x76553b});
   const boardGeometry=new THREE.PlaneGeometry(3.0,.8);
+  // One fire at the trailhead. Every rock/log is made from existing shared assets.
+  const flameGeometry=new THREE.ConeGeometry(.36,1.05,5);
+  const emberGeometry=new THREE.ConeGeometry(.19,.64,5);
+  const flameMaterial=new THREE.MeshLambertMaterial({color:0xffb141,emissive:0xff661c,emissiveIntensity:.85,transparent:true,opacity:.94,depthWrite:false});
+  const emberMaterial=new THREE.MeshLambertMaterial({color:0xffe9a3,emissive:0xff932d,emissiveIntensity:.8});
+  const reduceMotion=typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false};
+  let activeFire=null,lastFireTick=-Infinity;
 
   const boardMaterials=['←  К НАЧАЛУ','К НАЧАЛУ  →'].map(label=>{
     const canvas=doc.createElement('canvas');
@@ -38,6 +45,58 @@ export function createLandmarks(ctx,doc=document) {
     return null;
   }
 
+  function createCampfire(parent) {
+    const fire=new THREE.Group();fire.position.set(5,0,5);
+    fire.userData.landmark='campfire';
+    for(let i=0;i<6;i++){
+      const a=i*Math.PI/3;
+      const rock=new THREE.Mesh(ctx.rockGeo,ctx.rockMat);
+      rock.position.set(Math.cos(a)*.87,.16,Math.sin(a)*.87);
+      rock.scale.setScalar(.19);fire.add(rock);
+    }
+    for(let i=0;i<3;i++){
+      const log=new THREE.Mesh(ctx.logGeo,ctx.logMat);
+      log.position.set(0,.15,0);
+      log.rotation.set(0,i*Math.PI/3,Math.PI/2);
+      log.scale.set(.34,.42,.34);
+      fire.add(log);
+    }
+    const flame=new THREE.Mesh(flameGeometry,flameMaterial);
+    flame.position.set(0,.66,0);fire.add(flame);
+    const inner=new THREE.Mesh(emberGeometry,emberMaterial);
+    inner.position.set(.07,.54,.02);fire.add(inner);
+    const light=new THREE.PointLight(0xffaa66,.65,8,2);
+    light.position.set(0,.75,0);fire.add(light);
+    // These are not interactive/simulated fire particles; just three tiny cached geometry sparks.
+    const sparks=[];
+    for(let i=0;i<3;i++){
+      const spark=new THREE.Mesh(ctx.flowerGeo,emberMaterial);
+      spark.scale.setScalar(.12);
+      spark.position.set((i-1)*.24,.95+i*.13,(i%2?.18:-.14));
+      fire.add(spark);sparks.push(spark);
+    }
+    parent.add(fire);
+    activeFire={parent,flame,inner,light,sparks};
+    lastFireTick=-Infinity;
+  }
+
+  function tick(now) {
+    if(!activeFire)return;
+    if(ctx.chunks.get('0,0')!==activeFire.parent){activeFire=null;return;}
+    const {flame,inner,light,sparks}=activeFire;
+    if(reduceMotion.matches){
+      flame.scale.y=1;inner.scale.y=1;light.intensity=.65;
+      for(let i=0;i<sparks.length;i++)sparks[i].position.y=.95+i*.13;
+      return;
+    }
+    if(!Number.isFinite(now)||now-lastFireTick<150)return;
+    lastFireTick=now;
+    flame.scale.y=1+Math.sin(now*.009)*.09;
+    inner.scale.y=1+Math.sin(now*.013+1)*.075;
+    light.intensity=.62+Math.sin(now*.007)*.07;
+    for(let i=0;i<sparks.length;i++)sparks[i].position.y=.95+i*.13+Math.sin(now*.004+i*2)*.08;
+  }
+
   function decorate(group,cx,cz) {
     if(cz!==0)return;
     // One continuous west-east band: exactly one shared flat quad per trail chunk.
@@ -46,6 +105,7 @@ export function createLandmarks(ctx,doc=document) {
     trail.position.set(cx*ctx.chunkSize+ctx.chunkSize/2,.025,0);
     trail.userData.landmark='trail';
     group.add(trail);
+    if(cx===0)createCampfire(group);
 
     // Every third chunk, one noninteractive sign on the edge of the trail.
     if(cx%3!==0)return;
@@ -61,5 +121,5 @@ export function createLandmarks(ctx,doc=document) {
     board.userData.landmark='signboard';
     group.add(board);
   }
-  return {decorate,signPosition};
+  return {decorate,signPosition,tick};
 }

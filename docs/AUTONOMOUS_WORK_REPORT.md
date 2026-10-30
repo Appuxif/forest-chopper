@@ -210,6 +210,14 @@
 - Real browser desktop 1366×768 verified `tutorialVisible=true → computed FPS display:none`, and after Skip `tutorialVisible=false → display:block`. Real mobile 390×844 showed the same transition with no overlap, no console warnings/errors. Screenshot `/tmp/forest-overnight-hud-no-overlap-mobile.webp`.
 - No game state, protocol, save, settings schema or shader changes; minimal CSS-only UI correction. No push.
 
+### P2.3 — Decorative campfire at the trailhead (2026-10-30)
+
+- Added one static campfire at `(5,0,5)` in world chunk `0,0`. It has six shared-geometry stones, three logs using the existing game log material/geometry, two shared-geometry low-poly orange/yellow flames, three tiny embers from the existing shared octahedral flower geometry, and one low-radius warm PointLight. No player action, crafting recipe, wood cost, interaction prompt, collision or network/save/protocol changes.
+- Its gentle flame and light oscillation runs through the existing game render loop at most once per 150 ms, never creates a new mesh/material/texture per update, and stops immediately (restoring baseline) under `prefers-reduced-motion: reduce`. When the origin chunk unloads, no campfire object reference is kept.
+- Expanded `tests/landmarks.test.mjs`: unique origin campfire and exact child count, reuse of rock/log assets, no change to tree/seed/felled state or growing resources, unloading, throttled flicker, range of light intensity and dynamic reduced-motion handling.
+- Real isolated debug Chrome at mobile 390×844: exactly one campfire with 15 children positioned at `(5,0,5)`, flame y-scale changed gently over time and PointLight intensity was ~0.64; renderer memory remained bounded (69 geometries, 60 textures in initial measurement). Emulated reduced motion: scale restored to 1 and intensity 0.65, with no damage/wood/cuts changes. Visually inspected warm flame, stone ring and logs. Normal `index.html` touch/mobile loaded with no console errors and no debug API. Screenshot `/tmp/forest-overnight-campfire-mobile.webp`.
+- Full test suite validated before commit; no push and no writes to production world save.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.
