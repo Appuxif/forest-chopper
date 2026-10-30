@@ -159,6 +159,14 @@
 - In the real browser with 49 loaded chunks: 762 grass, 183 rocks, 216 flowers and 64 mushrooms; all chunks remain at 25 meshes and renderer geometry count increases only by the two globally shared primitives (63 → 65). Desktop 1366×768 and mobile 390×844 both loaded without console errors. Screenshots `/tmp/forest-overnight-p112-{desktop,mobile}.webp`.
 - Validation: Node 36/36, Python 5/5, all source JS syntax and diff checks PASS. Visual taste remains a human review item. No push.
 
+### P2.7 — Rare frosty trees (cosmetic only) (2026-10-30)
+
+- Added ~1.5% seed-deterministic pale frosty trees. All rare trees reuse a single shared foliage material across four leaves; no extra meshes or geometry. Trunk position, scale, tree HP/ID, seed, physics and multiplayer reward remain identical.
+- The rarity decision uses a fresh deterministic random index (702), independent from existing world/server indices and the three basic silhouette variants. Rare trees have no extra resource reward or collection mechanic.
+- New regression tests generate 600 trees twice to validate rarity and reconstruction, unchanged HP, shared material and geometry.
+- Isolated debug browser: 7 frosty trees among 387 loaded trees, all shared one foliage material `#b1ced2`, every tree still exactly five meshes, geometry count unchanged at 65. Chrome mobile 390×844 and desktop 1366×768 were exercised, console clear. Screenshots `/tmp/forest-overnight-p27-{mobile,desktop}.webp`.
+- Validation: Node 37/37, Python 5/5, JS syntax and diff checks PASS. No push.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.

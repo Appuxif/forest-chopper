@@ -55,7 +55,8 @@ function fixture() {
     trunkMats: [sharedMaterial, sharedMaterial, sharedMaterial],
     leafMats: [sharedMaterial, sharedMaterial, sharedMaterial, sharedMaterial],
     grassMat: sharedMaterial, rockMat: sharedMaterial,
-    flowerMat: sharedMaterial, mushroomMat: sharedMaterial, logGeo: sharedGeometry,
+    flowerMat: sharedMaterial, mushroomMat: sharedMaterial,
+    rareLeafMat: sharedMaterial, logGeo: sharedGeometry,
     logMat: sharedMaterial, endMat: sharedMaterial,
     trees: new Map(), chunks: new Map(), felled: new Set(),
     treeDamage: new Map(), seed: 321, chunkSize: 24, radius: 0,
@@ -176,4 +177,29 @@ test('deterministic mushrooms and flowers replace existing grass without extra m
   assert.equal(Object.values(first.counts).reduce((a,b)=>a+b,0),14*25);
   assert.ok(first.counts.flower>0 && first.counts.mushroom>0);
   assert.ok(first.counts.grass>first.counts.flower,'avoid overwhelming the forest with bright decor');
+});
+
+test('rare frosty trees are seed-deterministic and purely cosmetic', () => {
+  const {ctx,sharedGeometry} = fixture();
+  const rareMaterial={kind:'shared-frost'};
+  ctx.rareLeafMat=rareMaterial;
+  const world=createWorld(ctx);
+  let rareCount=0;
+  for(let i=0;i<600;i++){
+    const x=13+i*.99,z=7+i*1.27,id=`9,9:${i}`;
+    const expectedRare=world.rand(x,z,702)>.985;
+    world.makeTree(x,z,id);
+    const tree=ctx.trees.get(id);
+    assert.equal(tree.userData.rare,expectedRare);
+    assert.equal(tree.userData.maxHp,7+Math.floor(world.rand(x,z,8)*5));
+    assert.equal(tree.children.length,5);
+    assert.ok(tree.children.every(child=>child.geometry===sharedGeometry));
+    assert.ok(tree.children.slice(1).every(child => (child.material===rareMaterial)===expectedRare));
+    if(expectedRare)rareCount++;
+    ctx.scene.remove(tree);ctx.trees.delete(id);
+    world.makeTree(x,z,id);
+    assert.equal(ctx.trees.get(id).userData.rare,expectedRare);
+    ctx.scene.remove(ctx.trees.get(id));ctx.trees.delete(id);
+  }
+  assert.ok(rareCount>1&&rareCount<40,`expected rare appearance, got ${rareCount}/600`);
 });

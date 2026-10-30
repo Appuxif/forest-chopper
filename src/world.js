@@ -5,8 +5,10 @@ function makeTree(x,z,id){const group=new ctx.THREE.Group(),h=7.5+rand(x,z,4)*6.
 // Cosmetic silhouette only: keep four shared foliage meshes and the same trunk/HP/position.
 // Use an unused deterministic random index, never the indices used by tree_info.
 const variant=Math.floor(rand(x,z,701)*3);
+const rare=rand(x,z,702)>.985; // About 1.5% of trees: a visual discovery, no extra wood/HP.
 for(let i=0;i<4;i++){
- const foliage=new ctx.THREE.Mesh(ctx.leafGeo,ctx.leafMats[Math.floor(rand(x,z,15+i)*4)]);
+ const palette=ctx.leafMats[Math.floor(rand(x,z,15+i)*4)];
+ const foliage=new ctx.THREE.Mesh(ctx.leafGeo,rare?ctx.rareLeafMat:palette);
  let w=scale*(2.9-i*.45),height=h*(.48-i*.035),y=h*(.68+i*.105);
  if(variant===1){ // Slender fir: long, narrow tiers.
   w*=.72+i*.035;height*=1.12;y+=h*.014;
@@ -16,7 +18,7 @@ for(let i=0;i<4;i++){
  foliage.scale.set(w,height,w);foliage.position.y=y;group.add(foliage);
 }
 // Damage stays in HP (and the damage bar). No flat rectangle on the trunk.
-group.position.set(x,0,z);group.userData={id,x,z,h,scale,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant};ctx.scene.add(group);ctx.trees.set(id,group)}
+group.position.set(x,0,z);group.userData={id,x,z,h,scale,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant,rare};ctx.scene.add(group);ctx.trees.set(id,group)}
 function build(cx,cz){const key=cx+','+cz;if(ctx.chunks.has(key))return;const decor=new ctx.THREE.Group();ctx.scene.add(decor);ctx.chunks.set(key,decor);
 for(let i=0;i<8;i++){const x=cx*ctx.chunkSize+rand(cx,cz,i*3)*ctx.chunkSize,z=cz*ctx.chunkSize+rand(cx,cz,i*3+1)*ctx.chunkSize;if(Math.hypot(x,z)<8)continue;const id=key+':'+i;if(!ctx.felled.has(id))makeTree(x,z,id)}
 for(let i=0;i<25;i++){
