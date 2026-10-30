@@ -3,6 +3,14 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createFrameLimiter} from '../src/frame-limiter.js';
 
+test('micrograss creation does not read crafting before initialization',()=>{
+  const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
+  const declaration=main.indexOf('let crafting=null;');
+  const creation=main.indexOf('const microGrass=createMicroGrass(ctx);');
+  assert.ok(declaration>=0 && declaration<creation,
+    'crafting getter must be initialized before micro-grass first tick');
+});
+
 test('the game starts exactly one requestAnimationFrame chain',()=>{
   const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
   const player=readFileSync(new URL('../src/player.js',import.meta.url),'utf8');

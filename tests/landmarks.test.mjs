@@ -22,7 +22,12 @@ function fixture(seed=321) {
       set lineWidth(v){},set font(v){},set textAlign(v){},set textBaseline(v){}}}
   })};
   const sharedGeo=new Geometry('shared'),sharedMat=new Material();
-  class PointLight {constructor(color,intensity,distance,decay){Object.assign(this,{color,intensity,distance,decay});this.position={set(){}};}}
+  class PointLight {constructor(color,intensity,distance,decay){
+    Object.assign(this,{color,intensity,distance,decay});
+    this.position={set(){}};
+    this.layers={enabled:[],enable(layer){this.enabled.push(layer)}};
+    this.shadow={mapSize:{set(x,y){this.x=x;this.y=y}},camera:{},needsUpdate:false};
+  }}
   const THREE={Mesh,Group,PlaneGeometry:Geometry,CylinderGeometry:Geometry,ConeGeometry:Geometry,
     MeshLambertMaterial:Material,PointLight,
     CanvasTexture:Texture,SRGBColorSpace:'srgb',DoubleSide:2};
@@ -126,6 +131,13 @@ test('one decorative campfire at the trailhead reuses assets and never changes w
   assert.ok(logs.every(x=>x.geometry===f.ctx.logGeo && x.material===f.ctx.logMat));
   assert.equal(fire.children.filter(x=>x.geometry).length,14);
   assert.equal(fire.children.filter(x=>x.intensity!==undefined).length,1,'one low-radius point light');
+  const point=fire.children[11];
+  assert.equal(point.castShadow,true,'fire point light has genuine depth-cube shadows');
+  assert.deepEqual([point.shadow.mapSize.x,point.shadow.mapSize.y],[256,256]);
+  assert.equal(point.shadow.camera.near,.2);
+  assert.equal(point.shadow.camera.far,9);
+  assert.equal(point.shadow.autoUpdate,false);
+  assert.deepEqual(point.layers.enabled,[1,3]);
   const seed=f.ctx.seed,treeCount=f.ctx.trees.size,assetCount=f.assets.length;
   f.landmarks.tick(1000);
   assert.equal(f.ctx.seed,seed);
@@ -150,19 +162,26 @@ test('campfire flicker is bounded and reduced-motion stops all fire movement imm
     f.landmarks.tick(2000);
     assert.equal(flame.scale.y,1);
     assert.equal(inner.scale.y,1);
-    assert.equal(light.intensity,.65);
+    assert.equal(light.intensity,1.8);
     reduced.matches=false;
     f.landmarks.tick(2150);
     assert.ok(Math.abs(flame.scale.y-1)>.001);
-    assert.ok(light.intensity>.5&&light.intensity<.8);
+    assert.ok(light.intensity>1.5&&light.intensity<2.1);
     const yBefore=flame.scale.y;
+    light.shadow.needsUpdate=false;
     f.landmarks.tick(2200);
+    assert.equal(light.shadow.needsUpdate,true,'point shadow refreshes near the player despite flame flicker throttle');
     assert.equal(flame.scale.y,yBefore,'fire updates are rate-limited');
-    reduced.matches=true;
+    // Point-light shadow updates stop when the local avatar is far away.
+    f.ctx.px=100;f.ctx.pz=100;
+    light.shadow.needsUpdate=false;
     f.landmarks.tick(2201);
+    assert.equal(light.shadow.needsUpdate,false);
+    reduced.matches=true;
+    f.landmarks.tick(2202);
     assert.equal(flame.scale.y,1);
     assert.equal(inner.scale.y,1);
-    assert.equal(light.intensity,.65);
+    assert.equal(light.intensity,1.8);
     assert.deepEqual(sparks.map((s,i)=>s.position.y),[.95,1.08,1.21]);
   }finally{globalThis.matchMedia=old;}
 });

@@ -43,7 +43,7 @@ function enableDecorShadow(node){
  for(const child of node.children??[])enableDecorShadow(child);
 }
 function build(cx,cz){const key=cx+','+cz;if(ctx.chunks.has(key))return;const decor=new ctx.THREE.Group();ctx.scene.add(decor);ctx.chunks.set(key,decor);
-decor.userData.shadowDecor=[];decor.userData.reactivePlants=[];
+decor.userData.shadowDecor=[];decor.userData.reactivePlants=[];decor.userData.grassClearings=[];
 const rockColliders=[];
 for(let i=0;i<8;i++){const x=cx*ctx.chunkSize+rand(cx,cz,i*3)*ctx.chunkSize,z=cz*ctx.chunkSize+rand(cx,cz,i*3+1)*ctx.chunkSize;if(Math.hypot(x,z)<8)continue;const id=key+':'+i;if(!ctx.felled.has(id))makeTree(x,z,id)}
 for(let i=0;i<25;i++){
@@ -84,6 +84,10 @@ for(let i=0;i<25;i++){
  decor.add(obj);
 }
 ctx.landmarks?.decorate(decor,cx,cz);
+for(const obj of decor.userData.reactivePlants){
+ obj.visible=!decor.userData.grassClearings.some(area=>
+   (obj.position.x-area.x)**2+(obj.position.z-area.z)**2<area.radius**2);
+}
 ctx.rockColliders?.set(key,rockColliders);
 }
 function updateChunks(){const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);for(let x=cx-ctx.radius;x<=cx+ctx.radius;x++)for(let z=cz-ctx.radius;z<=cz+ctx.radius;z++)build(x,z);for(const [key,group] of ctx.chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>ctx.radius+1||Math.abs(z-cz)>ctx.radius+1){ctx.scene.remove(group);ctx.chunks.delete(key);ctx.rockColliders?.delete(key)}}for(const [key,t] of ctx.trees){if(Math.abs(t.position.x-ctx.px)>ctx.chunkSize*(ctx.radius+1.5)||Math.abs(t.position.z-ctx.pz)>ctx.chunkSize*(ctx.radius+1.5)){ctx.scene.remove(t);ctx.trees.delete(key)}}}

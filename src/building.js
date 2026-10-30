@@ -4,6 +4,7 @@ export function createBuilding(ctx) {
   function makeLog() {
     const mesh = new ctx.THREE.Mesh(ctx.logGeo, [ctx.logMat, ctx.endMat, ctx.endMat]);
     mesh.rotation.z = Math.PI / 2;
+    mesh.castShadow=true;
     return mesh;
   }
 
@@ -67,6 +68,7 @@ export function createBuilding(ctx) {
     if (p.orientation === 1) mesh.rotation.y = Math.PI / 2;
     ctx.scene.add(mesh);
     ctx.placed.push({...p, mesh});
+    ctx.atmosphere?.invalidateStaticShadows?.();
     ctx.wood--;
     ctx.tutorial.complete('log-placed');
     ctx.progress.record('log-placed');
@@ -94,6 +96,7 @@ export function createBuilding(ctx) {
     }
     ctx.scene.remove(log.mesh);
     ctx.placed.splice(idx, 1);
+    ctx.atmosphere?.invalidateStaticShadows?.();
     ctx.wood++;
     ctx.offlineSave.markDirty();
     ctx.$('wood').textContent = ctx.wood;

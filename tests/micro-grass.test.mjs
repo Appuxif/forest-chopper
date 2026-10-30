@@ -108,8 +108,9 @@ test('micro grass generation uses deterministic samples and glade-specific profi
   assert.ok(a.every(s=>Number.isFinite(s.x)&&Number.isFinite(s.z)&&s.patchWeight>=0&&s.patchWeight<=1));
   assert.ok(a.every(s=>Math.abs(s.z)>=1.75),'the cleared trail remains open');
   assert.ok(a.every(s=>s.patchKind>=0&&s.patchKind<=4));
-  assert.ok(generateGrassTile(51,0,0,12,25,'far').length<a.length,
-    'far LOD stays cheaper at the same density');
+  const far=generateGrassTile(51,0,0,12,25,'far');
+  assert.ok(Math.abs(far.length-a.length)/a.length<.16,
+    'both LODs should have similar grass coverage; far uses fewer vertices');
 });
 
 test('shader bending is near-only, uses uniform actor slots and keeps roots planted',()=>{
@@ -225,4 +226,31 @@ test('repeated tile streaming keeps page cache bounded without leaking GPU resou
   grass.dispose();
   assert.ok([...meshes].every(m=>m.disposed===1),'all paged meshes are cleaned up');
   assert.ok([...geometries].every(g=>g.disposed===1),'no GPU geometry leak after streaming');
+});
+
+test('campfire, sign, bench and placed logs clear grass through shared shader uniforms',()=>{
+  const {ctx,sceneItems}=fixture({radius:30,density:3});
+  ctx.chunks=new Map([['0,0',{userData:{grassClearings:[
+    {x:5,z:5,radius:1.65},{x:12,z:4.8,radius:.85},
+  ]}}]]);
+  ctx.crafting={items:new Map([[1,{x:7,z:8,orientation:0}]])};
+  ctx.placed=[{x:9,z:9,level:0},{x:15,z:15,level:1}];
+  const grass=createMicroGrass(ctx);
+  const near=[...sceneItems].find(mesh=>mesh.userData.grassTier==='near');
+  const far=[...sceneItems].find(mesh=>mesh.userData.grassTier==='far');
+  for(const mesh of [near,far]){
+    const u=mesh.material.userData.grassUniforms.fcGrassClearings.value;
+    assert.equal(u.filter(slot=>slot.w===1).length,4);
+    assert.ok(u.some(slot=>slot.x===5 && slot.y===5 && slot.z===1.65));
+    assert.ok(u.some(slot=>slot.x===7 && slot.y===8 && slot.z===1.55));
+    const shader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>'};
+    mesh.material.onBeforeCompile(shader);
+    assert.match(shader.vertexShader,/uniform vec4 fcGrassClearings\[24\]/);
+    assert.match(shader.vertexShader,/fcVisibility=0\.0/);
+  }
+  ctx.crafting.items.clear();ctx.placed=[];
+  grass.tick();
+  assert.equal(near.material.userData.grassUniforms.fcGrassClearings.value
+    .filter(slot=>slot.w===1).length,2,'grass restores after removing a bench or log');
+  grass.dispose();
 });

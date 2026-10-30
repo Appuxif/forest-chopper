@@ -70,8 +70,22 @@ export function createLandmarks(ctx,doc=document) {
     flame.position.set(0,.66,0);fire.add(flame);
     const inner=new THREE.Mesh(emberGeometry,emberMaterial);
     inner.position.set(.07,.54,.02);fire.add(inner);
-    const light=new THREE.PointLight(0xffaa66,.65,8,2);
-    light.position.set(0,.75,0);fire.add(light);
+    // Dynamic local point-light shadows. One 256px cube map (six small
+    // views), restricted to nearby casters by the atmosphere renderer.
+    const light=new THREE.PointLight(0xffaa66,1.8,9,2);
+    light.position.set(0,1.5,0);
+    light.castShadow=true;
+    light.layers?.enable(1); // illuminate remote animated characters
+    light.layers?.enable(3); // illuminate the local skinned character
+    light.shadow.mapSize.set(256,256);
+    light.shadow.camera.near=.2;
+    light.shadow.camera.far=9;
+    light.shadow.bias=-.001;
+    light.shadow.normalBias=.025;
+    light.shadow.radius=2;
+    light.shadow.autoUpdate=false;
+    light.shadow.needsUpdate=true;
+    fire.add(light);
     // These are not interactive/simulated fire particles; just three tiny cached geometry sparks.
     const sparks=[];
     for(let i=0;i<3;i++){
@@ -82,6 +96,7 @@ export function createLandmarks(ctx,doc=document) {
     }
     parent.add(fire);
     parent.userData?.shadowDecor?.push(fire);
+    parent.userData?.grassClearings?.push({x:5,z:5,radius:1.65});
     activeFire={parent,flame,inner,light,sparks};
     lastFireTick=-Infinity;
   }
@@ -91,15 +106,19 @@ export function createLandmarks(ctx,doc=document) {
     if(ctx.chunks.get('0,0')!==activeFire.parent){activeFire=null;return;}
     const {flame,inner,light,sparks}=activeFire;
     if(reduceMotion.matches){
-      flame.scale.y=1;inner.scale.y=1;light.intensity=.65;
+      flame.scale.y=1;inner.scale.y=1;light.intensity=1.8;
       for(let i=0;i<sparks.length;i++)sparks[i].position.y=.95+i*.13;
       return;
     }
-    if(!Number.isFinite(now)||now-lastFireTick<150)return;
+    if(!Number.isFinite(now))return;
+    // Keep animated silhouettes in sync with the render while near the fire.
+    // When the player is far away, reuse the last depth cube map.
+    if(Math.hypot(ctx.px-5,ctx.pz-5)<11)light.shadow.needsUpdate=true;
+    if(now-lastFireTick<150)return;
     lastFireTick=now;
     flame.scale.y=1+Math.sin(now*.009)*.09;
     inner.scale.y=1+Math.sin(now*.013+1)*.075;
-    light.intensity=.62+Math.sin(now*.007)*.07;
+    light.intensity=1.8+Math.sin(now*.007)*.20;
     for(let i=0;i<sparks.length;i++)sparks[i].position.y=.95+i*.13+Math.sin(now*.004+i*2)*.08;
   }
 
@@ -126,6 +145,7 @@ export function createLandmarks(ctx,doc=document) {
     pole.castShadow=true;
     group.add(pole);
     group.userData?.shadowDecor?.push(pole);
+    group.userData?.grassClearings?.push({x:position.x,z:position.z,radius:.85});
     const board=new THREE.Mesh(boardGeometry,boardMaterials[cx<0?1:0]);
     board.position.set(position.x,2.0,position.z);
     board.rotation.y=Math.PI; // Facing the trail to the south; readable from the path.

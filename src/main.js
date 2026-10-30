@@ -1,30 +1,30 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261030-decor-collisions1';
+import {createWorld} from './world.js?v=20261030-grass-clearings1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
-import {createMicroGrass} from './micro-grass.js?v=20261030-grass-interaction1';
+import {createMicroGrass} from './micro-grass.js?v=20261030-grass-clearings-fix1';
 import {createGroundTexture} from './ground-texture.js';
 import {createPhysics} from './physics.js?v=20261030-rock-collision1';
-import {createBuilding} from './building.js?v=20261030-craft1';
+import {createBuilding} from './building.js?v=20261030-built-shadows1';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-craft1';
 import {createPlayer} from './player.js?v=20261030-plant-bend1';
-import {createMultiplayer} from './multiplayer.js?v=20261030-rock-reset1';
+import {createMultiplayer} from './multiplayer.js?v=20261030-built-shadows1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261030-shadow-contrast1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js';
-import {createLandmarks} from './landmarks.js?v=20261030-trail-texture1';
-import {createPlantInteraction} from './plant-interaction.js?v=20261030-flora-bend1';
+import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
+import {createPlantInteraction} from './plant-interaction.js?v=20261030-grass-clearings1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
 import {createDayCycle} from './day-cycle.js?v=20261030-darker-night1';
-import {createAtmosphere} from './atmosphere.js?v=20261030-shadow-contrast1';
+import {createAtmosphere} from './atmosphere.js?v=20261030-built-shadows1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
-import {createCrafting} from './crafting.js';
+import {createCrafting} from './crafting.js?v=20261030-built-shadows1';
 import {createInteractionHighlight} from './interaction-highlight.js';
 import {createDiscoveries} from './discoveries.js';
 import {createCommunityGoal} from './community-goal.js';
@@ -92,6 +92,41 @@ const atmosphere=createAtmosphere({
  },
  getDecorShadowCasters(x,z,radius,limit){
   return selectDecorShadowCasters(chunks,x,z,radius,limit);
+ },
+ getBuiltShadowCasters(x,z,radius){
+  const result=[];
+  for(const item of crafting?.items?.values()??[]){
+   if(Math.hypot(item.x-x,item.z-z)<radius+3)result.push(item.group);
+  }
+  for(const item of placed){
+   if(item.mesh?.castShadow && Math.hypot(item.x-x,item.z-z)<radius+3)
+    result.push(item.mesh);
+  }
+  return result;
+ },
+ getPointShadowCasters(light){
+  const fire=light.parent;
+  if(!fire)return [];
+  const x=fire.position.x,z=fire.position.z,r=light.distance;
+  const casters=selectDecorShadowCasters(chunks,x,z,r,36);
+  for(const tree of trees.values()){
+   if(Math.hypot(tree.position.x-x,tree.position.z-z)<r+3 && casters.length<52)
+    casters.push(tree);
+  }
+  if(Math.hypot(px-x,pz-z)<r+2 && ownAvatar?.shadowMeshes)
+   casters.push(...ownAvatar.shadowMeshes);
+  for(const avatar of avatars.values()){
+   if(Math.hypot(avatar.group.position.x-x,avatar.group.position.z-z)<r+2)
+    casters.push(...(avatar.actor?.shadowMeshes??avatar.shadowMeshes??[]));
+  }
+  for(const item of crafting?.items?.values()??[]){
+   if(Math.hypot(item.x-x,item.z-z)<r+3)casters.push(item.group);
+  }
+  for(const log of placed){
+   if(Math.hypot(log.x-x,log.z-z)<r+2 && log.mesh?.castShadow)
+    casters.push(log.mesh);
+  }
+  return casters;
  },
 });
 const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere});
@@ -242,6 +277,8 @@ const ctx={
  get wood(){return wood;}, set wood(value){wood=value;},
  get yaw(){return yaw;}, set yaw(value){yaw=value;},
 };
+// Micro-grass starts ticking immediately; crafting must exist before its getter is read.
+let crafting=null;
 const microGrass=createMicroGrass(ctx);
 const plantInteraction=createPlantInteraction(ctx);
 const wind=createWind(ctx);
@@ -261,7 +298,7 @@ ownAvatar=createLumberjack();if(ownAvatar){
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));
 const emotes=createEmotes(ctx);
 const playerList=createPlayerList(ctx);
-const crafting=createCrafting(ctx);
+crafting=createCrafting(ctx);
 const highlight=createInteractionHighlight(ctx);
 const discoveries=createDiscoveries(ctx);
 const communityGoal=createCommunityGoal(ctx);

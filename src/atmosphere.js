@@ -44,7 +44,8 @@ export function selectShadowTrees(trees, x, z, radius=SHADOW_TREE_RADIUS,
 }
 
 export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
-  getCharacterShadowCasters=()=>[],getDecorShadowCasters=()=>[]}) {
+  getCharacterShadowCasters=()=>[],getDecorShadowCasters=()=>[],
+  getPointShadowCasters=()=>[],getBuiltShadowCasters=()=>[]}) {
   const skyMaterial=new THREE.ShaderMaterial({
     uniforms:{
       horizon:{value:new THREE.Color(0xa4c8be)},
@@ -128,6 +129,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   // This avoids traversing the forest on every character shadow update.
   const treeShadowScene=new THREE.Group();
   const characterShadowScene=new THREE.Group();
+  const localPointShadowScene=new THREE.Group();
   const originalShadowRender=renderer.shadowMap.render;
   renderer.shadowMap.render=function(lights,shadowScene,viewCamera){
     const oldMask=viewCamera.layers.mask;
@@ -141,6 +143,12 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
           characterShadowScene.children=getCharacterShadowCasters(CHARACTER_SHADOW_RADIUS);
           viewCamera.layers.mask=(1<<1)|(1<<3)|(1<<4); // remote, local, shadow-only LOD
           originalShadowRender.call(this,[light],characterShadowScene,viewCamera);
+        }else if(light.isPointLight){
+          // A point light normally renders the entire world SIX times.
+          // Limit each cubemap face to casters within its small falloff.
+          localPointShadowScene.children=getPointShadowCasters(light);
+          viewCamera.layers.mask=1|(1<<1)|(1<<3)|(1<<4);
+          originalShadowRender.call(this,[light],localPointShadowScene,viewCamera);
         }else{
           viewCamera.layers.mask=oldMask;
           originalShadowRender.call(this,[light],shadowScene,viewCamera);
@@ -164,6 +172,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   scene.add(sun.target);
   let quality=null, phase=0, lastUpdate=-Infinity, centerX=Infinity,centerZ=Infinity;
   let shadowRadius=null, refreshInterval=null, characterShadowExtent=null;
+  let builtShadowsDirty=true;
   let totalSunIntensity=initialSunIntensity;
   let baseAmbientIntensity=initialAmbientIntensity;
   function setAmbientIntensity(value){
@@ -242,7 +251,8 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     activeDecor.clear();
     for(const decoration of getDecorShadowCasters(x,z,radius,SHADOW_DECOR_LIMIT))
       activeDecor.add(decoration);
-    treeShadowScene.children=[...activeTrees,...activeDecor];
+    treeShadowScene.children=[...activeTrees,...activeDecor,
+      ...getBuiltShadowCasters(x,z,radius)];
   }
   function tick(now,x,z) {
     dome.position.copy(camera.position);
@@ -253,7 +263,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
       (settings.shadowRefreshSeconds??SHADOW_UPDATE_MS/1000)*1000));
     const settingsChanged=radius!==shadowRadius || interval!==refreshInterval ||
       quality!==settings.quality;
-    const treeDue=settingsChanged || now-lastUpdate>=interval;
+    const treeDue=settingsChanged || builtShadowsDirty || now-lastUpdate>=interval;
     // Apply the map size before snapping its centre to texels.
     if(quality!==settings.quality)applyQuality();
     const wantCharacters=settings.characterShadowsEnabled!==false;
@@ -295,6 +305,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     // Refresh on schedule even while the local player stands still:
     // remote players (and idle animations) can keep moving independently.
     lastUpdate=now;
+    builtShadowsDirty=false;
     centerX=x;centerZ=z;
     if(radius!==shadowRadius){
       shadowRadius=radius;
@@ -325,6 +336,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     activeDecor.clear();
     treeShadowScene.children=[];
     characterShadowScene.children=[];
+    localPointShadowScene.children=[];
     renderer.shadowMap.render=originalShadowRender;
     scene.remove(dome,sunBody,moonBody,characterLight,characterLight.target);
     dome.geometry.dispose();
@@ -340,6 +352,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   }
   setPhase(0);
   return {tick,setPhase,restore,dispose,setSunIntensity,setAmbientIntensity,dome,sunBody,moonBody,characterLight,
+    invalidateStaticShadows(){builtShadowsDirty=true;},
     get lightDirection(){return lightDir;},
     get sunIntensity(){return totalSunIntensity;},
     get ambientIntensity(){return baseAmbientIntensity;},

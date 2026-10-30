@@ -15,6 +15,7 @@ const MAX_UNUSED_TILES = 8;
 const GRASS_ACTOR_SLOTS = 6; // local player, two fading footprints, three nearby guests
 const GRASS_TRAIL_LIFETIME = 450; // milliseconds; grass springs back after passage
 const GRASS_INTERACTION_RADIUS = 1.05;
+const GRASS_CLEARING_SLOTS = 24; // nearest campfires, signs, benches and logs
 
 // Stable integer hash, independent of generated world chunks and player movement.
 function hash(seed, x, z, channel) {
@@ -48,7 +49,8 @@ export function generateGrassTile(seed, tileX, tileZ, tileSize, density, tier) {
   const maxGladeDensity=glades.some(g=>g.kind===2) ? 46
     : glades.some(g=>g.kind===3) ? 42 : 0;
   const samplingDensity=Math.max(density,maxGladeDensity);
-  const lodFactor=far ? .7 : 1;
+  // Equal grass coverage across LODs; far blades only use fewer segments.
+  const lodFactor=1;
   const candidates = Math.ceil(tileSize*tileSize*samplingDensity /
     (MICRO_GRASS_CELL*MICRO_GRASS_CELL)*lodFactor*1.08);
   const patchState={kind:0,weight:0};
@@ -75,7 +77,7 @@ export function generateGrassTile(seed, tileX, tileZ, tileSize, density, tier) {
       x,z,
       // Shared base lean. Per-blade yaw variation comes from a GPU uniform.
       angle: .66,
-      scale: (far ? .75 : .82) + variation * (far ? .43 : .40),
+      scale: .82 + variation * .40,
       tint: hash(seed,tileX,tileZ,i+3300),
       biome,
       patchKind:patchState.kind,
@@ -92,12 +94,12 @@ function makeTuftGeometry(THREE, tier) {
   const near = tier === 'near';
   const segments = near ? 3 : 2;
   const positions = [], colors = [],centerXs = [];
-  const bendAt = t => (near ? .105 : .082) * t * t;
+  const bendAt = t => .105 * t * t;
   const point = (t, side) => {
     const bend = bendAt(t);
-    const height = (near ? .24 : .19) *
+    const height = .24 *
       (t - .13 * Math.pow(t, 4)); // gently drooping tip
-    const halfWidth = (near ? .0065 : .006) * (1 - t) ** .8;
+    const halfWidth = .0065 * (1 - t) ** .8;
     return [bend + side * halfWidth, .008 + height, 0];
   };
   for (let i = 0; i < segments; i++) {
@@ -131,6 +133,8 @@ function makeMaterial(THREE, player, near) {
     fcGrassSizeRange:{value:new THREE.Vector2(1,7)},
     fcGrassWidth:{value:1},
     fcGrassTurnRange:{value:new THREE.Vector2(-Math.PI/6,Math.PI/6)},
+    fcGrassClearings:{value:Array.from({length:GRASS_CLEARING_SLOTS},
+      ()=>new THREE.Vector4(0,0,0,0))},
     ...(near ? {fcGrassActors:{value:Array.from({length:GRASS_ACTOR_SLOTS},
       ()=>new THREE.Vector4(0,0,0,0))}} : {}),
   };
@@ -141,7 +145,7 @@ function makeMaterial(THREE, player, near) {
     Object.assign(shader.uniforms,uniforms);
     shader.vertexShader=shader.vertexShader.replace(
       '#include <common>',
-      '#include <common>\nuniform vec2 fcGrassPlayer;\nuniform vec4 fcGrassFade;\nuniform vec2 fcGrassSizeRange;\nuniform float fcGrassWidth;\nuniform vec2 fcGrassTurnRange;\nattribute float fcGrassCenterX;\nattribute vec2 fcGrassProfile;'
+      '#include <common>\nuniform vec2 fcGrassPlayer;\nuniform vec4 fcGrassFade;\nuniform vec2 fcGrassSizeRange;\nuniform float fcGrassWidth;\nuniform vec2 fcGrassTurnRange;\nattribute float fcGrassCenterX;\nattribute vec2 fcGrassProfile;\nuniform vec4 fcGrassClearings[24];'
       + (near ? '\nuniform vec4 fcGrassActors[6];' : ''),
     ).replace('#include <begin_vertex>', `#include <begin_vertex>
 #ifdef USE_INSTANCING
@@ -166,7 +170,20 @@ function makeMaterial(THREE, player, near) {
   float fcOriginalX = transformed.x;
   transformed.x = fcOriginalX * fcCos - transformed.z * fcSin;
   transformed.z = fcOriginalX * fcSin + transformed.z * fcCos;
-  transformed *= (fcFadeIn * fcFadeOut) * fcSize;
+  // Dither whole blades through LOD transitions instead of shrinking them:
+  // the expected coverage stays constant instead of creating a thin-grass ring.
+  float fcVisibilityRandom = fract(17.2194 * fract(dot(
+    instanceMatrix[3].xz,vec2(0.13713,0.1729))));
+  float fcVisibility = step(fcVisibilityRandom,clamp(fcFadeIn*fcFadeOut,0.0,1.0));
+  // Clear the ground under built objects without regenerating instanced tiles.
+  // xy = world-space centre, z = radius, w = enabled.
+  for (int j=0; j<24; ++j) {
+    vec4 clearing=fcGrassClearings[j];
+    if(clearing.w>0.5 && distance(instanceMatrix[3].xz,clearing.xy)<clearing.z){
+      fcVisibility=0.0;
+    }
+  }
+  transformed *= fcVisibility * fcSize;
   ${near ? `
   // Shader-only interaction: push blade tips away from a nearby character.
   // All instances keep their original bases, without physics or tile rebuilds.
@@ -219,6 +236,26 @@ export function createMicroGrass(ctx) {
   const grassTrail=[];
   let lastTrailX=ctx.px,lastTrailZ=ctx.pz,lastTrailAt=-Infinity;
   const nearbyGuests=[];
+  const clearings=[];
+  function updateClearings(x,z){
+    clearings.length=0;
+    for(const group of ctx.chunks?.values?.()??[])
+      for(const area of group.userData?.grassClearings??[])clearings.push(area);
+    for(const bench of ctx.crafting?.items?.values?.()??[])
+      clearings.push({x:bench.x,z:bench.z,radius:1.55});
+    for(const log of ctx.placed??[])
+      if(log.level===0)clearings.push({x:log.x,z:log.z,radius:1.15});
+    clearings.sort((a,b)=>
+      (a.x-x)**2+(a.z-z)**2-(b.x-x)**2-(b.z-z)**2);
+    for(const layer of [near,far]){
+      const slots=layer.material.userData.grassUniforms.fcGrassClearings.value;
+      for(let i=0;i<slots.length;i++){
+        const area=clearings[i];
+        if(area)slots[i].set(area.x,area.z,area.radius,1);
+        else slots[i].w=0;
+      }
+    }
+  }
   function updateGrassActors(x,z) {
     // Called every rendered frame, independently of tile generation.
     const now=performance.now();
@@ -351,6 +388,7 @@ export function createMicroGrass(ctx) {
     const x=ctx.px,z=ctx.pz;
     playerUniform.set(x,z);
     updateGrassActors(x,z);
+    updateClearings(x,z);
     // Size range and width are shader uniforms: no tile rebuild or GPU reupload.
     const minSize=Math.max(1,Math.min(8,ctx.settings?.grassMinSize ?? 1));
     const maxSize=Math.max(minSize,Math.min(8,ctx.settings?.grassMaxSize ?? 7));
@@ -371,14 +409,14 @@ export function createMicroGrass(ctx) {
     near.material.userData.grassUniforms.fcGrassFade.value.set(
       -2,-1,Math.max(3,cutoff-7),cutoff);
     far.material.userData.grassUniforms.fcGrassFade.value.set(
-      15,Math.min(24,radius-1),Math.max(24,radius-18),radius);
+      NEAR_END-7,NEAR_END,Math.max(NEAR_END,radius-5),radius);
     const changed=lastSeed!==ctx.seed||lastDensity!==density||lastRadius!==radius;
     if(!changed&&Math.abs(x-lastX)<REBUILD_DISTANCE&&
       Math.abs(z-lastZ)<REBUILD_DISTANCE)return false;
     lastX=x;lastZ=z;lastSeed=ctx.seed;lastDensity=density;lastRadius=radius;
     // Small hysteresis buffer keeps page boundaries outside visible fade ends.
     syncLayer(near,x,z,cutoff+REBUILD_DISTANCE,ctx.seed,density,changed);
-    syncLayer(far,x,z,radius>24?radius+REBUILD_DISTANCE:0,
+    syncLayer(far,x,z,radius>NEAR_END?radius+REBUILD_DISTANCE:0,
       ctx.seed,density,changed);
     return true;
   }

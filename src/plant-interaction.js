@@ -16,6 +16,12 @@ export function createPlantInteraction(ctx) {
     for(let ox=-1;ox<=1;ox++)for(let oz=-1;oz<=1;oz++){
       const group=ctx.chunks.get((cx+ox)+','+(cz+oz));
       for(const plant of group?.userData?.reactivePlants??[]){
+        const excluded=(group.userData?.grassClearings??[]).some(area=>
+          (plant.position.x-area.x)**2+(plant.position.z-area.z)**2<area.radius**2)
+          || [...(ctx.crafting?.items?.values?.()??[])].some(bench=>
+            (plant.position.x-bench.x)**2+(plant.position.z-bench.z)**2<1.55**2);
+        plant.visible=!excluded;
+        if(excluded){active.delete(plant);plant.rotation.x=plant.rotation.z=0;continue;}
         const radius=plant.userData.decorType==='flower'?1.15:1.5;
         let closest=radius*radius,px=0,pz=0;
         for(const player of players){

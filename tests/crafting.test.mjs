@@ -27,6 +27,8 @@ test('bench validates geometry, recipe and costs exactly three wood',()=>{
   assert.equal(validBench({kind:'bench',x:1.23,z:0,orientation:1}),false);
   assert.equal(validBench({kind:'tree',x:1,z:0,orientation:0}),false);
   const f=setup();
+  let invalidations=0;
+  f.ctx.atmosphere={invalidateStaticShadows(){invalidations++}};
   assert.equal(f.buttons.length,2);
   f.craft.setMode(true);
   assert.equal(f.buttons[0].style.display,'block');
@@ -34,11 +36,15 @@ test('bench validates geometry, recipe and costs exactly three wood',()=>{
   assert.equal(f.ctx.wood,5);
   assert.equal(f.scene.children.length,1);
   assert.equal(f.scene.children[0].children.length,6);
+  assert.ok(f.scene.children[0].children.every(part=>part.castShadow),
+    'all wooden parts of a bench cast actual shadow geometry');
+  assert.equal(invalidations,1,'placing a bench refreshes the cached tree shadow map');
   assert.equal(f.craft.place(),false,'must not double place in one spot');
   assert.equal(f.ctx.wood,5);
   assert.equal(f.craft.removeNear(),true);
   assert.equal(f.ctx.wood,7);
   assert.equal(f.craft.items.size,0);
+  assert.equal(invalidations,2,'removing a bench invalidates the static shadow map');
   assert.equal(f.created.geom,2);
   assert.equal(f.created.mat,2);
   assert.equal(f.marks.length,2,'persist each confirmed local change');

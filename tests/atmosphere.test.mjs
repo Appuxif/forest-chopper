@@ -111,9 +111,35 @@ function fixture(){
   const characters=[{layers:new Layers(),castShadow:true},{layers:new Layers(),castShadow:true}];
   characters[0].layers.set(1);characters[1].layers.set(3);
   const atmosphere=createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
-    getCharacterShadowCasters:()=>characters});
+    getCharacterShadowCasters:()=>characters,
+    getPointShadowCasters:()=>[characters[0]]});
   return {scene,renderer,renders,ground,sun,hemisphere,trees,settings,atmosphere,camera};
 }
+
+test('point-light shadow renders a bounded local caster scene and restores camera layers',()=>{
+  const f=fixture();
+  const point={isPointLight:true,shadow:{autoUpdate:false,needsUpdate:true}};
+  const before=f.camera.layers.mask;
+  f.renderer.shadowMap.render([point],f.scene,f.camera);
+  assert.equal(f.renders.length,1);
+  assert.equal(f.renders[0].light,point);
+  assert.equal(f.renders[0].count,1,'only the nearby caster is rendered for the cube map');
+  assert.equal(f.renders[0].mask,1|(1<<1)|(1<<3)|(1<<4));
+  assert.equal(f.camera.layers.mask,before);
+  f.renderer.shadowMap.render([point],f.scene,f.camera);
+  assert.equal(f.renders.length,1,'cached point-shadow map does not redraw when unchanged');
+});
+
+test('new crafted structures enter cached forest shadows on invalidation',()=>{
+  const f=fixture();
+  f.atmosphere.tick(0,0,0);
+  f.renderer.shadowMap.render([f.sun],f.scene,f.camera);
+  f.sun.shadow.needsUpdate=false;
+  f.atmosphere.invalidateStaticShadows();
+  f.atmosphere.tick(20,0,0);
+  assert.equal(f.sun.shadow.needsUpdate,true,
+    'structures update the sun map immediately, not after the timed refresh');
+});
 
 test('trees and nearby skinned players use independent shadow maps',()=>{
   const f=fixture();

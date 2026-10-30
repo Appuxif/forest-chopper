@@ -24,6 +24,9 @@ export function createCrafting(ctx,doc=document) {
     }
     const back=new THREE.Mesh(plankGeo,plankMat);
     back.position.set(0,1.28,.31);back.rotation.x=-.17;g.add(back);
+    g.traverse?.(node=>{if(node.isMesh)node.castShadow=true;});
+    // Test doubles and new craftable types can use plain children as well.
+    for(const part of g.children)if(part.geometry)part.castShadow=true;
     g.position.set(item.x,0,item.z);
     g.rotation.y=item.orientation*Math.PI/2;
     return g;
@@ -32,12 +35,15 @@ export function createCrafting(ctx,doc=document) {
     if(!validBench(item)||items.size>=MAX_BENCHES||items.has(item.id))return false;
     const group=mesh(item);ctx.scene.add(group);
     items.set(item.id,{...item,group});
+    ctx.atmosphere?.invalidateStaticShadows?.();
     if(Number.isInteger(item.id) && item.id<0)offlineId=Math.min(offlineId,item.id);
     return true;
   }
   function remove(id){
     const old=items.get(id);if(!old)return false;
-    ctx.scene.remove(old.group);items.delete(id);return true;
+    ctx.scene.remove(old.group);items.delete(id);
+    ctx.atmosphere?.invalidateStaticShadows?.();
+    return true;
   }
   function clear(){for(const id of [...items.keys()])remove(id);}
   function candidate(){
