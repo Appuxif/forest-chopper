@@ -31,6 +31,8 @@ export function createSettings(doc = document, storage = null) {
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
 .fc-settings{position:fixed;z-index:17;top:96px;right:12px;width:min(290px,calc(100vw - 24px));max-height:calc(100dvh - 116px);overflow-y:auto;background:#10251ff2;color:white;border:1px solid #ffffff55;border-radius:12px;padding:14px;font:13px/1.45 system-ui,sans-serif;box-shadow:0 10px 25px #0009}
 .fc-settings[hidden],.fc-fps[hidden]{display:none}
+/* Onboarding takes priority: keep its text unobstructed until the player finishes/skips it. */
+body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
 .fc-settings h2{font-size:15px;margin:0 0 12px}
 .fc-settings label{display:block;margin:10px 0}
 .fc-settings input[type=range]{display:block;width:100%;margin-top:8px;accent-color:#8bd0a4}
@@ -52,7 +54,7 @@ export function createSettings(doc = document, storage = null) {
   panel.innerHTML = `<h2>⚙ Настройки</h2>
     <label>Чувствительность обзора: <output id="fc-sensitivity-value"></output>
       <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
-    <label><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
+    <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
     <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в кронах</label>
     <button id="fc-reset-settings" type="button">Сбросить настройки</button>`;
   const fps = doc.createElement('div');

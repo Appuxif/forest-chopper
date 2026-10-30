@@ -8,7 +8,7 @@ import {createPlayer} from './player.js?v=20261030-wind1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-no-scar3';
 import {createMinimap} from './minimap.js';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-wind1';
+import {createSettings} from './settings.js?v=20261030-hud1';
 import {createWind} from './wind.js';
 import {createLandmarks} from './landmarks.js';
 import {createOfflineSave} from './offline-save.js';

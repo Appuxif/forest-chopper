@@ -203,6 +203,13 @@
 - Real isolated Chrome debug page: 49 chunks yielded 7 trail segments, 3 signposts and 3 boards. Walked from origin to sign near `x=12,z=4.8` and visually verified visible path and readable board. Screenshot review exposed unrelated existing FPS/tutorial HUD overlap; separate P0.4 fix queued.
 - Normal mobile `index.html` tested at 390×844 with touch controls: scene loads, module version updated, no debug API, console error/warning count zero. Screenshot `/tmp/forest-overnight-landmarks-mobile.webp`. No gameplay/save/protocol schema changes and no push.
 
+### P0.4 follow-up — Keep diagnostics off active onboarding text (2026-10-30)
+
+- During desktop visual verification of P2.2, found an actual overlap: optional `FPS/diagnostics` panel at `top:320px` covered the first-run onboarding panel above `bottom:300px`, hiding some tutorial text.
+- Added a single responsive CSS rule in `src/settings.js`: when `.fc-tutorial` is visible, temporarily hide the diagnostics HUD. On tutorial skip/completion the same diagnostic HUD automatically reappears if the user enabled it; FPS sampling and persisted preference are unchanged. The settings control has a tooltip explaining the temporary behaviour.
+- Real browser desktop 1366×768 verified `tutorialVisible=true → computed FPS display:none`, and after Skip `tutorialVisible=false → display:block`. Real mobile 390×844 showed the same transition with no overlap, no console warnings/errors. Screenshot `/tmp/forest-overnight-hud-no-overlap-mobile.webp`.
+- No game state, protocol, save, settings schema or shader changes; minimal CSS-only UI correction. No push.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.
