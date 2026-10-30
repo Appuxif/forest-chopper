@@ -2,7 +2,14 @@
 import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
 import {FPS_OPTIONS} from './frame-limiter.js';
 const KEY = 'forest-chopper:settings:v1';
-const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, grassDensity: 25, grassDistance: 50, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 70});
+const CAMERA_80_MIGRATION = 'forest-chopper:camera-80-default:v1';
+const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, grassDensity: 25, grassDistance: 50, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 70, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80});
+
+function validCameraNumber(value,min,max,fallback,digits=2){
+  if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max)return fallback;
+  const factor=10**digits;
+  return Math.round(value*factor)/factor;
+}
 
 export function sanitizeSettings(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -47,6 +54,10 @@ export function sanitizeSettings(value) {
       && source.grassTurnMax <= 90 ? source.grassTurnMax : DEFAULT.grassTurnMax,
     fov: Number.isFinite(fov) && fov >= 65 && fov <= 95
       ? Math.round(fov / 5) * 5 : DEFAULT.fov,
+    cameraHeight: validCameraNumber(source.cameraHeight,.6,3.5,DEFAULT.cameraHeight),
+    cameraSide: validCameraNumber(source.cameraSide,-1.5,1.5,DEFAULT.cameraSide),
+    cameraDistance: validCameraNumber(source.cameraDistance,1.2,6,DEFAULT.cameraDistance),
+    cameraPitchLimit: validCameraNumber(source.cameraPitchLimit,10,80,DEFAULT.cameraPitchLimit,0),
   };
   if(settings.grassMinSize > settings.grassMaxSize)
     [settings.grassMinSize,settings.grassMaxSize] = [settings.grassMaxSize,settings.grassMinSize];
@@ -59,6 +70,13 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     const local = storage ?? window.localStorage;
     persisted = JSON.parse(local.getItem(KEY) || 'null');
     storage = local;
+    // The previous third-person default was ±40°. Upgrade existing saved
+    // defaults once, without overriding future user choices of ±40°.
+    if(persisted?.cameraPitchLimit === 40 && local.getItem(CAMERA_80_MIGRATION) !== '1'){
+      persisted.cameraPitchLimit=80;
+      local.setItem(KEY,JSON.stringify(persisted));
+      local.setItem(CAMERA_80_MIGRATION,'1');
+    }
   } catch {
     persisted = null;
     storage = null;
@@ -122,6 +140,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <button type="button" class="fc-settings-tab" data-category="graphics" aria-selected="true">🎨 Графика</button>
       <button type="button" class="fc-settings-tab" data-category="grass" aria-selected="false">🌿 Трава</button>
       <button type="button" class="fc-settings-tab" data-category="controls" aria-selected="false">🎮 Управление</button>
+      <button type="button" class="fc-settings-tab" data-category="camera" aria-selected="false">📷 Камера</button>
       <button type="button" class="fc-settings-tab" data-category="world" aria-selected="false">🌍 Мир</button>
     </nav>
     <div class="fc-settings-content">
@@ -182,6 +201,18 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
     <label><input id="fc-auto-sprint" type="checkbox"> Автобег при движении</label>
     </section>
+    <section class="fc-settings-page" data-category="camera" aria-label="Камера" hidden>
+    <small>Камера от третьего лица · изменения применяются сразу.</small>
+    <label>Высота от пола: <output id="fc-camera-height-value"></output> м
+      <input id="fc-camera-height" type="range" min="0.6" max="3.5" step="0.05"></label>
+    <label>Смещение вбок: <output id="fc-camera-side-value"></output> м
+      <input id="fc-camera-side" type="range" min="-1.5" max="1.5" step="0.05"></label>
+    <small>Отрицательное — влево, положительное — вправо, 0 — строго по центру.</small>
+    <label>Вертикальный ход взгляда: ±<output id="fc-camera-pitch-limit-value"></output>°
+      <input id="fc-camera-pitch-limit" type="range" min="10" max="80" step="1"></label>
+    <label>Расстояние от персонажа: <output id="fc-camera-distance-value"></output> м
+      <input id="fc-camera-distance" type="range" min="1.2" max="6" step="0.05"></label>
+    </section>
     <section class="fc-settings-page" data-category="world" aria-label="Мир" hidden>
     <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в кронах</label>
     <label><input id="fc-day-cycle" type="checkbox"> Локальная смена дня и ночи</label>
@@ -196,6 +227,12 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   fps.textContent = 'FPS —';
   doc.body.append(toggle,backdrop,panel,fps);
 
+  const cameraControls = [
+    ['cameraHeight','camera-height',2],
+    ['cameraSide','camera-side',2],
+    ['cameraPitchLimit','camera-pitch-limit',0],
+    ['cameraDistance','camera-distance',2],
+  ];
   const range = panel.querySelector('#fc-sensitivity');
   const output = panel.querySelector('#fc-sensitivity-value');
   const checkbox = panel.querySelector('#fc-show-fps');
@@ -232,6 +269,10 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const networkLabel = () => connected ? `Ping ${latency === null ? '—' : latency + ' ms'}` : 'offline';
   const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
   function reflect() {
+    for(const [key,id,digits] of cameraControls){
+      panel.querySelector('#fc-'+id).value=String(state[key]);
+      panel.querySelector('#fc-'+id+'-value').textContent=state[key].toFixed(digits);
+    }
     range.value = state.mouseSensitivity;
     output.textContent = String(state.mouseSensitivity.toFixed(1));
     checkbox.checked = state.showFps;
@@ -280,7 +321,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const pages=Array.from(panel.querySelectorAll?.('.fc-settings-page')??[]);
   let activeCategory='graphics';
   function activateCategory(category) {
-    if(!['graphics','grass','controls','world'].includes(category))return;
+    if(!['graphics','grass','controls','camera','world'].includes(category))return;
     activeCategory=category;
     for(const tab of tabButtons)tab.setAttribute('aria-selected',String(tab.dataset.category===category));
     for(const page of pages)page.hidden=page.dataset.category!==category;
@@ -322,6 +363,12 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     toggle.setAttribute('aria-expanded','true');
     panel.querySelector('#fc-settings-close').focus?.();
   };
+  for(const [key,id] of cameraControls){
+    panel.querySelector('#fc-'+id).oninput=event=>{
+      state[key]=sanitizeSettings({...state,[key]:Number(event.target.value)})[key];
+      reflect();save();
+    };
+  }
   range.oninput = () => {
     Object.assign(state, sanitizeSettings({...state, mouseSensitivity: Number(range.value)}));
     reflect();save();
@@ -425,7 +472,11 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       lastSample = now;
     }
   }
-  return {get mouseSensitivity(){return state.mouseSensitivity;},
+  return {get cameraHeight(){return state.cameraHeight;},
+    get cameraSide(){return state.cameraSide;},
+    get cameraPitchLimit(){return state.cameraPitchLimit;},
+    get cameraDistance(){return state.cameraDistance;},
+    get mouseSensitivity(){return state.mouseSensitivity;},
     get showFps(){return state.showFps;},
     get windEnabled(){return state.windEnabled;},
     get dayCycleEnabled(){return state.dayCycleEnabled;},

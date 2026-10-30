@@ -2,10 +2,14 @@
 import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js';
 import {createFrameLimiter} from './frame-limiter.js';
+import {createOrbitCamera} from './orbit-camera.js?v=20261030-camera-up-arc1';
 export function createPlayer(ctx) {
 const limiter=createFrameLimiter();
+const orbitCamera=createOrbitCamera(ctx);
 let lastWorldTick=-Infinity;
 function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
+ orbitCamera.reset();
+ if(ctx.thirdPerson){const limit=ctx.settings.cameraPitchLimit*Math.PI/180;ctx.pitch=Math.max(-limit,Math.min(limit,ctx.pitch));}
  // Hide the local avatar from the main camera only; keep it visible to
  // the shadow camera even when playing in first person.
  if(ctx.thirdPerson)ctx.camera.layers.enable(3);else ctx.camera.layers.disable(3);
@@ -55,11 +59,9 @@ function animate(now){
  ctx.microGrass?.tick();
  ctx.plantInteraction?.tick(dt);
  if(ctx.ownAvatar)ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
+ if(ctx.thirdPerson){const limit=ctx.settings.cameraPitchLimit*Math.PI/180;ctx.pitch=Math.max(-limit,Math.min(limit,ctx.pitch));}
  ctx.camera.position.set(ctx.px,ctx.feetY+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
- if(ctx.thirdPerson){const back=4.2,raise=2.2;
-  ctx.camera.position.set(ctx.px+Math.sin(ctx.yaw)*back,ctx.feetY+1.8+raise+Math.max(0,-Math.sin(ctx.pitch))*1.5,ctx.pz+Math.cos(ctx.yaw)*back);
-  ctx.camera.lookAt(ctx.px,ctx.feetY+1.65+Math.tan(ctx.pitch)*3,ctx.pz);
- }
+ if(ctx.thirdPerson)orbitCamera.update(dt);
  // The real skinned meshes cast shadows on every rendered frame.
  // The shadow pass runs after both local and remote animation poses update.
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;

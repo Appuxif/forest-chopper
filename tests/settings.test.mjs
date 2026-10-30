@@ -7,6 +7,7 @@ const defaults = {
   autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:70,grassDensity:25,
   grassDistance:50,grassMinSize:2.5,grassMaxSize:5.5,grassWidth:1,
   grassTurnMin:-30,grassTurnMax:30,fov:75,
+  cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
 };
 
 test('settings defaults and rejects invalid or corrupted saved values',()=>{
@@ -46,6 +47,15 @@ test('sensitivity boundaries are inclusive and persistence stays independent of 
   assert.deepEqual(Object.keys(sanitizeSettings({seed:123,logs:[1]})),Object.keys(defaults));
 });
 
+test('camera distances, side and pitch limits validate their bounds',()=>{
+  const values=sanitizeSettings({cameraHeight:3.5,cameraSide:-1.5,cameraDistance:6,cameraPitchLimit:80});
+  assert.equal(values.cameraHeight,3.5);
+  assert.equal(values.cameraSide,-1.5);
+  assert.equal(values.cameraDistance,6);
+  assert.equal(values.cameraPitchLimit,80);
+  assert.deepEqual(sanitizeSettings({cameraHeight:99,cameraSide:-100,cameraDistance:0,cameraPitchLimit:120}),defaults);
+});
+
 test('FOV is restored, applied live and reset without affecting world saves',()=>{
   const elements=new Map();
   function element(id){
@@ -77,6 +87,22 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   assert.equal(settings.shadowContrast,95);
   assert.equal(element('#fc-shadow-contrast-value').textContent,'95');
   assert.equal(writes.at(-1)[1].shadowContrast,95);
+  const cameraSide=element('#fc-camera-side');
+  assert.equal(cameraSide.value,'0.4');
+  cameraSide.value='-0.75';
+  cameraSide.oninput({target:cameraSide});
+  assert.equal(settings.cameraSide,-.75);
+  assert.equal(element('#fc-camera-side-value').textContent,'-0.75');
+  assert.equal(writes.at(-1)[1].cameraSide,-.75);
+  const cameraHeight=element('#fc-camera-height');
+  cameraHeight.value='2.2';cameraHeight.oninput({target:cameraHeight});
+  assert.equal(settings.cameraHeight,2.2);
+  const cameraDistance=element('#fc-camera-distance');
+  cameraDistance.value='4.1';cameraDistance.oninput({target:cameraDistance});
+  assert.equal(settings.cameraDistance,4.1);
+  const cameraPitch=element('#fc-camera-pitch-limit');
+  cameraPitch.value='30';cameraPitch.oninput({target:cameraPitch});
+  assert.equal(settings.cameraPitchLimit,30);
   const input=element('#fc-fov');
   assert.equal(input.value,'85');
   input.value='95';
@@ -90,6 +116,10 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   assert.equal(settings.characterShadowDistance,30);
   assert.equal(settings.shadowContrast,70);
   assert.equal(settings.fov,75);
+  assert.equal(settings.cameraHeight,2.3);
+  assert.equal(settings.cameraSide,.4);
+  assert.equal(settings.cameraDistance,1.7);
+  assert.equal(settings.cameraPitchLimit,80);
   assert.deepEqual(updates,[85,95,75]);
   assert.equal(writes.at(-1)[1].fov,75);
   const day=element('#fc-day-cycle');
@@ -106,6 +136,35 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   assert.equal(writes.at(-1)[1].autoSprint,true);
   element('#fc-reset-settings').onclick();
   assert.equal(settings.autoSprint,false);
+});
+
+test('saved ±40° camera setup migrates to ±80° exactly once',()=>{
+  const values=new Map([['forest-chopper:settings:v1',
+    JSON.stringify({cameraPitchLimit:40,cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7})]]);
+  const storage={
+    getItem:key=>values.get(key)??null,
+    setItem:(key,value)=>values.set(key,value),
+  };
+  const elements=new Map();
+  const element=id=>{
+    if(!elements.has(id))elements.set(id,{
+      value:'',checked:false,textContent:'',style:{},setAttribute(){},querySelector:element,
+    });
+    return elements.get(id);
+  };
+  const doc={
+    createElement:()=>({hidden:false,setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}},
+  };
+  const first=createSettings(doc,storage);
+  assert.equal(first.cameraPitchLimit,80);
+  assert.equal(first.cameraHeight,2.3);
+  assert.equal(JSON.parse(values.get('forest-chopper:settings:v1')).cameraPitchLimit,80);
+  const slider=element('#fc-camera-pitch-limit');
+  slider.value='40';slider.oninput({target:slider});
+  assert.equal(first.cameraPitchLimit,40);
+  assert.equal(createSettings(doc,storage).cameraPitchLimit,40,
+    'new user selection of ±40° is preserved after migration');
 });
 
 test('grass defaults, saved ranges, clamps and reset use new preset only for regular grass',()=>{

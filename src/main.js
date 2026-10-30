@@ -7,13 +7,13 @@ import {createMicroGrass} from './micro-grass.js?v=20261030-grass-density-shadow
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261030-grass-density-shadows1';
 import {createPhysics} from './physics.js?v=20261030-rock-collision1';
 import {createBuilding} from './building.js?v=20261030-built-shadows1';
-import {createChopping} from './chopping.js?v=20261030-no-scar3';
-import {createControls} from './controls.js?v=20261030-craft1';
-import {createPlayer} from './player.js?v=20261030-plant-bend1';
+import {createChopping} from './chopping.js?v=20261030-camera-aim1';
+import {createControls} from './controls.js?v=20261030-camera-sliders1';
+import {createPlayer} from './player.js?v=20261030-camera-up-arc1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-built-shadows1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-shadow-contrast1';
+import {createSettings} from './settings.js?v=20261030-camera-down80-1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';

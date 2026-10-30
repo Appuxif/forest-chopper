@@ -13,17 +13,27 @@ function setup(online=false) {
       this.scale={x:1,y:1,z:1};
     }
   }
+  class Vector3 {
+    constructor(x=0,y=0,z=0){this.set(x,y,z);}
+    set(x,y,z){Object.assign(this,{x,y,z});return this;}
+    copy(other){return this.set(other.x,other.y,other.z);}
+    multiplyScalar(n){this.x*=n;this.y*=n;this.z*=n;return this;}
+    add(other){this.x+=other.x;this.y+=other.y;this.z+=other.z;return this;}
+    sub(other){this.x-=other.x;this.y-=other.y;this.z-=other.z;return this;}
+    normalize(){const l=Math.hypot(this.x,this.y,this.z)||1;return this.multiplyScalar(1/l);}
+  }
   class Raycaster {
+    constructor(){this.ray={origin:new Vector3(),direction:new Vector3(0,0,-1)};}
     set() {}
+    setFromCamera() {}
     intersectObjects(objects) {return objects.length ? [{distance:2}] : [];}
   }
-  class Vector3 {normalize() {return this;}}
   const material={name:'shared trunk material'};
   const trunk=new Mesh({},material);
   const tree={children:[trunk],position:{x:2,z:0},rotation:{x:0,y:0,z:0},
     userData:{id:'0,0:1',hp:5,maxHp:5,x:2,z:0}};
   const ctx={
-    THREE:{Mesh,Raycaster,Vector3,BoxGeometry:class {},MeshLambertMaterial:class {}},
+    THREE:{Mesh,Raycaster,Vector3,Vector2:class {},BoxGeometry:class {},MeshLambertMaterial:class {}},
     thirdPerson:true,px:0,pz:0,yaw:0,pitch:0,
     trees:new Map([[tree.userData.id,tree]]),scene:{add(mesh){sceneObjects.push(mesh);}},
     particles:[],CHOP_SPEED:1,lastHit:-100000,swing:0,ownAvatar:null,
