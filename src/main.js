@@ -3,7 +3,7 @@ import {createWorld} from './world.js?v=20261030-trail1';
 import {createPhysics} from './physics.js';
 import {createBuilding} from './building.js';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
-import {createControls} from './controls.js?v=20261030-no-scar3';
+import {createControls} from './controls.js?v=20261030-touch1';
 import {createPlayer} from './player.js?v=20261030-aim1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-map-ping1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';

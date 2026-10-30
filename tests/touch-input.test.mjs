@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createTouchJoystick} from '../src/touch-input.js';
+test('first finger owns joystick while other fingers can chop or aim without cancelling it',()=>{
+  const listeners={};
+  const el={addEventListener(type,fn){listeners[type]=fn},getBoundingClientRect(){return {left:0,top:0,width:130,height:130}},
+    setPointerCapture(id){this.captured=id}};
+  const ctx={joyX:0,joyY:0},knob={style:{}};
+  const joystick=createTouchJoystick(ctx,el,knob);
+  const emit=(type,id,x=110,y=65)=>listeners[type]({pointerId:id,clientX:x,clientY:y,preventDefault(){}});
+  emit('pointerdown',1);
+  assert.equal(joystick.pointerId,1);assert.ok(ctx.joyX>.8);
+  emit('pointerdown',2,10,65);
+  emit('pointermove',2,10,65);
+  emit('pointerup',2);
+  assert.equal(joystick.pointerId,1);
+  assert.ok(ctx.joyX>.8,'second finger release must not stop movement');
+  emit('pointercancel',1);
+  assert.equal(joystick.pointerId,null);
+  assert.equal(ctx.joyX,0);
+  assert.equal(ctx.joyY,0);
+  assert.equal(knob.style.transform,'translate(0,0)');
+  emit('pointerdown',3,65,2);
+  assert.ok(ctx.joyY<-.9);
+  emit('lostpointercapture',3);
+  assert.equal(ctx.joyY,0);
+  emit('pointerdown',4,65,120);
+  joystick.reset();
+  assert.equal(ctx.joyX,0);assert.equal(ctx.joyY,0);
+  emit('pointerup',4);
+});
