@@ -17,6 +17,7 @@ function fixture(existing = null) {
     seed:678,wood:7,cuts:3,px:10,pz:-12,feetY:.58,verticalSpeed:0,onGround:true,yaw:.5,pitch:-.25,
     felled:new Set(['0,0:1']),treeDamage:new Map([['0,0:3',4]]),
     placed:[{x:2,z:3,level:0,orientation:1,mesh:{}}],
+    crafting:{stored:[],snapshot(){return this.stored.map(x=>({...x}))},add(item){this.stored.push(item);return true},get items(){return new Map(this.stored.map((x,i)=>[i,x]))}},
     logRadius:.29,scene:{add:mesh=>added.push(mesh)},
     makeLog:()=>({
       position:{set(x,y,z){Object.assign(this,{x,y,z});}},
@@ -89,4 +90,22 @@ test('joining multiplayer flushes the offline snapshot and suspends all further 
   assert.equal(storage.getItem(OFFLINE_SAVE_KEY),null);
   assert.equal(save.save(),true);
   assert.equal(JSON.parse(storage.getItem(OFFLINE_SAVE_KEY)).wood,400);
+});
+
+test('saved bench recipe restores without changing old version 1 saves',()=>{
+  const original=fixture();
+  original.ctx.crafting.stored=[{kind:'bench',x:4,z:0,orientation:0}];
+  assert.equal(original.save.save(),true);
+  const saved=original.storage.getItem(OFFLINE_SAVE_KEY);
+  assert.equal(JSON.parse(saved).version,1);
+  assert.equal(parseOfflineSave(saved).furniture.length,1);
+  const restored=fixture(saved);
+  restored.ctx.crafting.stored=[];
+  assert.equal(restored.save.restore(),true);
+  assert.deepEqual(restored.ctx.crafting.snapshot().map(({kind,x,z,orientation})=>({kind,x,z,orientation})),
+    [{kind:'bench',x:4,z:0,orientation:0}]);
+  const older=JSON.parse(saved);delete older.furniture;
+  assert.deepEqual(parseOfflineSave(JSON.stringify(older)).furniture,[]);
+  assert.equal(parseOfflineSave(JSON.stringify({...older,furniture:[{kind:'bench',x:1.25,z:0,orientation:0}]})),null);
+  assert.equal(parseOfflineSave(JSON.stringify({...older,furniture:Array.from({length:201},()=>({kind:'bench',x:1,z:0,orientation:0}))})),null);
 });

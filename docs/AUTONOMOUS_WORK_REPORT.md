@@ -287,3 +287,13 @@ Small task-scoped commits on `overnight`. Detailed commit bodies include the che
 - Updated tests: 130 chunk cycles verify exactly five tree meshes (trunk + four foliage), no per-tree material/geometry allocation; damaged-tree reload reconstructs correct HP without a scar; offline and online pre-ack tests confirm no rectangle while keeping chip effects.
 - Browser-tested on the actual LAN HTTP address `http://192.168.1.147:18742` with new module revision `20261030-no-scar3`. Confirmed real offline chop 8→7 HP and seven chips with five mesh children and no PlaneGeometry; reloaded saved offline game and HP 7/8 was restored with no overlay. Normal entrypoint loaded at 390×844 touch viewport, no debug API or console errors. This did not touch the live multiplayer world or user browser tabs.
 - Validation: Node 32/32, Python 5/5, all JS syntax, diff checks. Browser module error encountered during development from missing semicolons in compressed loops was fixed and re-verified after reload. No push.
+
+### 2026-10-30 — High-priority completion and medium-priority progress
+
+- **P0.3**: extended isolated server tests for placement/removal (wood, 16 levels, save roundtrip, bad coordinates/orientation) and bot/client-equivalent trunk/log collision cases. Commit 5273f89.
+- **P1.3**: action-state crosshair (idle/tree/build/rejected build), semantic labels, no changes to hit validation. Commit 071f015.
+- **P1.4**: low/balanced/high renderer resolution preferences with validated local storage, no world/physics changes. Commit 3a4916b.
+- **P0.4**: pointer-owned multi-touch joystick, cancel/lostcapture/blur recovery; no interference from a second finger. Commit 2165641.
+- **P2.8 emotes**: two server-throttled ephemeral shared-sprite emoji gestures (wave/like); real client and Python server checks. Commit eb66182.
+- **P2.8 player list**: accessible roster driven by authoritative welcome/join/leave, no polling/injection. Commit 48777fa.
+- **P2.5 first craft recipe**: one wooden bench costs 3 wood, removing it refunds 2; single shared set of bench meshes/materials, 200-entity server cap, coordinate/snap/clearance and wood validation. Both old offline and old server saves load with furniture absent; optional furniture field in persistent save and authoritative welcome, with guarded client offline persistence and online server-ack handling. Purely decorative: no sit/physics affordance. Test browsers: offline place (8→5), reload preserved bench, remove (5→7) and saved furniture cleared; online welcome loaded server bench and authoritative remove refunded 2. Live saves/public server untouched. Tests 73 JS and 11 Python pass. This is *one* recipe only; no larger inventory or economy added.

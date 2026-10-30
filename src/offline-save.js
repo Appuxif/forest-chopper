@@ -1,3 +1,4 @@
+import {validBench,MAX_BENCHES} from './crafting.js';
 // Offline-only world snapshots. Server saves are independent and authoritative.
 // This module intentionally never reads/writes the multiplayer world JSON.
 export const OFFLINE_SAVE_KEY = 'forest-chopper:offline-world:v1';
@@ -18,6 +19,7 @@ export function parseOfflineSave(raw) {
         || !Array.isArray(data.felled) || data.felled.length > MAX_TREES
         || !data.damage || typeof data.damage !== 'object' || Array.isArray(data.damage)
         || !Array.isArray(data.logs) || data.logs.length > MAX_LOGS
+        || !Array.isArray(data.furniture ?? []) || (data.furniture ?? []).length > MAX_BENCHES
         || !data.position || !coordinate(data.position.x) || !coordinate(data.position.z)
         || !Number.isFinite(data.position.y ?? 0) || (data.position.y ?? 0) < 0 || (data.position.y ?? 0) > 12
         || !Number.isFinite(data.position.yaw) || Math.abs(data.position.yaw) > 1e6
@@ -36,8 +38,10 @@ export function parseOfflineSave(raw) {
           || (log.orientation !== 0 && log.orientation !== 1)) return null;
       logs.push({x: log.x, z: log.z, level: log.level, orientation: log.orientation});
     }
+    const furniture=[];
+    for(const item of data.furniture ?? []){if(!validBench(item))return null;furniture.push({kind:'bench',x:item.x,z:item.z,orientation:item.orientation});}
     return {
-      seed: data.seed, wood: data.wood, cuts: data.cuts,
+      furniture,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
     };
   } catch {
@@ -62,6 +66,7 @@ export function createOfflineSave(ctx, {
       position: {x: ctx.px, y: ctx.feetY, z: ctx.pz, yaw: ctx.yaw, pitch: ctx.pitch},
       felled: [...ctx.felled], damage: Object.fromEntries(ctx.treeDamage),
       logs: ctx.placed.map(({x,z,level,orientation}) => ({x,z,level,orientation})),
+      furniture: ctx.crafting?.snapshot() ?? [],
     };
   }
   function save() {
@@ -69,7 +74,7 @@ export function createOfflineSave(ctx, {
     const state = snapshot();
     const payload = JSON.stringify(state);
     if (payload.length > MAX_BYTES || state.logs.length > MAX_LOGS ||
-        state.felled.length > MAX_TREES || Object.keys(state.damage).length > MAX_TREES) {
+        state.felled.length > MAX_TREES || state.furniture.length > MAX_BENCHES || Object.keys(state.damage).length > MAX_TREES) {
       console.warn('Forest Chopper: offline save exceeds the supported size.');
       lastWrite = now();
       return false;
@@ -105,6 +110,7 @@ export function createOfflineSave(ctx, {
       ctx.scene.add(mesh);
       ctx.placed.push({...log, y, mesh});
     }
+    for(const furniture of state.furniture){ctx.crafting?.add({...furniture,id:-(ctx.crafting.items.size+1)});}
     ctx.$('wood').textContent = ctx.wood;
     ctx.$('cut').textContent = ctx.cuts;
     return true;

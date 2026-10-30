@@ -1,11 +1,11 @@
 import {createAnimations} from './animations.js';
 import {createWorld} from './world.js?v=20261030-trail1';
 import {createPhysics} from './physics.js';
-import {createBuilding} from './building.js';
+import {createBuilding} from './building.js?v=20261030-craft1';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
-import {createControls} from './controls.js?v=20261030-touch1';
+import {createControls} from './controls.js?v=20261030-craft1';
 import {createPlayer} from './player.js?v=20261030-aim1';
-import {createMultiplayer} from './multiplayer.js?v=20261030-playerlist1';
+import {createMultiplayer} from './multiplayer.js?v=20261030-craft1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261030-quality1';
@@ -15,7 +15,8 @@ import {createLandmarks} from './landmarks.js?v=20261030-fire1';
 import {createDayCycle} from './day-cycle.js';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
-import {createOfflineSave} from './offline-save.js';
+import {createCrafting} from './crafting.js';
+import {createOfflineSave} from './offline-save.js?v=20261030-craft1';
 import {createTutorial} from './tutorial.js';
 import {createProgress} from './progress.js?v=20261030-mobile-ui1';
 
@@ -82,6 +83,7 @@ const ctx={
  get sendEmote(){return sendEmote;},
  get emotes(){return emotes;},
  get playerList(){return playerList;},
+ get crafting(){return crafting;},
  get showMapPing(){return showMapPing;},
  get CHOP_SPEED(){return CHOP_SPEED;},
  get GRAVITY(){return GRAVITY;},
@@ -220,6 +222,7 @@ ownAvatar=createLumberjack();if(ownAvatar){scene.add(ownAvatar.group);ownAvatar.
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));
 const emotes=createEmotes(ctx);
 const playerList=createPlayerList(ctx);
+const crafting=createCrafting(ctx);
 offlineSave=createOfflineSave(ctx);
 offlineSave.restore();
 progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}});

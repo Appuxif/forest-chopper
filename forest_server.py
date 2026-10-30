@@ -32,7 +32,7 @@ def tree_info(key,seed):
 class World:
     def __init__(self,path,bot_token=""):
         self.path=Path(path);self.clients={};self.next_id=1;self.seed=random.randrange(1,999999)
-        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.chat=[];self.chat_seq=0
+        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.chat=[];self.chat_seq=0
         self.bots=BotManager(self);self.bot_token=bot_token
         if self.path.exists():
             try:
@@ -43,12 +43,20 @@ class World:
                 felled=set(data.get('felled',[]))
                 damage={str(k):int(v) for k,v in data.get('damage',{}).items()}
                 logs={int(k):v for k,v in data.get('logs',{}).items()}
-                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs
+                furniture={int(k):v for k,v in data.get('furniture',{}).items()}
+                if len(furniture)>200 or any(k<1 for k in furniture) or any(
+                    not isinstance(v,dict) or v.get('kind')!='bench' or
+                    not all(type(v.get(axis)) in (int,float) and math.isfinite(v[axis]) and
+                            abs(v[axis])<=240000 for axis in ('x','z')) or
+                    v.get('orientation') not in (0,1)
+                    for v in furniture.values()):
+                    raise ValueError('Invalid furniture save')
+                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1
                 self.next_log=max(logs,default=0)+1
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
-        data={'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':self.logs}
+        data={'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture}
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,self.path)
     async def send(self,ws,data):
         try:await ws.send(json.dumps(data,separators=(',',':')))
@@ -132,7 +140,7 @@ class World:
         uid=self.next_id;self.next_id+=1
         player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0}
         self.clients[ws]=player
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -200,6 +208,32 @@ class World:
                     p['level']=level;p['y']=.29+level*.29*1.8
                     lid=self.next_log;self.next_log+=1;self.logs[lid]=p;player['wood']-=1
                     await self.broadcast({'type':'log_add','log':{'id':lid,**p},'by':uid,'wood':player['wood']});self.save()
+                elif kind=='craft':
+                    if now-player['last_build']<.12 or player['wood']<3 or len(self.furniture)>=200:continue
+                    player['last_build']=now
+                    if data.get('recipe')!='bench':continue
+                    try:x=float(data['x']);z=float(data['z']);orientation=int(data['orientation'])
+                    except (ValueError,TypeError,KeyError,OverflowError):continue
+                    if not math.isfinite(x) or not math.isfinite(z) or orientation not in (0,1):continue
+                    if abs(x)>240000 or abs(z)>240000 or math.hypot(x-player['x'],z-player['z'])>6:continue
+                    if abs(x*2-round(x*2))>1e-4 or abs(z*2-round(z*2))>1e-4:continue
+                    if not can_stand(self,x,z,0):continue
+                    if any(math.hypot(x-item['x'],z-item['z'])<2.5 for item in self.furniture.values()):continue
+                    item={'kind':'bench','x':x,'z':z,'orientation':orientation}
+                    fid=self.next_furniture;self.next_furniture+=1;self.furniture[fid]=item
+                    player['wood']-=3
+                    await self.broadcast({'type':'furniture_add','item':{'id':fid,**item},
+                                          'by':uid,'wood':player['wood']});self.save()
+                elif kind=='remove_furniture':
+                    if now-player['last_build']<.12:continue
+                    player['last_build']=now
+                    try:fid=int(data['id'])
+                    except (ValueError,TypeError,KeyError,OverflowError):continue
+                    item=self.furniture.get(fid)
+                    if not item or math.hypot(item['x']-player['x'],item['z']-player['z'])>6:continue
+                    del self.furniture[fid];player['wood']+=2
+                    await self.broadcast({'type':'furniture_remove','id':fid,'by':uid,
+                                          'wood':player['wood']});self.save()
                 elif kind=='remove':
                     if now-player['last_build']<.12:continue
                     player['last_build']=now

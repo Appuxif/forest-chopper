@@ -201,6 +201,46 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(self.world.chat)
                 self.assertFalse(self.path.exists(),'emotes must not write a save')
 
+    async def test_bench_crafting(self):
+        async with connect(self.url) as alice:
+            welcome=await self.receive(alice,'welcome')
+            async with connect(self.url) as bob:
+                await self.receive(bob,'welcome')
+                owner=next(p for p in self.world.clients.values() if p['id']==welcome['id'])
+                cmd={'type':'craft','recipe':'bench','x':4,'z':0,'orientation':0}
+                await alice.send(json.dumps(cmd))
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(bob.recv(),.07)
+                owner['wood']=10
+                owner['last_build']=0
+                await alice.send(json.dumps(cmd))
+                add=await self.receive(bob,'furniture_add')
+                self.assertEqual(add['wood'],7)
+                fid=add['item']['id']
+                self.assertEqual(add['item']['kind'],'bench')
+                self.assertEqual(self.world.furniture[fid]['x'],4)
+                self.assertEqual((await self.receive(alice,'furniture_add'))['item']['id'],fid)
+                self.assertEqual(len(World(self.path).furniture),1)
+                for payload in ({**cmd,'x':999}, {**cmd,'orientation':9},
+                                {**cmd,'x':float('nan')}, {**cmd,'x':4},
+                                {**cmd,'recipe':'gold'}):
+                    owner['last_build']=0
+                    await alice.send(json.dumps(payload))
+                    with self.assertRaises(asyncio.TimeoutError):
+                        await asyncio.wait_for(bob.recv(),.035)
+                self.assertEqual(len(self.world.furniture),1)
+                owner['last_build']=0
+                await alice.send(json.dumps({'type':'remove_furniture','id':fid+50}))
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(bob.recv(),.05)
+                owner['last_build']=0
+                await alice.send(json.dumps({'type':'remove_furniture','id':fid}))
+                removed=await self.receive(bob,'furniture_remove')
+                self.assertEqual(removed['wood'],9)
+                self.assertFalse(self.world.furniture)
+                self.assertFalse(World(self.path).furniture)
+
+
     async def test_hits_save_and_restore_world(self):
         async with connect(self.url) as ws:
             await self.receive(ws, 'welcome')

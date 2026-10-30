@@ -70,6 +70,7 @@ function fixture() {
     notify:(...args)=>notifications.push(args),
     showMapPing:data=>{pings.push(data);return true},
     clearMapPings:()=>{clearedPings++;pings.length=0},
+    crafting:{items:new Map(),add(item){this.items.set(item.id,item);return true},remove(id){return this.items.delete(id)},clear(){this.items.clear()}},
     emotes:{received:[],receive(d){this.received.push(d)},clear(){this.received.length=0}},
     updateChunks(){},
     disposePreview(){},
@@ -172,5 +173,28 @@ test('emote outbound requests are whitelisted and received only after server ack
   assert.equal(f.ctx.emotes.received.length,1);
   f.ctx.$('disconnect').onclick();
   assert.equal(f.ctx.emotes.received.length,0);
+ }finally{f.restore()}
+});
+
+test('authoritative bench add/remove events change wood only after server acknowledgment',async()=>{
+ const f=fixture();
+ try{
+  await f.ctx.$('connect').onclick();
+  const ws=f.socket;
+  ws.message({type:'welcome',id:1,seed:21,felled:[],damage:{},logs:[],furniture:[],
+    players:[],wood:5,cuts:0,chat:[]});
+  assert.equal(f.ctx.wood,5);
+  const item={id:3,kind:'bench',x:4,z:0,orientation:0};
+  ws.message({type:'furniture_add',item,by:1,wood:2});
+  assert.equal(f.ctx.wood,2);
+  assert.equal(f.ctx.crafting.items.size,1);
+  ws.message({type:'furniture_remove',id:3,by:1,wood:4});
+  assert.equal(f.ctx.wood,4);
+  assert.equal(f.ctx.crafting.items.size,0);
+  f.ctx.crafting.add(item);
+  f.ctx.$('disconnect').onclick();
+  // As for logs, disconnected multiplayer scenery may remain visible, but offline save is suspended.
+  assert.equal(f.ctx.crafting.items.size,1);
+  assert.equal(f.ctx.offlineSave.suspended,true);
  }finally{f.restore()}
 });

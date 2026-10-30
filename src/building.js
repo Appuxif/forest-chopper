@@ -111,6 +111,7 @@ export function createBuilding(ctx) {
 
   function setMode(on) {
     ctx.buildMode = on;
+    ctx.crafting?.setMode(on);
     ctx.$('mode').textContent = on ? '🪓 Рубить' : '🏗️ Строить';
     ctx.$('mode').classList.toggle('active', on);
     for (const id of ['rotate', 'place', 'undo']) ctx.$(id).style.display = on ? 'block' : 'none';
