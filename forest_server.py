@@ -143,6 +143,12 @@ class World:
                 if kind=='hello':
                     player['name']=str(data.get('name','Игрок'))[:22].strip() or f'Игрок {uid}'
                     await self.broadcast({'type':'join','player':{k:player[k] for k in ('id','name','x','z','y','yaw','jumping')}},ws)
+                elif kind=='ping':
+                    # Application-level RTT for browser clients; WebSocket control pings
+                    # are not exposed to client-side JavaScript. Never broadcast it.
+                    nonce=data.get('nonce')
+                    if type(nonce) is int and 0<=nonce<=2147483647:
+                        await self.send(ws,{'type':'pong','nonce':nonce})
                 elif kind=='chat':
                     message=data.get('text')
                     if not isinstance(message,str):continue

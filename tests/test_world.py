@@ -71,6 +71,21 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(.01)
         self.assertFalse(self.world.clients)
 
+    async def test_ping_pong_is_direct_and_validates_nonce(self):
+        async with connect(self.url) as alice:
+            await self.receive(alice, 'welcome')
+            async with connect(self.url) as bob:
+                await self.receive(bob, 'welcome')
+                await alice.send(json.dumps({'type': 'ping', 'nonce': 345}))
+                pong = await self.receive(alice, 'pong')
+                self.assertEqual(pong['nonce'], 345)
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(bob.recv(), .08)  # RTT is private, not broadcast.
+                await alice.send(json.dumps({'type': 'ping', 'nonce': 'not-an-int'}))
+                await alice.send(json.dumps({'type': 'ping', 'nonce': -1}))
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(alice.recv(), .08)
+
     async def test_hits_save_and_restore_world(self):
         async with connect(self.url) as ws:
             await self.receive(ws, 'welcome')

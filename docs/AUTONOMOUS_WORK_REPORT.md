@@ -81,6 +81,15 @@
 - Isolated browser validated mobile 390×844 and desktop 1366×768, persisted sensitivity=1.7 and FPS flag on reload, actual camera yaw change matching sensitivity, FPS display updates, no scrolling or console errors. Screenshots `/tmp/forest-overnight-settings-{mobile,desktop}.webp`.
 - Full suite: Node 22/22, Python 4/4, JS syntax and diff checks pass.
 
+### P1.5 — Live network RTT over WebSocket (2026-10-30)
+
+- Added lightweight application-level `ping` / `pong` (bounded integer nonce) to the regular human WebSocket handler. Pong replies only to the requesting connection; not broadcast and not written to saves. Existing message types and bot path are preserved.
+- Client sends at most one outstanding ping every ~5s, times out after 12s and clears stale metrics; RTT measured from browser `performance.now()`. The display is deliberately labelled `Ping`, i.e. round trip through the active connection (including PeerJS bridge if used), not raw WebSocket control-frame latency.
+- Existing optional FPS HUD now includes `Ping —` while awaiting the first response and `offline` when disconnected. It never shows a fabricated latency value.
+- Python test covers echo nonce, rejection of malformed/negative values and no broadcast to a second client.
+- Isolated temporary localhost world server: desktop FPS HUD displayed `Ping 8 ms`; mobile 390×844 after reconnect displayed `Ping 5 ms`, and manual disconnect immediately changed HUD to `offline`. No JS console errors. Mobile screenshot `/tmp/forest-overnight-ping-mobile-confirmed.webp`.
+- Full suite: Node 22/22, Python 5/5, JS syntax and diff checks pass. No production server or save touched.
+
 ## Validation
 
 - Initial Python baseline: 1 test passed; initial JS syntax check passed.

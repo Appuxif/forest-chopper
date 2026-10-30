@@ -23,6 +23,7 @@ export function createSettings(doc = document, storage = null) {
     storage = null;
   }
   const state = sanitizeSettings(persisted);
+  let connected = false, latency = null, lastRate = null;
   const css = doc.createElement('style');
   css.textContent = `
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
@@ -61,12 +62,14 @@ export function createSettings(doc = document, storage = null) {
   const range = panel.querySelector('#fc-sensitivity');
   const output = panel.querySelector('#fc-sensitivity-value');
   const checkbox = panel.querySelector('#fc-show-fps');
+  const networkLabel = () => connected ? `Ping ${latency === null ? '—' : latency + ' ms'}` : 'offline';
+  const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}`;};
   function reflect() {
     range.value = state.mouseSensitivity;
     output.textContent = String(state.mouseSensitivity.toFixed(1));
     checkbox.checked = state.showFps;
     fps.hidden = !state.showFps;
-    if (!state.showFps) fps.textContent = 'FPS —';
+    renderFps();
   }
   function save() {
     try {storage?.setItem(KEY, JSON.stringify(state));}
@@ -93,17 +96,27 @@ export function createSettings(doc = document, storage = null) {
   reflect();
 
   let lastSample = null, frames = 0;
+  function setConnected(online) {
+    connected = !!online;
+    latency = null;
+    renderFps();
+  }
+  function setLatency(ms) {
+    latency = connected && Number.isFinite(ms) && ms >= 0 && ms <= 120000 ? Math.round(ms) : null;
+    renderFps();
+  }
   function tick(now) {
     if (!state.showFps) {lastSample = null;frames = 0;return;}
     if (lastSample === null) {lastSample = now;frames = 0;return;}
     frames++;
     if (now - lastSample >= 950) {
       const rate = Math.round(frames * 1000 / (now - lastSample));
-      fps.textContent = `FPS ${Math.max(0, rate)}`;
+      lastRate = Math.max(0, rate);
+      renderFps();
       frames = 0;
       lastSample = now;
     }
   }
   return {get mouseSensitivity(){return state.mouseSensitivity;},
-    get showFps(){return state.showFps;}, tick, close};
+    get showFps(){return state.showFps;}, tick, close, setConnected, setLatency};
 }
