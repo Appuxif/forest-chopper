@@ -121,6 +121,62 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(self.world.chat), 0)
                 self.assertFalse(self.path.exists())
 
+    async def test_place_remove_height_resources_and_save_roundtrip(self):
+        async with connect(self.url) as alice:
+            welcome = await self.receive(alice, 'welcome')
+            async with connect(self.url) as bob:
+                await self.receive(bob, 'welcome')
+                owner = next(p for p in self.world.clients.values() if p['id'] == welcome['id'])
+                # No wood cannot place; server must not emit a log_add.
+                await alice.send(json.dumps({'type': 'place', 'x': 2, 'z': 0, 'orientation': 0}))
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(bob.recv(), .08)
+                self.assertFalse(self.world.logs)
+                owner['wood'] = 4
+                owner['last_build'] = 0
+                await alice.send(json.dumps({'type': 'place', 'x': 2, 'z': 0, 'orientation': 0}))
+                placed = await self.receive(bob, 'log_add')
+                self.assertEqual(placed['by'], welcome['id'])
+                self.assertEqual(placed['log']['level'], 0)
+                self.assertEqual(placed['wood'], 3)
+                lid = placed['log']['id']
+                self.assertEqual(self.world.logs[lid]['x'], 2)
+                # Alice received the same broadcast. Consume it to avoid stale events.
+                self.assertEqual((await self.receive(alice, 'log_add'))['log']['id'], lid)
+                # Invalid coordinates and orientations are ignored.
+                for payload in ({'x': 1.3, 'z': 0, 'orientation': 0},
+                                {'x': 2, 'z': 0, 'orientation': 7},
+                                {'x': 200, 'z': 0, 'orientation': 0},
+                                {'x': float('nan'), 'z': 0, 'orientation': 0}):
+                    owner['last_build'] = 0
+                    await alice.send(json.dumps({'type': 'place', **payload}))
+                    with self.assertRaises(asyncio.TimeoutError):
+                        await asyncio.wait_for(bob.recv(), .035)
+                self.assertEqual(len(self.world.logs), 1)
+                # Height cap must not silently spend wood.
+                owner['last_build'] = 0
+                self.world.logs[lid]['level'] = 15
+                await alice.send(json.dumps({'type': 'place', 'x': 2, 'z': 0, 'orientation': 0}))
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(bob.recv(), .06)
+                self.assertEqual(owner['wood'], 3)
+                self.world.logs[lid]['level'] = 0
+                self.world.save()
+                persisted = World(self.path)
+                self.assertIn(lid, persisted.logs)
+                self.assertEqual(persisted.logs[lid]['level'], 0)
+                owner['last_build'] = 0
+                await alice.send(json.dumps({'type': 'remove', 'id': lid + 999}))
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(bob.recv(), .06)
+                owner['last_build'] = 0
+                await alice.send(json.dumps({'type': 'remove', 'id': lid}))
+                removed = await self.receive(bob, 'log_remove')
+                self.assertEqual(removed, {'type': 'log_remove', 'id': lid,
+                                           'by': welcome['id'], 'wood': 4})
+                self.assertFalse(self.world.logs)
+                self.assertFalse(World(self.path).logs)
+
     async def test_hits_save_and_restore_world(self):
         async with connect(self.url) as ws:
             await self.receive(ws, 'welcome')
