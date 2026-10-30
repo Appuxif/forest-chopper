@@ -241,6 +241,63 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(World(self.path).furniture)
 
 
+    async def test_invalid_furniture_save_does_not_crash_or_partially_restore(self):
+        for malformed in ([], ['bench'], {'1': {'kind':'bench','x':float('nan'),'z':0,'orientation':0}}):
+            self.path.write_text(json.dumps({'seed':9999,'felled':['0,0:1'],
+                'damage':{},'logs':{},'furniture':malformed}))
+            with patch('forest_server.random.randrange',return_value=456789):
+                restored=World(self.path)
+            self.assertEqual(restored.seed,456789)
+            self.assertFalse(restored.felled)
+            self.assertFalse(restored.furniture)
+
+    async def test_shared_team_goal_counts_confirmed_players_and_bots_and_survives_restart(self):
+        async with connect(self.url) as alice:
+            await self.receive(alice,'welcome')
+            async with connect(self.url) as bob:
+                welcome=await self.receive(bob,'welcome')
+                self.assertEqual(welcome['community_cuts'],0)
+                self.world.community_cuts=19
+                # A real server hit_tree event that actually fells a tree, not a client claim.
+                keys=[k for k in (f'{cx},{cz}:{i}' for cx in range(-2,3)
+                       for cz in range(-2,3) for i in range(8))
+                       if tree_info(k,self.world.seed)]
+                first=keys[0]
+                tx,tz,_=tree_info(first,self.world.seed)
+                player=next(iter(self.world.clients.values()))
+                player.update(x=tx+1.5,z=tz)
+                self.world.damage[first]=1
+                self.assertTrue(await self.world.hit_tree(player,first,0))
+                event=await self.receive(alice,'tree_fell')
+                self.assertEqual(event['community_cuts'],20)
+                self.assertEqual((await self.receive(bob,'tree_fell'))['community_cuts'],20)
+                self.assertEqual(World(self.path).community_cuts,20)
+                # Headless bots use the same authoritative hit_tree() path.
+                bot=await self.world.bots.create('HelperQA')
+                second=keys[1]
+                bx,bz,_=tree_info(second,self.world.seed)
+                bot.update(x=bx+1.5,z=bz)
+                self.world.damage[second]=1
+                self.assertTrue(await self.world.hit_tree(bot,second,0))
+                self.assertEqual((await self.receive(bob,'tree_fell'))['community_cuts'],21)
+                self.assertEqual(self.world.community_cuts,21)
+                self.assertEqual(World(self.path).community_cuts,21)
+                # Invalid attempts cannot increase team progress.
+                self.assertFalse(await self.world.hit_tree(bot,'not:a:tree',0))
+                self.assertEqual(self.world.community_cuts,21)
+                await self.world.bots.remove(bot['id'])
+
+    async def test_legacy_team_goal_defaults_zero_and_invalid_goal_does_not_half_load(self):
+        self.path.write_text(json.dumps({'seed':123,'felled':[],'damage':{},'logs':{}}))
+        self.assertEqual(World(self.path).community_cuts,0)
+        self.path.write_text(json.dumps({'seed':123,'felled':['0,0:1'],'damage':{},
+                                         'logs':{},'community_cuts':'not-a-number'}))
+        with patch('forest_server.random.randrange',return_value=9000):
+            loaded=World(self.path)
+        self.assertEqual(loaded.community_cuts,0)
+        self.assertEqual(loaded.seed,9000)
+        self.assertFalse(loaded.felled)
+
     async def test_hits_save_and_restore_world(self):
         async with connect(self.url) as ws:
             await self.receive(ws, 'welcome')

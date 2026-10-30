@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createCommunityGoal,COMMUNITY_TARGET} from '../src/community-goal.js';
+function e(){return {children:[],style:{},textContent:'',attributes:{},append(...x){this.children.push(...x)},setAttribute(k,v){this.attributes[k]=v}}}
+test('only server-confirmed monotonic progress is shown, crossing goal toasts exactly once',()=>{
+ const minimap=e(),notifications=[];
+ const ctx={$:id=>minimap,notify:(...x)=>notifications.push(x)};
+ const goal=createCommunityGoal(ctx,{createElement:e});
+ assert.equal(COMMUNITY_TARGET,20);
+ assert.equal(goal.value,null);
+ assert.equal(goal.panel.style.display,'none');
+ assert.equal(goal.set(undefined),false);
+ assert.equal(goal.set(-1),false);
+ assert.equal(goal.set('20'),false);
+ assert.equal(goal.set(18,{initial:true}),true);
+ assert.equal(goal.value,18);
+ assert.equal(goal.panel.style.display,'block');
+ assert.equal(goal.panel.children[1].children[0].style.width,'90%');
+ assert.equal(goal.set(17),false,'stale/out-of-order messages cannot decrement progress');
+ goal.set(19);
+ goal.set(20);
+ assert.equal(goal.panel.children[1].children[0].style.width,'100%');
+ assert.equal(notifications.length,1);
+ goal.set(20);goal.set(21);
+ assert.equal(notifications.length,1);
+ assert.match(goal.panel.children[0].textContent,/20\/20/);
+ goal.clear();
+ assert.equal(goal.value,null);
+ assert.equal(goal.panel.style.display,'none');
+ goal.set(30,{initial:true});
+ assert.equal(notifications.length,1,'joining an already completed world must not repeat toast');
+});

@@ -5,7 +5,7 @@ import {createBuilding} from './building.js?v=20261030-craft1';
 import {createChopping} from './chopping.js?v=20261030-no-scar3';
 import {createControls} from './controls.js?v=20261030-craft1';
 import {createPlayer} from './player.js?v=20261030-aim1';
-import {createMultiplayer} from './multiplayer.js?v=20261030-craft1';
+import {createMultiplayer} from './multiplayer.js?v=20261030-teamgoal1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261030-quality1';
@@ -18,6 +18,7 @@ import {createPlayerList} from './player-list.js';
 import {createCrafting} from './crafting.js';
 import {createInteractionHighlight} from './interaction-highlight.js';
 import {createDiscoveries} from './discoveries.js';
+import {createCommunityGoal} from './community-goal.js';
 import {createOfflineSave} from './offline-save.js?v=20261030-craft1';
 import {createTutorial} from './tutorial.js';
 import {createProgress} from './progress.js?v=20261030-discoveries1';
@@ -88,6 +89,7 @@ const ctx={
  get crafting(){return crafting;},
  get highlight(){return highlight;},
  get discoveries(){return discoveries;},
+ get communityGoal(){return communityGoal;},
  get showMapPing(){return showMapPing;},
  get CHOP_SPEED(){return CHOP_SPEED;},
  get GRAVITY(){return GRAVITY;},
@@ -229,6 +231,7 @@ const playerList=createPlayerList(ctx);
 const crafting=createCrafting(ctx);
 const highlight=createInteractionHighlight(ctx);
 const discoveries=createDiscoveries(ctx);
+const communityGoal=createCommunityGoal(ctx);
 offlineSave=createOfflineSave(ctx);
 offlineSave.restore();
 progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}});

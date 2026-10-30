@@ -72,6 +72,7 @@ function fixture() {
     clearMapPings:()=>{clearedPings++;pings.length=0},
     crafting:{items:new Map(),add(item){this.items.set(item.id,item);return true},remove(id){return this.items.delete(id)},clear(){this.items.clear()}},
     emotes:{received:[],receive(d){this.received.push(d)},clear(){this.received.length=0}},
+    communityGoal:{value:null,set(v){if(Number.isInteger(v)){this.value=v;return true}return false},clear(){this.value=null}},
     updateChunks(){},
     disposePreview(){},
     createLumberjack:()=>({group:new Group(),mixer:{stopAllAction(){}}}),
@@ -196,5 +197,25 @@ test('authoritative bench add/remove events change wood only after server acknow
   // As for logs, disconnected multiplayer scenery may remain visible, but offline save is suspended.
   assert.equal(f.ctx.crafting.items.size,1);
   assert.equal(f.ctx.offlineSave.suspended,true);
+ }finally{f.restore()}
+});
+
+test('shared team progress comes solely from server welcome/confirmed felled events',async()=>{
+ const f=fixture();
+ try{
+  await f.ctx.$('connect').onclick();
+  const ws=f.socket;
+  assert.equal(f.ctx.communityGoal.value,null);
+  ws.message({type:'welcome',id:1,seed:21,felled:[],damage:{},logs:[],furniture:[],
+    community_cuts:18,players:[],wood:0,cuts:0,chat:[]});
+  assert.equal(f.ctx.communityGoal.value,18);
+  ws.message({type:'tree_hit',tree:'0,0:1',hp:3});
+  assert.equal(f.ctx.communityGoal.value,18);
+  ws.message({type:'tree_fell',tree:'0,0:1',by:2,wood:5,cuts:1,community_cuts:19});
+  assert.equal(f.ctx.communityGoal.value,19);
+  ws.message({type:'tree_fell',tree:'0,0:2',by:2,wood:10,cuts:2,community_cuts:20});
+  assert.equal(f.ctx.communityGoal.value,20);
+  f.ctx.$('disconnect').onclick();
+  assert.equal(f.ctx.communityGoal.value,null);
  }finally{f.restore()}
 });

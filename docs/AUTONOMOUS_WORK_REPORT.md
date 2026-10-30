@@ -127,10 +127,10 @@
 
 ## In progress / next
 
-- Completed: core P0/P1 backlog and lightweight P2 atmosphere/landmarks/campfire/rare trees, optional local day/night cycle (P2.4), co-op minimap pings (P2.8), camera FOV and auto sprint (P2.9), plus responsive mobile HUD corrections. See detailed dated implementation sections and commit bodies below.
-- Automated coverage: **58 Node / 6 Python** tests; isolated desktop 1366×768, mobile 390×844 and narrow 320×640 browsers checked. The existing untracked `.codex/` remains untouched.
-- Remaining nontrivial P2 proposals: persistent recipes/bench (P2.5), sapling restoration (P2.6) and economy (P2.10) need a separate authoritative server protocol/save design with migration and tests; P3 ideas remain future scope. Subjective visual/game-feel review is still a human acceptance check.
-- No push/deploy, no writes to real saves or changes to a running public server. New `map_ping` protocol code is committed locally only.
+- Completed: core P0/P1 tasks and the **requested high/medium priority list** (extended protocol/collision tests, action-aware crosshair, GPU quality presets, safe multitouch joystick, emoji emotes, one persistent bench recipe, roster, ring highlight, rare discoveries, and authoritative shared tree goal). Lower-priority saplings, multi-recipe crafting expansion, economy and P3 remain deliberately untouched.
+- Automated coverage at this checkpoint: **79 Node / 14 Python** tests; desktop and mobile isolated browsers exercised, including real temporary WS worlds. Existing untracked `.codex/` remains untouched.
+- P2.5 delivered **one** real bench recipe only; optional follow-up recipes (P2.5 expansion), saplings (P2.6), economy (P2.10) and P3 remain future scope. Subjective game-feel and 20-tree cooperative pacing still require human review.
+- No push/deploy, no writes to real saves or changes to running public servers. New server fields and protocol messages for furniture/emotes/team goal are local-only until the server is deployed explicitly.
 
 
 
@@ -297,3 +297,27 @@ Small task-scoped commits on `overnight`. Detailed commit bodies include the che
 - **P2.8 emotes**: two server-throttled ephemeral shared-sprite emoji gestures (wave/like); real client and Python server checks. Commit eb66182.
 - **P2.8 player list**: accessible roster driven by authoritative welcome/join/leave, no polling/injection. Commit 48777fa.
 - **P2.5 first craft recipe**: one wooden bench costs 3 wood, removing it refunds 2; single shared set of bench meshes/materials, 200-entity server cap, coordinate/snap/clearance and wood validation. Both old offline and old server saves load with furniture absent; optional furniture field in persistent save and authoritative welcome, with guarded client offline persistence and online server-ack handling. Purely decorative: no sit/physics affordance. Test browsers: offline place (8→5), reload preserved bench, remove (5→7) and saved furniture cleared; online welcome loaded server bench and authoritative remove refunded 2. Live saves/public server untouched. Tests 73 JS and 11 Python pass. This is *one* recipe only; no larger inventory or economy added.
+
+### 2026-10-30 — Shared cooperative objective, authoritative and persistent
+
+- The multiplayer server now maintains `community_cuts`, a bounded integer incremented only after a **real, server-confirmed** tree fall. It counts player and headless bot falls via the same `World.hit_tree` path, sends it with `tree_fell` and initial `welcome`, and persists it in the optional `community_cuts` JSON field. Older saves default to zero; malformed values are rejected atomically before changing world state.
+- A small, always-visible team indicator appears directly under the minimap when connected to an updated server: `🤝 Вместе: N/20 деревьев` and a fill bar. The client does not infer progress from local keys or server-disconnected activity; stale counts are rejected. At 20 a single completion toast fires. Rejoining an already completed room does not repeat it; disconnect hides the indicator. Old server versions omit `community_cuts` and thus show no misleading progress.
+- The world objective is a **single initial milestone**, not a new quest platform and not an economy. After 20, team count persists (may exceed 20), UI caps at 20 and shows completion. Existing rewards remain unchanged.
+- Regression tests cover confirmed human and bot falls, two-client broadcast, world save/restart, malformed/legacy saves, no increase from invalid hits, mock client welcome/fell/disconnect and finish toast deduplication. Total suite: 79 JS / 14 Python.
+- Real isolated Chrome debug and standard 390×844 mobile clients joined a temporary local server preloaded with 18/20; each displayed the same shared objective under the minimap, with no UI collision or errors. The separate server and its world are disposable; public server and user saves were never accessed. Mobile screenshot: `/tmp/forest-overnight-high-medium-goal-mobile.webp`.
+
+### High + medium priority handoff
+
+All ten items from the previously agreed *high and medium* shortlist are implemented and separately committed:
+1. P0.3 server construction/removal + collision coverage — `5273f89`.
+2. P1.3 crosshair states — `071f015`.
+3. P1.4 graphics quality presets — `3a4916b`.
+4. P0.4 touch/multi-finger fixes — `2165641`.
+5. P2.8 emotes — `eb66182`.
+6. P2.8 room roster — `48777fa`.
+7. P2.5 one authoritative bench recipe — `40f81f0`.
+8. P2.9 ground ring interaction highlight — `3ca71ab`.
+9. P2.7 seed-scoped rare encounters — `b0b7019`.
+10. P2.8 server team goal — the commit associated with this report.
+
+Known limitations: the new protocol features need the updated Python server deployed; existing public servers do not support them. The bench is decorative and deliberately does not implement sitting/collision. Neither deeper crafting/planting nor an economy was started.

@@ -32,7 +32,7 @@ def tree_info(key,seed):
 class World:
     def __init__(self,path,bot_token=""):
         self.path=Path(path);self.clients={};self.next_id=1;self.seed=random.randrange(1,999999)
-        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.chat=[];self.chat_seq=0
+        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.community_cuts=0;self.chat=[];self.chat_seq=0
         self.bots=BotManager(self);self.bot_token=bot_token
         if self.path.exists():
             try:
@@ -43,20 +43,25 @@ class World:
                 felled=set(data.get('felled',[]))
                 damage={str(k):int(v) for k,v in data.get('damage',{}).items()}
                 logs={int(k):v for k,v in data.get('logs',{}).items()}
-                furniture={int(k):v for k,v in data.get('furniture',{}).items()}
-                if len(furniture)>200 or any(k<1 for k in furniture) or any(
+                raw_furniture=data.get('furniture',{})
+                if not isinstance(raw_furniture,dict):raise ValueError('Invalid furniture save')
+                furniture={int(k):v for k,v in raw_furniture.items()}
+                if len(furniture)>200 or any(not 1<=k<=2147483647 for k in furniture) or any(
                     not isinstance(v,dict) or v.get('kind')!='bench' or
                     not all(type(v.get(axis)) in (int,float) and math.isfinite(v[axis]) and
                             abs(v[axis])<=240000 for axis in ('x','z')) or
-                    v.get('orientation') not in (0,1)
+                    type(v.get('orientation')) is not int or v['orientation'] not in (0,1)
                     for v in furniture.values()):
                     raise ValueError('Invalid furniture save')
-                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1
+                community_cuts=data.get('community_cuts',0)
+                if type(community_cuts) is not int or not 0<=community_cuts<=1_000_000_000:
+                    raise ValueError('Invalid community progress')
+                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.community_cuts=community_cuts
                 self.next_log=max(logs,default=0)+1
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
-        data={'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture}
+        data={'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'community_cuts':self.community_cuts}
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,self.path)
     async def send(self,ws,data):
         try:await ws.send(json.dumps(data,separators=(',',':')))
@@ -124,9 +129,9 @@ class World:
         hp=self.damage.get(key,info[2])-1
         if hp<=0:
             self.felled.add(key);self.damage.pop(key,None)
-            player['wood']+=5;player['cuts']+=1
+            player['wood']+=5;player['cuts']+=1;self.community_cuts+=1
             await self.broadcast({'type':'tree_fell','tree':key,'by':player['id'],
-                                  'wood':player['wood'],'cuts':player['cuts']})
+                                  'wood':player['wood'],'cuts':player['cuts'],'community_cuts':self.community_cuts})
         else:
             self.damage[key]=hp
             await self.broadcast({'type':'tree_hit','tree':key,'hp':hp})
@@ -140,7 +145,7 @@ class World:
         uid=self.next_id;self.next_id+=1
         player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0}
         self.clients[ws]=player
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
