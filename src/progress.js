@@ -11,6 +11,7 @@ export const ACHIEVEMENTS = [
   {id:'walk-100',title:'Первые 100 метров',metric:'distance',goal:100},
   {id:'walk-1000',title:'Путешественник · 1 км',metric:'distance',goal:1000},
   {id:'explore-10',title:'Исследователь · 10 чанков',metric:'chunks',goal:10},
+  {id:'first-rare',title:'✨ Первая серебристая находка',metric:'discoveries',goal:1},
 ];
 export const OBJECTIVES = [
   {id:'cut-3',title:'Срубите 3 дерева',metric:'trees',goal:3},
@@ -26,6 +27,8 @@ export function parseProgress(raw) {
     if (!data || data.version!==1 || !validCount(data.trees) || !validCount(data.logs)
         || !Number.isFinite(data.distance) || data.distance<0 || data.distance>10_000_000
         || !Array.isArray(data.visited) || data.visited.length>5000
+        || !Array.isArray(data.discovered ?? []) || (data.discovered ?? []).length>5000
+        || (data.discovered ?? []).some(key=>typeof key!=='string'||key.length>55||!/^[0-9]+:-?[0-9]+,-?[0-9]+:[0-7]$/.test(key))
         || data.visited.some(key=>typeof key!=='string' || key.length>50
           || !/^\d+:-?\d+,-?\d+$/.test(key))) return null;
     const objective=data.objective;
@@ -36,7 +39,7 @@ export function parseProgress(raw) {
       && (objective.index===OBJECTIVES.length || objective.baseline <=
         (OBJECTIVES[objective.index].metric==='chunks' ? new Set(data.visited).size : data[OBJECTIVES[objective.index].metric])) ? objective : null;
     return {trees:data.trees,logs:data.logs,distance:data.distance,
-      visited:[...new Set(data.visited)],objective:savedObjective};
+      visited:[...new Set(data.visited)],discovered:[...new Set(data.discovered ?? [])],objective:savedObjective};
   } catch {return null;}
 }
 
@@ -57,10 +60,11 @@ export function createProgress({
     trees:restored?.trees??0, logs:restored?.logs??0, distance:restored?.distance??0,
   };
   const visited=new Set(restored?.visited??[]);
-  const metricValue=metric=>metric==='chunks'?visited.size:state[metric];
+  const discovered=new Set(restored?.discovered??[]);
+  const metricValue=metric=>metric==='chunks'?visited.size:metric==='discoveries'?discovered.size:state[metric];
   let objectiveIndex=restored?.objective?.index??0;
   let objectiveBaseline=restored?.objective?.baseline??metricValue(OBJECTIVES[objectiveIndex]?.metric??'trees');
-  const unlocked=new Set(ACHIEVEMENTS.filter(a=>(a.metric==='chunks' ? visited.size : state[a.metric])>=a.goal).map(a=>a.id));
+  const unlocked=new Set(ACHIEVEMENTS.filter(a=>metricValue(a.metric)>=a.goal).map(a=>a.id));
   let previous={x:start.x,z:start.z}, timer=null;
 
   const style=doc.createElement('style');
@@ -100,7 +104,9 @@ export function createProgress({
 
   function render() {
     if (panel.hidden) return;
-    summary.textContent=`Локально: 🌲 ${state.trees} · 🪵 ${state.logs} · 🚶 ${Math.floor(state.distance)} м · 🧭 ${visited.size} чанков`;
+    const n=discovered.size;
+    const word=n%10===1&&n%100!==11?'находка':n%10>=2&&n%10<=4&&(n%100<12||n%100>14)?'находки':'находок';
+    summary.textContent=`Локально: 🌲 ${state.trees} · 🪵 ${state.logs} · 🚶 ${Math.floor(state.distance)} м · 🧭 ${visited.size} чанков · ✨ ${n} ${word}`;
     const objective=OBJECTIVES[objectiveIndex];
     objectiveTitle.textContent=objective ? `Цель ${objectiveIndex+1}/${OBJECTIVES.length}: ${objective.title}` : 'Все мини-цели выполнены!';
     objectiveText.textContent=objective ? `Прогресс: ${Math.min(objective.goal,Math.max(0,Math.floor(metricValue(objective.metric)-objectiveBaseline)))}/${objective.goal}` : 'Можно продолжать исследовать лес.';
@@ -115,7 +121,7 @@ export function createProgress({
   function persist() {
     if (!storage) return;
     try {
-      storage.setItem(PROGRESS_KEY,JSON.stringify({version:1,...state,visited:[...visited],
+      storage.setItem(PROGRESS_KEY,JSON.stringify({version:1,...state,visited:[...visited],discovered:[...discovered],
         objective:{index:objectiveIndex,baseline:objectiveBaseline}}));
     } catch { /* Disabled storage does not prevent play. */ }
   }
@@ -126,7 +132,7 @@ export function createProgress({
   function unlockNew() {
     for(const a of ACHIEVEMENTS) {
       if(unlocked.has(a.id))continue;
-      const value=a.metric==='chunks'?visited.size:state[a.metric];
+      const value=metricValue(a.metric);
       if(value>=a.goal){
         unlocked.add(a.id);
         notify(`Достижение: ${a.title}`,'success',`achievement-${a.id}`);
@@ -153,6 +159,15 @@ export function createProgress({
     else if(event==='log-placed')state.logs++;
     else return false;
     unlockNew();advanceObjective();schedule();render();return true;
+  }
+  function recordDiscovery(seed,id){
+    if(!Number.isInteger(seed)||seed<0||seed>999998
+      ||typeof id!=='string'||!/^[-]?[0-9]+,[-]?[0-9]+:[0-7]$/.test(id))return false;
+    const key=`${seed}:${id}`;
+    if(discovered.has(key)||discovered.size>=5000)return false;
+    discovered.add(key);
+    unlockNew();schedule();render();
+    return true;
   }
   function resetPosition(x,z) {
     previous=Number.isFinite(x)&&Number.isFinite(z)?{x,z}:null;
@@ -182,11 +197,11 @@ export function createProgress({
     if(timer!==null){clearTimer(timer);timer=null;}
     persist();
   });
-  return {record,trackPosition,resetPosition,close,skipObjective,
+  return {record,recordDiscovery,trackPosition,resetPosition,close,skipObjective,
     get objective(){const current=OBJECTIVES[objectiveIndex];return current
       ? {index:objectiveIndex,title:current.title,goal:current.goal,
         progress:Math.min(current.goal,Math.max(0,Math.floor(metricValue(current.metric)-objectiveBaseline)))}
       : {index:objectiveIndex,done:true};},
-    get stats(){return {...state,chunks:visited.size};},
+    get stats(){return {...state,chunks:visited.size,discoveries:discovered.size};},
     get unlocked(){return [...unlocked];}};
 }

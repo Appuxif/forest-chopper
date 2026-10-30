@@ -17,9 +17,10 @@ import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
 import {createCrafting} from './crafting.js';
 import {createInteractionHighlight} from './interaction-highlight.js';
+import {createDiscoveries} from './discoveries.js';
 import {createOfflineSave} from './offline-save.js?v=20261030-craft1';
 import {createTutorial} from './tutorial.js';
-import {createProgress} from './progress.js?v=20261030-mobile-ui1';
+import {createProgress} from './progress.js?v=20261030-discoveries1';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 
@@ -86,6 +87,7 @@ const ctx={
  get playerList(){return playerList;},
  get crafting(){return crafting;},
  get highlight(){return highlight;},
+ get discoveries(){return discoveries;},
  get showMapPing(){return showMapPing;},
  get CHOP_SPEED(){return CHOP_SPEED;},
  get GRAVITY(){return GRAVITY;},
@@ -226,6 +228,7 @@ const emotes=createEmotes(ctx);
 const playerList=createPlayerList(ctx);
 const crafting=createCrafting(ctx);
 const highlight=createInteractionHighlight(ctx);
+const discoveries=createDiscoveries(ctx);
 offlineSave=createOfflineSave(ctx);
 offlineSave.restore();
 progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}});
