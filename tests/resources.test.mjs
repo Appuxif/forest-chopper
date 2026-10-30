@@ -114,3 +114,35 @@ test('preview cycles dispose only owned preview material, never shared log geome
   assert.equal(sharedMaterial.calls, 0);
   assert.equal(created.filter(r => r !== sharedGeometry && r !== sharedMaterial).length, 140);
 });
+
+test('three visual tree silhouettes are deterministic without altering gameplay identifiers or allocating materials', () => {
+  const {ctx, created, sharedGeometry, sharedMaterial} = fixture();
+  const world = createWorld(ctx);
+  const variants = new Set();
+  for (let i = 0; i < 90; i++) {
+    const x = 5 + i * 2.5, z = 10 + i * 1.3, id = `3,7:${i}`;
+    const expectedHp = 7 + Math.floor(world.rand(x,z,8)*5);
+    const expectedHeight = 7.5 + world.rand(x,z,4)*6.5;
+    const expectedScale = .9 + world.rand(x,z,5)*.65;
+    world.makeTree(x,z,id);
+    const tree = ctx.trees.get(id);
+    variants.add(tree.userData.variant);
+    assert.equal(tree.userData.maxHp, expectedHp);
+    assert.equal(tree.userData.h, expectedHeight);
+    assert.equal(tree.userData.scale, expectedScale);
+    assert.equal(tree.userData.id, id);
+    assert.equal(tree.position.x, x);
+    assert.equal(tree.position.z, z);
+    assert.equal(tree.children.length, 5);
+    assert.ok(tree.children.every(child => child.geometry === sharedGeometry && child.material === sharedMaterial));
+    const snapshot = tree.children.slice(1).map(child => [child.scale.x, child.scale.y, child.position.y]);
+    ctx.scene.remove(tree);ctx.trees.delete(id);
+    world.makeTree(x,z,id);
+    const rebuilt = ctx.trees.get(id);
+    assert.equal(rebuilt.userData.variant,tree.userData.variant);
+    assert.deepEqual(rebuilt.children.slice(1).map(child => [child.scale.x, child.scale.y, child.position.y]),snapshot);
+    ctx.scene.remove(rebuilt);ctx.trees.delete(id);
+  }
+  assert.deepEqual([...variants].sort(),[0,1,2]);
+  assert.deepEqual(created,[sharedGeometry,sharedMaterial],'variants reuse existing GPU resources');
+});

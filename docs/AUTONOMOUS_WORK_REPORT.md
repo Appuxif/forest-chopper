@@ -143,6 +143,14 @@
 - Browser E2E on isolated `127.0.0.1:18942` temporary-world server: joined via real browser WebSocket, second guest joined and left. Verified `2 игрока → 1 игрок`, matching join/leave toasts, no errors, and no stale avatar. Repeated in 390×844 touch emulation. Screenshots: `/tmp/forest-overnight-p110-desktop.webp`, `/tmp/forest-overnight-p110-mobile.webp`. Browser emulation reloads the page, so mobile guest check was executed after rejoining.
 - Validation: Node tests 34/34; Python tests 5/5; all JS syntax, Python compilation and `git diff --check` PASS. No protocol changes, live game save untouched, no push.
 
+### P1.11 — Deterministic tree silhouette variation (2026-10-30)
+
+- Added three lightweight procedural canopy outlines: existing conifer, narrow/tall fir, and broader/flatter pine. Exactly four foliage meshes and one trunk remain per tree; all geometry/material references are shared.
+- Only appearance changes: tree IDs, seed sampling indices for location/HP/height/trunk scale, world save, trunk collision, and headless bot rules are untouched. Separate visual random index 701; no new geometry, new shader, textures, or runtime animation.
+- Regression `tests/resources.test.mjs` checks 90 sampled tree shapes for determinism after unload/rebuild, exact original HP/height/scale/positions, full three-variant distribution, five shared meshes, and zero extra resource allocation.
+- Real isolated browser `index_debug.html`: 387 loaded trees split into 135 standard / 113 slender / 139 broad; each has exactly 5 meshes; renderer geometries remained 63. Tested at mobile 390×844 and desktop 1366×768 with no console warnings/errors. Screenshots `/tmp/forest-overnight-p111-{mobile,desktop}.webp`.
+- Validation: Node 35/35; Python 5/5; JS syntax and `git diff --check` PASS. Visual appeal remains a subjective human review item. No push.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.
