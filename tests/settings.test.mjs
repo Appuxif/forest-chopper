@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {sanitizeSettings,createSettings} from '../src/settings.js';
 
 test('settings defaults and rejects invalid or corrupted saved values',()=>{
-  assert.deepEqual(sanitizeSettings(null), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false});
-  assert.deepEqual(sanitizeSettings([]), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false});
-  assert.deepEqual(sanitizeSettings({mouseSensitivity:999,showFps:'true'}), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false});
-  assert.deepEqual(sanitizeSettings({mouseSensitivity:0,showFps:true}), {mouseSensitivity:1,showFps:true,windEnabled:true,fov:75,dayCycleEnabled:false});
-  assert.deepEqual(sanitizeSettings({mouseSensitivity:'NaN',showFps:1}), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false});
-  assert.deepEqual(sanitizeSettings({mouseSensitivity:'1.24',showFps:true}), {mouseSensitivity:1.2,showFps:true,windEnabled:true,fov:75,dayCycleEnabled:false});
+  assert.deepEqual(sanitizeSettings(null), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false});
+  assert.deepEqual(sanitizeSettings([]), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false});
+  assert.deepEqual(sanitizeSettings({mouseSensitivity:999,showFps:'true'}), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false});
+  assert.deepEqual(sanitizeSettings({mouseSensitivity:0,showFps:true}), {mouseSensitivity:1,showFps:true,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false});
+  assert.deepEqual(sanitizeSettings({mouseSensitivity:'NaN',showFps:1}), {mouseSensitivity:1,showFps:false,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false});
+  assert.deepEqual(sanitizeSettings({mouseSensitivity:'1.24',showFps:true}), {mouseSensitivity:1.2,showFps:true,windEnabled:true,fov:75,dayCycleEnabled:false,autoSprint:false});
 });
 test('sensitivity boundaries are inclusive and persistence stays independent of world state',()=>{
   assert.equal(sanitizeSettings({mouseSensitivity:.4}).mouseSensitivity,.4);
@@ -18,12 +18,14 @@ test('sensitivity boundaries are inclusive and persistence stays independent of 
   assert.equal(sanitizeSettings({windEnabled:0}).windEnabled,true);
   assert.equal(sanitizeSettings({dayCycleEnabled:true}).dayCycleEnabled,true);
   assert.equal(sanitizeSettings({dayCycleEnabled:'true'}).dayCycleEnabled,false);
+  assert.equal(sanitizeSettings({autoSprint:true}).autoSprint,true);
+  assert.equal(sanitizeSettings({autoSprint:'true'}).autoSprint,false);
   assert.equal(sanitizeSettings({fov:65}).fov,65);
   assert.equal(sanitizeSettings({fov:95}).fov,95);
   assert.equal(sanitizeSettings({fov:62}).fov,75);
   assert.equal(sanitizeSettings({fov:1000}).fov,75);
   assert.equal(sanitizeSettings({fov:82}).fov,80);
-  assert.deepEqual(Object.keys(sanitizeSettings({seed:123,logs:[1]})),['mouseSensitivity','showFps','windEnabled','dayCycleEnabled','fov']);
+  assert.deepEqual(Object.keys(sanitizeSettings({seed:123,logs:[1]})),['mouseSensitivity','showFps','windEnabled','dayCycleEnabled','autoSprint','fov']);
 });
 
 test('FOV is restored, applied live and reset without affecting world saves',()=>{
@@ -65,4 +67,11 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   assert.equal(writes.at(-1)[1].dayCycleEnabled,true);
   element('#fc-reset-settings').onclick();
   assert.equal(settings.dayCycleEnabled,false);
+  const sprint=element('#fc-auto-sprint');
+  sprint.checked=true;
+  sprint.onchange();
+  assert.equal(settings.autoSprint,true);
+  assert.equal(writes.at(-1)[1].autoSprint,true);
+  element('#fc-reset-settings').onclick();
+  assert.equal(settings.autoSprint,false);
 });

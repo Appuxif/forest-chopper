@@ -1,4 +1,5 @@
 // Extracted from the original single-file game. Shared game state is passed explicitly.
+import {shouldSprint} from './movement-preferences.js';
 export function createPlayer(ctx) {
 function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;if(ctx.ownAvatar)ctx.ownAvatar.group.visible=ctx.thirdPerson;ctx.axe.visible=!ctx.thirdPerson;ctx.$('viewtoggle').textContent=ctx.thirdPerson?'👤 Камера: сзади':'👁 Камера: глаза'}
 ctx.$('viewtoggle').onclick=toggleView;ctx.axe.visible=false;
@@ -9,8 +10,8 @@ function animate(now){
  let forward=(ctx.keys.KeyW||ctx.keys.ArrowUp?1:0)-(ctx.keys.KeyS||ctx.keys.ArrowDown?1:0)-ctx.joyY;
  let side=(ctx.keys.KeyD||ctx.keys.ArrowRight?1:0)-(ctx.keys.KeyA||ctx.keys.ArrowLeft?1:0)+ctx.joyX;
  const len=Math.max(1,Math.hypot(forward,side));forward/=len;side/=len;
- const sprint=!!(ctx.keys.ShiftLeft||ctx.keys.ShiftRight);
  const moving=Math.hypot(forward,side)>.1;
+ const sprint=shouldSprint(ctx.keys,ctx.settings.autoSprint,moving);
  const motion=!moving?'Idle':Math.abs(forward)>.1?(sprint?'Run':'Walk'):(side<0?'StrafeLeft':'StrafeRight');
  // Playback rate also scales Root Motion distance: faster feet = faster travel.
  const rate=motion==='Idle'?1:(motion==='StrafeLeft'||motion==='StrafeRight')?(sprint?5:4):(motion==='Run'?(forward<0?-2.35:2.35):(forward<0?-2.25:2.25));

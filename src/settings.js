@@ -1,7 +1,7 @@
 // Lightweight client-only preferences. No framework or new dependencies.
 import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
 const KEY = 'forest-chopper:settings:v1';
-const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false});
+const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false});
 
 export function sanitizeSettings(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -13,6 +13,7 @@ export function sanitizeSettings(value) {
     showFps: source.showFps === true,
     windEnabled: source.windEnabled !== false,
     dayCycleEnabled: source.dayCycleEnabled === true,
+    autoSprint: source.autoSprint === true,
     fov: Number.isFinite(fov) && fov >= 65 && fov <= 95
       ? Math.round(fov / 5) * 5 : DEFAULT.fov,
   };
@@ -62,6 +63,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     <label>Угол обзора (FOV): <output id="fc-fov-value"></output>°
       <input id="fc-fov" type="range" min="65" max="95" step="5"></label>
     <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
+    <label><input id="fc-auto-sprint" type="checkbox"> Автобег при движении</label>
     <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в кронах</label>
     <label><input id="fc-day-cycle" type="checkbox"> Локальная смена дня и ночи</label>
     <small>Только визуально, цикл 8 минут. В сетевой игре у каждого своё время суток.</small>
@@ -77,6 +79,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   const output = panel.querySelector('#fc-sensitivity-value');
   const checkbox = panel.querySelector('#fc-show-fps');
   const windCheckbox = panel.querySelector('#fc-wind-enabled');
+  const sprintCheckbox = panel.querySelector('#fc-auto-sprint');
   const dayCheckbox = panel.querySelector('#fc-day-cycle');
   const fovSlider = panel.querySelector('#fc-fov');
   const fovOutput = panel.querySelector('#fc-fov-value');
@@ -88,6 +91,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     checkbox.checked = state.showFps;
     windCheckbox.checked = state.windEnabled;
     dayCheckbox.checked = state.dayCycleEnabled;
+    sprintCheckbox.checked = state.autoSprint;
     fovSlider.value = String(state.fov);
     fovOutput.textContent = String(state.fov);
     fps.hidden = !state.showFps;
@@ -114,6 +118,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   checkbox.onchange = () => {state.showFps = checkbox.checked;reflect();save();};
   windCheckbox.onchange = () => {state.windEnabled = windCheckbox.checked;reflect();save();};
   dayCheckbox.onchange = () => {state.dayCycleEnabled = dayCheckbox.checked;reflect();save();};
+  sprintCheckbox.onchange = () => {state.autoSprint = sprintCheckbox.checked;reflect();save();};
   fovSlider.oninput = () => {
     state.fov = sanitizeSettings({...state,fov:Number(fovSlider.value)}).fov;
     onFovChange?.(state.fov);
@@ -152,5 +157,6 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     get showFps(){return state.showFps;},
     get windEnabled(){return state.windEnabled;},
     get dayCycleEnabled(){return state.dayCycleEnabled;},
+    get autoSprint(){return state.autoSprint;},
     get fov(){return state.fov;}, tick, close, setConnected, setLatency};
 }

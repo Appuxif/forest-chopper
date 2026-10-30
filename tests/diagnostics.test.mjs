@@ -55,7 +55,7 @@ test('opt-in FPS overlay samples diagnostics once a second and never stores worl
   toggle.checked=false;
   toggle.onchange();
   assert.equal(fps.hidden,true);
-  assert.deepEqual(Object.keys(JSON.parse(storage.saved.at(-1)[1])).sort(),['mouseSensitivity','showFps','windEnabled','fov','dayCycleEnabled'].sort());
+  assert.deepEqual(Object.keys(JSON.parse(storage.saved.at(-1)[1])).sort(),['mouseSensitivity','showFps','windEnabled','fov','dayCycleEnabled','autoSprint'].sort());
   settings.tick(3100,ctx);
   assert.equal(settings.showFps,false);
 });

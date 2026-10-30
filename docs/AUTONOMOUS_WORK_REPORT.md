@@ -234,6 +234,14 @@
 - Real isolated Chrome debug client: default bright sky `#a4c8be`, simulated actual night phase `#506685` with fog matching, hemisphere 1.35 and sun 0.65; desktop and 390×844 touch screenshot confirm HUD stays readable, no JavaScript errors. Actual checkbox was toggled on/off and persisted; normal mobile entrypoint loaded without debug API or console warnings. Screenshot `/tmp/forest-overnight-daycycle-night-mobile.webp`.
 - Tests: Node 52/52, Python 5/5, all client syntax and diff checks PASS. Local save and server protocol unchanged; no push.
 
+### P2.9 follow-up — Optional automatic sprint while moving (2026-10-30)
+
+- Added `Автобег при движении` to the existing settings, disabled by default and saved under the same backward-compatible settings key. When enabled, any actual movement input (keyboard arrows/WASD or touch joystick) uses the existing Run root-motion/fallback speed; at rest the player remains idle. Shift continues to work regardless of the preference.
+- Extracted pure `shouldSprint(keys, autoSprint, moving)` used by `src/player.js`; no new controls, protocol fields, animation assets, speed constants or changes to physics/collision.
+- Two new Node tests validate manual Shift sprint, idle behavior, touch/keyboard auto sprint, opt-out and preference sanitization. Settings/diagnostics regression tests verify checkbox persistence and Reset behavior.
+- Real isolated Chrome on touch 390×844: moving forward for 900ms covered approximately 1.10m with auto sprint off and 2.67m with it on (2.42× in this short root-motion sample; not a guaranteed movement multiplier), without holding Shift. Normal mobile `index.html` loads with auto sprint initially disabled, no debug API and no console errors. Screenshot `/tmp/forest-overnight-autosprint-mobile.webp`.
+- Validation: Node 54/54, Python 5/5, source JS syntax and `git diff --check` PASS; no production world/server changes and no push.
+
 ## Git
 
 Small task-scoped commits on `overnight`. Detailed commit bodies include the checks performed. No push.
