@@ -1,7 +1,7 @@
 // Lightweight client-only preferences. No framework or new dependencies.
 import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
 const KEY = 'forest-chopper:settings:v1';
-const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false});
+const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced'});
 
 export function sanitizeSettings(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -14,12 +14,13 @@ export function sanitizeSettings(value) {
     windEnabled: source.windEnabled !== false,
     dayCycleEnabled: source.dayCycleEnabled === true,
     autoSprint: source.autoSprint === true,
+    quality: ['low','balanced','high'].includes(source.quality) ? source.quality : DEFAULT.quality,
     fov: Number.isFinite(fov) && fov >= 65 && fov <= 95
       ? Math.round(fov / 5) * 5 : DEFAULT.fov,
   };
 }
 
-export function createSettings(doc = document, storage = null, onFovChange = null) {
+export function createSettings(doc = document, storage = null, onFovChange = null, onQualityChange = null) {
   let persisted;
   try {
     const local = storage ?? window.localStorage;
@@ -41,6 +42,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
 .fc-settings h2{font-size:15px;margin:0 0 12px}
 .fc-settings label{display:block;margin:10px 0}
 .fc-settings small{display:block;color:#bed7c6;line-height:1.35;margin:-5px 0 9px}
+.fc-settings select{display:block;width:100%;padding:7px;background:#0c2619;color:white;border:1px solid #ffffff55;border-radius:6px;margin-top:6px}
 .fc-settings input[type=range]{display:block;width:100%;margin-top:8px;accent-color:#8bd0a4}
 .fc-settings input[type=checkbox]{accent-color:#8bd0a4}
 .fc-settings button{border-radius:7px;padding:7px 10px}
@@ -60,6 +62,9 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   panel.innerHTML = `<h2>⚙ Настройки</h2>
     <label>Чувствительность обзора: <output id="fc-sensitivity-value"></output>
       <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
+    <label>Качество графики
+      <select id="fc-quality"><option value="low">Экономный (GPU)</option><option value="balanced">Сбалансированный</option><option value="high">Высокий</option></select></label>
+    <small>Меняет разрешение 3D-рендера, не затрагивая мир и управление.</small>
     <label>Угол обзора (FOV): <output id="fc-fov-value"></output>°
       <input id="fc-fov" type="range" min="65" max="95" step="5"></label>
     <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
@@ -80,6 +85,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   const checkbox = panel.querySelector('#fc-show-fps');
   const windCheckbox = panel.querySelector('#fc-wind-enabled');
   const sprintCheckbox = panel.querySelector('#fc-auto-sprint');
+  const qualitySelect = panel.querySelector('#fc-quality');
   const dayCheckbox = panel.querySelector('#fc-day-cycle');
   const fovSlider = panel.querySelector('#fc-fov');
   const fovOutput = panel.querySelector('#fc-fov-value');
@@ -92,6 +98,7 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     windCheckbox.checked = state.windEnabled;
     dayCheckbox.checked = state.dayCycleEnabled;
     sprintCheckbox.checked = state.autoSprint;
+    qualitySelect.value = state.quality;
     fovSlider.value = String(state.fov);
     fovOutput.textContent = String(state.fov);
     fps.hidden = !state.showFps;
@@ -119,16 +126,18 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
   windCheckbox.onchange = () => {state.windEnabled = windCheckbox.checked;reflect();save();};
   dayCheckbox.onchange = () => {state.dayCycleEnabled = dayCheckbox.checked;reflect();save();};
   sprintCheckbox.onchange = () => {state.autoSprint = sprintCheckbox.checked;reflect();save();};
+  qualitySelect.onchange = () => {state.quality = sanitizeSettings({...state,quality:qualitySelect.value}).quality;onQualityChange?.(state.quality);reflect();save();};
   fovSlider.oninput = () => {
     state.fov = sanitizeSettings({...state,fov:Number(fovSlider.value)}).fov;
     onFovChange?.(state.fov);
     reflect();save();
   };
   panel.querySelector('#fc-reset-settings').onclick = () => {
-    Object.assign(state, DEFAULT);onFovChange?.(state.fov);reflect();save();
+    Object.assign(state, DEFAULT);onFovChange?.(state.fov);onQualityChange?.(state.quality);reflect();save();
   };
   reflect();
   onFovChange?.(state.fov);
+  onQualityChange?.(state.quality);
 
   let lastSample = null, frames = 0;
   function setConnected(online) {
@@ -158,5 +167,6 @@ body:has(.fc-tutorial:not([hidden])) .fc-fps{display:none}
     get windEnabled(){return state.windEnabled;},
     get dayCycleEnabled(){return state.dayCycleEnabled;},
     get autoSprint(){return state.autoSprint;},
-    get fov(){return state.fov;}, tick, close, setConnected, setLatency};
+    get fov(){return state.fov;},
+    get quality(){return state.quality;}, tick, close, setConnected, setLatency};
 }
