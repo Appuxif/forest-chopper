@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {sanitizeSettings,createSettings} from '../src/settings.js';
+import {PERFORMANCE_DEFAULTS,PERFORMANCE_PRESETS} from '../src/performance-presets.js';
 
-const defaults = {
+const defaults = {...PERFORMANCE_DEFAULTS,performancePreset:'high',
   mouseSensitivity:1,showFps:false,spruceFoliageVisible:true,spruceFoliageShadows:true,spruceFoliageDensity:100,windEnabled:true,dayCycleEnabled:false,
-  autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:70,grassDensity:25,
-  grassDistance:50,grassMinSize:2.5,grassMaxSize:5.5,grassWidth:1,
+  autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:70,grassDensity:30,
+  grassDistance:70,grassMinSize:2.5,grassMaxSize:5.5,grassWidth:1,
   grassTurnMin:-30,grassTurnMax:30,fov:75,
   cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
 };
@@ -61,7 +62,7 @@ test('sensitivity boundaries are inclusive and persistence stays independent of 
   assert.equal(sanitizeSettings({fov:62}).fov,75);
   assert.equal(sanitizeSettings({fov:1000}).fov,75);
   assert.equal(sanitizeSettings({fov:82}).fov,80);
-  assert.deepEqual(Object.keys(sanitizeSettings({seed:123,logs:[1]})),Object.keys(defaults));
+  assert.deepEqual(Object.keys(sanitizeSettings({seed:123,logs:[1]})).sort(),Object.keys(defaults).sort());
 });
 
 test('camera distances, side and pitch limits validate their bounds',()=>{
@@ -221,4 +222,67 @@ test('grass defaults, saved ranges, clamps and reset use new preset only for reg
     grassMinSize:0,grassMaxSize:9,grassWidth:10,grassTurnMin:1,grassTurnMax:-1});
   for(const key of ['grassDensity','grassDistance','grassMinSize','grassMaxSize',
     'grassWidth','grassTurnMin','grassTurnMax'])assert.equal(invalid[key],defaults[key]);
+});
+
+
+test('all graphics presets are internally consistent and custom fields validate',()=>{
+  for(const [name,preset] of Object.entries(PERFORMANCE_PRESETS)){
+    const value=sanitizeSettings({...preset,performancePreset:name});
+    for(const key of Object.keys(preset))
+      assert.equal(value[key],preset[key],name+' value '+key);
+    assert.equal(value.performancePreset,name);
+  }
+  assert.equal(sanitizeSettings({renderScale:500}).renderScale,100);
+  assert.equal(sanitizeSettings({renderScale:65}).renderScale,65);
+  assert.equal(sanitizeSettings({terrainSegments:32}).terrainSegments,32);
+  assert.equal(sanitizeSettings({lakeForestMode:'bad'}).lakeForestMode,'shore');
+  assert.equal(sanitizeSettings({farTreeDensity:-5}).farTreeDensity,100);
+  assert.equal(sanitizeSettings({grassTriangles:2}).grassTriangles,6);
+  assert.equal(sanitizeSettings({shadowMapSize:2048}).shadowMapSize,2048);
+});
+
+test('preset selection applies all graphics properties; manual graphics changes select custom, controls do not',()=>{
+  const nodes=new Map();
+  function element(id){
+    if(!nodes.has(id))nodes.set(id,{
+      value:'',checked:false,textContent:'',style:{},
+      type:id==='#fc-render-scale'?'range':'',
+      setAttribute(){},querySelector:element,
+    });
+    return nodes.get(id);
+  }
+  const doc={
+    createElement:()=>({hidden:false,textContent:'',style:{},setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}},
+  };
+  const writes=[],updates=[];
+  const storage={getItem:()=>null,setItem:(k,v)=>writes.push(JSON.parse(v))};
+  const settings=createSettings(doc,storage,null,null,null,st=>updates.push(st.performancePreset));
+  const profile=element('#fc-quality');
+  profile.value='low';profile.onchange();
+  assert.equal(settings.performancePreset,'low');
+  assert.equal(settings.treeShadowsEnabled,false);
+  assert.equal(settings.grassTriangles,1);
+  assert.equal(settings.renderScale,65);
+  assert.equal(settings.maxFps,30);
+  assert.equal(settings.lakeForestMode,'off');
+  assert.equal(writes.at(-1).performancePreset,'low');
+  const sensitivity=element('#fc-sensitivity');
+  sensitivity.value='1.6';sensitivity.oninput();
+  assert.equal(settings.performancePreset,'low');
+  const camera=element('#fc-camera-height');
+  camera.value='2.6';camera.oninput({target:camera});
+  assert.equal(settings.performancePreset,'low');
+  const scale=element('#fc-render-scale');
+  scale.value='75';scale.oninput();
+  assert.equal(settings.performancePreset,'custom');
+  assert.equal(settings.renderScale,75);
+  assert.equal(writes.at(-1).performancePreset,'custom');
+  profile.value='ultra';profile.onchange();
+  assert.equal(settings.performancePreset,'ultra');
+  assert.equal(settings.maxFps,0);
+  assert.equal(settings.treeShadowsEnabled,true);
+  assert.equal(settings.lakeForestMode,'full');
+  assert.equal(settings.shadowRefreshSeconds,0);
+  assert.ok(updates.length>=3);
 });

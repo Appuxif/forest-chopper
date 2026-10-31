@@ -240,7 +240,7 @@ function buildFoliageCardsSpruce(spec={}, options={}) {
   const alphaTest=THREE.MathUtils.clamp(num(p.cardAlphaTest,.48),.05,.9);
   const showFoliage=p.showFoliage !== false;
   const showSecondaryBranches=p.showSecondaryBranches !== false;
-  const cap=Math.floor(THREE.MathUtils.clamp(num(p.maxTriangles,12000),2000,200000));
+  const cap=Math.floor(THREE.MathUtils.clamp(num(p.maxTriangles,12000),800,200000));
   const bark=new THREE.Color(p.barkColor??'#705238');
   const leaf=new THREE.Color(p.leafColor??'#245c36');
   const accent=new THREE.Color(p.leafAccent??'#44874d');

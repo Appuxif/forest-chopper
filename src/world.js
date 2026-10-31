@@ -2,9 +2,9 @@ import {decorResourceId} from './collectible-decor.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {treeCandidate,treeCanSpawn} from './tree-spacing.js?v=20261030-spacing-4m1';
 import {createTreeBatch} from './tree-instancing.js?v=20261031-spruce-sway1';
-import {createDistantForest} from './distant-forest.js?v=20261031-adaptive-lake-shore2';
+import {createDistantForest} from './distant-forest.js?v=20261101-performance1';
 export function createWorld(ctx) {
-const distantForest=createDistantForest(ctx);
+let distantForest=createDistantForest(ctx);
 function rand(x,z,n=0){let v=Math.sin(x*127.1+z*311.7+n*78.233+ctx.seed)*43758.5453;return v-Math.floor(v)}
 // Shared white-tinted materials are reused across chunks and never disposed
 // while another batch may still reference them.
@@ -34,6 +34,7 @@ if(detailedModel){
  for(const {geometry,material,foliage,rareMaterial} of (spruceModel?ctx.spruceParts:ctx.birchParts)){
   const visual=new ctx.THREE.Mesh(geometry,material);
   visual.scale.set(scale,h/(spruceModel?6:8),scale);
+  visual.userData.fcProceduralVisual=true;
   visual.userData.spruceFoliage=!!spruceModel&&(foliage??material.alphaTest>0);
   visual.userData.proceduralFoliage=foliage??material.alphaTest>0;
   // Frosty discovery tints share one material per species, not one per tree.
@@ -99,6 +100,7 @@ for(let i=0;i<25;i++){
  const isRock=rand(cx,cz,300+i)>.86;
  // Only swap a few existing grass meshes, with separate deterministic indices.
  const type=isRock?'rock':rand(cx,cz,800+i)>.94?'mushroom':rand(cx,cz,900+i)>.79?'flower':'grass';
+ if(type==='grass'&&rand(cx,cz,16000+i)*100>=(ctx.settings?.decorDensity??100))continue;
  // Spare random channels select art only; existing seeded slots never move.
  const mushroomSpecies=Math.floor(rand(cx,cz,1000+i)*4);
  const flowerSpecies=Math.floor(rand(cx,cz,1100+i)*4);
@@ -143,6 +145,45 @@ for(const obj of decor.userData.reactivePlants){
 ctx.rockColliders?.set(key,rockColliders);
 ctx.forestResources?.syncDecorChunk?.(decor);
 }
+// Swap procedural visuals and GPU batches while retaining logical tree objects,
+// IDs, HP, hit proxies, and saved/network state.
+function replaceTreeModels(){
+  for(const chunk of ctx.chunks.values())chunk.userData.treeBatch?.dispose();
+  for(const material of classicBatchMaterials.values())material.dispose?.();
+  classicBatchMaterials.clear();
+  for(const tree of [...ctx.trees.values(),...ctx.falling.map(f=>f.tree)]){
+    if(!tree.userData?.spruceModel&&!tree.userData?.birchModel)continue;
+    const parts=tree.userData.spruceModel?ctx.spruceParts:ctx.birchParts;
+    if(!parts?.length)continue;
+    for(const mesh of [...tree.children])if(mesh.userData?.fcProceduralVisual)
+      tree.remove(mesh);
+    const {scale,h,rare}=tree.userData;
+    for(const {geometry,material,foliage,rareMaterial} of parts){
+      const mesh=new ctx.THREE.Mesh(geometry,
+        rare&&(foliage??material.alphaTest>0)&&rareMaterial
+          ?rareMaterial:material);
+      mesh.scale.set(scale,h/(tree.userData.spruceModel?6:8),scale);
+      mesh.userData.fcProceduralVisual=true;
+      mesh.userData.spruceFoliage=tree.userData.spruceModel&&
+        (foliage??material.alphaTest>0);
+      mesh.userData.proceduralFoliage=foliage??material.alphaTest>0;
+      tree.add(mesh);
+    }
+    ctx.spruceDiagnostics?.applyTree(tree);
+  }
+  for(const [chunkKey,chunk] of ctx.chunks){
+    const trees=[...ctx.trees.values()].filter(tree=>
+      tree.userData?.id?.startsWith(chunkKey+':'));
+    chunk.userData.treeBatch=createTreeBatch(ctx.THREE,chunk,trees,
+      classicBatchMaterials,ctx.treeWindShader);
+    ctx.spruceDiagnostics?.applyBatch(chunk.userData.treeBatch);
+  }
+  distantForest.dispose();
+  distantForest=createDistantForest(ctx);
+  ctx.distantForest=distantForest;
+  distantForest.update();
+  ctx.atmosphere?.invalidateStaticShadows?.();
+}
 function updateChunks(){
   ctx.terrain.update(ctx.px,ctx.pz,ctx.seed);
   const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);
@@ -171,5 +212,5 @@ function updateChunks(){
   distantForest.update();
 }
 
-return {rand, makeTree, build, updateChunks, distantForest};
+return {rand, makeTree, build, updateChunks, distantForest, replaceTreeModels};
 }

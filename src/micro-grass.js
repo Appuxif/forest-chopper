@@ -98,9 +98,9 @@ export function generateGrassTile(seed, tileX, tileZ, tileSize, density, tier) {
 // One thin curved blade per instance, not a multi-leaf bush.
 // Near: a smooth three-section ribbon; distant: two sections.
 // All blades use the same two cached geometries, with world-aligned lean.
-function makeTuftGeometry(THREE, tier) {
+function makeTuftGeometry(THREE, tier, triangles=6) {
   const near = tier === 'near';
-  const segments = near ? 3 : 2;
+  const segments = triangles===1?1:triangles===3?2:(near?3:2);
   const positions = [], colors = [],centerXs = [];
   const bendAt = t => .105 * t * t;
   const point = (t, side) => {
@@ -114,13 +114,20 @@ function makeTuftGeometry(THREE, tier) {
     const t0 = i / segments, t1 = (i + 1) / segments;
     const a = point(t0,-1), b = point(t0,1);
     const c = point(t1,-1), d = point(t1,1);
-    positions.push(...a,...c,...b, ...b,...c,...d);
-    centerXs.push(bendAt(t0),bendAt(t1),bendAt(t0),
-      bendAt(t0),bendAt(t1),bendAt(t1));
+    positions.push(...a,...c,...b);
+    centerXs.push(bendAt(t0),bendAt(t1),bendAt(t0));
+    if((triangles===3&&i===0)||(triangles===1)){
+      // One triangle at the lowest tiers; keep the silhouette tapering.
+    }else{
+      positions.push(...b,...c,...d);
+      centerXs.push(bendAt(t0),bendAt(t1),bendAt(t1));
+    }
     // Dark roots blend with the ground; sunlit tips stay readable even
     // where the forest-floor texture has a similar hue.
     const low=.77 + t0*.38, high=.77 + t1*.38;
-    for (const shade of [low,high,low,low,high,high])
+    const shades=((triangles===3&&i===0)||triangles===1)
+      ?[low,high,low]:[low,high,low,low,high,high];
+    for (const shade of shades)
       colors.push(shade*.93,shade*1.04,shade*.88);
   }
   const geometry = new THREE.BufferGeometry();
@@ -134,7 +141,7 @@ function makeTuftGeometry(THREE, tier) {
 
 // Animate neither position nor wind: just GPU-side smooth size falloff at LOD
 // boundaries. Updated uniform does not rewrite any instance data on movement.
-function makeMaterial(THREE, player, near) {
+function makeMaterial(THREE, player, near, simple=false) {
   const uniforms={
     fcGrassPlayer:{value:player},
     fcGrassFade:{value:new THREE.Vector4(-2,-1,19,26)},
@@ -149,6 +156,11 @@ function makeMaterial(THREE, player, near) {
   const material=new THREE.MeshLambertMaterial({
     color:0xffffff,vertexColors:true,side:THREE.DoubleSide,depthWrite:true,
   });
+  if(simple){
+    // Cheap unmodified Lambert shader: no actor, clearing or glade loops.
+    material.userData.grassUniforms=uniforms;
+    return material;
+  }
   material.onBeforeCompile=shader=>{
     Object.assign(shader.uniforms,uniforms);
     shader.vertexShader=shader.vertexShader.replace(
@@ -245,6 +257,7 @@ export function createMicroGrass(ctx) {
     active:new Map(),unused:[],
   };
   let lastX=Infinity,lastZ=Infinity,lastSeed=null,lastDensity=null,lastRadius=null;
+  let currentTriangles=6,currentInteraction=true;
   let generatedTiles=0;
   const grassTrail=[];
   let lastTrailX=ctx.px,lastTrailZ=ctx.pz,lastTrailAt=-Infinity;
@@ -355,7 +368,8 @@ export function createMicroGrass(ctx) {
       const item=samples[i];
       dummy.position.set(item.x,ctx.terrain.heightAt(item.x,item.z),item.z);
       dummy.rotation.set(0,item.angle,0);
-      dummy.scale.setScalar(item.scale);
+      dummy.scale.setScalar(item.scale*
+        (ctx.settings?.grassInteraction===false?3.7:1));
       dummy.updateMatrix();
       mesh.setMatrixAt(i,dummy.matrix);
       profile.setXY(i,item.patchKind,item.patchWeight);
@@ -408,6 +422,21 @@ export function createMicroGrass(ctx) {
   }
   function tick() {
     const x=ctx.px,z=ctx.pz;
+    const triangles=ctx.settings?.grassTriangles??6;
+    const interaction=ctx.settings?.grassInteraction!==false;
+    if(triangles!==currentTriangles||interaction!==currentInteraction){
+      for(const layer of [near,far]){
+        for(const record of layer.active.values())release(layer,record);
+        layer.active.clear();
+        for(const mesh of layer.unused)disposePage(mesh);
+        layer.unused.length=0;
+        layer.geometry.dispose();layer.material.dispose();
+        layer.geometry=makeTuftGeometry(THREE,layer.tier,triangles);
+        layer.material=makeMaterial(THREE,playerUniform,layer===near,!interaction);
+      }
+      currentTriangles=triangles;currentInteraction=interaction;
+      lastDensity=null;
+    }
     playerUniform.set(x,z);
     updateGrassActors(x,z);
     updateClearings(x,z);

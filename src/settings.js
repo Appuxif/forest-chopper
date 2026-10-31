@@ -1,10 +1,11 @@
 // Lightweight client-only preferences. No framework or new dependencies.
-import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
+import {collectDiagnostics, formatDiagnostics, getGpuRendererName} from './diagnostics.js?v=20261101-gpu-renderer1';
 import {FPS_OPTIONS} from './frame-limiter.js';
 import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js';
+import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS} from './performance-presets.js';
 const KEY = 'forest-chopper:settings:v1';
 const CAMERA_80_MIGRATION = 'forest-chopper:camera-80-default:v1';
-const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 25, grassDistance: 50, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 70, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80});
+const DEFAULT = Object.freeze({...PERFORMANCE_DEFAULTS,performancePreset:'high',mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 30, grassDistance: 70, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 70, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80});
 
 function validCameraNumber(value,min,max,fallback,digits=2){
   if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max)return fallback;
@@ -17,6 +18,19 @@ export function sanitizeSettings(value) {
   const number = Number(source.mouseSensitivity);
   const fov = Number(source.fov);
   const settings = {
+    performancePreset:['ultra','high','medium','low','custom'].includes(source.performancePreset)
+      ?source.performancePreset:(source.quality?'custom':'high'),
+    ...Object.fromEntries(PERFORMANCE_KEYS.filter(key=>!(key in {
+      quality:1,maxFps:1,windEnabled:1,shadowDistance:1,shadowRefreshSeconds:1,
+      characterShadowsEnabled:1,characterShadowDistance:1,spruceFoliageDensity:1,
+      grassDensity:1,grassDistance:1,grassMinSize:1,grassMaxSize:1,grassWidth:1,
+      grassTurnMin:1,grassTurnMax:1,shadowContrast:1,
+    })).map(key=>[key,
+      typeof PERFORMANCE_DEFAULTS[key]==='number'
+        ? (Number.isFinite(source[key])?source[key]:PERFORMANCE_DEFAULTS[key])
+        : (typeof source[key]===typeof PERFORMANCE_DEFAULTS[key]
+          ?source[key]:PERFORMANCE_DEFAULTS[key])
+    ])),
     mouseSensitivity: Number.isFinite(number) && number >= .4 && number <= 2.5
       ? Math.round(number * 10) / 10 : DEFAULT.mouseSensitivity,
     showFps: source.showFps === true,
@@ -66,12 +80,32 @@ export function sanitizeSettings(value) {
     cameraDistance: validCameraNumber(source.cameraDistance,1.2,6,DEFAULT.cameraDistance),
     cameraPitchLimit: validCameraNumber(source.cameraPitchLimit,10,80,DEFAULT.cameraPitchLimit,0),
   };
+  const ranges={
+    renderScale:[50,125,5],shadowMapSize:[512,2048,512],treeTrianglesSpruce:[2000,40000,500],
+    treeTrianglesBirch:[1200,25000,100],
+    grassTriangles:[1,6,1],detailedTreeRadius:[2,5,1],
+    farForestDistance:[90,450,5],viewDistance:[160,500,10],
+    lakeViewDistance:[160,500,10],farTreeDensity:[0,100,5],
+    farSpruceTriangles:[800,5000,100],farBirchTriangles:[600,3500,100],
+    terrainSegments:[16,64,8],decorDensity:[0,100,5],
+  };
+  for(const [key,[min,max,step]] of Object.entries(ranges)){
+    const value=source[key];
+    settings[key]=typeof value==='number'&&Number.isFinite(value)&&value>=min
+      &&value<=max ?Math.round(value/step)*step:PERFORMANCE_DEFAULTS[key];
+  }
+  if(![1,3,6].includes(settings.grassTriangles))settings.grassTriangles=6;
+  if(![512,1024,2048].includes(settings.shadowMapSize))settings.shadowMapSize=1024;
+  if(!['off','shore','full'].includes(settings.lakeForestMode))
+    settings.lakeForestMode=PERFORMANCE_DEFAULTS.lakeForestMode;
+  if(!['simple','high'].includes(settings.waterQuality))
+    settings.waterQuality=PERFORMANCE_DEFAULTS.waterQuality;
   if(settings.grassMinSize > settings.grassMaxSize)
     [settings.grassMinSize,settings.grassMaxSize] = [settings.grassMaxSize,settings.grassMinSize];
   return settings;
 }
 
-export function createSettings(doc = document, storage = null, onFovChange = null, onQualityChange = null, treeModelStats = null) {
+export function createSettings(doc = document, storage = null, onFovChange = null, onQualityChange = null, treeModelStats = null, onPerformanceChange = null) {
   let persisted;
   try {
     const local = storage ?? window.localStorage;
@@ -89,7 +123,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     storage = null;
   }
   const state = sanitizeSettings(persisted);
-  let connected = false, latency = null, lastRate = null, lastDiagnostics = '', lastPosition = '';
+  let connected = false, latency = null, lastRate = null, lastDiagnostics = '', lastPosition = '', lastGpu = null;
   const css = doc.createElement('style');
   css.textContent = `
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
@@ -174,16 +208,23 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     </nav>
     <div class="fc-settings-content">
     <section class="fc-settings-page" data-category="graphics" aria-label="Графика">
-    <label>Качество графики
-      <select id="fc-quality"><option value="low">Экономный (GPU)</option><option value="balanced">Сбалансированный</option><option value="high">Высокий</option></select></label>
-    <small>Разрешение меняется сразу. Модели деревьев для нового качества применяются после перезагрузки (вкладка «Деревья»).</small>
+    <label>Пресет производительности
+      <select id="fc-quality"><option value="ultra">Ультра</option><option value="high">Высокий</option><option value="medium">Средний</option><option value="low">Низкий</option><option value="custom">Пользовательский</option></select></label>
+    <small>Ручное изменение параметров графики включает пользовательский режим. Модели деревьев заменяются прямо в игре.</small>
+    <label>Масштаб рендера: <output id="fc-render-scale-value"></output>%
+      <input id="fc-render-scale" type="range" min="50" max="125" step="5"></label>
+    <label><input id="fc-antialias" type="checkbox"> MSAA сглаживание</label>
+    <small>Изменение MSAA применяется после перезагрузки страницы (ограничение WebGL-контекста).</small>
     <label>Максимальный FPS
       <select id="fc-max-fps"><option value="30">30 FPS</option><option value="60">60 FPS</option>
       <option value="90">90 FPS</option><option value="120">120 FPS</option>
       <option value="144">144 FPS</option><option value="0">Без ограничения</option></select></label>
     <small>Ограничивает только рендеринг; физика и анимации обновляются с частотой дисплея. По умолчанию 60 FPS.</small>
+    <label><input id="fc-tree-shadows" type="checkbox"> Тени деревьев</label>
     <label>Дальность теней от деревьев: <output id="fc-shadow-distance-value"></output> м
       <input id="fc-shadow-distance" type="range" min="20" max="100" step="1"></label>
+    <label>Разрешение карты теней
+      <select id="fc-shadow-map-size"><option value="512">512 × 512</option><option value="1024">1024 × 1024</option><option value="2048">2048 × 2048</option></select></label>
     <label>Обновлять тени деревьев: <output id="fc-shadow-refresh-value"></output>
       <input id="fc-shadow-refresh" type="range" min="0" max="5" step="0.5"></label>
     <label><input id="fc-character-shadows" type="checkbox"> Динамические тени персонажей</label>
@@ -194,6 +235,34 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <input id="fc-shadow-contrast" type="range" min="0" max="100" step="5"></label>
     <small>Уменьшает фоновый свет внутри теней: 0% — мягкие, 100% — максимально контрастные. Применяется и днём, и ночью.</small>
     <small>Тени персонажей обновляются каждый кадр, тени деревьев — по отдельному таймеру.</small>
+    <h2>🌄 Дальность и детализация</h2>
+    <label>Видимость: <output id="fc-view-distance-value"></output> м
+      <input id="fc-view-distance" type="range" min="160" max="500" step="10"></label>
+    <label>Радиус подробных деревьев: <output id="fc-detailed-tree-radius-value"></output> чанка
+      <input id="fc-detailed-tree-radius" type="range" min="2" max="5" step="1"></label>
+    <label>Дальность дальнего леса: <output id="fc-far-forest-distance-value"></output> м
+      <input id="fc-far-forest-distance" type="range" min="90" max="450" step="5"></label>
+    <label>Плотность дальних деревьев: <output id="fc-far-tree-density-value"></output>%
+      <input id="fc-far-tree-density" type="range" min="0" max="100" step="5"></label>
+    <label>Режим леса у озёр
+      <select id="fc-lake-forest-mode"><option value="off">Отключён</option><option value="shore">Только берега</option><option value="full">Весь горизонт</option></select></label>
+    <label><input id="fc-lake-visibility" type="checkbox"> Панорамная видимость у озёр</label>
+    <label>Панорама озёр: <output id="fc-lake-view-distance-value"></output> м
+      <input id="fc-lake-view-distance" type="range" min="160" max="500" step="10"></label>
+    <label>Треугольники ели: <output id="fc-tree-triangles-spruce-value"></output>
+      <input id="fc-tree-triangles-spruce" type="range" min="2000" max="40000" step="500"></label>
+    <label>Треугольники берёзы: <output id="fc-tree-triangles-birch-value"></output>
+      <input id="fc-tree-triangles-birch" type="range" min="1200" max="25000" step="100"></label>
+    <label>LOD ели: <output id="fc-far-spruce-triangles-value"></output>
+      <input id="fc-far-spruce-triangles" type="range" min="800" max="5000" step="100"></label>
+    <label>LOD берёзы: <output id="fc-far-birch-triangles-value"></output>
+      <input id="fc-far-birch-triangles" type="range" min="600" max="3500" step="100"></label>
+    <label>Сегменты рельефа: <output id="fc-terrain-segments-value"></output>
+      <input id="fc-terrain-segments" type="range" min="16" max="64" step="8"></label>
+    <label>Качество воды
+      <select id="fc-water-quality"><option value="high">Стандартное</option><option value="simple">Простое</option></select></label>
+    <label>Плотность декораций: <output id="fc-decor-density-value"></output>%
+      <input id="fc-decor-density" type="range" min="0" max="100" step="5"></label>
     <h2>🌲 Диагностика хвои ели</h2>
     <label><input id="fc-spruce-foliage-visible" type="checkbox"> Foliage Cards — отображать хвою</label>
     <label><input id="fc-spruce-foliage-shadows" type="checkbox"> Foliage Shadows — тени от хвои</label>
@@ -206,6 +275,9 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     </section>
     <section class="fc-settings-page" data-category="trees" aria-label="Модели деревьев" hidden><div id="fc-tree-editor">${treeModelEditorMarkup()}</div></section>
     <section class="fc-settings-page" data-category="grass" aria-label="Трава" hidden>
+    <label>Треугольники мелкой травы
+      <select id="fc-grass-triangles"><option value="6">6 — плавные</option><option value="3">3 — облегчённые</option><option value="1">1 — минимальные</option></select></label>
+    <label><input type="checkbox" id="fc-grass-interaction"> Сгибание травы и взаимодействие с окружением</label>
     <label>Плотность мелкой травы: <output id="fc-grass-density-value"></output>
       <input id="fc-grass-density" type="range" min="1" max="50" step="1"></label>
     <label>Дальность мелкой травы: <output id="fc-grass-distance-value"></output> м
@@ -307,7 +379,19 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const fovSlider = panel.querySelector('#fc-fov');
   const fovOutput = panel.querySelector('#fc-fov-value');
   const networkLabel = () => connected ? `Ping ${latency === null ? '—' : latency + ' ms'}` : 'offline';
-  const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}${lastPosition ? '\n'+lastPosition : ''}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
+  const PERFORMANCE_INPUTS={
+    renderScale:'render-scale',treeShadowsEnabled:'tree-shadows',shadowMapSize:'shadow-map-size',
+    viewDistance:'view-distance',detailedTreeRadius:'detailed-tree-radius',
+    farForestDistance:'far-forest-distance',farTreeDensity:'far-tree-density',
+    lakeForestMode:'lake-forest-mode',lakeVisibility:'lake-visibility',
+    lakeViewDistance:'lake-view-distance',treeTrianglesSpruce:'tree-triangles-spruce',
+    treeTrianglesBirch:'tree-triangles-birch',farSpruceTriangles:'far-spruce-triangles',
+    farBirchTriangles:'far-birch-triangles',terrainSegments:'terrain-segments',
+    waterQuality:'water-quality',decorDensity:'decor-density',
+    grassTriangles:'grass-triangles',grassInteraction:'grass-interaction',
+    antialias:'antialias',
+  };
+  const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}${lastGpu ? '\nGPU: '+lastGpu : ''}${lastPosition ? '\n'+lastPosition : ''}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
   function reflect() {
     for(const [key,id,digits] of cameraControls){
       panel.querySelector('#fc-'+id).value=String(state[key]);
@@ -319,7 +403,15 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     windCheckbox.checked = state.windEnabled;
     dayCheckbox.checked = state.dayCycleEnabled;
     sprintCheckbox.checked = state.autoSprint;
-    qualitySelect.value = state.quality;
+    qualitySelect.value = state.performancePreset;
+    for(const [key,id] of Object.entries(PERFORMANCE_INPUTS)){
+      const el=panel.querySelector('#fc-'+id);
+      if(!el)continue;
+      if(el.type==='checkbox')el.checked=state[key];
+      else el.value=String(state[key]);
+      const output=panel.querySelector('#fc-'+id+'-value');
+      if(output)output.textContent=String(state[key]);
+    }
     fpsSelect.value = String(state.maxFps);
     spruceVisibleInput.checked=state.spruceFoliageVisible;
     spruceShadowsInput.checked=state.spruceFoliageShadows;
@@ -357,9 +449,19 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     fps.hidden = !state.showFps;
     renderFps();
   }
+  let lastPerformance=JSON.stringify(PERFORMANCE_KEYS.map(key=>state[key]));
+  let applyingPreset=false;
   function save() {
+    const nextPerformance=JSON.stringify(PERFORMANCE_KEYS.map(key=>state[key]));
+    if(!applyingPreset&&nextPerformance!==lastPerformance&&state.performancePreset!=='custom'){
+      state.performancePreset='custom';
+      qualitySelect.value='custom';
+    }
+    const changed=nextPerformance!==lastPerformance;
+    lastPerformance=nextPerformance;
     try {storage?.setItem(KEY, JSON.stringify(state));}
     catch { /* Private mode or blocked storage: keep preferences for this tab. */ }
+    if(changed)onPerformanceChange?.(state);
   }
   const tabButtons=Array.from(panel.querySelectorAll?.('.fc-settings-tab')??[]);
   const pages=Array.from(panel.querySelectorAll?.('.fc-settings-page')??[]);
@@ -413,6 +515,19 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       reflect();save();
     };
   }
+  for(const [key,id] of Object.entries(PERFORMANCE_INPUTS)){
+    const el=panel.querySelector('#fc-'+id);
+    if(!el)continue;
+    const change=()=>{
+      const value=el.type==='checkbox'?el.checked:
+        (el.tagName==='SELECT'&&!['grassTriangles','shadowMapSize'].includes(key))?el.value:Number(el.value);
+      const valid=sanitizeSettings({...state,[key]:value});
+      state[key]=valid[key];
+      reflect();save();
+    };
+    if(el.type==='range')el.oninput=change;
+    else el.onchange=change;
+  }
   range.oninput = () => {
     Object.assign(state, sanitizeSettings({...state, mouseSensitivity: Number(range.value)}));
     reflect();save();
@@ -421,7 +536,17 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   windCheckbox.onchange = () => {state.windEnabled = windCheckbox.checked;reflect();save();};
   dayCheckbox.onchange = () => {state.dayCycleEnabled = dayCheckbox.checked;reflect();save();};
   sprintCheckbox.onchange = () => {state.autoSprint = sprintCheckbox.checked;reflect();save();};
-  qualitySelect.onchange = () => {state.quality = sanitizeSettings({...state,quality:qualitySelect.value}).quality;onQualityChange?.(state.quality);reflect();save();treeEditor.selectProfile(state.quality);};
+  qualitySelect.onchange = () => {
+    const preset=qualitySelect.value;
+    if(preset!=='custom'&&PERFORMANCE_PRESETS[preset]){
+      applyingPreset=true;
+      Object.assign(state,PERFORMANCE_PRESETS[preset]);
+    }
+    state.performancePreset=preset;
+    onQualityChange?.(state.quality);
+    reflect();save();applyingPreset=false;
+    treeEditor.selectProfile(state.quality);
+  };
   fpsSelect.onchange = () => {
     state.maxFps = sanitizeSettings({...state,maxFps:Number(fpsSelect.value)}).maxFps;
     lastSample=null;frames=0;lastRate=null;
@@ -505,13 +630,14 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     getQuality:()=>state.quality,
     applyQuality:quality=>{
       state.quality=quality;
+      state.performancePreset='custom';
       onQualityChange?.(quality);
       reflect();save();
     },
-    reload:()=>doc.defaultView?.location?.reload?.(),
+    reload:()=>onPerformanceChange?.(state),
   });
   panel.querySelector('#fc-reset-settings').onclick = () => {
-    Object.assign(state, DEFAULT);treeEditor.resetAll();onFovChange?.(state.fov);onQualityChange?.(state.quality);reflect();save();
+    Object.assign(state, DEFAULT);treeEditor.resetAll();onFovChange?.(state.fov);onQualityChange?.(state.quality);applyingPreset=true;reflect();save();applyingPreset=false;
   };
   reflect();
   onFovChange?.(state.fov);
@@ -529,7 +655,9 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   }
   function tick(now, gameCtx = null) {
     if (!state.showFps) {lastSample = null;frames = 0;lastDiagnostics='';return;}
-    if (lastSample === null) {lastSample = now;frames = 0;return;}
+    if (lastGpu===null && gameCtx?.renderer)
+      lastGpu=getGpuRendererName(gameCtx.renderer);
+    if (lastSample === null) {lastSample = now;frames = 0;renderFps();return;}
     frames++;
     if (now - lastSample >= 950) {
       const rate = Math.round(frames * 1000 / (now - lastSample));
@@ -541,7 +669,29 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       lastSample = now;
     }
   }
-  return {get cameraHeight(){return state.cameraHeight;},
+  return {
+    get performancePreset(){return state.performancePreset;},
+    get renderScale(){return state.renderScale;},
+    get treeShadowsEnabled(){return state.treeShadowsEnabled;},
+    get shadowMapSize(){return state.shadowMapSize;},
+    get viewDistance(){return state.viewDistance;},
+    get detailedTreeRadius(){return state.detailedTreeRadius;},
+    get farForestDistance(){return state.farForestDistance;},
+    get farTreeDensity(){return state.farTreeDensity;},
+    get lakeForestMode(){return state.lakeForestMode;},
+    get lakeVisibility(){return state.lakeVisibility;},
+    get lakeViewDistance(){return state.lakeViewDistance;},
+    get treeTrianglesSpruce(){return state.treeTrianglesSpruce;},
+    get treeTrianglesBirch(){return state.treeTrianglesBirch;},
+    get farSpruceTriangles(){return state.farSpruceTriangles;},
+    get farBirchTriangles(){return state.farBirchTriangles;},
+    get terrainSegments(){return state.terrainSegments;},
+    get waterQuality(){return state.waterQuality;},
+    get decorDensity(){return state.decorDensity;},
+    get grassTriangles(){return state.grassTriangles;},
+    get grassInteraction(){return state.grassInteraction;},
+    get antialias(){return state.antialias;},
+    get cameraHeight(){return state.cameraHeight;},
     get cameraSide(){return state.cameraSide;},
     get cameraPitchLimit(){return state.cameraPitchLimit;},
     get cameraDistance(){return state.cameraDistance;},

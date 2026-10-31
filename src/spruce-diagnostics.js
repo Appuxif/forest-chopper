@@ -86,5 +86,9 @@ export function createSpruceDiagnostics(THREE,ctx){
     ctx.atmosphere?.invalidateStaticShadows?.();
     return true;
   }
-  return {tick,applyBatch,applyTree};
+  function dispose(){
+    for(const geo of owned)if(geo!==originalGeometry)geo.dispose();
+    geometries.clear();owned.clear();
+  }
+  return {tick,applyBatch,applyTree,dispose};
 }

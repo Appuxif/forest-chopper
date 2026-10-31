@@ -44,7 +44,7 @@ function panelMarkup(species){
 }
 export function treeModelEditorMarkup(){
   return '<h2>🌲 Редактор моделей деревьев</h2>'
-    +'<small>Независимые модели для Low / Balanced / High. Настраиваются параметры генератора; применяются после перезагрузки игры.</small>'
+    +'<small>Независимые модели для Low / Balanced / High. Настраиваются параметры генератора; применяются без перезагрузки игры.</small>'
     +'<div class="fc-tree-toolbar"><label>Профиль графики<select id="fc-tree-profile">'
     +TREE_QUALITIES.map(q=>'<option value="'+q+'">'+names[q]+'</option>').join('')
     +'</select></label><label>Скопировать из<select id="fc-tree-copy-from">'
@@ -64,8 +64,8 @@ export function treeModelEditorMarkup(){
     +'</div>'
     +'<textarea id="fc-tree-json" rows="5" spellcheck="false" placeholder="Экспорт или импорт всех профилей моделей (JSON)"></textarea>'
     +'<p id="fc-tree-status" role="status" aria-live="polite"></p>'
-    +'<button type="button" class="fc-tree-apply" data-tree-action="apply">Применить профиль и перезагрузить игру</button>'
-    +'<small>При применении выбирается указанный профиль качества и игра перезагружается. Точки деревьев, HP и сохранённый мир не изменяются. FPS лучше сравнивать при одинаковом ракурсе.</small>';
+    +'<button type="button" class="fc-tree-apply" data-tree-action="apply">Применить профиль без перезагрузки</button>'
+    +'<small>При применении меняется геометрия деревьев без перезагрузки игры. Точки деревьев, HP и сохранённый мир не изменяются. FPS лучше сравнивать при одинаковом ракурсе.</small>';
 }
 export function mountTreeModelEditor(root,{
   storage,getQuality=()=> 'balanced',applyQuality=()=>{},reload=()=>{},activeStats=null,

@@ -171,3 +171,57 @@ test('felled trees disappear; moved player unloads old chunks and reset clears i
   assert.equal(f.distant.count,0);
   f.distant.dispose();
 });
+
+test('far forest preset changes range and density without changing seeded tree coordinates',()=>{
+  const f=fixture();
+  f.ctx.settings={farForestDistance:110,farTreeDensity:50,lakeForestMode:'off'};
+  f.distant.update();f.complete();
+  const small=f.distant.count;
+  const points=new Set(allTransforms(f).map(m=>m.position.x+','+m.position.z));
+  assert.ok(small>0);
+  f.ctx.settings.farForestDistance=165;
+  f.ctx.settings.farTreeDensity=100;
+  f.distant.update();f.complete();
+  assert.ok(f.distant.count>small,'higher quality restores distant tree instances');
+  const all=new Set(allTransforms(f).map(m=>m.position.x+','+m.position.z));
+  assert.ok([...points].every(point=>all.has(point)),
+    'tree thinning and view range are cosmetic, not regenerated world positions');
+  f.distant.dispose();
+});
+
+test('ultra uses full lake horizon, low disables additional lake forest',()=>{
+  const lake={x:150,z:0,rx:85,rz:70};
+  const terrain={visibility:1,visibilityTarget:1};
+  assert.equal(distantForestRange(terrain,[lake],0,0,{
+    farForestDistance:200,lakeForestMode:'full',lakeViewDistance:450,
+  }),450);
+  assert.equal(distantForestRange(terrain,[lake],0,0,{
+    farForestDistance:110,lakeForestMode:'off',lakeViewDistance:450,
+  }),110);
+  assert.ok(distantForestRange(terrain,[lake],0,0,{
+    farForestDistance:165,lakeForestMode:'shore',lakeViewDistance:380,
+  })<450);
+});
+
+test('cull far trees behind the camera and reevaluate culling when the player moves',()=>{
+  const f=fixture();
+  f.ctx.camera={fov:75,aspect:1.8};
+  f.distant.update();f.complete();
+  const full=f.distant.count;
+  f.distant.updateVisibility(0);
+  const ahead=f.distant.count;
+  assert.ok(ahead>0&&ahead<full*.75,'rear instances are not submitted to GPU');
+  f.distant.updateVisibility(Math.PI);
+  const back=f.distant.count;
+  assert.ok(back>0&&back<full*.75);
+  f.distant.updateVisibility(0);
+  const saved=f.distant.count;
+  f.ctx.px+=12;
+  f.distant.updateVisibility(0);
+  assert.ok(f.distant.count>0);
+  // Some trees crossing view-threshold should be reconsidered even if yaw does not change.
+  const first=f.distant.meshes.conifer[0];
+  assert.equal(first.instanceMatrix.needsUpdate,true);
+  assert.ok(Math.abs(f.distant.count-saved)<full*.5);
+  f.distant.dispose();
+});

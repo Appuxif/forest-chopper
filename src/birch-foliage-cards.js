@@ -211,7 +211,7 @@ export function createBirch(data = BIRCH_PRESET) {
   const rng = random(seed);
   const H = clamp(+p.trunkHeight, 3, 20);
   const R = clamp(+p.trunkRadius, 0.07, 0.7);
-  const cap = clamp(Math.round(+p.maxTriangles), 1200, 25000);
+  const cap = clamp(Math.round(+p.maxTriangles), 600, 25000);
   const bark = tubeBuilder(), branches = tubeBuilder(), shots = tubeBuilder();
   const trunkAt = t => new THREE.Vector3(
     Math.sin(t * 2.4) * p.trunkCurve * t, H * t,

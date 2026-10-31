@@ -170,7 +170,8 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   sun.shadow.camera.updateProjectionMatrix();
   ground.receiveShadow=true;
   scene.add(sun.target);
-  let quality=null, phase=0, lastUpdate=-Infinity, centerX=Infinity,centerZ=Infinity;
+  let quality=null,shadowResolution=null,phase=0,lastUpdate=-Infinity,
+    centerX=Infinity,centerZ=Infinity;
   let shadowRadius=null, refreshInterval=null, characterShadowExtent=null;
   let builtShadowsDirty=true;
   let totalSunIntensity=initialSunIntensity;
@@ -199,11 +200,12 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   const moonVector=new THREE.Vector3();
 
   function applyQuality() {
-    if(quality===settings.quality)return;
+    const size=settings.shadowMapSize??shadowMapSizeForQuality(settings.quality);
+    if(quality===settings.quality&&shadowResolution===size)return;
     quality=settings.quality;
-    const size=shadowMapSizeForQuality(quality);
+    shadowResolution=size;
     sun.shadow.mapSize.set(size,size);
-    const characterSize=CHARACTER_SHADOW_MAP_SIZES[quality]??CHARACTER_SHADOW_MAP_SIZES.balanced;
+    const characterSize=size;
     characterLight.shadow.mapSize.set(characterSize,characterSize);
     if(characterLight.shadow.map){
       characterLight.shadow.map.dispose();
@@ -267,10 +269,19 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     const interval=Math.max(0,Math.min(5000,
       (settings.shadowRefreshSeconds??SHADOW_UPDATE_MS/1000)*1000));
     const settingsChanged=radius!==shadowRadius || interval!==refreshInterval ||
-      quality!==settings.quality;
-    const treeDue=settingsChanged || builtShadowsDirty || now-lastUpdate>=interval;
+      quality!==settings.quality ||
+      shadowResolution!==(settings.shadowMapSize??shadowMapSizeForQuality(settings.quality));
+    const shadowsEnabled=settings.treeShadowsEnabled!==false;
+    if(sun.castShadow!==shadowsEnabled){
+      sun.castShadow=shadowsEnabled;
+      sun.shadow.needsUpdate=shadowsEnabled;
+    }
+    const treeDue=shadowsEnabled &&
+      (settingsChanged || builtShadowsDirty || now-lastUpdate>=interval);
     // Apply the map size before snapping its centre to texels.
-    if(quality!==settings.quality)applyQuality();
+    if(quality!==settings.quality ||
+      shadowResolution!==(settings.shadowMapSize??shadowMapSizeForQuality(settings.quality)))
+      applyQuality();
     const wantCharacters=settings.characterShadowsEnabled!==false;
     if(characterShadowsEnabled!==wantCharacters){
       characterShadowsEnabled=wantCharacters;

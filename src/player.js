@@ -97,6 +97,7 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
  ctx.spruceDiagnostics?.tick();
  ctx.terrain?.tick(now);
  ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
+ ctx.distantForest?.updateVisibility?.(ctx.yaw);
  ctx.renderer.render(ctx.scene,ctx.camera);
 }
 

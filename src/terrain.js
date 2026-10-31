@@ -38,13 +38,19 @@ export class TerrainSystem {
     // around the shore; a gentle Fresnel term keeps grazing angles reflective.
     // One shared material and one draw call per pond, no reflection render pass.
     this.waterTime={value:0};
+    this.waterDetail={value:1};
     this.waterMaterial=new THREE.MeshPhongMaterial({
       color:0xa2dfdf,emissive:0x000000,specular:0xe2ffff,
       shininess:125,transparent:true,opacity:.58,depthWrite:false,
       side:THREE.DoubleSide,
     });
+    this.waterQuality='high';
+    this.lakeVisibility=true;
+    this.viewDistance=this.baseCameraFar;
+    this.lakeViewDistance=380;
     this.waterMaterial.onBeforeCompile=shader=>{
       shader.uniforms.fcWaterTime=this.waterTime;
+      shader.uniforms.fcWaterDetail=this.waterDetail;
       shader.vertexShader=shader.vertexShader
         .replace('#include <common>',`#include <common>
           attribute float fcWaterDepth;
@@ -57,15 +63,17 @@ export class TerrainSystem {
         .replace('#include <common>',`#include <common>
           varying float vFcWaterDepth;
           varying vec3 vFcWaterWorld;
-          uniform float fcWaterTime;`)
+          uniform float fcWaterTime;
+          uniform float fcWaterDetail;`)
         .replace('#include <map_fragment>',`#include <map_fragment>
           // Transparent shallows, slightly deeper blue-green toward the center.
           float fcDepth=smoothstep(0.0,2.5,max(0.0,vFcWaterDepth));
-          float fcGrazing=pow(1.0-clamp(abs(normalize(
-            cameraPosition-vFcWaterWorld).y),0.0,1.0),2.0);
-          float fcRipples=sin(vFcWaterWorld.x*1.8+vFcWaterWorld.z*.55+
+          float fcGrazing=fcWaterDetail>0.5
+            ? pow(1.0-clamp(abs(normalize(
+              cameraPosition-vFcWaterWorld).y),0.0,1.0),2.0) : 0.0;
+          float fcRipples=fcWaterDetail>0.5 ? sin(vFcWaterWorld.x*1.8+vFcWaterWorld.z*.55+
             fcWaterTime*.65)*sin(vFcWaterWorld.z*1.6-
-            vFcWaterWorld.x*.42-fcWaterTime*.48);
+            vFcWaterWorld.x*.42-fcWaterTime*.48) : 0.0;
           diffuseColor.rgb*=mix(vec3(1.0),vec3(.67,.90,.96),fcDepth*.56);
           diffuseColor.rgb+=vec3(.018,.030,.030)*fcRipples;
           diffuseColor.a*=mix(.24,.78,fcDepth);
@@ -223,6 +231,23 @@ export class TerrainSystem {
     return mesh;
   }
 
+  setGraphics({terrainSegments=this.segments,viewDistance=this.viewDistance,
+    lakeViewDistance=this.lakeViewDistance,lakeVisibility=this.lakeVisibility,
+    waterQuality=this.waterQuality}={}){
+    const segments=Math.max(16,Math.min(64,terrainSegments));
+    if(segments!==this.segments){
+      this.segments=segments;
+      this.clear();
+    }
+    this.viewDistance=viewDistance;
+    this.baseRadius=Math.max(2,Math.ceil(viewDistance/this.chunkSize));
+    this.lakeViewDistance=lakeViewDistance;
+    this.lakeVisibility=lakeVisibility;
+    this.waterQuality=waterQuality;
+    this.waterDetail.value=waterQuality==='simple'?0:1;
+    this.visibilityTarget=this.lakeVisibility?this.visibilityTarget:0;
+  }
+
   // Lake panorama: dissolve the fog and move the far clipping plane as the
   // shore approaches. Preserve the existing misty forest away from lakes.
   updateVisibilityTarget(x,z){
@@ -239,7 +264,8 @@ export class TerrainSystem {
       const smooth=value*value*(3-2*value);
       influence=Math.max(influence,smooth);
     }
-    this.visibilityTarget=influence;
+    this.visibilityTarget=this.lakeVisibility?influence:0;
+    influence=this.visibilityTarget;
     // Extra terrain needed before the fog clears; avoid exposing a hard
     // square edge of the heightfield across the far shore.
     this.radius=Math.max(influence,this.visibility)>.06
@@ -258,7 +284,8 @@ export class TerrainSystem {
       this.fog.density=this.baseFogDensity+
         (.0032-this.baseFogDensity)*this.visibility;
     if(this.camera){
-      const targetFar=this.baseCameraFar+100*this.visibility;
+      const targetFar=this.viewDistance+
+        Math.max(0,this.lakeViewDistance-this.viewDistance)*this.visibility;
       if(Math.abs(this.camera.far-targetFar)>1){
         this.camera.far=targetFar;
         this.camera.updateProjectionMatrix();

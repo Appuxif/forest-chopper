@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectDiagnostics, formatDiagnostics} from '../src/diagnostics.js';
+import {collectDiagnostics, formatDiagnostics,getGpuRendererName} from '../src/diagnostics.js';
+import {sanitizeSettings} from '../src/settings.js';
 import {createSettings} from '../src/settings.js';
 
 test('collectDiagnostics is bounded to local counters and tolerates absent/invalid renderer info', () => {
@@ -57,7 +58,27 @@ test('opt-in FPS overlay samples diagnostics once a second and never stores worl
   toggle.checked=false;
   toggle.onchange();
   assert.equal(fps.hidden,true);
-  assert.deepEqual(Object.keys(JSON.parse(storage.saved.at(-1)[1])).sort(),['mouseSensitivity','showFps','windEnabled','fov','dayCycleEnabled','autoSprint','quality','maxFps','shadowDistance','shadowRefreshSeconds','characterShadowsEnabled','characterShadowDistance','shadowContrast','spruceFoliageVisible','spruceFoliageShadows','spruceFoliageDensity','grassDensity','grassDistance','grassMinSize','grassMaxSize','grassWidth','grassTurnMin','grassTurnMax','cameraHeight','cameraSide','cameraDistance','cameraPitchLimit'].sort());
+  assert.deepEqual(Object.keys(JSON.parse(storage.saved.at(-1)[1])).sort(),Object.keys(sanitizeSettings(null)).sort());
   settings.tick(3100,ctx);
   assert.equal(settings.showFps,false);
+});
+
+
+test('GPU model prefers unmasked WebGL adapter, handles ANGLE and browser restrictions',()=>{
+  const gpu={UNMASKED_RENDERER_WEBGL:37446};
+  const make=(renderer,hidden=false)=>({
+    getContext(){return {
+      RENDERER:7937,
+      getExtension:()=>hidden?null:gpu,
+      getParameter:key=>key===37446?renderer:'WebKit WebGL',
+    };},
+  });
+  assert.equal(getGpuRendererName(make(
+    'ANGLE (Intel, Mesa Intel(R) Iris(R) Xe Graphics (ADL GT2), OpenGL ES 3.2)')),
+  'Mesa Intel(R) Iris(R) Xe Graphics (ADL GT2)');
+  assert.equal(getGpuRendererName(make('ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Laptop GPU (0x2504), D3D11)')),
+    'NVIDIA GeForce RTX 3060 Laptop GPU');
+  assert.equal(getGpuRendererName(make('',true)),'скрыто браузером');
+  assert.equal(getGpuRendererName({}), 'недоступно');
+  assert.equal(getGpuRendererName({getContext(){throw Error('blocked')}}),'скрыто браузером');
 });
