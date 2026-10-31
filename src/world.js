@@ -2,7 +2,9 @@ import {decorResourceId} from './collectible-decor.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {treeCandidate,treeCanSpawn} from './tree-spacing.js?v=20261030-spacing-4m1';
 import {createTreeBatch} from './tree-instancing.js?v=20261031-spruce-sway1';
+import {createDistantForest} from './distant-forest.js';
 export function createWorld(ctx) {
+const distantForest=createDistantForest(ctx);
 function rand(x,z,n=0){let v=Math.sin(x*127.1+z*311.7+n*78.233+ctx.seed)*43758.5453;return v-Math.floor(v)}
 // Shared white-tinted materials are reused across chunks and never disposed
 // while another batch may still reference them.
@@ -141,7 +143,33 @@ for(const obj of decor.userData.reactivePlants){
 ctx.rockColliders?.set(key,rockColliders);
 ctx.forestResources?.syncDecorChunk?.(decor);
 }
-function updateChunks(){ctx.terrain.update(ctx.px,ctx.pz,ctx.seed);const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);for(let x=cx-ctx.radius;x<=cx+ctx.radius;x++)for(let z=cz-ctx.radius;z<=cz+ctx.radius;z++)build(x,z);for(const [key,group] of ctx.chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>ctx.radius+1||Math.abs(z-cz)>ctx.radius+1){group.userData.treeBatch?.dispose();for(const geo of group.userData.terrainGeometries??[])geo.dispose();ctx.scene.remove(group);ctx.chunks.delete(key);ctx.rockColliders?.delete(key)}}for(const [key,t] of ctx.trees){if(Math.abs(t.position.x-ctx.px)>ctx.chunkSize*(ctx.radius+1.5)||Math.abs(t.position.z-ctx.pz)>ctx.chunkSize*(ctx.radius+1.5)){t.userData.treeBatch?.remove(t,false);ctx.scene.remove(t);ctx.trees.delete(key)}}}
+function updateChunks(){
+  ctx.terrain.update(ctx.px,ctx.pz,ctx.seed);
+  const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);
+  const radius=ctx.radius;
+  // Detailed, interactive forest remains close to the player.
+  for(let x=cx-radius;x<=cx+radius;x++){
+    for(let z=cz-radius;z<=cz+radius;z++)build(x,z);
+  }
+  for(const [key,group] of ctx.chunks){
+    const [x,z]=key.split(',').map(Number);
+    if(Math.abs(x-cx)<=radius+1&&Math.abs(z-cz)<=radius+1)continue;
+    group.userData.treeBatch?.dispose();
+    for(const geo of group.userData.terrainGeometries??[])geo.dispose();
+    ctx.scene.remove(group);
+    ctx.chunks.delete(key);
+    ctx.rockColliders?.delete(key);
+  }
+  for(const [key,tree] of ctx.trees){
+    if(Math.abs(tree.position.x-ctx.px)<=ctx.chunkSize*(radius+1.5)&&
+       Math.abs(tree.position.z-ctx.pz)<=ctx.chunkSize*(radius+1.5))continue;
+    tree.userData.treeBatch?.remove(tree,false);
+    ctx.scene.remove(tree);
+    ctx.trees.delete(key);
+  }
+  // Cheap silhouettes fill the visible horizon, including the far lake shore.
+  distantForest.update();
+}
 
-return {rand, makeTree, build, updateChunks};
+return {rand, makeTree, build, updateChunks, distantForest};
 }

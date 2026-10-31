@@ -1,5 +1,5 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261031-ponds1';
+import {createWorld} from './world.js?v=20261031-distant-forest1';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
@@ -15,9 +15,9 @@ import {TerrainSystem} from './terrain.js?v=20261031-lake-panorama1';
 import {createPhysics} from './physics.js?v=20261031-ponds1';
 import {createBuilding} from './building.js?v=20261031-ponds1';
 import {createChopping} from './chopping.js?v=20261031-jump-energy1';
-import {createControls} from './controls.js?v=20261031-bench-four-angles1';
+import {createControls} from './controls.js?v=20261101-distant-forest1';
 import {createPlayer} from './player.js?v=20261031-water-footsteps1';
-import {createMultiplayer} from './multiplayer.js?v=20261031-water-footsteps1';
+import {createMultiplayer} from './multiplayer.js?v=20261101-distant-forest1';
 import {createMinimap} from './minimap.js?v=20261031-rare-lakes1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261031-inventory-drag1';
@@ -156,7 +156,7 @@ const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere});
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null,inventory=null,vitals=null,forestResources=null,groundBoxes=null;
 
-let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
+let distantForest, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
  get $(){return $;},
  get chatHistory(){return chatHistory;},
@@ -321,7 +321,8 @@ const plantInteraction=createPlantInteraction(ctx);
 const wind=createWind(ctx);
 const landmarks=createLandmarks(ctx);
 const spruceDiagnostics=createSpruceDiagnostics(THREE,ctx);
-({rand, makeTree, build, updateChunks}=createWorld(ctx));
+({rand, makeTree, build, updateChunks, distantForest}=createWorld(ctx));
+ctx.distantForest=distantForest;
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, placeError, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
 ({aimed, spawnChips, chop}=createChopping(ctx));
