@@ -170,6 +170,34 @@ Actual counts depend on equipped items; a second jacket, long hair or other
 layers can push beyond 10k. The 10k target refers to one ordinary clothed
 avatar without extra layers. A two-layer outfit can reach ~11–12k.
 
+### Runtime body-part occlusion (Step 1)
+
+`body-zones.js` categorizes the **existing body SkinnedMesh triangles** into
+coarse anatomical regions from their bind-pose skinning weights: chest,
+shoulders, upper/forearms, hands, pelvis, upper/lower thighs, calves, feet,
+neck and head. Coverage comes from the existing `clothing.json` field
+`hidesBodyZones` (`shirt`, `legs`, `boots`, etc.).
+
+At `equip()` / `unequip()` the actor recomputes the body mesh's index buffer
+and skips triangles beneath clothes. No body meshes/bones are removed, the
+whole skinned rig continues to animate, and exposed face, hands, neck, and
+forearms (under short sleeves) stay rendered. **All geometry is actor-owned**;
+one player's clothes cannot hide another player's skin. The skin is restored
+when clothing is removed. This uses no new draw calls or morphs.
+
+For the default male outfit the loaded GLB contains 10,052 triangles, but
+**7,484 are actually rendered** with skin masking (2,568 occluded). The
+female/male skinned rig remains unchanged. Tested with switching clothing,
+independent avatars and idle/walk/run/jump.
+
+```
+node --test tests/body-zones.test.mjs
+```
+
+This is deliberately a *coarse* indie-game solution; exact sleeve openings,
+collars, transparent fabric and intersections between **two clothing layers**
+may still need manual work or finer masking in a later iteration.
+
 Notes: The Blender process first bakes the selected body/face profile to mesh,
 then **removes all 92 shape keys**, then selectively decimates the source
 geometry. Clothing is decimated and slightly expanded at the surface to reduce

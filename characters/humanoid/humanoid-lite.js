@@ -6,6 +6,7 @@
 import * as THREE from 'https://esm.sh/three@0.170.0';
 import {GLTFLoader} from 'https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'https://esm.sh/three@0.170.0/examples/jsm/utils/SkeletonUtils.js';
+import {makeBodySkinZones,visibleBodyIndices} from './body-zones.js';
 
 const BASE=new URL('./',import.meta.url);
 const loader=new GLTFLoader();
@@ -55,7 +56,12 @@ export class LiteHumanoid {
       if(o.isSkinnedMesh){this.meshes.push(o);o.castShadow=true;o.frustumCulled=false;}
     });
     if(this.bones.size!==53)throw Error('Expected exactly 53 humanoid joints');
-    this.skeleton=this.meshes.find(o=>o.name==='Body')?.skeleton || this.meshes[0].skeleton;
+    this.body=this.meshes.find(o=>o.name==='Body')||this.meshes[0];
+    this.skeleton=this.body.skeleton;
+    // Clone indexed geometry per avatar: hiding skin must not modify cached GLBs
+    // or other multiplayer characters with a different wardrobe.
+    this.body.geometry=this.body.geometry.clone();
+    this._bodySkinZones=makeBodySkinZones(this.body);
     this.mixer=new THREE.AnimationMixer(this.root);
     this.clips=clips;
     this.action=null;
@@ -135,6 +141,8 @@ export class LiteHumanoid {
     mesh.userData.assetId=id;
     this.unequip(slot);
     this.parts.set(slot,mesh);
+    mesh.userData.catalogId=id;
+    this.updateBodyVisibility();
     if(slot==='hair')this.setHairColor(this.appearance.hairColor);
     this.appearance[slot]=id;
     return this;
@@ -143,7 +151,16 @@ export class LiteHumanoid {
     const previous=this.parts.get(slot);
     if(previous){previous.removeFromParent();previous.skeleton.dispose();this.parts.delete(slot);}
     this.appearance[slot]=null;
+    this.updateBodyVisibility();
     return this;
+  }
+  updateBodyVisibility(){
+    const equipped=[...this.parts.values()]
+      .map(p=>this.catalog.clothing.items.find(i=>i.id===p.userData.catalogId))
+      .filter(Boolean);
+    const indices=visibleBodyIndices(this._bodySkinZones,equipped);
+    // Body geometry is actor-owned: index updates cannot affect other actors.
+    this.body.geometry.setIndex(new THREE.BufferAttribute(indices,1));
   }
   attach(slot,object,{position,rotation,scale}={}){
     const socket=this.sockets.get(slot);
