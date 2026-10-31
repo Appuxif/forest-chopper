@@ -86,7 +86,7 @@ async function reload(){
    $('animation').replaceChildren(...actor.clips.map(a=>{const el=document.createElement('option');el.value=el.textContent=a.name;return el}));
    $('animation').value='idle';actor.mixer.timeScale=+$('speed').value;
    drawStats();setStatus('Готово');
-   window.humanoidLitePreview={actor,cfg};
+   window.humanoidLitePreview={actor,cfg,camera,orbit};
  }catch(err){setStatus('Ошибка: '+err.message);console.error(err);}
 }
 $('body').onchange=e=>{cfg.body=e.target.value;void reload()};

@@ -6,7 +6,7 @@
 import * as THREE from 'https://esm.sh/three@0.170.0';
 import {GLTFLoader} from 'https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'https://esm.sh/three@0.170.0/examples/jsm/utils/SkeletonUtils.js';
-import {makeBodySkinZones,visibleBodyIndices} from './body-zones.js';
+import {makeBodySkinZones,insetBodyPositions} from './body-zones.js';
 
 const BASE=new URL('./',import.meta.url);
 const loader=new GLTFLoader();
@@ -58,8 +58,8 @@ export class LiteHumanoid {
     if(this.bones.size!==53)throw Error('Expected exactly 53 humanoid joints');
     this.body=this.meshes.find(o=>o.name==='Body')||this.meshes[0];
     this.skeleton=this.body.skeleton;
-    // Clone indexed geometry per avatar: hiding skin must not modify cached GLBs
-    // or other multiplayer characters with a different wardrobe.
+    // Every avatar gets its own body geometry: garments may inset skin without
+    // changing other players' bodies or the cached GLB templates.
     this.body.geometry=this.body.geometry.clone();
     this._bodySkinZones=makeBodySkinZones(this.body);
     this.mixer=new THREE.AnimationMixer(this.root);
@@ -137,7 +137,35 @@ export class LiteHumanoid {
     mesh.bind(skeleton,mesh.bindMatrix.clone());
     mesh.frustumCulled=false;mesh.castShadow=true;mesh.receiveShadow=true;
     mesh.name='Equip.'+slot+'.'+id;
+    // The stock MakeHuman shirts flare away from the abdomen; a restrained
+    // torso-only fit (~1 cm) makes them less hollow while keeping free arms.
+    // Clone the geometry before editing: other players share the source GLB.
+    if(slot==='top'&&(id==='shirt'||id==='tshirt')){
+      const geo=mesh.geometry=mesh.geometry.clone();
+      const position=geo.getAttribute('position');
+      const smooth=(a,b,x)=>{
+        const t=Math.min(1,Math.max(0,(x-a)/(b-a)));
+        return t*t*(3-2*t);
+      };
+      for(let i=0;i<position.count;i++){
+        const x=position.getX(i),y=position.getY(i),z=position.getZ(i);
+        const center=1-smooth(.23,.32,Math.abs(x));
+        const shoulderFade=1-smooth(1.30,1.40,y);
+        const fit=.055*center*shoulderFade;
+        position.setXYZ(i,x*(1-fit),y,z*(1-fit));
+      }
+      position.needsUpdate=true;
+      geo.computeVertexNormals();
+    }
     mesh.material=mesh.material.clone();
+    // Garments are thin shells; their inside must remain visible when viewed
+    // through collars, open sleeves, or from beneath the shirt/coat.
+    if(slot!=='hair'){
+      for(const material of (Array.isArray(mesh.material)?mesh.material:[mesh.material])){
+        material.side=THREE.DoubleSide;
+        material.needsUpdate=true;
+      }
+    }
     mesh.userData.assetId=id;
     this.unequip(slot);
     this.parts.set(slot,mesh);
@@ -158,9 +186,20 @@ export class LiteHumanoid {
     const equipped=[...this.parts.values()]
       .map(p=>this.catalog.clothing.items.find(i=>i.id===p.userData.catalogId))
       .filter(Boolean);
-    const indices=visibleBodyIndices(this._bodySkinZones,equipped);
-    // Body geometry is actor-owned: index updates cannot affect other actors.
-    this.body.geometry.setIndex(new THREE.BufferAttribute(indices,1));
+    const coordinates=insetBodyPositions(this._bodySkinZones,equipped);
+    const geometry=this.body.geometry;
+    const position=geometry.getAttribute('position');
+    position.array.set(coordinates);
+    position.needsUpdate=true;
+    if(equipped.some(item=>item.hidesBodyZones?.length)){
+      geometry.computeVertexNormals();
+    }else{
+      const normal=geometry.getAttribute('normal');
+      normal.array.set(this._bodySkinZones.normals);
+      normal.needsUpdate=true;
+    }
+    // Full index buffer stays in place: collar, wrists, hems and underside
+    // always have a continuous skin surface. No holes, no additional meshes.
   }
   attach(slot,object,{position,rotation,scale}={}){
     const socket=this.sockets.get(slot);

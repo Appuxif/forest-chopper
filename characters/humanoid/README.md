@@ -170,33 +170,37 @@ Actual counts depend on equipped items; a second jacket, long hair or other
 layers can push beyond 10k. The 10k target refers to one ordinary clothed
 avatar without extra layers. A two-layer outfit can reach ~11–12k.
 
-### Runtime body-part occlusion (Step 1)
+### Continuous skin under clothing (replaces coarse triangle culling)
 
-`body-zones.js` categorizes the **existing body SkinnedMesh triangles** into
-coarse anatomical regions from their bind-pose skinning weights: chest,
-shoulders, upper/forearms, hands, pelvis, upper/lower thighs, calves, feet,
-neck and head. Coverage comes from the existing `clothing.json` field
-`hidesBodyZones` (`shirt`, `legs`, `boots`, etc.).
+Earlier versions removed entire body triangles beneath clothes. This created
+genuine open holes: empty interiors when looking from below shirts, along the
+neck opening, cuffs, and the edges of shorts and trousers.
 
-At `equip()` / `unequip()` the actor recomputes the body mesh's index buffer
-and skips triangles beneath clothes. No body meshes/bones are removed, the
-whole skinned rig continues to animate, and exposed face, hands, neck, and
-forearms (under short sleeves) stay rendered. **All geometry is actor-owned**;
-one player's clothes cannot hide another player's skin. The skin is restored
-when clothing is removed. This uses no new draw calls or morphs.
+`body-zones.js` now classifies the body by skinning weights once, and computes
+a gentle *inward offset* (maximum 3.2 cm) of the **covered skin vertices** when
+equipment changes. It blends to zero at neck/face/hands, shirt collar/hem, and
+the boundary of short trousers. The body remains a continuous, closed mesh:
+**no triangle or index is removed, no bone or morph is changed**. The two
+genders and all presets share this process; each actor owns its geometry.
 
-For the default male outfit the loaded GLB contains 10,052 triangles, but
-**7,484 are actually rendered** with skin masking (2,568 occluded). The
-female/male skinned rig remains unchanged. Tested with switching clothing,
-independent avatars and idle/walk/run/jump.
+Cloth materials render both front and back sides, so you can see the fabric's
+interior from under a shirt or inside a sleeve. Basic shirt/T-shirt torso
+geometry is also drawn roughly 1 cm closer, without tightening the shoulders.
+Removing items restores the original unmodified skin geometry and normals.
 
-```
+The ordinary dressed male has **10,052 rendered triangles** again (versus
+7,484 with the previous hole-producing culling). This is a deliberate quality
+trade-off: no new SkinnedMesh or draw call, just the original body surface.
+This operation runs only when changing clothes, not every animation frame.
+
+```bash
 node --test tests/body-zones.test.mjs
 ```
 
-This is deliberately a *coarse* indie-game solution; exact sleeve openings,
-collars, transparent fabric and intersections between **two clothing layers**
-may still need manual work or finer masking in a later iteration.
+The clothing pieces themselves are still thin, sometimes loosely fitting
+models. Opening edges, cuffs, and layered garments can still benefit from
+actual tailored thickness, better topology or manual fitting in Blender.
+The fix removes missing-skin artifacts, not every cloth/cloth penetration.
 
 Notes: The Blender process first bakes the selected body/face profile to mesh,
 then **removes all 92 shape keys**, then selectively decimates the source
