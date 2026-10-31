@@ -46,7 +46,7 @@ test('bench validates geometry, recipe and costs exactly three wood',()=>{
   assert.equal(f.craft.items.size,0);
   assert.equal(invalidations,2,'removing a bench invalidates the static shadow map');
   assert.equal(f.created.geom,2);
-  assert.equal(f.created.mat,2);
+  assert.equal(f.created.mat,3); // Includes shared green ghost material for new inventory placement
   assert.equal(f.marks.length,2,'persist each confirmed local change');
 });
 test('online crafting only sends commands and never optimistically debits wood',()=>{

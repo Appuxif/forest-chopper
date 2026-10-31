@@ -1,6 +1,8 @@
 """Regression coverage for real-player WebSocket and isolated save/load."""
 import asyncio
 import json
+import time
+import math
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -8,7 +10,7 @@ from pathlib import Path
 
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import connect
-from forest_server import World, tree_info
+from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resources_update, inv_add, BOX_TTL_SECONDS
 
 
 class WorldTests(unittest.IsolatedAsyncioTestCase):
@@ -126,54 +128,58 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             welcome = await self.receive(alice, 'welcome')
             async with connect(self.url) as bob:
                 await self.receive(bob, 'welcome')
-                owner = next(p for p in self.world.clients.values() if p['id'] == welcome['id'])
-                # No wood cannot place; server must not emit a log_add.
-                await alice.send(json.dumps({'type': 'place', 'x': 2, 'z': 0, 'orientation': 0}))
+                owner=next(p for p in self.world.clients.values() if p['id']==welcome['id'])
+                # Old requests cannot bypass the equipped-inventory protocol.
+                await alice.send(json.dumps({'type':'place','x':2,'z':0,'orientation':0}))
                 with self.assertRaises(asyncio.TimeoutError):
-                    await asyncio.wait_for(bob.recv(), .08)
-                self.assertFalse(self.world.logs)
-                owner['wood'] = 4
-                owner['last_build'] = 0
-                await alice.send(json.dumps({'type': 'place', 'x': 2, 'z': 0, 'orientation': 0}))
-                placed = await self.receive(bob, 'log_add')
-                self.assertEqual(placed['by'], welcome['id'])
-                self.assertEqual(placed['log']['level'], 0)
-                self.assertEqual(placed['wood'], 3)
-                lid = placed['log']['id']
-                self.assertEqual(self.world.logs[lid]['x'], 2)
-                # Alice received the same broadcast. Consume it to avoid stale events.
-                self.assertEqual((await self.receive(alice, 'log_add'))['log']['id'], lid)
-                # Invalid coordinates and orientations are ignored.
-                for payload in ({'x': 1.3, 'z': 0, 'orientation': 0},
-                                {'x': 2, 'z': 0, 'orientation': 7},
-                                {'x': 200, 'z': 0, 'orientation': 0},
-                                {'x': float('nan'), 'z': 0, 'orientation': 0}):
-                    owner['last_build'] = 0
-                    await alice.send(json.dumps({'type': 'place', **payload}))
+                    await asyncio.wait_for(bob.recv(),.06)
+                inv_give_logs(owner['inventory'],4)
+                owner['wood']=4
+                await alice.send(json.dumps({'type':'select_slot','slot':1}))
+                self.assertFalse((await self.receive(bob,'equipment'))['axe_equipped'])
+                await self.receive(alice,'inventory_state')
+                # Equipped log spends one from all bag stacks.
+                await alice.send(json.dumps({'type':'place_item','x':2,'z':0,'orientation':0}))
+                placed=await self.receive(bob,'log_add')
+                self.assertEqual(placed['log']['level'],0)
+                self.assertEqual(placed['wood'],3)
+                lid=placed['log']['id']
+                self.assertEqual((await self.receive(alice,'log_add'))['log']['id'],lid)
+                await self.receive(alice,'inventory_state')
+                for payload in ({'x':1.3,'z':0,'orientation':0},
+                                {'x':2,'z':0,'orientation':7},
+                                {'x':200,'z':0,'orientation':0},
+                                {'x':float('nan'),'z':0,'orientation':0}):
+                    owner['last_build']=0
+                    await alice.send(json.dumps({'type':'place_item',**payload}))
                     with self.assertRaises(asyncio.TimeoutError):
-                        await asyncio.wait_for(bob.recv(), .035)
-                self.assertEqual(len(self.world.logs), 1)
-                # Height cap must not silently spend wood.
-                owner['last_build'] = 0
-                self.world.logs[lid]['level'] = 15
-                await alice.send(json.dumps({'type': 'place', 'x': 2, 'z': 0, 'orientation': 0}))
+                        await asyncio.wait_for(bob.recv(),.035)
+                self.assertEqual(len(self.world.logs),1)
+                self.world.logs[lid]['level']=15
+                owner['last_build']=0
+                await alice.send(json.dumps({'type':'place_item','x':2,'z':0,'orientation':0}))
                 with self.assertRaises(asyncio.TimeoutError):
-                    await asyncio.wait_for(bob.recv(), .06)
-                self.assertEqual(owner['wood'], 3)
-                self.world.logs[lid]['level'] = 0
+                    await asyncio.wait_for(bob.recv(),.055)
+                self.assertEqual(owner['wood'],3)
+                self.world.logs[lid]['level']=0
                 self.world.save()
-                persisted = World(self.path)
-                self.assertIn(lid, persisted.logs)
-                self.assertEqual(persisted.logs[lid]['level'], 0)
-                owner['last_build'] = 0
-                await alice.send(json.dumps({'type': 'remove', 'id': lid + 999}))
+                self.assertEqual(World(self.path).logs[lid]['level'],0)
+                # An axe must be selected before a structure can be dismantled.
+                owner['last_build']=0
+                await alice.send(json.dumps({'type':'hit_structure','kind':'log','id':lid}))
                 with self.assertRaises(asyncio.TimeoutError):
-                    await asyncio.wait_for(bob.recv(), .06)
-                owner['last_build'] = 0
-                await alice.send(json.dumps({'type': 'remove', 'id': lid}))
-                removed = await self.receive(bob, 'log_remove')
-                self.assertEqual(removed, {'type': 'log_remove', 'id': lid,
-                                           'by': welcome['id'], 'wood': 4})
+                    await asyncio.wait_for(bob.recv(),.055)
+                await alice.send(json.dumps({'type':'select_slot','slot':0}))
+                self.assertTrue((await self.receive(bob,'equipment'))['axe_equipped'])
+                await self.receive(alice,'inventory_state')
+                await alice.send(json.dumps({'type':'hit_structure','kind':'log','id':lid+100}))
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(bob.recv(),.055)
+                owner['last_build']=0
+                await alice.send(json.dumps({'type':'hit_structure','kind':'log','id':lid}))
+                removed=await self.receive(bob,'log_remove')
+                self.assertEqual(removed['wood'],4)
+                self.assertEqual(inv_logs(owner['inventory']),4)
                 self.assertFalse(self.world.logs)
                 self.assertFalse(World(self.path).logs)
 
@@ -207,39 +213,142 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             async with connect(self.url) as bob:
                 await self.receive(bob,'welcome')
                 owner=next(p for p in self.world.clients.values() if p['id']==welcome['id'])
-                cmd={'type':'craft','recipe':'bench','x':4,'z':0,'orientation':0}
-                await alice.send(json.dumps(cmd))
+                # Crafting creates a bag item, never directly builds world furniture.
+                await alice.send(json.dumps({'type':'craft_item','recipe':'bench'}))
                 with self.assertRaises(asyncio.TimeoutError):
-                    await asyncio.wait_for(bob.recv(),.07)
-                owner['wood']=10
-                owner['last_build']=0
-                await alice.send(json.dumps(cmd))
+                    await asyncio.wait_for(bob.recv(),.05)
+                inv_give_logs(owner['inventory'],10);owner['wood']=10
+                await alice.send(json.dumps({'type':'craft_item','recipe':'bench'}))
+                updated=await self.receive(alice,'inventory_state')
+                self.assertEqual(updated['wood'],7)
+                self.assertEqual(inv_logs(owner['inventory']),7)
+                bench_slot=next(i for i,x in enumerate(owner['inventory']) if x and x['id']=='bench')
+                self.assertLess(bench_slot,4)
+                self.assertFalse(self.world.furniture)
+                await alice.send(json.dumps({'type':'select_slot','slot':bench_slot}))
+                await self.receive(bob,'equipment')
+                await self.receive(alice,'inventory_state')
+                await alice.send(json.dumps({'type':'place_item','x':4,'z':0,'orientation':0}))
                 add=await self.receive(bob,'furniture_add')
                 self.assertEqual(add['wood'],7)
                 fid=add['item']['id']
                 self.assertEqual(add['item']['kind'],'bench')
                 self.assertEqual(self.world.furniture[fid]['x'],4)
                 self.assertEqual((await self.receive(alice,'furniture_add'))['item']['id'],fid)
+                await self.receive(alice,'inventory_state')
                 self.assertEqual(len(World(self.path).furniture),1)
-                for payload in ({**cmd,'x':999}, {**cmd,'orientation':9},
-                                {**cmd,'x':float('nan')}, {**cmd,'x':4},
-                                {**cmd,'recipe':'gold'}):
+                for payload in ({'x':999,'z':0,'orientation':0},
+                                {'x':4,'z':0,'orientation':9},
+                                {'x':float('nan'),'z':0,'orientation':0}):
                     owner['last_build']=0
-                    await alice.send(json.dumps(payload))
+                    await alice.send(json.dumps({'type':'place_item',**payload}))
                     with self.assertRaises(asyncio.TimeoutError):
                         await asyncio.wait_for(bob.recv(),.035)
-                self.assertEqual(len(self.world.furniture),1)
                 owner['last_build']=0
-                await alice.send(json.dumps({'type':'remove_furniture','id':fid+50}))
+                await alice.send(json.dumps({'type':'hit_structure','kind':'bench','id':fid}))
                 with self.assertRaises(asyncio.TimeoutError):
                     await asyncio.wait_for(bob.recv(),.05)
+                await alice.send(json.dumps({'type':'select_slot','slot':0}))
+                await self.receive(bob,'equipment')
+                await self.receive(alice,'inventory_state')
                 owner['last_build']=0
-                await alice.send(json.dumps({'type':'remove_furniture','id':fid}))
+                await alice.send(json.dumps({'type':'hit_structure','kind':'bench','id':fid}))
                 removed=await self.receive(bob,'furniture_remove')
-                self.assertEqual(removed['wood'],9)
+                self.assertEqual(removed['wood'],7)
                 self.assertFalse(self.world.furniture)
+                updated=await self.receive(alice,'inventory_state')
+                self.assertEqual(sum(x is not None and x['id']=='bench' for x in updated['inventory']['slots']),1)
                 self.assertFalse(World(self.path).furniture)
 
+    async def test_inventory_capacity_and_authoritative_recipe_rejection(self):
+        async with connect(self.url) as alice:
+            await self.receive(alice,'welcome')
+            owner=next(iter(self.world.clients.values()))
+            # All 12 slots full (axe + 11 log stacks), even though wood can be spent.
+            for i in range(1,12):
+                owner['inventory'][i]={'id':'log','count':5}
+            owner['wood']=55
+            await alice.send(json.dumps({'type':'craft_item','recipe':'bench'}))
+            denied=await self.receive(alice,'action_denied')
+            self.assertIn('свободный слот',denied['reason'])
+            self.assertEqual(owner['wood'],55)
+            self.assertEqual(inv_logs(owner['inventory']),55)
+            # Also reject destructive axe hits if return resource cannot fit.
+            owner['selected']=0
+            self.world.furniture[100]={'kind':'bench','x':1,'z':0,'orientation':0}
+            await alice.send(json.dumps({'type':'hit_structure','kind':'bench','id':100}))
+            denied=await self.receive(alice,'action_denied')
+            self.assertIn('Сумка',denied['reason'])
+            self.assertIn(100,self.world.furniture)
+            self.assertEqual(sum(item is not None and item['id']=='bench' for item in owner['inventory']),0)
+            # Logs must also respect capacity at the source.
+            self.assertEqual(inv_give_logs(owner['inventory'],10),0)
+            self.assertEqual(owner['wood'],55)
+
+    async def test_gather_branches_stones_craft_axe_and_pickup_box_by_another_player(self):
+        async with connect(self.url) as alice:
+            wa=await self.receive(alice,'welcome')
+            owner=next(p for p in self.world.clients.values() if p['id']==wa['id'])
+            async with connect(self.url) as bob:
+                wb=await self.receive(bob,'welcome')
+                recipient=next(p for p in self.world.clients.values() if p['id']==wb['id'])
+                node=next(n for n in wa['resources'] if n['kind'] in ('stone','branch'))
+                owner.update(x=node['x'],z=node['z'])
+                await alice.send(json.dumps({'type':'collect_resource','id':node['id']}))
+                await self.receive(alice,'resources_state')
+                state=await self.receive(alice,'inventory_state')
+                self.assertEqual(sum(x['count'] for x in state['inventory']['slots'] if x and x['id']==node['kind']),1)
+                self.assertNotIn(node['id'],owner['resources'])
+                # Server makes crafting authoritative; 3 branches + 2 stones.
+                inv_add(owner['inventory'],{'id':'branch','count':3})
+                inv_add(owner['inventory'],{'id':'stone','count':2})
+                await alice.send(json.dumps({'type':'craft_axe'}))
+                state=await self.receive(alice,'inventory_state')
+                self.assertEqual(sum(x['id']=='axe' for x in state['inventory']['slots'] if x),2)
+                axe_slot=next(i for i,x in enumerate(owner['inventory']) if x and x['id']=='axe' and i!=0)
+                await alice.send(json.dumps({'type':'drop_item','slot':axe_slot}))
+                added=await self.receive(bob,'box_add')
+                self.assertEqual(added['box']['item'],{'id':'axe','tier':0})
+                self.assertEqual(added['box']['expires_at']>time.time()+3500,True)
+                await self.receive(alice,'box_add')
+                await self.receive(alice,'inventory_state')
+                box_id=added['box']['id']
+                recipient.update(x=added['box']['x'],z=added['box']['z'])
+                await bob.send(json.dumps({'type':'pickup_box','id':box_id}))
+                self.assertEqual((await self.receive(bob,'box_remove'))['id'],box_id)
+                self.assertEqual((await self.receive(alice,'box_remove'))['id'],box_id)
+                state=await self.receive(bob,'inventory_state')
+                self.assertEqual(sum(x['id']=='axe' for x in state['inventory']['slots'] if x),2)
+                self.assertNotIn(box_id,self.world.boxes)
+                await bob.send(json.dumps({'type':'pickup_box','id':box_id}))
+                with self.assertRaises(asyncio.TimeoutError):await asyncio.wait_for(bob.recv(),.055)
+
+    async def test_box_ttl_is_3600_seconds_and_does_not_depend_on_any_player_position(self):
+        self.assertEqual(BOX_TTL_SECONDS,3600)
+        now=time.time()
+        self.world.boxes[12]={'x':3.0,'z':4.0,'expires_at':now+3600,
+                             'item':{'id':'stone','count':6}}
+        self.world.save()
+        reloaded=World(self.path)
+        self.assertIn(12,reloaded.boxes)
+        self.assertEqual(await self.world.prune_boxes(now=now+3599),[])
+        self.assertIn(12,self.world.boxes)
+        self.assertEqual(await self.world.prune_boxes(now=now+3601),[12])
+        self.assertNotIn(12,self.world.boxes)
+        self.assertNotIn(12,World(self.path).boxes)
+
+    async def test_ephemeral_resources_only_exist_within_10m_and_are_not_world_saved(self):
+        player={'x':0,'z':0,'last_resources':-9999,'resources':{},'resource_seq':0}
+        first=resources_update(player,3)
+        self.assertEqual(len(first['resources']),10)
+        self.assertTrue(all(0<math.hypot(n['x'],n['z'])<10 for n in first['resources']))
+        player['x']=50;player['z']=50
+        second=resources_update(player,7)
+        self.assertEqual(len(second['resources']),10)
+        self.assertTrue(all(math.hypot(n['x']-50,n['z']-50)<10 for n in second['resources']))
+        self.assertFalse(set(n['id'] for n in first['resources']) & set(n['id'] for n in second['resources']))
+        self.world.save()
+        self.assertNotIn('resources',json.loads(self.path.read_text()))
 
     async def test_invalid_furniture_save_does_not_crash_or_partially_restore(self):
         for malformed in ([], ['bench'], {'1': {'kind':'bench','x':float('nan'),'z':0,'orientation':0}}):

@@ -1,4 +1,5 @@
 import {validBench,MAX_BENCHES} from './crafting.js';
+import {validItem} from './inventory.js';
 // Offline-only world snapshots. Server saves are independent and authoritative.
 // This module intentionally never reads/writes the multiplayer world JSON.
 export const OFFLINE_SAVE_KEY = 'forest-chopper:offline-world:v1';
@@ -38,10 +39,19 @@ export function parseOfflineSave(raw) {
           || (log.orientation !== 0 && log.orientation !== 1)) return null;
       logs.push({x: log.x, z: log.z, level: log.level, orientation: log.orientation});
     }
+    const boxes=[];
+    if(!Array.isArray(data.boxes??[])||data.boxes?.length>500)return null;
+    for(const box of data.boxes??[]){
+      if(!box||!Number.isSafeInteger(box.id)||box.id<0||box.id>2147483647
+        ||!coordinate(box.x)||!coordinate(box.z)
+        ||!Number.isFinite(box.expires_at)||box.expires_at<0
+        ||!validItem(box.item))return null;
+      if(box.expires_at>Date.now()/1000)boxes.push({id:box.id,x:box.x,z:box.z,expires_at:box.expires_at,item:box.item});
+    }
     const furniture=[];
     for(const item of data.furniture ?? []){if(!validBench(item))return null;furniture.push({kind:'bench',x:item.x,z:item.z,orientation:item.orientation});}
     return {
-      furniture,seed: data.seed, wood: data.wood, cuts: data.cuts,
+      furniture,boxes,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
     };
   } catch {
@@ -67,6 +77,8 @@ export function createOfflineSave(ctx, {
       felled: [...ctx.felled], damage: Object.fromEntries(ctx.treeDamage),
       logs: ctx.placed.map(({x,z,level,orientation}) => ({x,z,level,orientation})),
       furniture: ctx.crafting?.snapshot() ?? [],
+      inventory:ctx.inventory?.serialize?.()??undefined,
+      boxes:ctx.groundBoxes?.snapshot?.()??[],
     };
   }
   function save() {
@@ -95,6 +107,7 @@ export function createOfflineSave(ctx, {
     try {raw = storage.getItem(OFFLINE_SAVE_KEY);} catch {return false;}
     const state = parseOfflineSave(raw);
     if (!state) return false;
+    if(ctx.inventory&&!ctx.inventory.restore(state.inventory,state.wood))return false;
     ctx.seed = state.seed;
     ctx.wood = state.wood;ctx.cuts = state.cuts;
     ctx.px = state.position.x;ctx.pz = state.position.z;
@@ -111,6 +124,7 @@ export function createOfflineSave(ctx, {
       ctx.placed.push({...log, y, mesh});
     }
     for(const furniture of state.furniture){ctx.crafting?.add({...furniture,id:-(ctx.crafting.items.size+1)});}
+    ctx.groundBoxes?.set?.(state.boxes);
     ctx.$('wood').textContent = ctx.wood;
     ctx.$('cut').textContent = ctx.cuts;
     return true;

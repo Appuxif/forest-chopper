@@ -278,6 +278,20 @@ export function installDebug(ctx) {
     },
     events(since = 0) { return events.filter(e=>e.time>=since); },
     clearEvents(){events.length=0;},
+    inventory() {return ctx.inventory?.serialize()??null;},
+    resources(){return ctx.forestResources?.nodes??[];},
+    boxes(){return ctx.groundBoxes?.snapshot()??[];},
+    collectResource(){return ctx.forestResources?.collect()??false;},
+    pickupBox(){return ctx.groundBoxes?.pickup()??false;},
+    // Debug-page only: simulate a legitimate wood reward for UI smoke tests.
+    grantWood(count=1) {
+      if(ctx.isOnline())throw new Error('Offline debug helper only');
+      if(!Number.isInteger(count)||count<1||count>55)throw new Error('Invalid wood count');
+      const before=ctx.wood;
+      ctx.wood+=Math.min(count,ctx.inventory?.state?.freeLogs()??count);
+      ctx.offlineSave?.markDirty?.();
+      return {added:ctx.wood-before,wood:ctx.wood,inventory:api.inventory()};
+    },
     jump() { ctx.requestJump(); return api.state(); },
     chop() { ctx.chop(); return api.state(); },
     look(dx = 0, dy = 0) { ctx.look(dx, dy); return api.state(); },

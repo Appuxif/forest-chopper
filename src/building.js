@@ -25,6 +25,7 @@ export function createBuilding(ctx) {
   }
 
   function placeError(p) {
+    if(ctx.inventory && ctx.inventory.selected!=='log')return 'Выбери брёвна в быстром слоте';
     if (!ctx.buildMode) return 'Сначала включите строительство';
     if (!p) return 'Место установки не выбрано';
     if (ctx.wood < 1) return 'Недостаточно древесины';
@@ -35,10 +36,27 @@ export function createBuilding(ctx) {
   function hint(message) { ctx.$('buildhint').textContent = message; }
 
   function updatePreview() {
-    if (!ctx.buildMode) return;
+    if (!ctx.buildMode){disposePreview();return;}
+    if(ctx.inventory?.selected==='bench'){
+      ctx.placement=ctx.crafting?.candidate?.();
+      if(ctx.preview?.userData?.itemPreview!=='bench'){
+        disposePreview();ctx.preview=ctx.crafting?.createPreview?.();
+        if(ctx.preview)ctx.scene.add(ctx.preview);
+      }
+      if(ctx.preview&&ctx.placement){
+        ctx.preview.position.set(ctx.placement.x,0,ctx.placement.z);
+        ctx.preview.rotation.y=ctx.orientation*Math.PI/2;
+      }
+      const error=ctx.crafting?.placeError?.(ctx.placement)??'';
+      ctx.crafting?.colorPreview?.(ctx.preview,!!error);
+      hint(error||'🪑 Клик — поставить скамейку');
+      return;
+    }
+    if(ctx.preview?.userData?.itemPreview==='bench')disposePreview();
     ctx.placement = candidate();
     if (!ctx.preview) {
       ctx.preview = makeLog();
+      ctx.preview.userData={itemPreview:'log'};
       // Individual translucent material, the log geometry is shared.
       ctx.preview.material = new ctx.THREE.MeshLambertMaterial({
         color: 0x83efb5, transparent: true, opacity: .48, depthWrite: false,
@@ -60,7 +78,7 @@ export function createBuilding(ctx) {
     if (error) { hint(error); ctx.notify(error, 'warning'); return false; }
     ctx.placement = p;
     if (ctx.isOnline()) {
-      ctx.sendNet({type: 'place', x: p.x, z: p.z, orientation: p.orientation});
+      ctx.sendNet({type: ctx.inventory?'place_item':'place', x: p.x, z: p.z, orientation: p.orientation});
       return true; // Sent, not confirmed; server applies the final placement.
     }
     const mesh = makeLog();
@@ -80,7 +98,8 @@ export function createBuilding(ctx) {
   }
 
   function removeLog() {
-    if (!ctx.buildMode) { hint('Сначала включите строительство'); ctx.notify('Сначала включите строительство', 'warning'); return false; }
+    if(ctx.inventory&&!ctx.inventory.equipped)return false;
+    if (!ctx.buildMode && !ctx.inventory) { hint('Сначала включите строительство'); ctx.notify('Сначала включите строительство', 'warning'); return false; }
     const p = candidate();
     let idx = -1;
     for (let i = ctx.placed.length - 1; i >= 0; i--) {
@@ -89,9 +108,10 @@ export function createBuilding(ctx) {
     }
     if (idx < 0) { hint('Нет брёвен поблизости'); ctx.notify('Нет брёвен поблизости', 'warning'); return false; }
     const log = ctx.placed[idx];
+    if(ctx.inventory && ctx.inventory.state.freeLogs()<1){ctx.notify('Сумка заполнена','warning');return false;}
     if (ctx.isOnline()) {
       if (log.id === undefined || log.id === null) return false;
-      ctx.sendNet({type: 'remove', id: log.id});
+      ctx.sendNet(ctx.inventory?{type:'hit_structure',kind:'log',id:log.id}:{type:'remove',id:log.id});
       return true; // Await log_remove, do not change resources optimistically.
     }
     ctx.scene.remove(log.mesh);
@@ -108,7 +128,7 @@ export function createBuilding(ctx) {
   function disposePreview() {
     if (!ctx.preview) return;
     ctx.scene.remove(ctx.preview);
-    ctx.preview.material.dispose();
+    if(!ctx.preview.userData?.itemPreview || ctx.preview.userData.itemPreview==='log')ctx.preview.material.dispose();
     ctx.preview = null;
   }
 
@@ -116,6 +136,7 @@ export function createBuilding(ctx) {
     ctx.buildMode = on;
     ctx.crafting?.setMode(on);
     ctx.$('mode').textContent = on ? '🪓 Рубить' : '🏗️ Строить';
+    if(ctx.inventory)ctx.$('mode').style.display='none';
     ctx.$('mode').classList.toggle('active', on);
     for (const id of ['rotate', 'place', 'undo']) ctx.$(id).style.display = on ? 'block' : 'none';
     ctx.$('hit').style.display = on ? 'none' : 'block';

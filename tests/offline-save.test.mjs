@@ -109,3 +109,26 @@ test('saved bench recipe restores without changing old version 1 saves',()=>{
   assert.equal(parseOfflineSave(JSON.stringify({...older,furniture:[{kind:'bench',x:1.25,z:0,orientation:0}]})),null);
   assert.equal(parseOfflineSave(JSON.stringify({...older,furniture:Array.from({length:201},()=>({kind:'bench',x:1,z:0,orientation:0}))})),null);
 });
+
+
+test('boxes save their UTC expiry, reload until the 60-minute deadline, then stay gone',()=>{
+  const original=fixture();
+  const expiresAt=Date.now()/1000+3600;
+  const dropped={id:10,x:5,z:-4,expires_at:expiresAt,item:{id:'stone',count:3}};
+  original.ctx.groundBoxes={snapshot:()=>[dropped]};
+  assert.equal(original.save.save(),true);
+  const saved=original.storage.getItem(OFFLINE_SAVE_KEY);
+  const parsed=parseOfflineSave(saved);
+  assert.deepEqual(parsed.boxes,[dropped]);
+  const older=JSON.parse(saved);
+  older.boxes[0].expires_at=Date.now()/1000-1;
+  assert.deepEqual(parseOfflineSave(JSON.stringify(older)).boxes,[]);
+  older.boxes[0].expires_at=expiresAt;
+  older.boxes[0].item={id:'stone',count:999};
+  assert.equal(parseOfflineSave(JSON.stringify(older)),null);
+  const restored=fixture(saved);
+  let actual=[];
+  restored.ctx.groundBoxes={set(list){actual=list;}};
+  assert.equal(restored.save.restore(),true);
+  assert.deepEqual(actual,[dropped]);
+});
