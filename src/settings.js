@@ -401,7 +401,9 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     output.textContent = String(state.mouseSensitivity.toFixed(1));
     checkbox.checked = state.showFps;
     windCheckbox.checked = state.windEnabled;
-    dayCheckbox.checked = state.dayCycleEnabled;
+    dayCheckbox.checked = connected || state.dayCycleEnabled;
+    dayCheckbox.disabled = connected;
+    dayCheckbox.title = connected?'В сетевом мире время суток задаёт сервер':'';
     sprintCheckbox.checked = state.autoSprint;
     qualitySelect.value = state.performancePreset;
     for(const [key,id] of Object.entries(PERFORMANCE_INPUTS)){
@@ -647,6 +649,9 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   function setConnected(online) {
     connected = !!online;
     latency = null;
+    dayCheckbox.checked=connected||state.dayCycleEnabled;
+    dayCheckbox.disabled=connected;
+    dayCheckbox.title=connected?'В сетевом мире время суток задаёт сервер':'';
     renderFps();
   }
   function setLatency(ms) {

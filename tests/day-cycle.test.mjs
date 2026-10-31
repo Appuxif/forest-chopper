@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDayCycle,dayPhaseValues,DAY_CYCLE_MS} from '../src/day-cycle.js';
+import {createDayCycle,dayPhaseValues,DAY_CYCLE_MS,
+  normalizeDayPhase,extrapolateDayPhase} from '../src/day-cycle.js';
 
 class Color {
   constructor(hex=0){
@@ -73,7 +74,7 @@ test('opt-in visual cycle throttles color changes and fully restores baseline on
   assert.deepEqual(snapshot(f),original,'restore is idempotent');
   f.settings.dayCycleEnabled=true;
   f.cycle.tick(999999);
-  assert.deepEqual(snapshot(f),original,'new enabled session starts at daytime');
+  assert.deepEqual(snapshot(f),night,'re-enabling resumes the previously saved night phase');
 });
 
 test('reduce-motion dynamically disables animation and restores all original resources',()=>{
@@ -93,7 +94,7 @@ test('reduce-motion dynamically disables animation and restores all original res
   f.motionQuery.matches=false;
   f.cycle.tick(888888);
   assert.equal(f.cycle.active,true);
-  assert.deepEqual(snapshot(f),original);
+  assert.notDeepEqual(snapshot(f),original,'re-enabling resumes the paused phase');
   assert.equal(f.scene.background,colorObjects[0]);
   assert.equal(f.scene.fog.color,colorObjects[1]);
   assert.equal(f.sun.color,colorObjects[2]);
@@ -159,4 +160,77 @@ test('shadow contrast is not applied twice when toggling the day cycle',()=>{
   assert.equal(atmosphere.ambientIntensity,2.1);
   assert.ok(Math.abs(f.hemisphere.intensity-2.1*contrast)<1e-10,
     'restoring the cycle must never compound the shadow contrast factor');
+});
+
+test('offline phase can be restored from a browser snapshot and keeps advancing',()=>{
+  const f=fixture();
+  f.settings.dayCycleEnabled=true;
+  assert.equal(f.cycle.setOfflinePhase(.75),true);
+  f.cycle.tick(100);
+  assert.ok(Math.abs(f.cycle.phase-.75)<1e-9);
+  f.cycle.tick(100+DAY_CYCLE_MS*.125);
+  assert.ok(Math.abs(f.cycle.offlinePhase-.875)<1e-9);
+  const saved=f.cycle.offlinePhase;
+  const reloaded=fixture();
+  reloaded.settings.dayCycleEnabled=true;
+  assert.equal(reloaded.cycle.setOfflinePhase(saved),true);
+  reloaded.cycle.tick(300);
+  assert.ok(Math.abs(reloaded.cycle.phase-saved)<1e-9);
+  reloaded.cycle.tick(300+DAY_CYCLE_MS*.25);
+  assert.ok(Math.abs(reloaded.cycle.phase-.125)<1e-9);
+  assert.equal(reloaded.cycle.setOfflinePhase(-1),false);
+  assert.equal(reloaded.cycle.setOfflinePhase(Infinity),false);
+  reloaded.cycle.resetOffline();
+  reloaded.cycle.tick(500000);
+  assert.equal(reloaded.cycle.phase,0);
+});
+
+test('online clock extrapolates between server packets and corrects wrapped phase',()=>{
+  const f=fixture();
+  assert.equal(extrapolateDayPhase(.95,DAY_CYCLE_MS*.1),.050000000000000044);
+  assert.equal(normalizeDayPhase(-.25),.75);
+  assert.equal(f.cycle.syncServerPhase(.95,1000),true);
+  assert.equal(f.cycle.online,true);
+  f.cycle.tick(1000);
+  assert.ok(Math.abs(f.cycle.phase-.95)<1e-9,
+    'server clock overrides offline visual toggle');
+  f.cycle.tick(1000+DAY_CYCLE_MS*.1);
+  assert.ok(Math.abs(f.cycle.phase-.05)<1e-9);
+  // A new authoritative sample corrects drift without jumping a full day.
+  assert.equal(f.cycle.syncServerPhase(.052,1000+DAY_CYCLE_MS*.1),true);
+  const now=f.cycle.phaseAt(1000+DAY_CYCLE_MS*.1);
+  assert.ok(now>.05&&now<.053);
+  assert.equal(f.cycle.syncServerPhase(1.2,3000),false);
+  assert.equal(f.cycle.syncServerPhase(NaN,3000),false);
+  f.cycle.leaveServer();
+  assert.equal(f.cycle.online,false);
+  assert.equal(f.cycle.offlinePhase,0);
+  f.cycle.tick(500000);
+  assert.equal(f.cycle.active,false);
+});
+
+test('server sync cannot replace the locally saved offline clock',()=>{
+  const f=fixture();
+  f.settings.dayCycleEnabled=true;
+  f.cycle.setOfflinePhase(.33);
+  f.cycle.tick(0);
+  f.cycle.syncServerPhase(.8,100);
+  f.cycle.tick(100);
+  assert.ok(Math.abs(f.cycle.phase-.8)<1e-9);
+  f.cycle.leaveServer();
+  f.cycle.tick(1000);
+  assert.ok(Math.abs(f.cycle.phase-.33)<1e-9);
+});
+
+test('closing a failed connection does not reset an active offline clock',()=>{
+  const f=fixture();
+  f.settings.dayCycleEnabled=true;
+  f.cycle.tick(1);
+  f.cycle.tick(1+DAY_CYCLE_MS*.3);
+  assert.ok(Math.abs(f.cycle.offlinePhase-.3)<1e-9);
+  const before=snapshot(f);
+  f.cycle.leaveServer();
+  assert.equal(f.cycle.online,false);
+  assert.ok(Math.abs(f.cycle.offlinePhase-.3)<1e-9);
+  assert.deepEqual(snapshot(f),before);
 });

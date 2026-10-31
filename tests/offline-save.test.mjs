@@ -18,6 +18,9 @@ function fixture(existing = null) {
     seed:678,wood:7,cuts:3,px:10,pz:-12,feetY:.58,verticalSpeed:0,onGround:true,yaw:.5,pitch:-.25,
     felled:new Set(['0,0:1']),treeDamage:new Map([['0,0:3',4]]),
     placed:[{x:2,z:3,level:0,orientation:1,mesh:{}}],
+    dayCycle:{offlinePhase:.375,
+      setOfflinePhase(value){this.offlinePhase=value;},
+      resetOffline(){this.offlinePhase=0;}},
     crafting:{stored:[],snapshot(){return this.stored.map(x=>({...x}))},add(item){this.stored.push(item);return true},get items(){return new Map(this.stored.map((x,i)=>[i,x]))}},
     logRadius:.29,scene:{add:mesh=>added.push(mesh)},
     makeLog:()=>({
@@ -39,6 +42,7 @@ test('offline save roundtrip restores seed, tree states, logs, wood and player p
   next.ctx.placed=[];next.ctx.wood=0;next.ctx.cuts=0;next.ctx.px=0;
   assert.equal(next.save.restore(),true);
   assert.equal(next.ctx.seed,678);
+  assert.equal(next.ctx.dayCycle.offlinePhase,.375);
   assert.deepEqual([...next.ctx.felled],['0,0:1']);
   assert.deepEqual([...next.ctx.treeDamage],[['0,0:3',4]]);
   assert.equal(next.ctx.wood,7);
@@ -202,4 +206,19 @@ test('survival vitals roundtrip and legacy saves restore full health',()=>{
  assert.equal(parseOfflineSave(JSON.stringify(invalid)),null);
  invalid.vitals={health:4,hunger:1,hungerProgress:300};
  assert.equal(parseOfflineSave(JSON.stringify(invalid)),null);
+});
+
+test('old offline saves default to daytime and reject invalid clock phases',()=>{
+  const f=fixture();
+  f.save.save();
+  const saved=JSON.parse(f.storage.getItem(OFFLINE_SAVE_KEY));
+  assert.equal(saved.dayPhase,.375);
+  delete saved.dayPhase;
+  assert.equal(parseOfflineSave(JSON.stringify(saved)).dayPhase,0);
+  const older=fixture(JSON.stringify(saved));
+  assert.equal(older.save.restore(),true);
+  assert.equal(older.ctx.dayCycle.offlinePhase,0);
+  for(const phase of [-.01,1,Infinity,'0.5',null]){
+    assert.equal(parseOfflineSave(JSON.stringify({...saved,dayPhase:phase})),null);
+  }
 });

@@ -26,6 +26,9 @@ export function parseOfflineSave(raw) {
         || !data.damage || typeof data.damage !== 'object' || Array.isArray(data.damage)
         || !Array.isArray(data.logs) || data.logs.length > MAX_LOGS
         || !Array.isArray(data.furniture ?? []) || (data.furniture ?? []).length > MAX_BENCHES
+        || (data.dayPhase!==undefined&&
+           (typeof data.dayPhase!=='number'||!Number.isFinite(data.dayPhase)||
+            data.dayPhase<0||data.dayPhase>=1))
         || !data.position || !coordinate(data.position.x) || !coordinate(data.position.z)
         || !Number.isFinite(data.position.y ?? 0) || Math.abs(data.position.y ?? 0) > 240012
         || !Number.isFinite(data.position.yaw) || Math.abs(data.position.yaw) > 1e6
@@ -73,6 +76,7 @@ export function parseOfflineSave(raw) {
     for(const item of data.furniture ?? []){if(!validBench(item))return null;furniture.push({kind:'bench',x:item.x,z:item.z,orientation:item.orientation});}
     return {
       terrainVersion:[1,2,3].includes(data.terrainVersion)?data.terrainVersion:0,
+      dayPhase:data.dayPhase??0,
       furniture,boxes,resource_cooldowns:cooldowns,vitals,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
     };
@@ -95,6 +99,7 @@ export function createOfflineSave(ctx, {
   function snapshot() {
     return {
       version: 1, terrainVersion: 3, seed: ctx.seed, wood: ctx.wood, cuts: ctx.cuts,
+      dayPhase:ctx.dayCycle?.offlinePhase??0,
       position: {x: ctx.px, y: ctx.feetY, z: ctx.pz, yaw: ctx.yaw, pitch: ctx.pitch},
       felled: [...ctx.felled], damage: Object.fromEntries(ctx.treeDamage),
       logs: ctx.placed.map(({x,z,level,orientation}) => ({x,z,level,orientation})),
@@ -135,6 +140,7 @@ export function createOfflineSave(ctx, {
     if(ctx.inventory&&!ctx.inventory.restore(state.inventory,state.wood))return false;
     if(ctx.forestResources&&!ctx.forestResources.restoreCooldowns(state.resource_cooldowns))return false;
     ctx.seed = state.seed;
+    ctx.dayCycle?.setOfflinePhase?.(state.dayPhase);
     ctx.wood = state.wood;ctx.cuts = state.cuts;
     ctx.px = state.position.x;ctx.pz = state.position.z;
     ctx.yaw = state.position.yaw;ctx.pitch = state.position.pitch;

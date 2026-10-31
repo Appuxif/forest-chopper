@@ -10,7 +10,7 @@ from pathlib import Path
 
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import connect
-from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, decor_resource, nearby_decor, DECOR_ITEM_IDS, inv_count, inv_add, vitals_view,advance_hunger,apply_food,FOOD_EFFECTS,LOW_VITALS_THRESHOLD,HUNGER_INTERVAL_SECONDS,advance_stamina,server_can_sprint,server_can_hit,spend_hit_stamina,STAMINA_SPRINT_DRAIN,STAMINA_REGEN,BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
+from forest_server import DAY_CYCLE_SECONDS, DAY_SYNC_SECONDS, World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, decor_resource, nearby_decor, DECOR_ITEM_IDS, inv_count, inv_add, vitals_view,advance_hunger,apply_food,FOOD_EFFECTS,LOW_VITALS_THRESHOLD,HUNGER_INTERVAL_SECONDS,advance_stamina,server_can_sprint,server_can_hit,spend_hit_stamina,STAMINA_SPRINT_DRAIN,STAMINA_REGEN,BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
 
 
 class WorldTests(unittest.IsolatedAsyncioTestCase):
@@ -47,6 +47,40 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(loaded.felled)
         self.assertFalse(loaded.damage)
         self.assertFalse(loaded.logs)
+
+    async def test_server_clock_is_authoritative_and_survives_restarts(self):
+        self.world.day_epoch = time.time() - DAY_CYCLE_SECONDS * .625
+        self.assertAlmostEqual(self.world.day_phase(), .625, delta=.002)
+        self.assertAlmostEqual(
+            self.world.day_phase(self.world.day_epoch + DAY_CYCLE_SECONDS*1.25),
+            .25, places=9)
+        self.world.save()
+        restored = World(self.path)
+        self.assertEqual(restored.day_epoch, self.world.day_epoch)
+        self.assertAlmostEqual(restored.day_phase(), self.world.day_phase(), delta=.002)
+
+    async def test_server_sends_welcome_clock_and_periodic_sync_to_all_clients(self):
+        async with connect(self.url) as alice, connect(self.url) as bob:
+            first = await self.receive(alice, 'welcome')
+            second = await self.receive(bob, 'welcome')
+            self.assertTrue(0 <= first['day_phase'] < 1)
+            self.assertAlmostEqual(first['day_phase'],second['day_phase'],delta=.005)
+            before = self.world.day_phase()
+            await alice.send(json.dumps({'type':'time_sync','day_phase':.75}))
+            self.assertAlmostEqual(self.world.day_phase(),before,delta=.005,
+                msg='clients must not control the server clock')
+            self.world.last_day_sync = time.monotonic() - DAY_SYNC_SECONDS - 1
+            clock_task = asyncio.create_task(self.world.box_expiration_loop())
+            try:
+                sync_alice = await self.receive(alice, 'time_sync')
+                sync_bob = await self.receive(bob, 'time_sync')
+                self.assertAlmostEqual(sync_alice['day_phase'],sync_bob['day_phase'],
+                    delta=.001)
+                self.assertAlmostEqual(sync_alice['day_phase'],self.world.day_phase(),
+                    delta=.005)
+            finally:
+                clock_task.cancel()
+                await asyncio.gather(clock_task,return_exceptions=True)
 
     async def test_welcome_chat_join_leave_and_invalid_messages(self):
         async with connect(self.url) as alice:

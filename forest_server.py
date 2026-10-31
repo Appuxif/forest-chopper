@@ -365,16 +365,30 @@ def inventory_view(player):
             'selectedQuick':player.get('selected',0),
             'quickRefs':player.get('quick_refs',[0,1,2,3]),'quickIds':player.get('quick_ids',['axe',None,None,None]),'slots':player['inventory']}
 
+# Client and server use an eight-minute day, with an absolute server epoch
+# persisted alongside the world. No client may set or advance the server clock.
+DAY_CYCLE_SECONDS = 8 * 60
+DAY_SYNC_SECONDS = 10
+
 class World:
+    def day_phase(self, now=None):
+        current=time.time() if now is None else now
+        return ((current-self.day_epoch)/DAY_CYCLE_SECONDS)%1
+
     def __init__(self,path,bot_token=""):
         self.path=Path(path);self.clients={};self.next_id=1;self.seed=random.randrange(1,999999)
         self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.boxes={};self.next_box=1;self.resource_cooldowns={};self.community_cuts=0;self.chat=[];self.chat_seq=0
+        self.day_epoch=time.time()
+        self.last_day_sync=time.monotonic()
         self.bots=BotManager(self);self.bot_token=bot_token
         if self.path.exists():
             try:
                 data=json.loads(self.path.read_text())
                 # Parse everything before committing anything; malformed saves must not
                 # silently create a mixed fresh/partially restored world.
+                epoch=data.get('day_epoch',self.day_epoch)
+                if type(epoch) not in (int,float) or not math.isfinite(epoch) or not 0<epoch<=time.time()+DAY_CYCLE_SECONDS:
+                    raise ValueError('Invalid day clock')
                 seed=int(data['seed'])
                 felled=set(data.get('felled',[]))
                 damage={str(k):int(v) for k,v in data.get('damage',{}).items()}
@@ -425,12 +439,13 @@ class World:
                 community_cuts=data.get('community_cuts',0)
                 if type(community_cuts) is not int or not 0<=community_cuts<=1_000_000_000:
                     raise ValueError('Invalid community progress')
+                self.day_epoch=epoch
                 self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.community_cuts=community_cuts;self.resource_cooldowns=cooldowns
                 self.next_log=max(logs,default=0)+1
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
-        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts}
+        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts,'day_epoch':self.day_epoch}
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,self.path)
     async def prune_boxes(self,now=None):
         now=time.time() if now is None else now
@@ -470,6 +485,9 @@ class World:
             await self.prune_boxes()
             await self.prune_resource_cooldowns()
             current=time.monotonic()
+            if current-self.last_day_sync>=DAY_SYNC_SECONDS:
+                self.last_day_sync=current
+                await self.broadcast({'type':'time_sync','day_phase':self.day_phase()})
             for ws,player in list(self.clients.items()):
                 # No continued sprint drain after the last movement packet.
                 if current-player['last_pos']>.35:player['sprinting']=False
@@ -568,7 +586,7 @@ class World:
         player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':height_at(self.seed,0,0),'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'quick_refs':[0,1,2,3],'quick_ids':['axe',None,None,None],'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'last_hunger_at':time.monotonic(),'stamina':float(MAX_VITALS),'last_stamina_at':time.monotonic(),'stamina_sprint_locked':False,'sprinting':False,'last_stamina_sent':0,'last_jump':-10000,'jump_authorized_until':0}
         self.clients[ws]=player
         await self.prune_boxes()
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue

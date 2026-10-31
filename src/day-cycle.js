@@ -1,6 +1,14 @@
-// Optional local-only atmosphere. No shared multiplayer clock or save changes.
-// Colors and light intensities change slowly; terrain and interactable objects stay readable.
+// Optional offline day/night lighting; multiplayer uses an authoritative
+// server clock, extrapolated locally between periodic synchronizations.
 export const DAY_CYCLE_MS = 8 * 60 * 1000;
+export function normalizeDayPhase(phase){
+  return Number.isFinite(phase)?((phase%1)+1)%1:0;
+}
+export function extrapolateDayPhase(phase,elapsedMs,cycleMs=DAY_CYCLE_MS){
+  if(!Number.isFinite(elapsedMs)||!Number.isFinite(cycleMs)||cycleMs<=0)
+    return normalizeDayPhase(phase);
+  return normalizeDayPhase(phase+Math.max(0,elapsedMs)/cycleMs);
+}
 const PHASES = Object.freeze([
   {at:0,    sky:0xa4c8be, ambient:2.1, sun:2.3, sunlight:0xffe4a6},
   {at:.23,  sky:0xc18d80, ambient:1.85,sun:1.5, sunlight:0xffba86},
@@ -12,7 +20,7 @@ const PHASES = Object.freeze([
 
 // Pure scalar interpolation helps keep the brightness floor explicit in tests.
 export function dayPhaseValues(phase) {
-  const f = Number.isFinite(phase) ? ((phase % 1) + 1) % 1 : 0;
+  const f = normalizeDayPhase(phase);
   const index = Math.min(PHASES.length-2,
     Math.max(0,PHASES.findIndex((p,i)=>i<PHASES.length-1 && f>=p.at && f<PHASES[i+1].at)));
   const a=PHASES[index], b=PHASES[index+1];
@@ -41,6 +49,8 @@ export function createDayCycle(ctx, {
     sun:ctx.atmosphere?.sunIntensity ?? sun.intensity,
   };
   let startedAt=null,lastSample=-Infinity,active=false;
+  let offlineBase=0,displayPhase=0;
+  let serverPhase=null,serverSampleAt=0;
   function restore(){
     if(active){
       scene.background.copy(original.sky);
@@ -53,6 +63,9 @@ export function createDayCycle(ctx, {
     }
     ctx.atmosphere?.restore();
     active=false;
+    // Pausing an offline day preserves its current phase if the lighting
+    // option is disabled; online clock remains server-controlled.
+    if(serverPhase===null)offlineBase=displayPhase;
     startedAt=null;
     lastSample=-Infinity;
   }
@@ -66,18 +79,63 @@ export function createDayCycle(ctx, {
     if(ctx.atmosphere?.setSunIntensity)ctx.atmosphere.setSunIntensity(sunIntensity);
     else sun.intensity=sunIntensity;
     ctx.atmosphere?.setPhase(phase);
+    displayPhase=normalizeDayPhase(phase);
     active=true;
   }
+  function setOfflinePhase(phase){
+    if(!Number.isFinite(phase)||phase<0||phase>=1)return false;
+    offlineBase=phase;
+    startedAt=null;
+    lastSample=-Infinity;
+    if(serverPhase===null)displayPhase=phase;
+    return true;
+  }
+  function resetOffline(){setOfflinePhase(0);}
+  function syncServerPhase(phase,now=performance.now()){
+    if(!Number.isFinite(phase)||phase<0||phase>=1||!Number.isFinite(now))
+      return false;
+    if(serverPhase!==null){
+      const predicted=extrapolateDayPhase(serverPhase,now-serverSampleAt);
+      // Small network jitter/drift is corrected gently; a large discrepancy
+      // (or switching worlds) accepts the authoritative server immediately.
+      const error=((phase-predicted+1.5)%1)-.5;
+      if(Math.abs(error)<.02)phase=normalizeDayPhase(predicted+error*.35);
+    }
+    serverPhase=phase;
+    serverSampleAt=now;
+    lastSample=-Infinity;
+    return true;
+  }
+  function leaveServer(){
+    if(serverPhase===null)return; // No connection: never reset local clock.
+    serverPhase=null;
+    startedAt=null;
+    lastSample=-Infinity;
+    displayPhase=offlineBase;
+    if(active)restore();
+  }
+  function phaseAt(now){
+    if(serverPhase!==null)return extrapolateDayPhase(serverPhase,now-serverSampleAt);
+    if(startedAt===null)return offlineBase;
+    return extrapolateDayPhase(offlineBase,now-startedAt);
+  }
   function tick(now){
-    if(!settings.dayCycleEnabled || motionQuery?.matches){
+    const online=serverPhase!==null;
+    if((!online&&!settings.dayCycleEnabled)||motionQuery?.matches){
       if(active)restore();
       return;
     }
     if(!Number.isFinite(now))return;
-    if(startedAt===null)startedAt=now;
+    if(!online&&startedAt===null)startedAt=now;
     if(now-lastSample<intervalMs)return;
     lastSample=now;
-    applyPhase((now-startedAt)/DAY_CYCLE_MS);
+    applyPhase(phaseAt(now));
   }
-  return {tick,restore,applyPhase,get active(){return active;}};
+  return {tick,restore,applyPhase,setOfflinePhase,resetOffline,
+    syncServerPhase,leaveServer,phaseAt,
+    get offlinePhase(){return serverPhase===null&&active?displayPhase:offlineBase;},
+    get online(){return serverPhase!==null;},
+    get phase(){return displayPhase;},
+    get active(){return active;}};
+
 }
