@@ -1,8 +1,9 @@
+import {DECOR_ITEM_NAMES} from './collectible-decor.js';
 // Dropped stacks are real ground objects with a fixed 3600s TTL.
 // No distance-to-player tracking: expiration is strictly wall-clock based.
 import {validItem} from './inventory.js';
 export const BOX_LIFETIME_SECONDS=3600;
-export const ITEM_NAMES={log:'Бревно',branch:'Ветка',stone:'Камень',bench:'Скамейка',axe:'Топор'};
+export const ITEM_NAMES={log:'Бревно',branch:'Ветка',stone:'Камень',bench:'Скамейка',axe:'Топор',...DECOR_ITEM_NAMES};
 export function createGroundBoxes(ctx,doc=document){
  const {THREE,scene}=ctx,boxes=new Map();
  const geo=new THREE.BoxGeometry(.43,.32,.43);

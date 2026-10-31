@@ -1,3 +1,4 @@
+import {DECOR_ITEM_NAMES} from './collectible-decor.js';
 import {createInventoryModel,AXE_STATS,QUICK_SLOTS} from './inventory.js';
 export function createInventory(ctx,doc=document){
  const state=createInventoryModel();
@@ -15,6 +16,7 @@ export function createInventory(ctx,doc=document){
  '.fc-bag .fc-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:15px 0}',
  '.fc-bag .fc-grid .fc-slot{width:100%;height:65px}.fc-bag button{border-radius:8px;padding:7px 10px}',
  '.fc-bag .fc-trash-slot{margin:8px 0;width:65px;height:55px;background:#532c2c;border:1px dashed #e5a3a3;font-size:24px}',
+ '.fc-slot .fc-item-tag{position:absolute;bottom:4px;left:3px;max-width:66%;font:9px system-ui;color:#e2e8e1;text-shadow:0 1px 2px #000;overflow:hidden;white-space:nowrap}',
  '.fc-bag .fc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.fc-bag p,.fc-bag small{font-size:12px;line-height:1.5;color:#c7d7cd}',
  '@media(max-width:650px){.fc-hotbar{bottom:144px;padding:4px;gap:3px}.fc-hotbar .fc-slot{width:49px;height:49px;font-size:22px}.fc-bag-toggle{left:calc(50% + 113px);bottom:151px;padding:9px;font-size:13px}.fc-bag .fc-grid .fc-slot{height:58px}}'
  ].join('');
@@ -25,8 +27,16 @@ export function createInventory(ctx,doc=document){
  bag.innerHTML='<header><h2>🎒 Сумка</h2><button type="button" data-action="close" aria-label="Закрыть инвентарь">✕</button></header><p class="fc-bag-hint"></p><div class="fc-grid"></div><div class="fc-actions"><button type="button" data-action="craft">🔨 Скамейка: 3 🪵</button><button type="button" data-action="craft-axe">🪓 Топор: 3 🌿 + 2 🪨</button><button type="button" data-action="drop">📦 Выбросить выбранный стак</button><button type="button" data-action="pickup">⬆ Поднять топор (старые сохранения)</button></div><button type="button" class="fc-trash-slot fc-slot" data-action="trash" title="Удалить предмет без коробки">🗑️</button><p>Корзина: выбери предмет в сумке и нажми 🗑️, чтобы уничтожить его без коробки.</p><p>Нажми предмет, затем другой слот, чтобы переложить. Первые 4 ячейки — быстрые (1–4). Не более 5 брёвен в стопке. Чтобы рубить — выбери топор.</p><small>Предусмотрены уровни сумки и улучшения топора.</small>';
  doc.body.append(bar,toggle,bag);
  let moving=-1,groundMesh=null,lastSelected=null;
- const itemLabel=item=>!item?'':({axe:'🪓',bench:'🪑',log:'🪵',branch:'🌿',stone:'🪨'}[item.id]??'?');
- const itemTitle=item=>!item?'Пустой слот':item.id==='axe'?AXE_STATS[item.tier].name:item.id==='bench'?'Скамейка':({log:'Бревно',branch:'Ветки',stone:'Камни'}[item.id]??item.id)+' ×'+item.count;
+ const speciesTag={
+   'mushroom:fly_agaric':'Мух.','mushroom:boletus':'Боров.','mushroom:death_cap':'Пог.','mushroom:milkcap':'Груздь',
+   'flower:daisy':'Ром.','flower:buttercup':'Лют.','flower:pink_wildflower':'Роз.','flower:blue_wildflower':'Син.',
+ };
+ const itemLabel=item=>!item?'':({
+   'mushroom:death_cap':'🍄','mushroom:fly_agaric':'🍄','mushroom:boletus':'🍄','mushroom:milkcap':'🍄',
+   'flower:daisy':'🌼','flower:buttercup':'🌻','flower:pink_wildflower':'🌸','flower:blue_wildflower':'🪻',
+   axe:'🪓',bench:'🪑',log:'🪵',branch:'🌿',stone:'🪨',
+ }[item.id]??'?');
+ const itemTitle=item=>!item?'Пустой слот':item.id==='axe'?AXE_STATS[item.tier].name:item.id==='bench'?'Скамейка':({log:'Бревно',branch:'Ветки',stone:'Камни'}[item.id]??DECOR_ITEM_NAMES[item.id]??item.id)+' ×'+item.count;
  function slot(i,hot=false){
    const item=state.slots[i],b=doc.createElement('button');b.type='button';b.className='fc-slot';
    b.dataset.slot=String(i);b.title=itemTitle(item);
@@ -34,6 +44,7 @@ export function createInventory(ctx,doc=document){
    b.dataset.selected=String(hot&&i===state.selectedQuick);
    b.dataset.moving=String(i===moving);
    const icon=doc.createElement('span');icon.textContent=itemLabel(item);b.append(icon);
+   if(speciesTag[item?.id]){const tag=doc.createElement('span');tag.className='fc-item-tag';tag.textContent=speciesTag[item.id];b.append(tag);}
    if(hot){const key=doc.createElement('span');key.className='fc-key';key.textContent=i+1;b.append(key);}
    if(item&&item.id!=='axe'){const count=doc.createElement('small');count.textContent=hot&&item.id==='log'?state.wood():item.count;b.append(count);}
    b.onclick=()=>{if(hot){select(i);return;}if(moving<0)moving=i;else{if(moving!==i){if(ctx.isOnline?.())ctx.sendNet?.({type:'move_slot',from:moving,to:i});else state.move(moving,i);}moving=-1;changed({equip:false});}render();};

@@ -1,4 +1,5 @@
-// Deterministic loot generated only for the player's nearby 3x3 grid of cells.
+import {nearbyDecorResources,isDecorResourceId} from './collectible-decor.js';
+// Deterministic loot generated around the player; existing decor meshes are collectible.
 // Only collected IDs and respawn deadlines require persistence.
 export const RESOURCE_ZONE_SIZE=10;
 export const RESOURCE_PER_ZONE=2;
@@ -36,6 +37,7 @@ export function nearbyResources(seed,x,z,cooldowns={},now=Date.now()/1000){
       if((cooldowns[resource.id]??0)<=now)result.push(resource);
     }
   }
+  result.push(...nearbyDecorResources(seed,x,z,cooldowns,now));
   return result;
 }
 export function createResourceZones({seed=0,now=()=>Date.now()/1000}={}){
@@ -59,16 +61,17 @@ export function createResourceZones({seed=0,now=()=>Date.now()/1000}={}){
     if(!data||typeof data!=='object'||Array.isArray(data))return false;
     const fresh={};
     for(const [id,expires] of Object.entries(data)){
-      if(!/^-?\d+,-?\d+:[01]$/.test(id)||!Number.isFinite(expires)
+      if(!(/^-?\d+,-?\d+:[01]$/.test(id)||isDecorResourceId(id))||!Number.isFinite(expires)
          ||expires>now()+RESOURCE_RESPAWN_SECONDS)return false;
       if(expires>now())fresh[id]=expires;
     }
     cooldowns=fresh;resources=[];return true;
   }
+  function isCollected(id){return (cooldowns[id]??0)>now();}
   function clear({keepCooldowns=false}={}){
     resources=[];
     if(!keepCooldowns)cooldowns={};
   }
-  return {update,collect,restore,clear,get nodes(){return resources.map(x=>({...x}))},
+  return {update,collect,isCollected,restore,clear,get nodes(){return resources.map(x=>({...x}))},
     get cooldowns(){return {...cooldowns}},get count(){return resources.length}};
 }

@@ -1,3 +1,4 @@
+import {decorResourceId} from './collectible-decor.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {treeCandidate,treeCanSpawn} from './tree-spacing.js?v=20261030-spacing-4m1';
 import {createTreeBatch} from './tree-instancing.js?v=20261031-spruce-sway1';
@@ -76,7 +77,7 @@ function enableDecorShadow(node){
  for(const child of node.children??[])enableDecorShadow(child);
 }
 function build(cx,cz){const key=cx+','+cz;if(ctx.chunks.has(key))return;const decor=new ctx.THREE.Group();ctx.scene.add(decor);ctx.chunks.set(key,decor);
-decor.userData.shadowDecor=[];decor.userData.reactivePlants=[];decor.userData.grassClearings=[];
+decor.userData.shadowDecor=[];decor.userData.reactivePlants=[];decor.userData.grassClearings=[];decor.userData.collectibles=[];
 const rockColliders=[];
 const newTrees=[];
 for(let i=0;i<8;i++){
@@ -113,6 +114,10 @@ for(let i=0;i<25;i++){
  obj.position.set(x,height,z);obj.scale.setScalar(scale);
  obj.rotation.y=rand(cx,cz,i+500)*6.28;
  obj.userData.decorType=type;
+ if(type==='mushroom'||type==='flower'){
+  obj.userData.collectibleId=decorResourceId(cx,cz,i);
+  decor.userData.collectibles.push(obj);
+ }
  enableDecorShadow(obj);
  decor.userData.shadowDecor.push(obj);
  if(type==='grass'||type==='flower')decor.userData.reactivePlants.push(obj);
@@ -130,6 +135,7 @@ for(const obj of decor.userData.reactivePlants){
    (obj.position.x-area.x)**2+(obj.position.z-area.z)**2<area.radius**2);
 }
 ctx.rockColliders?.set(key,rockColliders);
+ctx.forestResources?.syncDecorChunk?.(decor);
 }
 function updateChunks(){const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);for(let x=cx-ctx.radius;x<=cx+ctx.radius;x++)for(let z=cz-ctx.radius;z<=cz+ctx.radius;z++)build(x,z);for(const [key,group] of ctx.chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>ctx.radius+1||Math.abs(z-cz)>ctx.radius+1){group.userData.treeBatch?.dispose();ctx.scene.remove(group);ctx.chunks.delete(key);ctx.rockColliders?.delete(key)}}for(const [key,t] of ctx.trees){if(Math.abs(t.position.x-ctx.px)>ctx.chunkSize*(ctx.radius+1.5)||Math.abs(t.position.z-ctx.pz)>ctx.chunkSize*(ctx.radius+1.5)){t.userData.treeBatch?.remove(t,false);ctx.scene.remove(t);ctx.trees.delete(key)}}}
 

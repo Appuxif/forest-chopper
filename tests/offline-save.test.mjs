@@ -157,3 +157,26 @@ test('collected seeded resources keep respawn deadlines across offline saves',()
   stale.resource_cooldowns['-1,0:0']=now+50000;
   assert.equal(parseOfflineSave(JSON.stringify(stale)),null);
 });
+
+test('collected flowers and mushrooms use existing resource cooldowns in offline saves',()=>{
+  const original=fixture();
+  const now=Date.now()/1000;
+  const deadlines={'d:0,0:17':now+200,'d:-1,2:4':now+580};
+  original.ctx.forestResources={snapshotCooldowns:()=>deadlines};
+  original.ctx.groundBoxes={snapshot:()=>[{
+    id:6,x:2,z:-1,expires_at:now+3600,item:{id:'mushroom:milkcap',count:4},
+  }]};
+  assert.equal(original.save.save(),true);
+  const payload=original.storage.getItem(OFFLINE_SAVE_KEY);
+  const parsed=parseOfflineSave(payload);
+  assert.deepEqual(parsed.resource_cooldowns,deadlines);
+  assert.equal(parsed.boxes[0].item.id,'mushroom:milkcap');
+  const restored=fixture(payload);
+  let actual=null;
+  restored.ctx.forestResources={restoreCooldowns(value){actual=value;return true;}};
+  assert.equal(restored.save.restore(),true);
+  assert.deepEqual(actual,deadlines);
+  const malformed=JSON.parse(payload);
+  malformed.resource_cooldowns['d:0,0:25']=now+100;
+  assert.equal(parseOfflineSave(JSON.stringify(malformed)),null);
+});

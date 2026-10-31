@@ -10,7 +10,7 @@ from pathlib import Path
 
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import connect
-from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, inv_add, BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
+from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, decor_resource, nearby_decor, DECOR_ITEM_IDS, inv_count, inv_add, BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
 
 
 class WorldTests(unittest.IsolatedAsyncioTestCase):
@@ -346,17 +346,69 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             {'id':'-3,7:1','kind':'branch','x':-25.92,'z':77.06})
         self.assertIsNone(resource_info('garbage',123456))
         first=resource_nearby(123456,0,0,{})
-        self.assertEqual(len(first),RESOURCE_LIMIT)
+        self.assertGreater(len(first),RESOURCE_LIMIT)
         self.assertEqual(first,resource_nearby(123456,0,0,{}))
         self.assertEqual(first,resource_nearby(123456,0,0,{},now=time.time()+1000))
         self.assertEqual(resource_cell(-.1,10),(-1,1))
-        self.assertEqual(len(set(i['id'] for i in first)),RESOURCE_LIMIT)
+        self.assertEqual(len(set(i['id'] for i in first)),len(first))
         self.assertTrue(any(i['z']<0 for i in first))
         self.assertTrue(any(i['z']>0 for i in first))
         second=resource_nearby(123456,51,0,{})
         self.assertNotEqual(first,second)
         self.assertEqual(first,resource_nearby(123456,0,0,{}),
                          'returning to zone does not reroll its positions')
+
+    async def test_existing_decor_species_follow_exact_world_seed_and_inventory_stacks(self):
+        flowers=nearby_decor(12345,0,0,{},now=0)
+        self.assertEqual(len(flowers),41)
+        sample=decor_resource(12345,-1,-1,5)
+        self.assertEqual(sample['kind'],'flower:pink_wildflower')
+        self.assertAlmostEqual(sample['x'],-13.965131644072244)
+        self.assertAlmostEqual(sample['z'],-16.432527240849595)
+        self.assertEqual(self.world.resource_view({'x':0,'z':0})['type'],'resources_state')
+        self.assertIsNone(decor_resource(12345,0,0,25))
+        self.assertIsNone(resource_info('d:1,1:25',12345))
+        for species in DECOR_ITEM_IDS:
+            self.assertEqual(inv_count([{'id':species,'count':4}],species),4)
+            self.assertTrue(inv_add([None]*3,{'id':species,'count':1}))
+
+    async def test_mushrooms_and_flowers_share_server_respawn_and_cross_player_pickup(self):
+        async with connect(self.url) as alice:
+            welcome=await self.receive(alice,'welcome')
+            decor=[item for item in welcome['resources'] if item['id'].startswith('d:')]
+            flower=next(item for item in decor if item['kind'].startswith('flower:'))
+            mushroom=next(item for item in decor if item['kind'].startswith('mushroom:'))
+            async with connect(self.url) as bob:
+                other=await self.receive(bob,'welcome')
+                self.assertIn(flower,other['resources'])
+                self.assertIn(mushroom,other['resources'])
+                for item in (flower,mushroom):
+                    for player in self.world.clients.values():
+                        player.update(x=item['x'],z=item['z'])
+                    await alice.send(json.dumps({'type':'collect_resource','id':item['id']}))
+                    self.assertEqual((await self.receive(alice,'resource_remove'))['id'],item['id'])
+                    self.assertEqual((await self.receive(bob,'resource_remove'))['id'],item['id'])
+                    state=await self.receive(alice,'inventory_state')
+                    self.assertEqual(sum(v['count'] for v in state['inventory']['slots']
+                                         if v and v['id']==item['kind']),1)
+                    await bob.send(json.dumps({'type':'collect_resource','id':item['id']}))
+                    with self.assertRaises(asyncio.TimeoutError):
+                        await asyncio.wait_for(bob.recv(),.045)
+                    self.assertIn(item['id'],self.world.resource_cooldowns)
+                self.world.save()
+                saved=World(self.path)
+                self.assertEqual(set(saved.resource_cooldowns),{flower['id'],mushroom['id']})
+                deadline=max(self.world.resource_cooldowns.values())
+                self.assertEqual(set(await self.world.prune_resource_cooldowns(now=deadline+1)),
+                                 {flower['id'],mushroom['id']})
+                # Both clients receive a refreshed nearby view from the shared server.
+                alice_view=await self.receive(alice,'resources_state')
+                bob_view=await self.receive(bob,'resources_state')
+                self.assertIn(flower,alice_view['resources'])
+                self.assertIn(mushroom,alice_view['resources'])
+                self.assertIn(flower,bob_view['resources'])
+                self.assertIn(mushroom,bob_view['resources'])
+                self.assertFalse(World(self.path).resource_cooldowns)
 
     async def test_shared_pickup_prevents_duplication_and_expires_in_ten_minutes(self):
         async with connect(self.url) as alice:

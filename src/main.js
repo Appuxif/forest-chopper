@@ -1,5 +1,5 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261031-spruce-bark1';
+import {createWorld} from './world.js?v=20261031-collectible-plants1';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
@@ -23,7 +23,7 @@ import {createSettings} from './settings.js?v=20261031-tree-editor1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
-import {createPlantInteraction} from './plant-interaction.js?v=20261030-grass-clearings1';
+import {createPlantInteraction} from './plant-interaction.js?v=20261031-collectible-plants1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
 import {createDayCycle} from './day-cycle.js?v=20261030-darker-night1';
 import {createAtmosphere} from './atmosphere.js?v=20261030-spruce-diagnostics1';
@@ -38,7 +38,7 @@ import {createOfflineSave} from './offline-save.js?v=20261031-loot1';
 import {createTutorial} from './tutorial.js';
 import {createProgress} from './progress.js?v=20261030-discoveries1';
 import {createInventory} from './inventory-ui.js?v=20261031-loot1';
-import {createForestResources} from './forest-resources.js?v=20261031-zoned-loot1';
+import {createForestResources} from './forest-resources.js?v=20261031-collectible-plants1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261031-boxes1';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}

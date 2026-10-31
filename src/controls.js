@@ -7,7 +7,7 @@ const isTypingTarget=el=>el instanceof Element&&!!el.closest('input, textarea, s
  if(isTypingTarget(e.target)||isTypingTarget(document.activeElement))return;
  if(e.code==='KeyI'&&!e.repeat){ctx.inventory?.toggle?.();e.preventDefault();return}
  if(['Digit1','Digit2','Digit3','Digit4'].includes(e.code)&&!e.repeat){ctx.inventory?.select(Number(e.code.slice(-1))-1);return}
- if(e.code==='KeyE'&&!ctx.buildMode&&!e.repeat){
+ if(e.code==='KeyE'&&!e.repeat){
    const box=ctx.groundBoxes?.nearest?.(),resource=ctx.forestResources?.closest?.();
    if(box&&(!resource||box.distance<=resource.distance)){ctx.groundBoxes.pickup();e.preventDefault();return}
    if(resource){ctx.forestResources.collect();e.preventDefault();return}

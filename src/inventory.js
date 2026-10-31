@@ -1,6 +1,7 @@
+import {DECOR_ITEM_IDS} from './collectible-decor.js';
 // Server and offline inventory share the same item limits and recipes.
 export const LOG_STACK=5, QUICK_SLOTS=4, BASE_BAG_SLOTS=12, SLOTS_PER_UPGRADE=4;
-export const ITEM_STACK={log:5,branch:10,stone:10,bench:1,axe:1};
+export const ITEM_STACK={log:5,branch:10,stone:10,bench:1,axe:1,...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,10]))};
 export const RECIPES={bench:{log:3},axe:{branch:3,stone:2}};
 export const AXE_STATS=[
   {name:'Обычный топор',damage:1,speed:1},

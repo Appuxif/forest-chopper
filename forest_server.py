@@ -17,7 +17,13 @@ MAX_MESSAGE = 2048
 # Twelve initial bag slots; the axe occupies one. Future bag upgrades increase this.
 DEFAULT_WOOD_CAPACITY = (12-1)*5
 BOX_TTL_SECONDS=3600
-ITEM_LIMITS={"log":5,"branch":10,"stone":10,"bench":1,"axe":1}
+MUSHROOM_SPECIES=('fly_agaric','boletus','death_cap','milkcap')
+FLOWER_SPECIES=('daisy','buttercup','pink_wildflower','blue_wildflower')
+DECOR_ITEM_IDS=tuple('mushroom:'+name for name in MUSHROOM_SPECIES)+tuple('flower:'+name for name in FLOWER_SPECIES)
+ITEM_LIMITS={"log":5,"branch":10,"stone":10,"bench":1,"axe":1,
+             **{name:10 for name in DECOR_ITEM_IDS}}
+DECOR_CHUNK_SIZE=24
+DECOR_SLOTS=25
 AXE_LEVELS = ((1, 1.0), (2, 1.2), (3, 1.45), (4, 1.7))
 
 def r(x,z,n,seed):
@@ -157,7 +163,41 @@ def resource_hash(seed,zx,zz,index,channel):
     h=(h^(h>>16))&mask
     return h/4294967296
 
+def decor_rand(seed,cx,cz,channel):
+    v=math.sin(cx*127.1+cz*311.7+channel*78.233+seed)*43758.5453
+    return v-math.floor(v)
+
+def decor_resource(seed,cx,cz,i):
+    if not(-10001<=cx<=10001 and -10001<=cz<=10001 and 0<=i<DECOR_SLOTS):return None
+    if decor_rand(seed,cx,cz,300+i)>.86:return None
+    if decor_rand(seed,cx,cz,800+i)>.94:
+        kind='mushroom:'+MUSHROOM_SPECIES[int(decor_rand(seed,cx,cz,1000+i)*4)]
+    elif decor_rand(seed,cx,cz,900+i)>.79:
+        kind='flower:'+FLOWER_SPECIES[int(decor_rand(seed,cx,cz,1100+i)*4)]
+    else:return None
+    return {'id':f'd:{cx},{cz}:{i}','kind':kind,
+            'x':cx*DECOR_CHUNK_SIZE+decor_rand(seed,cx,cz,100+i*2)*DECOR_CHUNK_SIZE,
+            'z':cz*DECOR_CHUNK_SIZE+decor_rand(seed,cx,cz,101+i*2)*DECOR_CHUNK_SIZE}
+
+def nearby_decor(seed,x,z,cooldowns,now):
+    cx,cz=math.floor(x/DECOR_CHUNK_SIZE),math.floor(z/DECOR_CHUNK_SIZE)
+    resources=[]
+    for dx in (-1,0,1):
+        for dz in (-1,0,1):
+            for i in range(DECOR_SLOTS):
+                resource=decor_resource(seed,cx+dx,cz+dz,i)
+                if resource and cooldowns.get(resource['id'],0)<=now:
+                    resources.append(resource)
+    return resources
+
 def resource_info(key,seed):
+    if isinstance(key,str) and key.startswith('d:'):
+        try:
+            cell,index=key[2:].split(':')
+            cx,cz=map(int,cell.split(','))
+            i=int(index)
+        except (ValueError,TypeError):return None
+        return decor_resource(seed,cx,cz,i)
     try:
         pair,index=key.split(':')
         zx,zz=map(int,pair.split(','))
@@ -184,6 +224,7 @@ def resource_nearby(seed,x,z,cooldowns,now=None):
                 info=resource_info(f'{cx+dx},{cz+dz}:{i}',seed)
                 if info and cooldowns.get(info['id'],0)<=current:
                     result.append(info)
+    result.extend(nearby_decor(seed,x,z,cooldowns,current))
     return result
 
 
@@ -267,8 +308,14 @@ class World:
         self.save()
         for ws,player in list(self.clients.items()):
             cx,cz=resource_cell(player['x'],player['z'])
-            if any(abs(int(key.split(':')[0].split(',')[0])-cx)<=1 and
-                   abs(int(key.split(':')[0].split(',')[1])-cz)<=1 for key in expired):
+            dcx,dcz=(math.floor(player[axis]/DECOR_CHUNK_SIZE) for axis in ('x','z'))
+            if any(
+                (abs(int(key[2:].split(':')[0].split(',')[0])-dcx)<=1
+                 and abs(int(key[2:].split(':')[0].split(',')[1])-dcz)<=1)
+                 if key.startswith('d:') else
+                (abs(int(key.split(':')[0].split(',')[0])-cx)<=1
+                 and abs(int(key.split(':')[0].split(',')[1])-cz)<=1)
+                for key in expired):
                 await self.send(ws,self.resource_view(player,current))
         return expired
 
@@ -379,8 +426,12 @@ class World:
                     if not isinstance(ident,str) or len(ident)>40:continue
                     resource=resource_info(ident,self.seed)
                     if resource is None or resource['id']!=ident:continue
-                    cx,cz=resource_cell(player['x'],player['z'])
-                    rx,rz=resource_cell(resource['x'],resource['z'])
+                    if ident.startswith('d:'):
+                        cx,cz=(math.floor(player[axis]/DECOR_CHUNK_SIZE) for axis in ('x','z'))
+                        rx,rz=(math.floor(resource[axis]/DECOR_CHUNK_SIZE) for axis in ('x','z'))
+                    else:
+                        cx,cz=resource_cell(player['x'],player['z'])
+                        rx,rz=resource_cell(resource['x'],resource['z'])
                     if abs(rx-cx)>1 or abs(rz-cz)>1:continue
                     if math.hypot(player['x']-resource['x'],player['z']-resource['z'])>2.5:continue
                     if self.resource_cooldowns.get(ident,0)>time.time():continue
@@ -482,8 +533,9 @@ class World:
                     old_x,old_z=player['x'],player['z']
                     player.update(x=x,z=z,y=y,yaw=yaw,jumping=jumping,last_pos=now)
                     await self.broadcast({'type':'move','id':uid,'x':x,'z':z,'y':y,'yaw':yaw,'jumping':jumping},ws)
-                    cell=resource_cell(x,z)
-                    if cell!=resource_cell(old_x,old_z):
+                    if (resource_cell(x,z)!=resource_cell(old_x,old_z) or
+                        math.floor(x/DECOR_CHUNK_SIZE)!=math.floor(old_x/DECOR_CHUNK_SIZE) or
+                        math.floor(z/DECOR_CHUNK_SIZE)!=math.floor(old_z/DECOR_CHUNK_SIZE)):
                         await self.send(ws,self.resource_view(player))
                 elif kind=='equip':
                     if data.get('item') not in ('axe',None):continue

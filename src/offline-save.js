@@ -1,3 +1,4 @@
+import {isDecorResourceId} from './collectible-decor.js';
 import {validBench,MAX_BENCHES} from './crafting.js';
 import {validItem} from './inventory.js';
 import {RESOURCE_RESPAWN_SECONDS} from './resource-zones.js';
@@ -54,7 +55,7 @@ export function parseOfflineSave(raw) {
     if(!rawCooldowns||typeof rawCooldowns!=='object'||Array.isArray(rawCooldowns)
       ||Object.keys(rawCooldowns).length>100000)return null;
     for(const [id,expires] of Object.entries(rawCooldowns)){
-      if(!/^-?\d+,-?\d+:[01]$/.test(id)||!Number.isFinite(expires)
+      if(!(/^-?\d+,-?\d+:[01]$/.test(id)||isDecorResourceId(id))||!Number.isFinite(expires)
         ||expires>Date.now()/1000+RESOURCE_RESPAWN_SECONDS)return null;
       if(expires>Date.now()/1000)cooldowns[id]=expires;
     }

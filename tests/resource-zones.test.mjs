@@ -18,11 +18,12 @@ test('fixed seed yields the same positions across repeated visits, headings and 
 });
 test('nearest nine grid squares are generated without any camera filter',()=>{
   const all=nearbyResources(9981,0,0);
-  assert.equal(all.length,RESOURCE_LIMIT);
-  assert.equal(new Set(all.map(r=>r.id)).size,RESOURCE_LIMIT);
+  assert.ok(all.length>RESOURCE_LIMIT);
+  assert.equal(new Set(all.map(r=>r.id)).size,all.length);
   assert.ok(all.some(r=>r.z<0));
   assert.ok(all.some(r=>r.z>0));
   assert.equal(all.filter(r=>r.id.startsWith('0,0:')).length,RESOURCE_PER_ZONE);
+  assert.ok(all.some(r=>r.id.startsWith('d:')));
 });
 test('stationary and turning never changes uncollected ground items',()=>{
   let time=1_900_000_000;
