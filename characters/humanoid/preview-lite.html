@@ -22,6 +22,11 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 .mask-actions button{font-size:12px;padding:6px}
 .mask-note{color:#d3b887;font-size:11px;line-height:1.45}
 #maskStats{font-size:12px;color:#c8e4d8;display:block;padding:5px 0}
+#uvMaskPreview canvas{width:168px;height:168px;image-rendering:auto;border:1px solid #668884;border-radius:5px;background:white;display:block;margin:7px auto}
+#paintEnable:checked{accent-color:#e8bb79}
+#paintStatus{font-size:11px;color:#cce2d7;min-height:24px}
+#view.painting{cursor:crosshair;touch-action:none}
+.paint-section{background:#223b40;border:1px solid #51746e;border-radius:8px;padding:10px;margin:10px 0}
 </style>
 <script type="importmap">{"imports":{"three":"https://esm.sh/three@0.170.0"}}</script>
 </head><body><canvas id="view"></canvas><aside>
@@ -46,6 +51,20 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <output id="maskStats"></output>
 <div class="mask-actions"><button id="maskSave">Запомнить для комплекта</button><button id="maskCopy">Копировать JSON</button></div>
 <p class="mask-note" id="maskHint">Настройки каждого комплекта можно сохранить и восстановить при следующем выборе.</p>
+<div class="paint-section">
+<h2>Рисование точной маски (UV)</h2>
+<label class="mask-row"><span>Рисовать на персонаже</span><input type="checkbox" id="paintEnable"/></label>
+<div class="control"><label>Кисть</label><select id="paintAction"><option value="hide">Скрыть кожу</option><option value="show">Вернуть кожу</option></select></div>
+<div class="control"><label>Размер кисти</label><input id="paintRadius" type="range" min="2" max="72" value="18" step="1"/></div>
+<p class="mask-note" id="paintBrushText">18 пикселей UV · белое видно, чёрное скрыто</p>
+<div class="mask-actions"><button id="paintUndo">Отменить мазок</button><button id="paintClear">Очистить маску</button></div>
+<div class="mask-actions"><button id="paintSave">Сохранить кисть</button><button id="paintDownload">Скачать PNG</button></div>
+<div class="mask-actions"><button id="paintImport">Загрузить PNG</button><button id="paintView">Начать рисование</button></div>
+<input id="paintFile" type="file" accept="image/png" hidden/>
+<div id="uvMaskPreview"></div>
+<p class="mask-note" id="paintStatus">Маска хранится отдельно для пола и комплекта одежды.</p>
+<p class="mask-note">В режиме рисования одежда и грубая маска зон временно отключены, а анимация остановлена. Повернуть персонажа можно после выключения рисования. Текстура кожи не изменяется.</p>
+</div>
 <h2>Анимация</h2>
 <div class="control"><label>Клип</label><select id="animation"></select></div>
 <div class="control"><label>Скорость</label><input id="speed" type="range" min="0" max="3" step=".1" value="1"/></div>
@@ -58,6 +77,7 @@ import * as THREE from 'three';
 import {OrbitControls} from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
 import {createLiteHumanoid,getHumanoidCatalog,DEFAULT_APPEARANCE} from './humanoid-lite.js';
 import {SKIN_MASK_ZONES,createDebugSkinMask} from './skin-mask-debug.js';
+import {createSkinPainter,interpolateScreenPoints} from './skin-paint.js';
 const $=id=>document.getElementById(id);
 const renderer=new THREE.WebGLRenderer({canvas:$('view'),antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -76,8 +96,12 @@ grid.position.y=-.015;grid.material.transparent=true;grid.material.opacity=.28;s
 const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.02,50);camera.position.set(1.25,1.55,2.30);
 const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.target.set(0,.98,0);orbit.minDistance=.65;orbit.maxDistance=7;orbit.enableDamping=true;orbit.update();
-let actor,helper,skinMask;
+let actor,helper,skinMask,skinPainter;
 let clothesHiddenForDebug=false;
+let painting=false,paintPointer=null;
+const brushRaycaster=new THREE.Raycaster();
+const brushPointerNDC=new THREE.Vector2();
+const paintStoragePrefix='forest-chopper:humanoid-lite:paint-mask:';
 const cfg={...DEFAULT_APPEARANCE};
 const hiddenSkin=new Set();
 const maskStoragePrefix='forest-chopper:humanoid-lite:skin-mask:';
@@ -85,10 +109,10 @@ function maskKitKey(){return [cfg.body,cfg.face,cfg.top||'none',cfg.bottom||'non
 function maskPayload(){return {body:cfg.body,face:cfg.face,equipment:{top:cfg.top,bottom:cfg.bottom,shoes:cfg.shoes,outerwear:cfg.outerwear},hiddenSkinZones:[...hiddenSkin]}}
 function applySkinMask(){
  if(!skinMask)return;
- const result=skinMask.apply(hiddenSkin);
- for(const [slot,part] of actor.parts){if(slot!=='hair')part.visible=!clothesHiddenForDebug;}
+ const result=skinMask.apply(painting?[]:hiddenSkin);
+ for(const [slot,part] of actor.parts){if(slot!=='hair')part.visible=painting?false:!clothesHiddenForDebug;}
  for(const box of document.querySelectorAll('[data-skin-zone]'))box.checked=hiddenSkin.has(box.dataset.skinZone);
- $('maskStats').textContent=`Скрыто ${result.hidden} из ${result.total} треугольников тела`;
+ $('maskStats').textContent=`Скрыто ${result.hidden} из ${result.total} треугольников тела`+(painting?' · грубые зоны временно отключены':'');
  if(actor)drawStats();
 }
 function restoreKitMask(){
@@ -102,6 +126,139 @@ function restoreKitMask(){
  }catch(err){console.warn('Could not restore skin mask',err)}
  applySkinMask();
 }
+function showPainterCanvas(){
+ const slot=$('uvMaskPreview');
+ slot.replaceChildren(skinPainter.canvas);
+ skinPainter.canvas.title='UV маска: белое видно, чёрное скрыто';
+}
+async function restorePaintMask(){
+ if(!skinPainter)return;
+ const key=paintStoragePrefix+maskKitKey();
+ try{
+   await skinPainter.load(localStorage.getItem(key));
+   $('paintStatus').textContent=localStorage.getItem(key)
+     ?'Загружена маска кисти для выбранного комплекта.'
+     :'Для этого комплекта новая белая маска (вся кожа видна).';
+ }catch(error){
+   console.warn('Bad saved paint mask',error);
+   skinPainter.clear({keepUndo:false});
+   $('paintStatus').textContent='Не удалось прочитать маску: '+error.message;
+ }
+}
+function savePaintMask(){
+ if(!skinPainter)return false;
+ try{
+   localStorage.setItem(paintStoragePrefix+maskKitKey(),skinPainter.toPNG());
+   $('paintStatus').textContent='Маска сохранена для '+cfg.body+' / '+(cfg.top||'без верха')+' / '+(cfg.bottom||'без низа')+'.';
+   return true;
+ }catch(error){
+   $('paintStatus').textContent='Ошибка сохранения: '+error.message+'. Можно скачать PNG.';
+   return false;
+ }
+}
+function setPaintMode(enabled){
+ painting=!!enabled;
+ paintPointer=null;
+ $('paintEnable').checked=painting;
+ orbit.enabled=!painting;
+ renderer.domElement.classList.toggle('painting',painting);
+ // A static pose lets the user paint a boundary accurately; when
+ // painting ends, restore the animation speed chosen by the user.
+ if(actor)actor.mixer.timeScale=painting?0:Number($('speed').value);
+ if(painting)$('maskHideClothes').disabled=true;
+ else $('maskHideClothes').disabled=false;
+ for(const checkbox of document.querySelectorAll('[data-skin-zone]'))checkbox.disabled=painting;
+ $('paintView').textContent=painting?'Закончить / показать одежду':'Начать рисование';
+ if(skinMask)applySkinMask();
+ $('paintStatus').textContent=painting
+   ?'Рисуй по коже левой кнопкой мыши. Для поворота выключи рисование.'
+   :'Рисование выключено. Можно вращать персонажа и проверять одежду.';
+}
+function raycastSkinAt(clientX,clientY){
+ if(!skinPainter)return null;
+ const rect=renderer.domElement.getBoundingClientRect();
+ brushPointerNDC.set(
+   (clientX-rect.left)/rect.width*2-1,
+   -(clientY-rect.top)/rect.height*2+1
+ );
+ brushRaycaster.setFromCamera(brushPointerNDC,camera);
+ const hit=brushRaycaster.intersectObject(skinPainter.body,false)[0];
+ return hit?.uv??null;
+}
+function paintAt(clientX,clientY){
+ const uv=raycastSkinAt(clientX,clientY);
+ if(!uv)return false;
+ return skinPainter.stamp(uv,{
+   mode:$('paintAction').value,
+   radius:Number($('paintRadius').value)
+ });
+}
+renderer.domElement.addEventListener('pointerdown',event=>{
+ if(!painting||event.button!==0||!skinPainter)return;
+ event.preventDefault();
+ event.stopPropagation();
+ if(!raycastSkinAt(event.clientX,event.clientY))return;
+ skinPainter.snapshot();
+ paintPointer={x:event.clientX,y:event.clientY};
+ renderer.domElement.setPointerCapture(event.pointerId);
+ paintAt(event.clientX,event.clientY);
+});
+renderer.domElement.addEventListener('pointermove',event=>{
+ if(!painting||!paintPointer||!skinPainter)return;
+ event.preventDefault();
+ const next={x:event.clientX,y:event.clientY};
+ for(const point of interpolateScreenPoints(paintPointer,next,4)){
+   paintAt(point.x,point.y);
+ }
+ paintPointer=next;
+});
+function endPaintStroke(event){
+ if(!paintPointer)return;
+ paintPointer=null;
+ if(renderer.domElement.hasPointerCapture(event.pointerId))
+   renderer.domElement.releasePointerCapture(event.pointerId);
+ savePaintMask();
+}
+renderer.domElement.addEventListener('pointerup',endPaintStroke);
+renderer.domElement.addEventListener('pointercancel',endPaintStroke);
+$('paintEnable').onchange=e=>setPaintMode(e.target.checked);
+$('paintView').onclick=()=>setPaintMode(!painting);
+$('paintRadius').oninput=e=>$('paintBrushText').textContent=
+   e.target.value+' пикселей UV · белое видно, чёрное скрыто';
+$('paintUndo').onclick=()=>{
+ if(skinPainter?.undo())savePaintMask();
+ else $('paintStatus').textContent='Нет мазков для отмены.';
+};
+$('paintClear').onclick=()=>{
+ if(!skinPainter)return;
+ skinPainter.clear();
+ savePaintMask();
+};
+$('paintSave').onclick=savePaintMask;
+$('paintDownload').onclick=()=>{
+ if(!skinPainter)return;
+ const a=document.createElement('a');
+ a.href=skinPainter.toPNG();
+ a.download='skin-mask-'+maskKitKey().replace(/[^a-zA-Z0-9_-]/g,'_')+'.png';
+ document.body.append(a);a.click();a.remove();
+ $('paintStatus').textContent='PNG экспортирован для выбранного комплекта.';
+};
+$('paintImport').onclick=()=>$('paintFile').click();
+$('paintFile').onchange=async e=>{
+ const file=e.target.files?.[0];
+ if(!file||!skinPainter)return;
+ try{
+   const url=await new Promise((resolve,reject)=>{
+     const reader=new FileReader();
+     reader.onload=()=>resolve(reader.result);
+     reader.onerror=reject;
+     reader.readAsDataURL(file);
+   });
+   await skinPainter.load(url);
+   savePaintMask();
+ }catch(error){$('paintStatus').textContent='Ошибка импорта: '+error.message;}
+ e.target.value='';
+};
 const clock=new THREE.Clock();
 const setStatus=message=>$('status').textContent=message;
 const defaultOptions=[{id:'none',label:{en:'— Без предмета —'}}];
@@ -122,13 +279,18 @@ async function reload(){
  try{
    const fresh=await createLiteHumanoid(cfg);
    if(actor){scene.remove(actor.root);actor.mixer.stopAllAction();}
+   if(skinPainter)skinPainter.dispose();
    actor=fresh;scene.add(actor.root);drawHelper();
    skinMask=createDebugSkinMask(actor);
+   skinPainter=createSkinPainter(skinMask.body);
+   showPainterCanvas();
    restoreKitMask();
+   await restorePaintMask();
+   if(painting){actor.mixer.timeScale=0;applySkinMask();}
    $('animation').replaceChildren(...actor.clips.map(a=>{const el=document.createElement('option');el.value=el.textContent=a.name;return el}));
    $('animation').value='idle';actor.mixer.timeScale=+$('speed').value;
    drawStats();setStatus('Готово');
-   window.humanoidLitePreview={actor,cfg,skinMask,hiddenSkin,camera,orbit,applySkinMask};
+   window.humanoidLitePreview={actor,cfg,skinMask,skinPainter,hiddenSkin,camera,orbit,applySkinMask};
  }catch(err){setStatus('Ошибка: '+err.message);console.error(err);}
 }
 $('body').onchange=e=>{cfg.body=e.target.value;void reload()};
@@ -138,7 +300,7 @@ $('hairColor').oninput=e=>{cfg.hairColor=e.target.value;actor.setHairColor(cfg.h
 for(const slot of ['hair','top','bottom','shoes','outerwear','underwear']){
  $(slot).onchange=async e=>{
   cfg[slot]=e.target.value==='none'?null:e.target.value;setStatus('Меняю '+slot+'…');
-  try{await actor.equip(slot,cfg[slot]);restoreKitMask();applySkinMask();drawStats();setStatus('Готово')}
+  try{await actor.equip(slot,cfg[slot]);restoreKitMask();await restorePaintMask();applySkinMask();drawStats();setStatus('Готово')}
   catch(err){setStatus('Ошибка: '+err.message);console.error(err)}
  };
 }

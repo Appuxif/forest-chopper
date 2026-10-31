@@ -275,3 +275,38 @@ coordinate overrides can be added after reviewing visible results.
 
 Run `node --test tests/skin-mask-debug.test.mjs` for the mask classification,
 reversibility, and head-attachment regression tests.
+
+## UV skin-mask painting in the standalone editor
+
+Use **Рисование точной маски (UV)** in `preview-lite.html` to paint directly on
+the animated, skinned human instead of hiding whole triangles by bone group.
+The mask is a **1024×1024 pixel CanvasTexture** used as a `MeshStandardMaterial`
+`alphaMap` with `alphaTest=0.5` and `alphaToCoverage=true`.
+
+- Enable **Рисовать на персонаже**; the editor temporarily hides garments,
+  reveals all coarsely hidden body triangles, and pauses the current pose.
+- Left-click/drag over skin to **Скрыть кожу** (paint black). Switch to **Вернуть
+  кожу** (white) to erase the hidden region. Change the UV-space brush radius.
+- Disable painting to rotate/zoom and check how the cut looks *with clothes*.
+  Animations resume at the selected speed.
+- **Отменить мазок** keeps up to eight stroke snapshots; **Очистить маску**
+  restores fully visible skin.
+- **Сохранить кисть** stores an independent PNG data URL in browser
+  `localStorage`, keyed by gender, face, top, bottom, shoes, outerwear; painted
+  strokes are also saved when released. **Скачать PNG** exports a standalone
+  mask and **Загрузить PNG** imports a 1024×1024 mask.
+- The small checker canvas shows the actual UV mask in black/white. Original
+  color textures and source GLBs are never edited; no geometry is subdivided.
+  The older coarse anatomy checkboxes remain as separate, optional controls.
+
+**Limitations:** Pixel/UV painting creates smooth cut contours, but it does not
+seal the cut 3D shell, fit garments, or make additional flesh where a sleeve
+opening is too loose. UV islands contain seams, and strokes crossing UV-island
+boundaries may need painting from both sides. `alphaMap` affects only the Body
+mesh; eyes/hair are independent, so use the existing **Голова** checkbox to
+hide the whole head if required. This is a visual QA tool, not a completed
+wardrobe production pipeline.
+
+Tests: `node --test tests/skin-mask-debug.test.mjs tests/skin-paint-math.test.mjs`.
+Browser-checked: mouse painting, mask restoration on reload, independent outfit
+keys, toggling painting/orbit controls, and alpha-mapped visible skin.
