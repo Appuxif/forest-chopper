@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forest Chopper | Modular Humanoid Laboratory</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#1b242c;color:#f2f2ef;overflow:hidden}
+#gl{width:100vw;height:100vh;display:block}
+aside{position:absolute;left:16px;top:16px;bottom:16px;width:min(340px,calc(100vw - 32px));overflow:auto;background:#17252deb;
+border:1px solid #57756d;border-radius:14px;padding:16px 18px;box-shadow:0 10px 40px #0008}
+h1{font-size:20px;letter-spacing:-.03em;margin:0 0 4px}p{font-size:12px;color:#b3c5c0;margin:0 0 16px}
+h2{color:#cbdecb;font-size:12px;margin:21px 0 10px;text-transform:uppercase;letter-spacing:.09em;border-bottom:1px solid #44605b;padding-bottom:6px}
+label{font-size:12px;line-height:1.4;color:#e0e9e3}.formrow{display:grid;grid-template-columns:105px 1fr;align-items:center;gap:10px;margin:9px 0}
+select,input[type=range],button{width:100%}select,button{color:#eff5e8;background:#29433f;border:1px solid #658d7c;border-radius:7px;padding:7px;cursor:pointer;font-size:13px}
+input{accent-color:#e4b66c}.stat{font-size:12px;font-family:ui-monospace,monospace;white-space:pre-wrap;color:#cde8d3;line-height:1.65}
+#status{font-size:12px;color:#ffdc9a;margin:11px 0;min-height:14px}small{display:block;position:absolute;right:14px;bottom:14px;background:#1c2b2ec4;padding:8px 12px;border-radius:8px;color:#d8e5e0}
+@media(max-width:600px){aside{width:265px;top:8px;bottom:8px;padding:10px 13px}.formrow{grid-template-columns:80px 1fr}}
+</style>
+<script type="importmap">{"imports":{"three":"https://esm.sh/three@0.170.0"}}</script>
+</head><body><canvas id="gl"></canvas>
+<aside><h1>Humanoid Laboratory</h1><p>53 bones · 92 anatomical morphs · interchangeable clothing & hair</p>
+<div id="status">Загружаю CC0-базу...</div>
+<h2>Генератор тела</h2>
+<div class="formrow"><label>Архетип</label><select id="preset">
+<option value="male">Мужчина</option><option value="female">Женщина</option><option value="athletic">Атлет</option><option value="slim">Худощавый</option><option value="heavy">Крупный</option>
+</select></div>
+<div class="formrow"><label>Мускулатура</label><input type="range" id="muscle" min="0" max=".6" step=".025" value="0"></div>
+<div class="formrow"><label>Вес</label><input type="range" id="weight" min="-0.6" max=".6" step=".025" value="0"></div>
+<div class="formrow"><label>Рост</label><input type="range" id="height" min="-.3" max=".3" step=".025" value="0"></div>
+<h2>Модульная экипировка</h2>
+<div class="formrow"><label>Волосы</label><select id="hair"></select></div>
+<div class="formrow"><label>Верх</label><select id="top"></select></div>
+<div class="formrow"><label>Низ</label><select id="bottom"></select></div>
+<div class="formrow"><label>Обувь</label><select id="shoes"></select></div>
+<div class="formrow"><label>Куртка</label><select id="outerwear"></select></div>
+<h2>Риг и анимации</h2>
+<div class="formrow"><label>Клип</label><select id="animation"></select></div>
+<div class="formrow"><label>Скорость</label><input id="speed" type="range" min="0" max="3" step=".1" value="1"></div>
+<div class="formrow"><label>Показать риг</label><input type="checkbox" id="rig"></div>
+<div class="formrow"><label>Силуэт</label><input type="checkbox" id="silhouette"></div>
+<h2>Экспорт профиля</h2>
+<div class="formrow"><button id="copy">Скопировать конфигурацию</button></div>
+<div id="stats" class="stat"></div>
+</aside>
+<small>ЛКМ — вращать · колесо — масштаб · ПКМ — сдвиг</small>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
+import {createHumanoid,loadHumanoidCatalog,MORPH_PRESETS} from './humanoid.js';
+const $=id=>document.getElementById(id);
+const renderer=new THREE.WebGLRenderer({canvas:$('gl'),antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.3;
+const scene=new THREE.Scene();scene.background=new THREE.Color('#243740');
+const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.025,40);camera.position.set(2.5,1.7,3.4);
+const orbit=new OrbitControls(camera,renderer.domElement);
+orbit.target.set(0,.96,0);orbit.enableDamping=true;orbit.minDistance=.5;orbit.maxDistance=10;orbit.update();
+scene.add(new THREE.HemisphereLight(0xe0ecff,0x534538,2.1));
+const key=new THREE.DirectionalLight(0xffe6cf,3.5);key.position.set(-2,4,3);
+key.castShadow=true;key.shadow.mapSize.set(1024,1024);
+key.shadow.camera.top=3;key.shadow.camera.bottom=-3;
+key.shadow.camera.left=-3;key.shadow.camera.right=3;scene.add(key);
+const rim=new THREE.DirectionalLight(0x93bee5,1.8);rim.position.set(3,3,-3);scene.add(rim);
+const ground=new THREE.Mesh(new THREE.CircleGeometry(4,80),new THREE.MeshStandardMaterial({color:0x3d5c52,roughness:1}));
+ground.rotation.x=-Math.PI/2;ground.position.y=-.01;ground.receiveShadow=true;scene.add(ground);
+const grid=new THREE.GridHelper(7,14,0x5a8171,0x355449);
+grid.position.y=-.007;grid.material.transparent=true;grid.material.opacity=.28;scene.add(grid);
+let actor,helper;
+const settings={preset:'male',hair:'short02',top:'shirt',bottom:'jeans',shoes:'shoes',outerwear:null,muscle:0,weight:0,height:0};
+const clock=new THREE.Clock();
+function report(){if(!actor)return;const d=actor.getStats();$('stats').textContent=JSON.stringify({...d,selected:settings},null,2)}
+function fillSelect(node,items,slot,selected){
+ const choices=[{id:'none',label:{en:'— Без предмета —'}},...items.filter(i=>!slot||i.slot===slot)];
+ node.replaceChildren(...choices.map(i=>{
+  const opt=document.createElement('option');opt.value=i.id;opt.textContent=i.label?.en||i.id;return opt;
+ }));
+ node.value=selected||'none';
+}
+function morphSettings(){
+ return {...MORPH_PRESETS[settings.preset],muscle_max:settings.muscle,
+         weight_min:Math.max(0,-settings.weight),weight_max:Math.max(0,settings.weight),
+         height_short:Math.max(0,-settings.height),height_tall:Math.max(0,settings.height)};
+}
+async function updateMorph(){
+ await actor.setMorphs(morphSettings());report();
+}
+for(const slot of ['hair','top','bottom','shoes','outerwear']){
+ $(slot).addEventListener('change',async e=>{
+   settings[slot]=e.target.value==='none'?null:e.target.value;
+   $('status').textContent='Меняю '+slot+'…';
+   try{await actor.equip(slot,settings[slot]);$('status').textContent='Готово';report()}
+   catch(ex){$('status').textContent='Ошибка: '+ex.message;console.error(ex)}
+ });
+}
+$('preset').onchange=async e=>{settings.preset=e.target.value;await updateMorph()};
+for(const p of ['muscle','weight','height'])$(p).oninput=e=>{settings[p]=Number(e.target.value);void updateMorph()};
+$('animation').onchange=e=>actor.play(e.target.value,{loop:!['fall','jump','land'].includes(e.target.value)});
+$('speed').oninput=e=>{if(actor)actor.mixer.timeScale=Number(e.target.value)};
+$('rig').onchange=e=>{if(helper)helper.visible=e.target.checked};
+$('silhouette').onchange=e=>{actor.bodyMeshes.forEach(o=>{o.material.wireframe=e.target.checked})};
+$('copy').onclick=()=>{navigator.clipboard.writeText(JSON.stringify(settings,null,2));$('status').textContent='Конфигурация скопирована'};
+try{
+ const catalog=await loadHumanoidCatalog();
+ fillSelect($('hair'),catalog.hair.styles,null,settings.hair);
+ for(const name of ['top','bottom','shoes','outerwear'])
+  fillSelect($(name),catalog.clothing.items,name,settings[name]);
+ actor=await createHumanoid(settings);
+ scene.add(actor.root);
+ helper=new THREE.SkeletonHelper(actor.model);
+ helper.visible=false;scene.add(helper);
+ $('animation').replaceChildren(...actor.clips.map(c=>{const o=document.createElement('option');o.textContent=o.value=c.name;return o}));
+ $('animation').value='idle';
+ $('status').textContent='Загружено. Один скелет, сменная экипировка.';
+ report();
+ window.humanoidPreview={actor,settings,catalog};
+}catch(error){console.error(error);$('status').textContent='Ошибка: '+error.message}
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+function frame(){requestAnimationFrame(frame);const delta=Math.min(.05,clock.getDelta());actor?.update(delta);orbit.update();renderer.render(scene,camera)}frame();
+</script></body></html>
