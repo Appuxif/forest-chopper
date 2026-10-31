@@ -69,6 +69,12 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <p class="mask-note" id="maskCount">Сохранено: 0</p>
 <div class="mask-actions"><button id="maskSelectAll">Включить все</button><button id="maskSelectNone">Выключить все</button></div>
 <label class="mask-row"><span>Скрыть одежду для осмотра</span><input type="checkbox" id="maskHideClothes"/></label>
+<h2>Автомаска слоёв одежды</h2>
+<label class="mask-row"><span>Скрывать нижнюю одежду под верхней</span><input type="checkbox" id="autoClothingLayers" checked/></label>
+<div class="control"><label>Запас покрытия</label><input type="range" id="clothingLayerPadding" min="0" max="6" step="1" value="2"/></div>
+<p class="mask-note" id="clothingLayerInfo">Геометрия верхнего слоя определяет, какие пиксели нижней одежды скрыть. 2 — базовый запас.</p>
+<p class="mask-note" id="clothingLayerStats"></p>
+
 <h2>Матрица одежды</h2>
 <p class="mask-note">Выбери предмет — редактор наденет его и покажет, какие базовые маски нужно применять. Назначения сохраняются автоматически в браузере.</p>
 <div class="control"><label>Предмет</label><select id="matrixItem"></select></div>
@@ -124,6 +130,23 @@ const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.target.set(0,.98,0);orbit.minDistance=.65;orbit.maxDistance=7;orbit.enableDamping=true;orbit.update();
 let actor,helper,skinPainter;
 const cfg={...DEFAULT_APPEARANCE};
+const clothingLayers={enabled:true,padding:2};
+function showClothingLayerStats(){
+ const parts=Object.entries(actor?.layerMaskStats||{});
+ $('clothingLayerStats').textContent=parts.length
+  ?'Маска слоёв: '+parts.map(([slot,data])=>slot+' — '+data.maskedPixels+' пикс.').join('; ')
+  :'Нет перекрывающихся слоёв одежды.';
+}
+$('autoClothingLayers').onchange=e=>{
+ clothingLayers.enabled=e.target.checked;
+ if(actor){actor.setClothingLayerMaskEnabled(clothingLayers.enabled);showClothingLayerStats()}
+};
+$('clothingLayerPadding').oninput=e=>{
+ clothingLayers.padding=Number(e.target.value);
+ $('clothingLayerInfo').textContent='Запас покрытия: '+clothingLayers.padding+
+  ' · увеличь, если из-под верхней одежды выглядывают края.';
+ if(actor){actor.setClothingLayerPadding(clothingLayers.padding);showClothingLayerStats()}
+};
 let painting=false,paintPointer=null,editing=null,editDraft=null,clothesHidden=false;
 let library={male:{},female:{}};
 const enabled={male:new Set(),female:new Set()};
@@ -520,7 +543,7 @@ $('matrixItem').onchange=async()=>{
    await actor.equip(item.slot,item.id);
    const part=actor.parts.get(item.slot);
    if(part)part.visible=painting?false:!clothesHidden;
-   drawStats();
+   drawStats();showClothingLayerStats();
    setStatus('Готово');
   }catch(error){setStatus('Ошибка: '+error.message)}
  }
@@ -598,7 +621,7 @@ function drawHelper(){
 async function reload(){
  setStatus('Загружаю '+cfg.body+'…');
  try{
-   const fresh=await createLiteHumanoid(cfg);
+   const fresh=await createLiteHumanoid({...cfg,layerMaskEnabled:clothingLayers.enabled,layerMaskPadding:clothingLayers.padding});
    if(actor){scene.remove(actor.root);actor.mixer.stopAllAction();}
    if(skinPainter)skinPainter.dispose();
    painting=false;editing=null;editDraft=null;
@@ -610,7 +633,7 @@ async function reload(){
    await reloadMaskEditor();
    $('animation').replaceChildren(...actor.clips.map(a=>{const el=document.createElement('option');el.value=el.textContent=a.name;return el}));
    $('animation').value='idle';actor.mixer.timeScale=+$('speed').value;
-   drawStats();setStatus('Готово');
+   drawStats();showClothingLayerStats();setStatus('Готово');
    window.humanoidLitePreview={actor,cfg,skinPainter,library,enabled,matrix,camera,orbit,composeEnabledMasks};
  }catch(err){setStatus('Ошибка: '+err.message);console.error(err);}
 }
@@ -624,7 +647,7 @@ for(const slot of ['hair','top','bottom','shoes','outerwear','underwear']){
   try{await actor.equip(slot,cfg[slot]);const part=actor.parts.get(slot);
     if(part&&slot!=='hair')part.visible=painting?false:!clothesHidden;
     if(!painting)await composeEnabledMasks();
-    drawStats();setStatus('Готово')}
+    drawStats();showClothingLayerStats();setStatus('Готово')}
   catch(err){setStatus('Ошибка: '+err.message);console.error(err)}
  };
 }

@@ -7,6 +7,7 @@ import * as THREE from 'https://esm.sh/three@0.170.0';
 import {GLTFLoader} from 'https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'https://esm.sh/three@0.170.0/examples/jsm/utils/SkeletonUtils.js';
 import {makeBodySkinZones,insetBodyPositions} from './body-zones.js';
+import {applyClothingLayerMask,clearClothingLayerMask,CLOTHING_LAYER_RANK} from './clothing-layer-mask.js';
 
 const BASE=new URL('./',import.meta.url);
 const loader=new GLTFLoader();
@@ -77,6 +78,10 @@ export class LiteHumanoid {
     this._rootWorldQuat=new THREE.Quaternion();
     this._unadjustedArmRotations=new Map();
     this.parts=new Map();this.sockets=new Map();
+    this.layerMaskEnabled=appearance.layerMaskEnabled!==false;
+    this.layerMaskPadding=appearance.layerMaskPadding??2;
+    this.layerMaskStats={};
+    this._layerMaskBatch=false;
     for(const [name,boneName] of Object.entries(SOCKET_BONES)){
       const parent=this.bones.get(boneName);
       if(!parent)throw Error('Missing socket bone: '+boneName);
@@ -175,19 +180,59 @@ export class LiteHumanoid {
       }
     }
     mesh.userData.assetId=id;
-    this.unequip(slot);
+    this.unequip(slot,{refresh:false});
     this.parts.set(slot,mesh);
     mesh.userData.catalogId=id;
     this.updateBodyVisibility();
     if(slot==='hair')this.setHairColor(this.appearance.hairColor);
     this.appearance[slot]=id;
+    if(!this._layerMaskBatch&&slot!=='hair')this.refreshClothingLayers();
     return this;
   }
-  unequip(slot){
+  unequip(slot,{refresh=true}={}){
     const previous=this.parts.get(slot);
-    if(previous){previous.removeFromParent();previous.skeleton.dispose();this.parts.delete(slot);}
+    if(previous){
+      clearClothingLayerMask(previous);
+      previous.removeFromParent();previous.skeleton.dispose();this.parts.delete(slot);
+    }
     this.appearance[slot]=null;
     this.updateBodyVisibility();
+    if(refresh&&!this._layerMaskBatch&&slot!=='hair')this.refreshClothingLayers();
+    return this;
+  }
+  setClothingLayerMaskEnabled(enabled){
+    this.layerMaskEnabled=Boolean(enabled);
+    this.refreshClothingLayers();
+    return this;
+  }
+  setClothingLayerPadding(padding){
+    this.layerMaskPadding=Math.min(6,Math.max(0,Number(padding)||0));
+    this.refreshClothingLayers();
+    return this;
+  }
+  refreshClothingLayers(){
+    // No per-combination assets or hand-painted clothing-to-clothing masks:
+    // the higher garment is projected onto each lower garment's UVs.
+    for(const mesh of this.parts.values())clearClothingLayerMask(mesh);
+    this.layerMaskStats={};
+    if(!this.layerMaskEnabled)return this;
+    const order=Object.entries(CLOTHING_LAYER_RANK)
+      .filter(([slot])=>this.parts.has(slot));
+    const canCover=(outer,inner)=>(
+      outer==='outerwear'&&['top','underwear','bra'].includes(inner)||
+      outer==='top'&&['underwear','bra'].includes(inner)||
+      outer==='bottom'&&['underwear'].includes(inner)||
+      outer==='shoes'&&['bottom','underwear'].includes(inner)
+    );
+    for(const [slot] of order){
+      const mesh=this.parts.get(slot);
+      const outerMeshes=order.filter(([o])=>canCover(o,slot))
+        .map(([o])=>this.parts.get(o)).filter(Boolean);
+      if(!outerMeshes.length)continue;
+      const result=applyClothingLayerMask(mesh,outerMeshes,
+        {padding:this.layerMaskPadding});
+      if(result)this.layerMaskStats[slot]=result;
+    }
     return this;
   }
   updateBodyVisibility(){
@@ -291,8 +336,14 @@ export async function createLiteHumanoid(options={}){
  ]);
  const model=cloneSkinned(glb.scene);
  const actor=new LiteHumanoid(model,glb.animations,appearance,catalog);
- for(const slot of ['underwear','bra','top','bottom','shoes','outerwear','hair']){
-   if(appearance[slot])await actor.equip(slot,appearance[slot]);
+ actor._layerMaskBatch=true;
+ try{
+   for(const slot of ['underwear','bra','top','bottom','shoes','outerwear','hair']){
+     if(appearance[slot])await actor.equip(slot,appearance[slot]);
+   }
+ }finally{
+   actor._layerMaskBatch=false;
+   actor.refreshClothingLayers();
  }
  actor.play('idle',{fade:0});
  return actor;

@@ -333,3 +333,35 @@ JSON from the project. Likewise, edited/new masks must be exported via
 **Скачать архив ZIP** and copied into the repository. The ZIP includes
 `masks/manifest.json`, `masks/clothing-matrix.json`, and mask PNGs by gender.
 No backend or direct browser write access to the project is assumed.
+
+## Automatic clothing-on-clothing layer masks (experimental)
+
+`clothing-layer-mask.js` generates UV alpha masks for **lower clothing meshes**
+from the actual triangles of the higher clothing meshes in their bind pose.
+It projects the higher garment surface to cylindrical silhouette atlases for
+**torso, left arm, right arm**, then rasterizes the coverage onto the lower
+item's own UV texture. Coverage is slightly dilated in the atlas to suppress
+small protrusions; transparent pixels (black in alphaMap) hide lower clothing.
+The generated mask is attached to a cloned material via `alphaMap`, with
+`alphaTest=0.5` and `alphaToCoverage=true`. Geometry and skin weights remain
+unchanged. The lower cloth follows the common 53-bone skeleton during animation.
+No manually authored mask per clothing *pair* is needed.
+
+The runtime `LiteHumanoid` automatically rebuilds these masks on `equip()` and
+`unequip()`. Exposed controls:
+- `actor.setClothingLayerMaskEnabled(boolean)`
+- `actor.setClothingLayerPadding(0..6)`
+- `actor.layerMaskStats` (per-slot number of masked UV texels)
+
+Layer precedence: outerwear covers top/underwear; top covers underwear; bottom
+covers underwear; shoes cover bottom/underwear. The clothes-on-clothes system
+is separate from the named **skin** PNG matrix and does not modify those files.
+
+Use the **Автомаска слоёв одежды** section of `preview-lite.html` to toggle the
+feature and tune coverage padding. Start with T-shirt plus jacket, then try a
+hoodie and the remaining combinations; this is a heuristic, and seams, open
+fronts, extreme animation poses, or an outer garment physically too tight may
+still need geometry fitting or item-specific coverage overrides. Atlas generation
+happens when equipment changes, not on each animation frame. This initial
+prototype has **not been visually verified or regression-tested**; per project
+vibe-coding agreement the user will perform the first acceptance test.
