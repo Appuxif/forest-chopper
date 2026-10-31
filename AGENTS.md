@@ -13,6 +13,7 @@
 ### Куда идти за подробностями
 
 - [docs/AUTONOMOUS_OVERNIGHT_GAME_IMPROVEMENTS.md](docs/AUTONOMOUS_OVERNIGHT_GAME_IMPROVEMENTS.md) — **большой roadmap и handoff автономной миссии по улучшению обычной игры**: P0–P3, конкретные задачи, этапы, приёмка, тесты, ограничения, отчёт. **Исполняй его как задание только если пользователь/раннер поручил эту миссию**, не при любой работе в репозитории.
+- [.agents/skills/forest-chopper-character-artist/SKILL.md](.agents/skills/forest-chopper-character-artist/SKILL.md) — специализированный скилл Blender character artist: персонажи, скульпт, rig/skin, анимации, GLB и проверки под текущий движок.
 - [docs/AI_PLAYER.md](docs/AI_PLAYER.md) — инструкция **игровому LLM-персонажу**, управляющему headless-ботом через MCP.
 - [docs/AI_PLAYER_DEBUG.md](docs/AI_PLAYER_DEBUG.md) — инструкция **игровому LLM-персонажу** при отладке через Chrome DevTools и `index_debug.html`.
 - [docs/SERVER_BOTS.md](docs/SERVER_BOTS.md) — установка, запуск и ограничения игрового сервера, bot gateway/MCP/CLI.
