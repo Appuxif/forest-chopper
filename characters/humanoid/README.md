@@ -243,3 +243,35 @@ remain in the exported GLB. All source GLBs are retained as a quality fallback.
   animation playback is paused, preventing cumulative shoulder drift.
 - Not yet integrated into the production player / multiplayer code. The old
   `lumberjack.glb` loader is unchanged.
+
+## Experimental skin-mask checkboxes (isolated clothing worktree)
+
+The standalone `preview-lite.html` contains a **skin mask debug panel** below
+Equipment. You can hide/show nine anatomical regions (torso/pelvis, head, neck,
+upper arms/shoulders, forearms, hands including fingers, thighs, calves and feet)
+without changing clothing or the 53-bone armature. The head option also hides
+separately skinned eye parts and the currently equipped hair to avoid floating
+facial meshes. A separate checkbox temporarily hides garments to inspect the
+cut boundaries on the naked body, without unequipping anything.
+
+`skin-mask-debug.js` classifies the original body triangles once using the
+weights of their bones, and rebuilds the **body index buffer only**. It clones
+the body geometry for every actor before doing so: no GLB source asset or
+another avatar is modified. There is no new mesh and no runtime morphing.
+
+This is an intentionally **coarse visualization tool**. The bone-region edges
+may be jagged or remove too much/little skin at collars, elbows and cuffs.
+Do NOT interpret it as a finished clothing mask. Fine-grained triangle or
+coordinate overrides can be added after reviewing visible results.
+
+- **Показать всё** / **Скрыть всё**: clear/select all mask zones.
+- **Скрыть одежду для проверки маски**: inspect cut edges with garments
+  temporarily invisible, but keep the actual outfit selected.
+- **Запомнить для комплекта**: store the selected mask in this browser's
+  `localStorage`, keyed by gender, face, top, bottom, shoes, and outerwear.
+  Saved masks restore on selecting the same combination later.
+- **Копировать JSON**: copy a portable record of outfit + hidden skin regions
+  for later conversion into a per-item clothing mask matrix.
+
+Run `node --test tests/skin-mask-debug.test.mjs` for the mask classification,
+reversibility, and head-attachment regression tests.

@@ -15,6 +15,13 @@ input[type=range]{width:100%;accent-color:#d4ad6a}
 #status{font-size:12px;color:#e9cd96;min-height:18px}
 pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 #help{position:fixed;bottom:15px;right:15px;font-size:12px;background:#1b3037a8;padding:10px;border-radius:8px}
+.mask-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 3px;border-bottom:1px solid #314948;cursor:pointer}
+.mask-row input{width:17px;height:17px;accent-color:#e9b676;cursor:pointer}
+.mask-row span{font-size:12px}
+.mask-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:9px 0}
+.mask-actions button{font-size:12px;padding:6px}
+.mask-note{color:#d3b887;font-size:11px;line-height:1.45}
+#maskStats{font-size:12px;color:#c8e4d8;display:block;padding:5px 0}
 </style>
 <script type="importmap">{"imports":{"three":"https://esm.sh/three@0.170.0"}}</script>
 </head><body><canvas id="view"></canvas><aside>
@@ -31,6 +38,14 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <div class="control"><label>Обувь</label><select id="shoes"></select></div>
 <div class="control"><label>Верхняя одежда</label><select id="outerwear"></select></div>
 <div class="control"><label>Нижнее бельё</label><select id="underwear"></select></div>
+<h2>Маска кожи · отладка</h2>
+<p class="mask-note">Скрывается только геометрия тела, одежда остаётся. Границы зон пока приблизительные и могут быть зубчатыми — это инструмент подбора.</p>
+<div id="maskControls"></div>
+<label class="mask-row"><span>Скрыть одежду для проверки маски</span><input type="checkbox" id="maskHideClothes"/></label>
+<div class="mask-actions"><button id="maskShowAll">Показать всё</button><button id="maskHideAll">Скрыть всё</button></div>
+<output id="maskStats"></output>
+<div class="mask-actions"><button id="maskSave">Запомнить для комплекта</button><button id="maskCopy">Копировать JSON</button></div>
+<p class="mask-note" id="maskHint">Настройки каждого комплекта можно сохранить и восстановить при следующем выборе.</p>
 <h2>Анимация</h2>
 <div class="control"><label>Клип</label><select id="animation"></select></div>
 <div class="control"><label>Скорость</label><input id="speed" type="range" min="0" max="3" step=".1" value="1"/></div>
@@ -42,6 +57,7 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 import * as THREE from 'three';
 import {OrbitControls} from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
 import {createLiteHumanoid,getHumanoidCatalog,DEFAULT_APPEARANCE} from './humanoid-lite.js';
+import {SKIN_MASK_ZONES,createDebugSkinMask} from './skin-mask-debug.js';
 const $=id=>document.getElementById(id);
 const renderer=new THREE.WebGLRenderer({canvas:$('view'),antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -57,11 +73,35 @@ const floor=new THREE.Mesh(new THREE.CircleGeometry(3.8,64),new THREE.MeshStanda
 floor.rotation.x=-Math.PI/2;floor.position.y=-.018;floor.receiveShadow=true;scene.add(floor);
 const grid=new THREE.GridHelper(7,14,0x779789,0x426655);
 grid.position.y=-.015;grid.material.transparent=true;grid.material.opacity=.28;scene.add(grid);
-const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.02,50);camera.position.set(2.4,1.8,3.35);
+const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.02,50);camera.position.set(1.25,1.55,2.30);
 const orbit=new OrbitControls(camera,renderer.domElement);
-orbit.target.set(0,.95,0);orbit.minDistance=.65;orbit.maxDistance=7;orbit.enableDamping=true;orbit.update();
-let actor,helper;
+orbit.target.set(0,.98,0);orbit.minDistance=.65;orbit.maxDistance=7;orbit.enableDamping=true;orbit.update();
+let actor,helper,skinMask;
+let clothesHiddenForDebug=false;
 const cfg={...DEFAULT_APPEARANCE};
+const hiddenSkin=new Set();
+const maskStoragePrefix='forest-chopper:humanoid-lite:skin-mask:';
+function maskKitKey(){return [cfg.body,cfg.face,cfg.top||'none',cfg.bottom||'none',cfg.shoes||'none',cfg.outerwear||'none'].join('|')}
+function maskPayload(){return {body:cfg.body,face:cfg.face,equipment:{top:cfg.top,bottom:cfg.bottom,shoes:cfg.shoes,outerwear:cfg.outerwear},hiddenSkinZones:[...hiddenSkin]}}
+function applySkinMask(){
+ if(!skinMask)return;
+ const result=skinMask.apply(hiddenSkin);
+ for(const [slot,part] of actor.parts){if(slot!=='hair')part.visible=!clothesHiddenForDebug;}
+ for(const box of document.querySelectorAll('[data-skin-zone]'))box.checked=hiddenSkin.has(box.dataset.skinZone);
+ $('maskStats').textContent=`Скрыто ${result.hidden} из ${result.total} треугольников тела`;
+ if(actor)drawStats();
+}
+function restoreKitMask(){
+ hiddenSkin.clear();
+ try{
+  const saved=JSON.parse(localStorage.getItem(maskStoragePrefix+maskKitKey())||'null');
+  for(const region of saved?.hiddenSkinZones||[]){
+   if(SKIN_MASK_ZONES.some(z=>z.id===region))hiddenSkin.add(region);
+  }
+  $('maskHint').textContent=saved?'Восстановлена маска этого комплекта.':'Для этого комплекта маска ещё не сохранена.';
+ }catch(err){console.warn('Could not restore skin mask',err)}
+ applySkinMask();
+}
 const clock=new THREE.Clock();
 const setStatus=message=>$('status').textContent=message;
 const defaultOptions=[{id:'none',label:{en:'— Без предмета —'}}];
@@ -71,7 +111,7 @@ function fill(node,items,slot,selected){
  node.value=selected||'none';
 }
 function drawStats(){
- $('stats').textContent=JSON.stringify({...actor.stats(),appearance:cfg},null,2);
+ $('stats').textContent=JSON.stringify({...actor.stats(),bodyMask:skinMask?skinMask.stats():null,appearance:cfg},null,2);
 }
 function drawHelper(){
  if(helper){scene.remove(helper);helper.dispose?.();}
@@ -83,10 +123,12 @@ async function reload(){
    const fresh=await createLiteHumanoid(cfg);
    if(actor){scene.remove(actor.root);actor.mixer.stopAllAction();}
    actor=fresh;scene.add(actor.root);drawHelper();
+   skinMask=createDebugSkinMask(actor);
+   restoreKitMask();
    $('animation').replaceChildren(...actor.clips.map(a=>{const el=document.createElement('option');el.value=el.textContent=a.name;return el}));
    $('animation').value='idle';actor.mixer.timeScale=+$('speed').value;
    drawStats();setStatus('Готово');
-   window.humanoidLitePreview={actor,cfg,camera,orbit};
+   window.humanoidLitePreview={actor,cfg,skinMask,hiddenSkin,camera,orbit,applySkinMask};
  }catch(err){setStatus('Ошибка: '+err.message);console.error(err);}
 }
 $('body').onchange=e=>{cfg.body=e.target.value;void reload()};
@@ -96,14 +138,35 @@ $('hairColor').oninput=e=>{cfg.hairColor=e.target.value;actor.setHairColor(cfg.h
 for(const slot of ['hair','top','bottom','shoes','outerwear','underwear']){
  $(slot).onchange=async e=>{
   cfg[slot]=e.target.value==='none'?null:e.target.value;setStatus('Меняю '+slot+'…');
-  try{await actor.equip(slot,cfg[slot]);drawStats();setStatus('Готово')}
+  try{await actor.equip(slot,cfg[slot]);restoreKitMask();applySkinMask();drawStats();setStatus('Готово')}
   catch(err){setStatus('Ошибка: '+err.message);console.error(err)}
  };
 }
 $('animation').onchange=e=>actor.play(e.target.value,{loop:!['fall','jump','land'].includes(e.target.value)});
 $('speed').oninput=e=>{if(actor)actor.mixer.timeScale=Number(e.target.value)};
 $('skeleton').onchange=e=>{if(helper)helper.visible=e.target.checked};
-$('copy').onclick=()=>navigator.clipboard.writeText(JSON.stringify(cfg,null,2));
+for(const z of SKIN_MASK_ZONES){
+ const label=document.createElement('label');label.className='mask-row';
+ const name=document.createElement('span');name.textContent='Скрыть: '+z.label;
+ const check=document.createElement('input');check.type='checkbox';check.dataset.skinZone=z.id;
+ check.onchange=()=>{if(check.checked)hiddenSkin.add(z.id);else hiddenSkin.delete(z.id);applySkinMask();$('maskHint').textContent='Маска изменена. Нажми «Запомнить», если этот вариант подходит.'};
+ label.append(name,check);$('maskControls').append(label);
+}
+$('maskHideClothes').onchange=e=>{clothesHiddenForDebug=e.target.checked;applySkinMask()};
+$('maskShowAll').onclick=()=>{hiddenSkin.clear();applySkinMask()};
+$('maskHideAll').onclick=()=>{for(const z of SKIN_MASK_ZONES)hiddenSkin.add(z.id);applySkinMask()};
+$('maskSave').onclick=()=>{try{localStorage.setItem(maskStoragePrefix+maskKitKey(),JSON.stringify(maskPayload()));$('maskHint').textContent='Маска сохранена для этого пола и комплекта одежды.'}catch(err){$('maskHint').textContent='Не удалось сохранить: '+err.message}};
+async function copyText(content){
+ try{
+  await navigator.clipboard.writeText(content);
+  $('maskHint').textContent='JSON скопирован в буфер обмена.';
+ }catch(error){
+  console.warn('Clipboard unavailable',error);
+  $('maskHint').textContent='Не удалось скопировать JSON. Разреши доступ к буферу обмена.';
+ }
+}
+$('maskCopy').onclick=()=>void copyText(JSON.stringify(maskPayload(),null,2));
+$('copy').onclick=()=>void copyText(JSON.stringify({...cfg,skinMask:[...hiddenSkin]},null,2));
 try{
  const catalog=await getHumanoidCatalog();
  fill($('hair'),catalog.hair.styles,null,cfg.hair);
