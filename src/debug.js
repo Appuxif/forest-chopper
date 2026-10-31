@@ -288,9 +288,9 @@ export function installDebug(ctx) {
       ctx.inventory.render();ctx.offlineSave?.markDirty?.();
       return api.inventory();
     },
-    setVitals(health,hunger){
+    setVitals(health,hunger,stamina=5){
       if(ctx.isOnline())throw new Error('Offline debug helper only');
-      if(!ctx.vitals?.restore({health,hunger,hungerProgress:0}))throw new Error('Invalid vitals');
+      if(!ctx.vitals?.restore({health,hunger,stamina,hungerProgress:0}))throw new Error('Invalid vitals');
       ctx.offlineSave?.markDirty?.();
       return api.vitals();
     },

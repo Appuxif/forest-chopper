@@ -143,7 +143,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 .fc-angle-pair input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:17px;height:23px;border:2px solid #143c25;border-radius:6px;background:#96e3aa;cursor:ew-resize;pointer-events:auto}
 .fc-angle-pair input[type=range]::-moz-range-thumb{width:17px;height:23px;border:2px solid #143c25;border-radius:6px;background:#96e3aa;cursor:ew-resize;pointer-events:auto}
 .fc-settings button{border-radius:7px;padding:7px 10px}
-.fc-fps{position:fixed;z-index:9;top:320px;left:16px;max-width:calc(100vw - 32px);border-radius:6px;padding:6px 8px;background:#10251fe8;color:#baf1ca;font:600 11px/1.5 ui-monospace,monospace;white-space:pre-line;pointer-events:none}
+.fc-fps{position:fixed;z-index:9;top:7px;left:50%;transform:translateX(-50%);max-width:min(560px,calc(100vw - 150px));max-height:26vh;overflow:hidden;border-radius:6px;padding:4px 7px;background:#10251fe8;color:#baf1ca;font:600 10px/1.35 ui-monospace,monospace;white-space:pre-line;pointer-events:none;text-align:center}
 @media(max-width:450px){.fc-tree-fields{grid-template-columns:1fr}.fc-tree-toolbar{grid-template-columns:1fr}.fc-tree-actions button{flex:1}.fc-settings{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:11px}.fc-settings-header{padding:11px 13px 7px}.fc-settings-tabs{padding:6px 10px 9px}.fc-settings .fc-settings-tab{min-width:80px;padding:8px 6px}.fc-settings-content{padding:7px 14px 12px}.fc-settings-footer{padding:9px 13px}.fc-settings-toggle{top:95px;right:12px;padding:8px 10px}}
 `;
   doc.head.append(css);

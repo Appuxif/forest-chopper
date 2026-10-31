@@ -19,9 +19,9 @@ export function createBuilding(ctx) {
     const z = Math.round((ctx.pz + dirZ * distance) * 2) / 2;
     let level = 0;
     for (const p of ctx.placed) {
-      if (overlaps({x, z, orientation: ctx.orientation}, p)) level = Math.max(level, p.level + 1);
+      if (overlaps({x, z, orientation: ctx.orientation % 2}, p)) level = Math.max(level, p.level + 1);
     }
-    return {x, z, orientation: ctx.orientation, level, y: ctx.logRadius + level * ctx.logRadius * 1.8};
+    return {x, z, orientation: ctx.orientation % 2, level, y: ctx.logRadius + level * ctx.logRadius * 1.8};
   }
 
   function placeError(p) {
@@ -65,7 +65,7 @@ export function createBuilding(ctx) {
     }
     ctx.preview.position.set(ctx.placement.x, ctx.placement.y, ctx.placement.z);
     ctx.preview.rotation.set(0, 0, Math.PI / 2);
-    if (ctx.orientation === 1) ctx.preview.rotation.y = Math.PI / 2;
+    if (ctx.orientation % 2 === 1) ctx.preview.rotation.y = Math.PI / 2;
     const error = placeError(ctx.placement);
     ctx.preview.material.color.setHex(error ? 0xff6666 : 0x83efb5);
     hint(error || `Высота: ${ctx.placement.level + 1} · Цена: 1 🪵`);
@@ -145,7 +145,7 @@ export function createBuilding(ctx) {
   }
 
   ctx.$('mode').onclick = () => setMode(!ctx.buildMode);
-  ctx.$('rotate').onclick = () => ctx.orientation = 1 - ctx.orientation;
+  ctx.$('rotate').onclick = () => ctx.orientation = (ctx.orientation + 1) % 4;
   ctx.$('place').onclick = placeLog;
   ctx.$('undo').onclick = removeLog;
 

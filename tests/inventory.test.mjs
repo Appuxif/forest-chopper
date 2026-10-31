@@ -26,26 +26,20 @@ test('bag capacity is bounded and upgrades add slots without deleting items',()=
  assert.equal(x.upgradeBag(101),false);
  assert.equal(x.wood(),75);
 });
-test('moving axe into bag unequips; selecting another quick slot equips',()=>{
+test('moving the axe preserves its hotbar binding until explicitly reassigned',()=>{
  const x=createInventoryModel();
- x.move(0,8);assert.equal(x.equipped(),false);
- assert.equal(x.axe(),null);assert.equal(x.select(4),false);
- x.move(8,3);x.select(3);
+ assert.equal(x.move(0,8),true);
+ assert.equal(x.equipped(),true,'hotbar follows moved axe');
+ assert.equal(x.selectedSlot(),8);
+ assert.equal(x.move(8,3),true);
+ x.select(3);
+ assert.equal(x.equipped(),false,'unassigned hotbar entry remains empty');
+ assert.equal(x.assignQuick(3,3),true);
  assert.equal(x.equipped(),true);
  assert.equal(x.axe().speed,1);
  assert.deepEqual(AXE_STATS.map(x=>x.damage),[1,2,3,4]);
 });
-test('offline axe can be dropped and picked up without duplicates',()=>{
- const x=createInventoryModel();
- assert.equal(x.dropAxe({x:3,z:5}),true);
- assert.equal(x.equipped(),false);
- assert.equal(x.slots.filter(s=>s?.id==='axe').length,0);
- assert.equal(x.dropAxe({x:4,z:6}),false);
- assert.equal(x.pickupAxe(),true);
- assert.equal(x.slots.filter(s=>s?.id==='axe').length,1);
- assert.equal(x.dropped,null);
-});
-test('serialized bag restores location of axe, log stacks and dropped item',()=>{
+test('serialized bag restores axe position and log stacks',()=>{
  const a=createInventoryModel();
  a.addLogs(8);a.move(0,9);a.select(1);a.upgradeBag(2);
  const snapshot=a.serialize();
@@ -55,9 +49,6 @@ test('serialized bag restores location of axe, log stacks and dropped item',()=>
  assert.equal(b.restore({...snapshot,slots:[{id:'log',count:99}]},8),false);
  assert.equal(b.restore({...snapshot,selectedQuick:55},8),false);
  assert.equal(b.restore(snapshot,9),false);
- const c=createInventoryModel();c.dropAxe({x:12,z:15});
- const d=createInventoryModel();assert.equal(d.restore(c.serialize(),0),true);
- assert.deepEqual(d.dropped,{x:12,z:15,tier:0});
 });
 test('legacy wood saves migrate without losing items',()=>{
  const x=createInventoryModel();assert.equal(x.restore(null,120),true);
@@ -87,6 +78,7 @@ test('crafting needs three wood and a free output slot before consuming',()=>{
  assert.equal(y.hasSpace(),false);
  assert.equal(y.craftBench(),false);
  assert.equal(y.slots.filter(s=>s?.id==='bench').length,11);
+ assert.equal(x.assignQuick(1,x.slots.findIndex(s=>s?.id==='bench')),true);
  assert.equal(x.select(1),true);
  assert.equal(x.selected(),'bench');
  assert.equal(x.consumeSelected('bench'),true);
@@ -122,4 +114,77 @@ test('dropping or trashing any occupied stack frees exactly that slot',()=>{
  assert.equal(x.restoreSlot(1,removed),true);
  assert.equal(x.restoreSlot(1,removed),false);
  assert.equal(x.removeSlot(50),null);
+});
+
+test('hotbar shows the aggregate item type across stacks and survives moving a depleted source',()=>{
+ const x=createInventoryModel();
+ x.addItem({id:'stone',count:23});
+ const indices=x.slots.map((s,i)=>s?.id==='stone'?i:-1).filter(i=>i>=0);
+ assert.deepEqual(indices.map(i=>x.slots[i].count),[10,10,3]);
+ x.assignQuick(2,indices[2]);
+ x.select(2);
+ assert.equal(x.quickItem(2).count,3);
+ assert.equal(x.count('stone'),23);
+ assert.equal(x.selectedSlot(),indices[2]);
+ x.consumeAt(indices[2],'stone');
+ x.consumeAt(indices[2],'stone');
+ x.consumeAt(indices[2],'stone');
+ assert.equal(x.count('stone'),20);
+ assert.equal(x.selectedSlot(),indices[0],'falls back to another stack of the same type');
+ assert.equal(x.selected(),'stone');
+ const restored=createInventoryModel();
+ assert.equal(restored.restore(x.serialize(),x.wood()),true);
+ assert.equal(restored.selected(),'stone');
+ assert.equal(restored.count('stone'),20);
+});
+
+test('split, merge, half-drag and cross-type swaps preserve total counts',()=>{
+ const x=createInventoryModel();
+ x.addItem({id:'branch',count:9});
+ x.addItem({id:'stone',count:3});
+ assert.equal(x.split(1),true);
+ assert.equal(x.count('branch'),9);
+ assert.equal(x.slots[1].count,5);
+ assert.equal(x.slots[3].count,4);
+ assert.equal(x.transfer(1,3),true);
+ assert.equal(x.slots[1],null);
+ assert.equal(x.slots[3].count,9);
+ assert.equal(x.transfer(3,2,{half:true}),false,'cannot half-drag onto a different item');
+ assert.equal(x.transfer(3,1,{half:true}),true);
+ assert.equal(x.slots[3].count,5);
+ assert.equal(x.slots[1].count,4);
+ assert.equal(x.transfer(1,2),true,'different items swap');
+ assert.equal(x.count('branch'),9);
+ assert.equal(x.count('stone'),3);
+ assert.equal(x.transfer(3,2),true,'merge partial stacks');
+ assert.equal(x.count('branch'),9);
+ assert.equal(x.slots[3],null);
+});
+
+test('quickbar axes retain specific tiers and never silently switch to another axe',()=>{
+ const x=createInventoryModel();
+ x.addItem({id:'axe',tier:3});
+ const master=x.slots.findIndex(s=>s?.id==='axe'&&s.tier===3);
+ x.assignQuick(1,master);x.select(1);
+ assert.equal(x.axe().damage,4);
+ x.move(master,7);
+ assert.equal(x.axe().damage,4,'moving the equipped stack keeps its exact reference');
+ x.removeSlot(7);
+ assert.equal(x.selected(),null,'do not silently equip the basic axe');
+ assert.equal(x.axe(),null);
+});
+
+test('restore rejects malformed quick bindings without mutating the inventory',()=>{
+ const x=createInventoryModel();
+ const initial=x.serialize();
+ for(const patch of [
+   {quickRefs:[0,0,2,3]},
+   {quickRefs:[0,1,-1,3]},
+   {quickRefs:[0,1,2,99]},
+   {quickIds:['axe','unrecognized',null,null]},
+   {quickIds:['axe','log']},
+ ]){
+   assert.equal(x.restore({...initial,...patch},0),false);
+   assert.deepEqual(x.serialize(),initial);
+ }
 });

@@ -4,20 +4,23 @@ export function createVitalsUI(ctx,doc=document){
  const state=createVitals();
  const style=doc.createElement('style');
  style.textContent=[
-  '.fc-vitals{position:fixed;z-index:7;top:130px;left:16px;display:flex;flex-direction:column;gap:4px;background:#11281dc9;border:1px solid #62856a;border-radius:9px;padding:7px 10px;color:#e9f5e7;font:13px system-ui;pointer-events:none;min-width:152px}',
-  '.fc-vitals-row{display:flex;align-items:center;gap:7px;justify-content:space-between}',
-  '.fc-vitals-symbols{letter-spacing:1px;white-space:nowrap;font-size:17px}',
+  '.fc-vitals{position:fixed;z-index:9;bottom:92px;left:50%;transform:translateX(-50%);display:flex;flex-direction:row;align-items:center;justify-content:center;gap:15px;background:#11281de0;border:1px solid #62856a;border-radius:9px;padding:5px 9px;color:#e9f5e7;font:12px system-ui;pointer-events:none;white-space:nowrap}',
+  '.fc-vitals-row{display:flex;align-items:center;gap:5px;white-space:nowrap}',
+  '.fc-vitals-symbols{display:inline-flex;gap:2px;white-space:nowrap;font-size:15px}',
   '.fc-vitals-symbols .empty{opacity:.23;filter:grayscale(1)}',
+  '.fc-stamina{position:absolute;bottom:calc(100% + 5px);left:0;width:100%;height:5px;border:1px solid #6cbccc;border-radius:10px;background:#122c32e6;overflow:hidden;opacity:0;visibility:hidden;transition:opacity .65s ease,visibility 0s linear .65s}',
+  '.fc-stamina[data-visible="true"]{opacity:1;visibility:visible;transition:opacity .2s ease,visibility 0s}',
+  '.fc-stamina-fill{height:100%;background:#65d5e7;border-radius:10px;transition:width .12s linear}',
   '.fc-vitals[data-exhausted=true]{border-color:#d47969}',
-  '@media(max-width:650px){.fc-vitals{top:118px;left:8px;font-size:11px;padding:4px 7px;min-width:136px}.fc-vitals-symbols{font-size:15px}}',
+  '@media(max-width:650px){.fc-vitals{bottom:221px;gap:9px;padding:3px 6px;font-size:10px}.fc-vitals-symbols{gap:1px;font-size:13px}.fc-stamina{height:4px}}',
  ].join('');
  doc.head.append(style);
  const panel=doc.createElement('section');
- panel.className='fc-vitals';panel.setAttribute('aria-label','Здоровье и голод');
- panel.innerHTML='<div class="fc-vitals-row"><span>❤️ Жизни</span><span class="fc-vitals-symbols" data-vital="health"></span></div><div class="fc-vitals-row"><span>🍗 Голод</span><span class="fc-vitals-symbols" data-vital="hunger"></span></div>';
+ panel.className='fc-vitals';panel.setAttribute('aria-label','Здоровье, голод и выносливость');
+ panel.innerHTML='<div class="fc-stamina" title="Выносливость"><div class="fc-stamina-fill"></div></div><div class="fc-vitals-row"><span class="fc-vitals-symbols" data-vital="health" aria-label="Жизни"></span></div><div class="fc-vitals-row"><span class="fc-vitals-symbols" data-vital="hunger" aria-label="Голод"></span></div>';
  doc.body.append(panel);
  function render(){
-  for(const [key,symbol] of [['health','♥'],['hunger','◆']]){
+  for(const [key,symbol] of [['health','♥'],['hunger','🍗']]){
    const element=panel.querySelector('[data-vital="'+key+'"]');
    const count=state[key];element.replaceChildren();
    for(let i=0;i<MAX_VITALS;i++){
@@ -28,14 +31,42 @@ export function createVitalsUI(ctx,doc=document){
    }
    element.title=key==='health'?'Жизни: '+count+'/5':'Голод: '+count+'/5';
   }
+  const staminaBar=panel.querySelector('.fc-stamina');
+  staminaBar.dataset.visible=String(state.stamina<MAX_VITALS/2);
+  staminaBar.querySelector('.fc-stamina-fill').style.width=(state.stamina/MAX_VITALS*100)+'%';
+  staminaBar.title='Выносливость: '+state.stamina.toFixed(1)+'/5';
   panel.dataset.exhausted=String(!state.canChop);
-  panel.title=state.canChop?'':'Рубка недоступна: нужно минимум 2 жизни и 2 сытости';
+  panel.title=state.chopWarning();
  }
- function tick(){
-  if(ctx.isOnline?.())return false;
-  if(!state.tick())return false;
-  render();ctx.offlineSave?.markDirty?.();
-  if(!state.canChop)ctx.notify?.('Недостаточно здоровья или сытости для рубки','warning','vitals-low');
+ let lastVisualStamina=MAX_VITALS,lastVisualHunger=MAX_VITALS;
+ function tick(sprinting=false){
+  const beforeHunger=state.hunger;
+  const changed=state.tick({sprinting});
+  // Online stamina is predicted locally for responsive movement; server
+  // confirmations correct it via acceptServer without awarding client authority.
+  // (The player loop invokes this each frame.)
+  const stamina=state.stamina;
+  if(changed&&(Math.abs(stamina-lastVisualStamina)>.055||state.hunger!==lastVisualHunger)){
+    lastVisualStamina=stamina;lastVisualHunger=state.hunger;render();
+  }
+  if(!ctx.isOnline?.()&&changed)ctx.offlineSave?.markDirty?.();
+  if(beforeHunger>state.hunger&&!state.canChop)ctx.notify?.(state.chopWarning(),'warning','vitals-low');
+  return changed;
+ }
+ function canSprint(){return state.canSprint();}
+ function hit(){
+  if(!state.hit())return false;
+  render();
+  if(!ctx.isOnline?.())ctx.offlineSave?.markDirty?.();
+  return true;
+ }
+ function jump(){
+  if(!state.jump()){
+    ctx.notify?.('Нет сил','warning','vitals-jump');
+    return false;
+  }
+  render();
+  if(!ctx.isOnline?.())ctx.offlineSave?.markDirty?.();
   return true;
  }
  function consume(index){
@@ -53,13 +84,14 @@ export function createVitalsUI(ctx,doc=document){
  function restore(snapshot){
   if(snapshot==null)state.reset();
   else if(!state.restore(snapshot))return false;
-  render();return true;
+  lastVisualStamina=state.stamina;lastVisualHunger=state.hunger;render();return true;
  }
  function acceptServer(snapshot){
   if(!state.restore(snapshot))return false;
-  render();return true;
+  lastVisualStamina=state.stamina;lastVisualHunger=state.hunger;render();return true;
  }
  render();
- return {state,tick,consume,restore,acceptServer,render,serialize:()=>state.snapshot(),
-  get health(){return state.health},get hunger(){return state.hunger},get canChop(){return state.canChop}};
+ return {state,tick,consume,hit,jump,chopWarning:()=>state.chopWarning(),canSprint,restore,acceptServer,render,serialize:()=>state.snapshot(),
+  get health(){return state.health},get hunger(){return state.hunger},get stamina(){return state.stamina},
+  get canChop(){return state.canChop}};
 }

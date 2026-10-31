@@ -11,15 +11,15 @@ import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
 import {createMicroGrass} from './micro-grass.js?v=20261030-grass-density-shadows1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261030-grass-density-shadows1';
-import {createPhysics} from './physics.js?v=20261030-rock-collision1';
-import {createBuilding} from './building.js?v=20261031-inventory2';
-import {createChopping} from './chopping.js?v=20261031-vitals1';
-import {createControls} from './controls.js?v=20261031-vitals1';
-import {createPlayer} from './player.js?v=20261031-loot1';
-import {createMultiplayer} from './multiplayer.js?v=20261031-vitals1';
+import {createPhysics} from './physics.js?v=20261031-jump-energy1';
+import {createBuilding} from './building.js?v=20261031-bench-four-angles1';
+import {createChopping} from './chopping.js?v=20261031-jump-energy1';
+import {createControls} from './controls.js?v=20261031-bench-four-angles1';
+import {createPlayer} from './player.js?v=20261031-inventory-drag1';
+import {createMultiplayer} from './multiplayer.js?v=20261031-stamina1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261031-tree-editor1';
+import {createSettings} from './settings.js?v=20261031-inventory-drag1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
@@ -30,16 +30,16 @@ import {createAtmosphere} from './atmosphere.js?v=20261030-spruce-diagnostics1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
-import {createCrafting} from './crafting.js?v=20261031-inventory2';
+import {createCrafting} from './crafting.js?v=20261031-bench-four-angles1';
 import {createInteractionHighlight} from './interaction-highlight.js';
 import {createDiscoveries} from './discoveries.js';
 import {createCommunityGoal} from './community-goal.js';
-import {createOfflineSave} from './offline-save.js?v=20261031-vitals1';
+import {createOfflineSave} from './offline-save.js?v=20261031-stamina1';
 import {createTutorial} from './tutorial.js';
 import {createProgress} from './progress.js?v=20261030-discoveries1';
-import {createInventory} from './inventory-ui.js?v=20261031-vitals1';
-import {createVitalsUI} from './vitals-ui.js?v=20261031-vitals1';
-import {createForestResources} from './forest-resources.js?v=20261031-collectible-plants1';
+import {createInventory} from './inventory-ui.js?v=20261031-stability1';
+import {createVitalsUI} from './vitals-ui.js?v=20261031-stability1';
+import {createForestResources} from './forest-resources.js?v=20261031-all-item-icons1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261031-boxes1';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
@@ -347,7 +347,7 @@ progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}})
 ({showMapPing,clearMapPings}=createMinimap(ctx));
 ({look}=createControls(ctx));
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261031-vitals1');
+  const { installDebug } = await import('./debug.js?v=20261031-stamina1');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

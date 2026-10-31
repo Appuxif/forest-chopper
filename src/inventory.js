@@ -16,16 +16,25 @@ export function validItem(x){
  return Number.isInteger(x.count)&&x.count>=1&&x.count<=ITEM_STACK[x.id];
 }
 export function createInventoryModel(){
- let tier=0,slots=Array(BASE_BAG_SLOTS).fill(null),quick=0,dropped=null;
+ let tier=0,slots=Array(BASE_BAG_SLOTS).fill(null),quick=0,quickRefs=[0,1,2,3],quickIds=['axe',null,null,null];
  slots[0]={id:'axe',tier:0};
  const capacity=()=>BASE_BAG_SLOTS+tier*SLOTS_PER_UPGRADE;
  const count=id=>slots.reduce((n,x)=>n+(x?.id===id?(id==='axe'?1:x.count):0),0);
  const wood=()=>count('log');
  const free=id=>slots.reduce((n,x)=>n+(x?.id===id?(id==='axe'?0:ITEM_STACK[id]-x.count):!x?ITEM_STACK[id]:0),0);
  const freeLogs=()=>free('log');
- const selected=()=>slots[quick]?.id??null;
+ const quickSlot=i=>{
+  const id=quickIds[i],ref=quickRefs[i];
+  if(!id)return -1;
+  if(slots[ref]?.id===id)return ref;
+  if(id==='axe')return -1; // Never silently equip a different upgraded axe.
+  return slots.findIndex(x=>x?.id===id);
+ };
+ const selectedSlot=()=>quickSlot(quick);
+ const quickItem=i=>slots[quickSlot(i)]??null;
+ const selected=()=>quickItem(quick)?.id??null;
  const equipped=()=>selected()==='axe';
- const axe=()=>equipped()?AXE_STATS[slots[quick].tier]:null;
+ const axe=()=>equipped()?AXE_STATS[quickItem(quick).tier]:null;
  const hasSpace=()=>slots.some(x=>x===null);
  function upgradeBag(next){
   if(!Number.isInteger(next)||next<tier||next>100)return false;
@@ -86,9 +95,53 @@ export function createInventoryModel(){
   const delta=total-wood();
   return delta>=0?addLogs(delta)===delta:spendLogs(-delta);
  }
- function move(a,b){
-  if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<0||a>=slots.length||b>=slots.length)return false;
-  [slots[a],slots[b]]=[slots[b],slots[a]];return true;
+ function transfer(a,b,{half=false}={}){
+  if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<0||a>=slots.length||b>=slots.length||a===b||!slots[a])return false;
+  const source=slots[a],dest=slots[b];
+  if(half&&source.id!=='axe'&&source.count>1){
+    const amount=Math.floor(source.count/2);
+    if(dest&&dest.id!==source.id)return false;
+    if(dest&&dest.count+amount>ITEM_STACK[source.id])return false;
+    source.count-=amount;
+    if(dest)dest.count+=amount;else slots[b]={id:source.id,count:amount};
+    return true;
+  }
+  if(dest?.id===source.id&&source.id!=='axe'){
+    const space=ITEM_STACK[source.id]-dest.count;
+    if(space<=0)return false;
+    const amount=Math.min(space,source.count);
+    dest.count+=amount;source.count-=amount;
+    if(!source.count){
+      slots[a]=null;
+      if(!quickRefs.includes(b))quickRefs=quickRefs.map(ref=>ref===a?b:ref);
+    }
+    return true;
+  }
+  [slots[a],slots[b]]=[slots[b],slots[a]];
+  quickRefs=quickRefs.map(ref=>ref===a?b:ref===b?a:ref);
+  return true;
+ }
+ function move(a,b){return transfer(a,b);}
+ function split(i){
+  if(!Number.isInteger(i)||i<0||i>=slots.length||!slots[i]||slots[i].id==='axe'||slots[i].count<2)return false;
+  const target=slots.findIndex(x=>x===null);
+  return target>=0&&transfer(i,target,{half:true});
+ }
+ function assignQuick(index,slotIndex){
+  if(!Number.isInteger(index)||index<0||index>=QUICK_SLOTS
+    ||!Number.isInteger(slotIndex)||slotIndex<0||slotIndex>=slots.length)return false;
+  const old=quickRefs[index];
+  const other=quickRefs.indexOf(slotIndex);
+  const oldId=quickIds[index];
+  quickRefs[index]=slotIndex;
+  quickIds[index]=slots[slotIndex]?.id??null;
+  if(other>=0&&other!==index){quickRefs[other]=old;quickIds[other]=oldId;}
+  return true;
+ }
+ function swapQuick(a,b){
+  if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||a>=QUICK_SLOTS||b<0||b>=QUICK_SLOTS)return false;
+  [quickRefs[a],quickRefs[b]]=[quickRefs[b],quickRefs[a]];
+  [quickIds[a],quickIds[b]]=[quickIds[b],quickIds[a]];return true;
  }
  function select(i){if(!Number.isInteger(i)||i<0||i>=QUICK_SLOTS)return false;quick=i;return true;}
  function consumeAt(index,id){
@@ -99,7 +152,7 @@ export function createInventoryModel(){
   if(item.count===0)slots[index]=null;
   return true;
  }
- function consumeSelected(id){return consumeAt(quick,id);}
+ function consumeSelected(id){return consumeAt(selectedSlot(),id);}
  function removeSlot(i){
   if(!Number.isInteger(i)||i<0||i>=slots.length||!slots[i])return null;
   const item=copy(slots[i]);slots[i]=null;return item;
@@ -108,30 +161,26 @@ export function createInventoryModel(){
   if(!Number.isInteger(i)||i<0||i>=slots.length||slots[i]||!validItem(item))return false;
   slots[i]=copy(item);return true;
  }
- function dropAxe(position){
-  if(dropped||!equipped()||!position||!Number.isFinite(position.x)||!Number.isFinite(position.z))return false;
-  dropped={x:position.x,z:position.z,tier:slots[quick].tier};slots[quick]=null;return true;
- }
- function pickupAxe(){if(!dropped||!addItem({id:'axe',tier:dropped.tier}))return false;dropped=null;return true;}
- function serialize(){return {version:1,bagTier:tier,selectedQuick:quick,slots:slots.map(copy),dropped:dropped?{...dropped}:null};}
+ function serialize(){return {version:1,bagTier:tier,selectedQuick:quick,quickRefs:[...quickRefs],quickIds:[...quickIds],slots:slots.map(copy)};}
  function restore(data,legacyWood=0){
   if(data!=null){
    if(!data||data.version!==1||!Number.isInteger(data.bagTier)||data.bagTier<0||data.bagTier>100
     ||!Number.isInteger(data.selectedQuick)||data.selectedQuick<0||data.selectedQuick>=QUICK_SLOTS
     ||!Array.isArray(data.slots)||data.slots.length!==BASE_BAG_SLOTS+SLOTS_PER_UPGRADE*data.bagTier
     ||data.slots.some(x=>x!==null&&!validItem(x))
-    ||(data.dropped&&(!Number.isFinite(data.dropped.x)||!Number.isFinite(data.dropped.z)
-      ||Math.abs(data.dropped.x)>240000||Math.abs(data.dropped.z)>240000
-      ||!Number.isInteger(data.dropped.tier)||data.dropped.tier<0||data.dropped.tier>=AXE_STATS.length))
+    ||(data.quickIds!==undefined&&(!Array.isArray(data.quickIds)||data.quickIds.length!==QUICK_SLOTS
+      ||data.quickIds.some(id=>id!==null&&!Object.hasOwn(ITEM_STACK,id))))
+    ||(data.quickRefs!==undefined&&(!Array.isArray(data.quickRefs)||data.quickRefs.length!==QUICK_SLOTS
+      ||new Set(data.quickRefs).size!==QUICK_SLOTS||data.quickRefs.some(x=>!Number.isInteger(x)||x<0||x>=data.slots.length)))
     ||data.slots.reduce((n,x)=>n+(x?.id==='log'?x.count:0),0)!==legacyWood)return false;
-   tier=data.bagTier;slots=data.slots.map(copy);quick=data.selectedQuick;dropped=data.dropped?{...data.dropped}:null;
+   tier=data.bagTier;slots=data.slots.map(copy);quick=data.selectedQuick;quickRefs=data.quickRefs?[...data.quickRefs]:[0,1,2,3];quickIds=data.quickIds?[...data.quickIds]:quickRefs.map(ref=>slots[ref]?.id??null);
    return true;
   }
-  tier=0;slots=Array(BASE_BAG_SLOTS).fill(null);slots[0]={id:'axe',tier:0};quick=0;dropped=null;
+  tier=0;slots=Array(BASE_BAG_SLOTS).fill(null);slots[0]={id:'axe',tier:0};quick=0;quickRefs=[0,1,2,3];quickIds=['axe',null,null,null];
   return setWood(legacyWood,{migrate:true});
  }
  return {capacity,count,wood,free,freeLogs,equipped,axe,selected,hasSpace,canAdd,addItem,spend,craft,
-  upgradeBag,addLogs,spendLogs,setWood,move,select,consumeAt,consumeSelected,removeSlot,restoreSlot,addBench,removeBench,craftBench,
-  dropAxe,pickupAxe,serialize,restore,get slots(){return slots.map(copy)},
-  get bagTier(){return tier},get selectedQuick(){return quick},get dropped(){return dropped?{...dropped}:null}};
+  upgradeBag,addLogs,spendLogs,setWood,move,transfer,split,assignQuick,swapQuick,quickItem,quickSlot,selectedSlot,select,consumeAt,consumeSelected,removeSlot,restoreSlot,addBench,removeBench,craftBench,
+  serialize,restore,get slots(){return slots.map(copy)},
+  get bagTier(){return tier},get selectedQuick(){return quick},get quickRefs(){return [...quickRefs]},get quickIds(){return [...quickIds]}};
 }

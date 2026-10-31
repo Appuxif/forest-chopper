@@ -70,6 +70,12 @@ def tree_info(key,seed):
 MAX_VITALS=5
 LOW_VITALS_THRESHOLD=1
 HUNGER_INTERVAL_SECONDS=300
+STAMINA_SPRINT_DRAIN=0.8
+STAMINA_REGEN=0.65
+STAMINA_HIT_COST=1.0
+STAMINA_JUMP_COST=1.0
+STAMINA_MIN_ACTION=1.0
+STAMINA_SPRINT_RECOVER=0.5
 FOOD_EFFECTS={
     'mushroom:fly_agaric':(-1,0),
     'mushroom:death_cap':(-1,0),
@@ -82,6 +88,8 @@ FOOD_EFFECTS={
 }
 def vitals_view(player):
     return {'health':player['health'],'hunger':player['hunger'],
+            'stamina':round(player.get('stamina',MAX_VITALS),3),
+            'staminaLocked':player.get('stamina_sprint_locked',False),
             'hungerProgress':player['hunger_progress']}
 
 def advance_hunger(player,now):
@@ -95,6 +103,46 @@ def advance_hunger(player,now):
         return False
     player['hunger']=max(0,player['hunger']-steps)
     player['hunger_progress']=progress%HUNGER_INTERVAL_SECONDS if player['hunger'] else 0
+    return True
+
+def advance_stamina(player,now):
+    last=player.get('last_stamina_at',now)
+    elapsed=max(0,min(now-last,1))
+    player['last_stamina_at']=now
+    before=player.get('stamina',float(MAX_VITALS))
+    if player.get('sprinting',False) and not player.get('stamina_sprint_locked',False):
+        value=max(0,before-STAMINA_SPRINT_DRAIN*elapsed)
+        if value<=0:
+            player['stamina_sprint_locked']=True
+            player['sprinting']=False
+    else:
+        value=min(MAX_VITALS,before+STAMINA_REGEN*elapsed)
+        if value>=STAMINA_SPRINT_RECOVER:
+            player['stamina_sprint_locked']=False
+    player['stamina']=value
+    return abs(before-value)>1e-8
+
+def server_can_sprint(player):
+    return (player.get('stamina',MAX_VITALS)>0
+            and not player.get('stamina_sprint_locked',False))
+
+def server_chop_warning(player):
+    if player['health']<=LOW_VITALS_THRESHOLD:return 'Мало жизней'
+    if player['hunger']<=LOW_VITALS_THRESHOLD:return 'Вы голодны'
+    if player.get('stamina',MAX_VITALS)<=STAMINA_MIN_ACTION+1e-6:return 'Нет сил'
+    return ''
+
+def server_can_hit(player):
+    return (player['health']>LOW_VITALS_THRESHOLD
+            and player['hunger']>LOW_VITALS_THRESHOLD
+            and player.get('stamina',MAX_VITALS)>STAMINA_MIN_ACTION+1e-6)
+
+def spend_hit_stamina(player):
+    if not server_can_hit(player):return False
+    player['stamina']=max(0,player.get('stamina',MAX_VITALS)-STAMINA_HIT_COST)
+    if player['stamina']<=0:
+        player['stamina_sprint_locked']=True
+        player['sprinting']=False
     return True
 
 def apply_food(player,kind):
@@ -137,7 +185,7 @@ def inv_take_logs(inv,amount):
 def inv_add_bench(inv):
     try:i=inv.index(None)
     except ValueError:return False
-    inv[i]={'id':'bench'}
+    inv[i]={'id':'bench','count':1}
     return True
 
 def valid_item(item):
@@ -265,10 +313,51 @@ def resource_nearby(seed,x,z,cooldowns,now=None):
     return result
 
 
+def selected_slot(player):
+    quick=player['selected']
+    ref=player.get('quick_refs',[0,1,2,3])[quick]
+    kind=player.get('quick_ids',['axe',None,None,None])[quick]
+    if kind is None:return None
+    if player['inventory'][ref] and player['inventory'][ref]['id']==kind:return ref
+    if kind=='axe':return None
+    return next((i for i,item in enumerate(player['inventory']) if item and item['id']==kind),None)
+
+def refresh_equipment(player):
+    slot=selected_slot(player)
+    item=player['inventory'][slot] if slot is not None else None
+    player['axe_equipped']=bool(item and item['id']=='axe')
+    if player['axe_equipped']:player['axe_tier']=item['tier']
+
+def transfer_inventory(player,a,b,half=False):
+    inv=player['inventory']
+    if not (type(a) is int and type(b) is int and
+            0<=a<len(inv) and 0<=b<len(inv) and a!=b and inv[a]):return False
+    src,dst=inv[a],inv[b]
+    if half and src['id']!='axe' and src['count']>1:
+        count=src['count']//2
+        if dst and (dst['id']!=src['id'] or dst['count']+count>ITEM_LIMITS[src['id']]):return False
+        src['count']-=count
+        if dst:dst['count']+=count
+        else:inv[b]={'id':src['id'],'count':count}
+        return True
+    if dst and dst['id']==src['id'] and src['id']!='axe':
+        amount=min(ITEM_LIMITS[src['id']]-dst['count'],src['count'])
+        if amount<=0:return False
+        dst['count']+=amount
+        src['count']-=amount
+        if not src['count']:
+            inv[a]=None
+            if b not in player['quick_refs']:
+                player['quick_refs']=[b if ref==a else ref for ref in player['quick_refs']]
+        return True
+    inv[a],inv[b]=dst,src
+    player['quick_refs']=[b if n==a else a if n==b else n for n in player['quick_refs']]
+    return True
+
 def inventory_view(player):
     return {'version':1,'bagTier':player.get('bag_tier',0),
             'selectedQuick':player.get('selected',0),
-            'slots':player['inventory'],'dropped':None}
+            'quickRefs':player.get('quick_refs',[0,1,2,3]),'quickIds':player.get('quick_ids',['axe',None,None,None]),'slots':player['inventory']}
 
 class World:
     def __init__(self,path,bot_token=""):
@@ -291,7 +380,7 @@ class World:
                     not isinstance(v,dict) or v.get('kind')!='bench' or
                     not all(type(v.get(axis)) in (int,float) and math.isfinite(v[axis]) and
                             abs(v[axis])<=240000 for axis in ('x','z')) or
-                    type(v.get('orientation')) is not int or v['orientation'] not in (0,1)
+                    type(v.get('orientation')) is not int or v['orientation'] not in (0,1,2,3)
                     for v in furniture.values()):
                     raise ValueError('Invalid furniture save')
                 boxes_raw=data.get('boxes',{})
@@ -363,7 +452,13 @@ class World:
             await self.prune_resource_cooldowns()
             current=time.monotonic()
             for ws,player in list(self.clients.items()):
-                if advance_hunger(player,current):
+                # No continued sprint drain after the last movement packet.
+                if current-player['last_pos']>.35:player['sprinting']=False
+                stamina_changed=advance_stamina(player,current)
+                hunger_changed=advance_hunger(player,current)
+                if hunger_changed or (stamina_changed and
+                    current-player.get('last_stamina_sent',0)>=.6):
+                    player['last_stamina_sent']=current
                     await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
 
     async def send(self,ws,data):
@@ -451,7 +546,7 @@ class World:
             await self.bot_handler(ws);return
         if len(self.clients)+len(self.bots.bots)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
-        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'last_hunger_at':time.monotonic()}
+        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'quick_refs':[0,1,2,3],'quick_ids':['axe',None,None,None],'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'last_hunger_at':time.monotonic(),'stamina':float(MAX_VITALS),'last_stamina_at':time.monotonic(),'stamina_sprint_locked':False,'sprinting':False,'last_stamina_sent':0,'last_jump':-10000,'jump_authorized_until':0}
         self.clients[ws]=player
         await self.prune_boxes()
         await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
@@ -493,7 +588,7 @@ class World:
                     box={'x':x,'z':z,'expires_at':time.time()+BOX_TTL_SECONDS,'item':item.copy()}
                     self.boxes[ident]=box;player['inventory'][slot]=None
                     if item['id']=='log':player['wood']-=item['count']
-                    player['axe_equipped']=bool(player['inventory'][player['selected']] and player['inventory'][player['selected']]['id']=='axe')
+                    refresh_equipment(player)
                     await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
                     await self.broadcast({'type':'box_add','box':{'id':ident,**box}})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
@@ -517,7 +612,7 @@ class World:
                     if not valid_item(item):continue
                     player['inventory'][slot]=None
                     if item['id']=='log':player['wood']-=item['count']
-                    player['axe_equipped']=bool(player['inventory'][player['selected']] and player['inventory'][player['selected']]['id']=='axe')
+                    refresh_equipment(player)
                     await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='consume_food':
@@ -576,14 +671,48 @@ class World:
                     self.chat.append(entry)
                     self.chat=self.chat[-80:]
                     await self.broadcast(entry)
+                elif kind=='jump':
+                    advance_stamina(player,now)
+                    if (now-player['last_jump']<.6 or player['jumping']
+                        or player['stamina']<STAMINA_JUMP_COST):
+                        await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
+                        await self.send(ws,{'type':'action_denied','reason':'Нет сил' if player['stamina']<STAMINA_JUMP_COST else 'Прыжок недоступен'})
+                        continue
+                    player['stamina']=max(0,player['stamina']-STAMINA_JUMP_COST)
+                    if player['stamina']<=0:player['stamina_sprint_locked']=True
+                    player['last_jump']=now
+                    player['jump_authorized_until']=now+1.5
+                    player['last_stamina_sent']=now
+                    await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
                 elif kind=='move':
                     try:x=float(data['x']);z=float(data['z']);yaw=float(data['yaw']);y=float(data.get('y',0));jumping=bool(data.get('jumping',False))
                     except (ValueError,KeyError,TypeError):continue
                     if not all(map(math.isfinite,(x,z,yaw,y))) or y<0 or y>12 or abs(x)>240000 or abs(z)>240000:continue
                     dt=max(.05,now-player['last_pos']);distance=math.hypot(x-player['x'],z-player['z'])
                     if distance>max(4,dt*11) or not can_stand(self,x,z,y):continue
+                    if jumping and y>player['y']+.08 and now>player['jump_authorized_until']:
+                        continue
+                    stamina_changed=advance_stamina(player,now)
+                    wants_sprint=data.get('sprinting') is True and distance>.005
+                    permitted_sprint=wants_sprint and server_can_sprint(player)
+                    if permitted_sprint:
+                        player['walk_credit']=.45
+                    else:
+                        # Small burst allowance for packet jitter, bounded over time
+                        # so exhausted players cannot bypass walking speed by
+                        # sending numerous tiny movement packets.
+                        credit=min(.45,player.get('walk_credit',.45)+3.7*dt)-distance
+                        if credit<-1e-6:
+                            player['sprinting']=False
+                            await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
+                            continue
+                        player['walk_credit']=credit
+                    player['sprinting']=permitted_sprint
                     old_x,old_z=player['x'],player['z']
                     player.update(x=x,z=z,y=y,yaw=yaw,jumping=jumping,last_pos=now)
+                    if stamina_changed and now-player['last_stamina_sent']>.6:
+                        player['last_stamina_sent']=now
+                        await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
                     await self.broadcast({'type':'move','id':uid,'x':x,'z':z,'y':y,'yaw':yaw,'jumping':jumping},ws)
                     if (resource_cell(x,z)!=resource_cell(old_x,old_z) or
                         math.floor(x/DECOR_CHUNK_SIZE)!=math.floor(old_x/DECOR_CHUNK_SIZE) or
@@ -591,20 +720,56 @@ class World:
                         await self.send(ws,self.resource_view(player))
                 elif kind=='equip':
                     if data.get('item') not in ('axe',None):continue
-                    player['axe_equipped']=player['inventory'][player['selected']] is not None and player['inventory'][player['selected']]['id']=='axe'
+                    refresh_equipment(player)
                     await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
                 elif kind=='select_slot':
                     slot=data.get('slot')
                     if type(slot) is not int or not 0<=slot<4:continue
                     player['selected']=slot
-                    player['axe_equipped']=player['inventory'][slot] is not None and player['inventory'][slot]['id']=='axe'
+                    refresh_equipment(player)
                     await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='move_slot':
                     a,b=data.get('from'),data.get('to')
                     if type(a) is not int or type(b) is not int or not(0<=a<len(player['inventory']) and 0<=b<len(player['inventory'])):continue
-                    player['inventory'][a],player['inventory'][b]=player['inventory'][b],player['inventory'][a]
-                    player['axe_equipped']=player['inventory'][player['selected']] is not None and player['inventory'][player['selected']]['id']=='axe'
+                    if not transfer_inventory(player,a,b):continue
+                    refresh_equipment(player)
+                    await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                elif kind=='transfer_slot':
+                    a,b=data.get('from'),data.get('to')
+                    if not transfer_inventory(player,a,b,data.get('half') is True):continue
+                    refresh_equipment(player)
+                    await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                elif kind=='split_slot':
+                    slot=data.get('slot')
+                    if type(slot) is not int or not 0<=slot<len(player['inventory']):continue
+                    target=next((i for i,item in enumerate(player['inventory']) if item is None),None)
+                    if target is None or not transfer_inventory(player,slot,target,True):continue
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                elif kind=='assign_quick':
+                    quick,source=data.get('quick'),data.get('source')
+                    if type(quick) is not int or not 0<=quick<4 or type(source) is not int or not 0<=source<len(player['inventory']):continue
+                    refs=player['quick_refs']
+                    old=refs[quick]
+                    kinds=player['quick_ids']
+                    old_kind=kinds[quick]
+                    other=refs.index(source) if source in refs else -1
+                    refs[quick]=source
+                    kinds[quick]=player['inventory'][source]['id'] if player['inventory'][source] else None
+                    if other>=0 and other!=quick:
+                        refs[other]=old
+                        kinds[other]=old_kind
+                    refresh_equipment(player)
+                    await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                elif kind=='swap_quick':
+                    a,b=data.get('from'),data.get('to')
+                    if type(a) is not int or type(b) is not int or not 0<=a<4 or not 0<=b<4:continue
+                    player['quick_refs'][a],player['quick_refs'][b]=player['quick_refs'][b],player['quick_refs'][a]
+                    player['quick_ids'][a],player['quick_ids'][b]=player['quick_ids'][b],player['quick_ids'][a]
+                    refresh_equipment(player)
                     await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='craft_item':
@@ -620,12 +785,12 @@ class World:
                     self.save()
                 elif kind=='place_item':
                     if now-player['last_build']<.12:continue
-                    slot=player['selected']
-                    item=player['inventory'][slot]
+                    slot=selected_slot(player)
+                    item=player['inventory'][slot] if slot is not None else None
                     if item is None or item['id'] not in ('log','bench'):continue
                     try:x=float(data['x']);z=float(data['z']);orientation=int(data['orientation'])
                     except (ValueError,KeyError,TypeError,OverflowError):continue
-                    if not math.isfinite(x) or not math.isfinite(z) or orientation not in (0,1) or math.hypot(x-player['x'],z-player['z'])>6:continue
+                    if not math.isfinite(x) or not math.isfinite(z) or orientation not in ((0,1) if item['id']=='log' else (0,1,2,3)) or math.hypot(x-player['x'],z-player['z'])>6:continue
                     if abs(x)>240000 or abs(z)>240000 or abs(x*2-round(x*2))>1e-4 or abs(z*2-round(z*2))>1e-4:continue
                     if item['id']=='log':
                         p={'x':x,'z':z,'orientation':orientation}
@@ -674,15 +839,19 @@ class World:
                 elif kind=='hit':
                     if not player['axe_equipped']:continue
                     advance_hunger(player,now)
-                    if player['health']<=LOW_VITALS_THRESHOLD or player['hunger']<=LOW_VITALS_THRESHOLD:
+                    advance_stamina(player,now)
+                    if not server_can_hit(player):
                         await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
-                        await self.send(ws,{'type':'action_denied','reason':'Нужны хотя бы 2 жизни и 2 сытости для рубки'})
+                        await self.send(ws,{'type':'action_denied','reason':server_chop_warning(player)})
                         continue
                     tier=min(max(player.get('axe_tier',0),0),len(AXE_LEVELS)-1)
                     damage,speed=AXE_LEVELS[tier]
                     if now-player['last_hit']<.28/speed:continue
                     player['last_hit']=now
-                    await self.hit_tree(player,data.get('tree',''),now,damage=damage)
+                    if await self.hit_tree(player,data.get('tree',''),now,damage=damage):
+                        spend_hit_stamina(player)
+                        player['last_stamina_sent']=now
+                        await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
         except Exception as exc:print('Disconnected:',uid,type(exc).__name__)
         finally:
             self.clients.pop(ws,None);await self.broadcast({'type':'leave','id':uid})

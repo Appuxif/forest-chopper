@@ -58,7 +58,12 @@ function simulateVertical(dt){
    if(!hasSupport)ctx.onGround=false;
  }
 }
-function requestJump(){if(ctx.onGround)ctx.jumpRequested=true}
+function requestJump(){
+  if(!ctx.onGround||ctx.jumpRequested)return;
+  if(ctx.vitals&&!ctx.vitals.jump())return;
+  if(ctx.isOnline?.())ctx.sendNet?.({type:'jump'});
+  ctx.jumpRequested=true;
+}
 
 return {logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump};
 }

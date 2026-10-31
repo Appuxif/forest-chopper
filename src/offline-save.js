@@ -63,6 +63,8 @@ export function parseOfflineSave(raw) {
     const vitals=data.vitals??null;
     if(vitals!==null&&(!Number.isInteger(vitals.health)||vitals.health<0||vitals.health>MAX_VITALS
         ||!Number.isInteger(vitals.hunger)||vitals.hunger<0||vitals.hunger>MAX_VITALS
+        ||(vitals.stamina!==undefined&&(!Number.isFinite(vitals.stamina)||vitals.stamina<0||vitals.stamina>MAX_VITALS))
+        ||(vitals.staminaLocked!==undefined&&typeof vitals.staminaLocked!=='boolean')
         ||!Number.isFinite(vitals.hungerProgress)||vitals.hungerProgress<0
         ||vitals.hungerProgress>=HUNGER_INTERVAL_SECONDS))return null;
     const furniture=[];

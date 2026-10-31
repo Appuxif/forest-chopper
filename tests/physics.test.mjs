@@ -49,3 +49,30 @@ test('landing on log surface and head collision', () => {
   for (let i = 0; i < 8; i++) physics.simulateVertical(.05);
   assert.ok(ctx.feetY < .32, 'head is stopped at the underside of an overhead log');
 });
+
+test('jump charges stamina exactly once, only when grounded, and reports exhaustion',()=>{
+ const {ctx,physics}=fixture();
+ const sent=[],spent=[];
+ let energy=2;
+ ctx.isOnline=()=>true;
+ ctx.sendNet=payload=>sent.push(payload);
+ ctx.vitals={jump(){spent.push(1);if(energy<1)return false;energy--;return true;}};
+ physics.requestJump();
+ physics.requestJump();
+ assert.equal(spent.length,1,'duplicate keyboard/pointer events must not charge twice');
+ assert.equal(ctx.jumpRequested,true);
+ assert.deepEqual(sent,[{type:'jump'}]);
+ physics.simulateVertical(.016);
+ assert.equal(ctx.onGround,false);
+ physics.requestJump();
+ assert.equal(spent.length,1,'cannot jump midair');
+ ctx.feetY=0;ctx.verticalSpeed=0;ctx.onGround=true;
+ physics.requestJump();
+ assert.equal(spent.length,2);
+ physics.simulateVertical(.016);
+ ctx.feetY=0;ctx.verticalSpeed=0;ctx.onGround=true;
+ physics.requestJump();
+ assert.equal(spent.length,3,'insufficient energy is checked on grounded jump');
+ assert.equal(ctx.jumpRequested,false);
+ assert.equal(sent.length,2);
+});

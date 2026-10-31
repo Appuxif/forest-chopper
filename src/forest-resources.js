@@ -107,5 +107,12 @@ export function createForestResources(ctx){
   for(const {geo,mat} of Object.values(models)){geo.dispose();mat.dispose();}
  }
  return {tick,set,remove,collect,closest,clear,dispose,restoreCooldowns,syncDecorChunk,syncDecor,
+  createIconModel(kind){
+    const model=models[kind];
+    if(!model)return null;
+    const mesh=new THREE.Mesh(model.geo,model.mat);
+    if(kind==='branch')mesh.rotation.z=Math.PI/2;
+    return mesh;
+  },
   snapshotCooldowns:()=>spawner.cooldowns,get count(){return nodes.size},get nodes(){return [...nodes.values()]}};
 }

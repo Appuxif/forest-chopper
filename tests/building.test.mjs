@@ -128,3 +128,14 @@ test('preview turns green when placement becomes valid and is released on exit',
   assert.equal(ctx.preview, null);
   assert.equal(material.disposed, true);
 });
+
+test('log orientation stays on its existing two-axis grid even after multiple bench rotations',()=>{
+ const {ctx,building}=setup(true);
+ building.setMode(true);
+ ctx.wood=3;
+ for(const [angle,expected] of [[0,0],[1,1],[2,0],[3,1]]){
+   ctx.orientation=angle;
+   const item=building.candidate();
+   assert.equal(item.orientation,expected);
+ }
+});

@@ -2,7 +2,7 @@
 export const BENCH_COST=3;
 export const BENCH_REFUND=2;
 export const MAX_BENCHES=200;
-export const validBench = item => item?.kind==='bench' && [0,1].includes(item.orientation) &&
+export const validBench = item => item?.kind==='bench' && [0,1,2,3].includes(item.orientation) &&
   Number.isFinite(item.x) && Number.isFinite(item.z) &&
   Math.abs(item.x)<=240000 && Math.abs(item.z)<=240000 &&
   Math.abs(item.x*2-Math.round(item.x*2))<1e-4 &&
@@ -71,7 +71,7 @@ export function createCrafting(ctx,doc=document) {
     if(error){ctx.notify(error,'warning');return false;}
     if(ctx.isOnline()){ctx.sendNet({type:'place_item',x:item.x,z:item.z,orientation:item.orientation});return true;}
     if(!add({...item,id:--offlineId}))return false;
-    ctx.inventory.state.removeBench(ctx.inventory.state.selectedQuick);
+    ctx.inventory.state.removeBench(ctx.inventory.state.selectedSlot());
     ctx.inventory.render();ctx.offlineSave.markDirty();
     ctx.notify('🪑 Скамейка установлена','success');return true;
   }
@@ -136,6 +136,6 @@ export function createCrafting(ctx,doc=document) {
   buildbar.append(placeButton,removeButton);
   function setMode(on){placeButton.style.display=removeButton.style.display=ctx.inventory?'none':on?'block':'none';}
   function snapshot(){return [...items.values()].map(({kind,x,z,orientation})=>({kind,x,z,orientation}));}
-  return {add,remove,clear,place,removeNear,setMode,snapshot,createPreview,colorPreview,placeError:allowed,candidate,placeItem,craftItem,dismantle,
+  return {add,remove,clear,place,removeNear,setMode,snapshot,createPreview,createIconModel:()=>mesh({x:0,z:0,orientation:0},false),colorPreview,placeError:allowed,candidate,placeItem,craftItem,dismantle,
     get items(){return items;}};
 }

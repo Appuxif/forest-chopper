@@ -5,7 +5,7 @@ import {createInventoryModel} from '../src/inventory.js';
 
 test('health and hunger have five slots; at one or zero cannot chop',()=>{
  const x=createVitals({now:()=>0});
- assert.deepEqual(x.snapshot(),{health:5,hunger:5,hungerProgress:0});
+ assert.deepEqual(x.snapshot(),{health:5,hunger:5,stamina:5,staminaLocked:false,hungerProgress:0});
  assert.equal(MAX_VITALS,5);
  assert.equal(canChop({health:2,hunger:2}),true);
  for(const health of [0,1])assert.equal(canChop({health,hunger:5}),false);
@@ -68,7 +68,7 @@ test('saving vitals preserves countdown progress but does not reduce hunger whil
  now=200;x.tick();
  x.eat('mushroom:fly_agaric');
  const saved=x.snapshot();
- assert.deepEqual(saved,{health:4,hunger:5,hungerProgress:200});
+ assert.deepEqual(saved,{health:4,hunger:5,stamina:5,staminaLocked:false,hungerProgress:200});
  now=1400;
  const y=createVitals({now:()=>now});
  assert.equal(y.restore(saved),true);
@@ -79,4 +79,84 @@ test('saving vitals preserves countdown progress but does not reduce hunger whil
  assert.equal(y.restore({health:0,hunger:-1,hungerProgress:0}),false);
  assert.equal(y.restore({health:1,hunger:2,hungerProgress:300}),false);
  y.reset();assert.equal(y.health,5);assert.equal(y.hunger,5);
+});
+
+test('sprint drains to zero before lockout; 0.5 stamina unlocks it',()=>{
+ let now=0;
+ const x=createVitals({now:()=>now});
+ for(let i=1;i<=5;i++){now=i;x.tick({sprinting:true});}
+ assert.ok(Math.abs(x.stamina-1)<1e-6);
+ assert.equal(x.canSprint(),true,'run remains possible with 20% stamina');
+ assert.equal(x.canChop,false);
+ now=6;x.tick({sprinting:true});assert.ok(x.stamina>0);
+ now=7;x.tick({sprinting:true});assert.equal(x.stamina,0);
+ assert.equal(x.canSprint(),false);
+ assert.equal(x.snapshot().staminaLocked,true);
+ now=7.5;x.tick({sprinting:false});
+ assert.equal(x.canSprint(),false);
+ now=8;x.tick({sprinting:false});
+ assert.equal(x.canSprint(),true);
+ const start=x.stamina;
+ now=8.5;x.tick({sprinting:true});
+ assert.ok(x.stamina<start);
+});
+test('each valid tree hit costs a full stamina slot and rejects exhausted strikes',()=>{
+ let now=0;
+ const x=createVitals({now:()=>now});
+ for(let i=0;i<4;i++){
+   assert.equal(x.canChop,true);
+   assert.equal(x.hit(),true);
+   assert.equal(x.stamina,4-i);
+ }
+ assert.equal(x.stamina,1);
+ assert.equal(x.canChop,false);
+ assert.equal(x.hit(),false);
+ const snapshot=x.snapshot();
+ const restored=createVitals({now:()=>now});
+ assert.equal(restored.restore(snapshot),true);
+ assert.equal(restored.canChop,false);
+ now=3;
+ restored.tick({sprinting:false});
+ assert.ok(restored.stamina>1);
+ assert.equal(restored.canChop,true);
+});
+test('old save without stamina starts full; malformed stamina is rejected',()=>{
+ const x=createVitals({now:()=>0});
+ assert.equal(x.restore({health:3,hunger:4,hungerProgress:12}),true);
+ assert.equal(x.stamina,5);
+ assert.equal(x.restore({health:3,hunger:4,hungerProgress:12,stamina:-1}),false);
+ assert.equal(x.restore({health:3,hunger:4,hungerProgress:12,stamina:6}),false);
+ assert.equal(x.restore({health:3,hunger:4,hungerProgress:12,stamina:NaN}),false);
+});
+
+test('stamina lock from older snapshots is cleared at the new 0.5 threshold',()=>{
+ let now=10;
+ const x=createVitals({now:()=>now});
+ assert.equal(x.restore({health:5,hunger:5,stamina:1.8,staminaLocked:true,hungerProgress:0}),true);
+ assert.equal(x.canSprint(),true);
+ assert.equal(x.snapshot().staminaLocked,false);
+ assert.equal(x.restore({health:5,hunger:5,stamina:0,staminaLocked:true,hungerProgress:0}),true);
+ assert.equal(x.canSprint(),false);
+ now+=1;x.tick();
+ assert.equal(x.canSprint(),true);
+});
+test('jump costs one full stamina; low stamina prevents repeated jumping',()=>{
+ const x=createVitals({now:()=>0});
+ for(let i=4;i>=0;i--){
+   assert.equal(x.jump(),true);
+   assert.equal(x.stamina,i);
+ }
+ assert.equal(x.jump(),false);
+ assert.equal(x.stamina,0);
+ assert.equal(x.canSprint(),false);
+});
+test('short action warnings select exact reason by priority',()=>{
+ const x=createVitals({now:()=>0});
+ assert.equal(x.chopWarning(),'');
+ x.restore({health:1,hunger:1,stamina:0,hungerProgress:0});
+ assert.equal(x.chopWarning(),'Мало жизней');
+ x.restore({health:5,hunger:1,stamina:0,hungerProgress:0});
+ assert.equal(x.chopWarning(),'Вы голодны');
+ x.restore({health:5,hunger:5,stamina:1,hungerProgress:0});
+ assert.equal(x.chopWarning(),'Нет сил');
 });

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import connect
-from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, decor_resource, nearby_decor, DECOR_ITEM_IDS, inv_count, inv_add, vitals_view,advance_hunger,apply_food,FOOD_EFFECTS,LOW_VITALS_THRESHOLD,HUNGER_INTERVAL_SECONDS,BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
+from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, decor_resource, nearby_decor, DECOR_ITEM_IDS, inv_count, inv_add, vitals_view,advance_hunger,apply_food,FOOD_EFFECTS,LOW_VITALS_THRESHOLD,HUNGER_INTERVAL_SECONDS,advance_stamina,server_can_sprint,server_can_hit,spend_hit_stamina,STAMINA_SPRINT_DRAIN,STAMINA_REGEN,BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
 
 
 class WorldTests(unittest.IsolatedAsyncioTestCase):
@@ -135,6 +135,9 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.wait_for(bob.recv(),.06)
                 inv_give_logs(owner['inventory'],4)
                 owner['wood']=4
+                await alice.send(json.dumps({'type':'assign_quick','quick':1,'source':1}))
+                self.assertTrue((await self.receive(bob,'equipment'))['axe_equipped'])
+                await self.receive(alice,'inventory_state')
                 await alice.send(json.dumps({'type':'select_slot','slot':1}))
                 self.assertFalse((await self.receive(bob,'equipment'))['axe_equipped'])
                 await self.receive(alice,'inventory_state')
@@ -223,9 +226,13 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(updated['wood'],7)
                 self.assertEqual(inv_logs(owner['inventory']),7)
                 bench_slot=next(i for i,x in enumerate(owner['inventory']) if x and x['id']=='bench')
-                self.assertLess(bench_slot,4)
+                self.assertEqual(owner['inventory'][bench_slot],{'id':'bench','count':1})
                 self.assertFalse(self.world.furniture)
-                await alice.send(json.dumps({'type':'select_slot','slot':bench_slot}))
+                await alice.send(json.dumps({'type':'assign_quick','quick':1,'source':bench_slot}))
+                await self.receive(bob,'equipment')
+                assigned=await self.receive(alice,'inventory_state')
+                self.assertEqual(assigned['inventory']['quickIds'][1],'bench')
+                await alice.send(json.dumps({'type':'select_slot','slot':1}))
                 await self.receive(bob,'equipment')
                 await self.receive(alice,'inventory_state')
                 await alice.send(json.dumps({'type':'place_item','x':4,'z':0,'orientation':0}))
@@ -398,6 +405,10 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 self.world.save()
                 saved=World(self.path)
                 self.assertEqual(set(saved.resource_cooldowns),{flower['id'],mushroom['id']})
+                # Both items originated in the initial 3x3 chunk view. Re-enter it
+                # before requesting the refreshed nearby resource snapshot.
+                for player in self.world.clients.values():
+                    player.update(x=0,z=0)
                 deadline=max(self.world.resource_cooldowns.values())
                 self.assertEqual(set(await self.world.prune_resource_cooldowns(now=deadline+1)),
                                  {flower['id'],mushroom['id']})
@@ -555,7 +566,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
     async def test_eating_is_authoritative_and_does_not_duplicate_an_item(self):
         async with connect(self.url) as ws:
             welcome=await self.receive(ws,'welcome')
-            self.assertEqual(welcome['vitals'],{'health':5,'hunger':5,'hungerProgress':0.0})
+            self.assertEqual(welcome['vitals'],{'health':5,'hunger':5,'stamina':5,'staminaLocked':False,'hungerProgress':0.0})
             player=next(iter(self.world.clients.values()))
             player['health']=3;player['hunger']=2
             player['inventory'][1]={'id':'mushroom:fly_agaric','count':2}
@@ -589,19 +600,150 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                        if tree_info(k,self.world.seed))
             tx,tz,_=tree_info(key,self.world.seed)
             player.update(x=tx+1.5,z=tz)
-            for health,hunger in ((1,5),(5,1),(0,0)):
+            for health,hunger,reason in ((1,5,'Мало жизней'),(5,1,'Вы голодны'),(0,0,'Мало жизней')):
                 player.update(health=health,hunger=hunger,last_hit=0)
                 await ws.send(json.dumps({'type':'hit','tree':key}))
                 state=await self.receive(ws,'vitals_state')
                 denial=await self.receive(ws,'action_denied')
                 self.assertEqual(state['vitals']['health'],health)
-                self.assertIn('2 жизни',denial['reason'])
+                self.assertEqual(reason,denial['reason'])
                 self.assertNotIn(key,self.world.damage)
                 self.assertNotIn(key,self.world.felled)
             player.update(health=2,hunger=2,last_hit=0)
             await ws.send(json.dumps({'type':'hit','tree':key}))
             event=await self.receive(ws,'tree_hit')
             self.assertEqual(event['tree'],key)
+
+    async def test_server_jump_consumes_energy_once_and_refuses_exhaustion(self):
+        async with connect(self.url) as ws:
+            await self.receive(ws,'welcome')
+            player=next(iter(self.world.clients.values()))
+            player['stamina']=2.5
+            player['last_stamina_at']=time.monotonic()
+            await ws.send(json.dumps({'type':'jump'}))
+            status=await self.receive(ws,'vitals_state')
+            self.assertAlmostEqual(status['vitals']['stamina'],1.5,delta=.05)
+            await ws.send(json.dumps({'type':'jump'}))
+            await self.receive(ws,'vitals_state')
+            denied=await self.receive(ws,'action_denied')
+            self.assertEqual(denied['reason'],'Прыжок недоступен')
+            self.assertAlmostEqual(player['stamina'],1.5,delta=.06)
+            player['stamina']=.4
+            player['last_jump']=-10000
+            await ws.send(json.dumps({'type':'jump'}))
+            await self.receive(ws,'vitals_state')
+            denied=await self.receive(ws,'action_denied')
+            self.assertEqual(denied['reason'],'Нет сил')
+            self.assertGreaterEqual(player['stamina'],.4)
+            self.assertLess(player['stamina'],.5)
+
+    async def test_shortcut_binding_restores_type_and_stack_count_for_network_clients(self):
+        async with connect(self.url) as ws:
+            await self.receive(ws,'welcome')
+            player=next(iter(self.world.clients.values()))
+            self.assertTrue(inv_add(player['inventory'],{'id':'stone','count':10}))
+            self.assertTrue(inv_add(player['inventory'],{'id':'stone','count':10}))
+            self.assertTrue(inv_add(player['inventory'],{'id':'stone','count':3}))
+            indices=[i for i,item in enumerate(player['inventory']) if item and item['id']=='stone']
+            self.assertEqual([player['inventory'][i]['count'] for i in indices],[10,10,3])
+            await ws.send(json.dumps({'type':'assign_quick','quick':2,'source':indices[2]}))
+            await self.receive(ws,'inventory_state')
+            await ws.send(json.dumps({'type':'select_slot','slot':2}))
+            status=await self.receive(ws,'inventory_state')
+            self.assertEqual(status['inventory']['quickIds'][2],'stone')
+            self.assertEqual(sum(item['count'] for item in status['inventory']['slots']
+                if item and item['id']=='stone'),23)
+            await ws.send(json.dumps({'type':'transfer_slot','from':indices[2],'to':indices[0]}))
+            # Already-full destination is rejected without discarding anything.
+            with self.assertRaises(asyncio.TimeoutError):
+                await asyncio.wait_for(ws.recv(),.06)
+            self.assertEqual(inv_count(player['inventory'],'stone'),23)
+            await ws.send(json.dumps({'type':'split_slot','slot':indices[0]}))
+            updated=await self.receive(ws,'inventory_state')
+            self.assertEqual(sum(item['count'] for item in updated['inventory']['slots']
+                if item and item['id']=='stone'),23)
+            self.assertEqual(updated['inventory']['quickIds'][2],'stone')
+
+    async def test_four_bench_rotations_survive_server_save_and_invalid_angles_rejected(self):
+        async with connect(self.url) as ws:
+            await self.receive(ws,'welcome')
+            player=next(iter(self.world.clients.values()))
+            for angle in range(4):
+                player['inventory'][1]={'id':'bench','count':1}
+                player['last_build']=0
+                player['selected']=1
+                player['quick_refs'][1]=1
+                player['quick_ids'][1]='bench'
+                x,z=((4,0),(0,4),(-4,0),(0,-4))[angle]
+                await ws.send(json.dumps({'type':'place_item','x':x,'z':z,'orientation':angle}))
+                placed=await self.receive(ws,'furniture_add')
+                self.assertEqual(placed['item']['orientation'],angle)
+                await self.receive(ws,'inventory_state')
+            self.assertEqual({v['orientation'] for v in self.world.furniture.values()},set(range(4)))
+            saved=World(self.path)
+            self.assertEqual({v['orientation'] for v in saved.furniture.values()},set(range(4)))
+            player['inventory'][1]={'id':'bench','count':1}
+            player['last_build']=0
+            await ws.send(json.dumps({'type':'place_item','x':5,'z':0,'orientation':4}))
+            with self.assertRaises(asyncio.TimeoutError):
+                await asyncio.wait_for(ws.recv(),.06)
+            self.assertEqual(len(self.world.furniture),4)
+
+    async def test_stamina_drain_recovery_hit_cost_and_sprint_lock(self):
+        player={'health':5,'hunger':5,'stamina':5.0,'last_stamina_at':0.0,
+                'sprinting':True,'stamina_sprint_locked':False}
+        self.assertAlmostEqual(STAMINA_SPRINT_DRAIN,.8)
+        self.assertAlmostEqual(STAMINA_REGEN,.65)
+        for t in range(1,6):
+            self.assertTrue(advance_stamina(player,float(t)))
+        self.assertAlmostEqual(player['stamina'],1.0)
+        self.assertTrue(server_can_sprint(player))
+        self.assertFalse(server_can_hit(player))
+        advance_stamina(player,6.0)
+        self.assertTrue(server_can_sprint(player))
+        advance_stamina(player,7.0)
+        self.assertAlmostEqual(player['stamina'],0)
+        self.assertFalse(server_can_sprint(player))
+        player['sprinting']=False
+        advance_stamina(player,8.0)
+        self.assertTrue(server_can_sprint(player))
+        self.assertFalse(server_can_hit(player))
+        advance_stamina(player,9.0)
+        self.assertTrue(server_can_hit(player))
+        old=player['stamina']
+        self.assertTrue(spend_hit_stamina(player))
+        self.assertAlmostEqual(player['stamina'],old-1)
+        self.assertFalse(spend_hit_stamina(player))
+        self.assertGreaterEqual(player['stamina'],0)
+
+    async def test_server_rejects_exhausted_sprint_and_tree_hit(self):
+        async with connect(self.url) as ws:
+            await self.receive(ws,'welcome')
+            player=next(iter(self.world.clients.values()))
+            player['stamina']=0.0
+            player['stamina_sprint_locked']=True
+            player['last_pos']=time.monotonic()-.1
+            await ws.send(json.dumps({'type':'move','x':.9,'z':0,'yaw':0,
+                                       'sprinting':True}))
+            denial=await self.receive(ws,'vitals_state')
+            self.assertLess(denial['vitals']['stamina'],2)
+            self.assertEqual(player['x'],0,'fast movement must be rejected when exhausted')
+            self.assertFalse(player['sprinting'])
+            player['stamina']=0.0
+            key=next(k for k in (f'{x},{z}:{i}' for x in range(-2,3)
+                for z in range(-2,3) for i in range(8)) if tree_info(k,self.world.seed))
+            tx,tz,_=tree_info(key,self.world.seed)
+            player.update(x=tx+1.5,z=tz,last_hit=0)
+            await ws.send(json.dumps({'type':'hit','tree':key}))
+            await self.receive(ws,'vitals_state')
+            denied=await self.receive(ws,'action_denied')
+            self.assertEqual(denied['reason'],'Нет сил')
+            self.assertNotIn(key,self.world.damage)
+            player.update(stamina=3.0,stamina_sprint_locked=False,last_hit=0)
+            await ws.send(json.dumps({'type':'hit','tree':key}))
+            await self.receive(ws,'tree_hit')
+            changed=await self.receive(ws,'vitals_state')
+            self.assertAlmostEqual(changed['vitals']['stamina'],2.0,places=1)
 
     async def test_hits_save_and_restore_world(self):
         async with connect(self.url) as ws:
@@ -616,6 +758,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             await ws.send(json.dumps({'type': 'hit', 'tree': key}))
             hit = await self.receive(ws, 'tree_hit')
             self.assertEqual(hit['hp'], hp - 1)
+            self.assertEqual((await self.receive(ws,'vitals_state'))['vitals']['stamina'],4)
             self.assertEqual(self.world.damage[key], hp - 1)
             await ws.send(json.dumps({'type': 'hit', 'tree': key}))
             with self.assertRaises(asyncio.TimeoutError):
@@ -625,6 +768,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             await ws.send(json.dumps({'type': 'hit', 'tree': key}))
             fell = await self.receive(ws, 'tree_fell')
             self.assertEqual(fell['wood'], 5)
+            await self.receive(ws,'vitals_state')
             self.assertIn(key, self.world.felled)
             self.world.damage['0,0:0'] = 3
             self.world.logs[99] = {'x': 5, 'y': .29, 'z': 7, 'level': 0, 'orientation': 0}

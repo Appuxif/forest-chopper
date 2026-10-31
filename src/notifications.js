@@ -8,7 +8,7 @@ export function createNotifications({
 } = {}) {
   const style = doc.createElement('style');
   style.textContent = `
-.fc-toasts{position:fixed;left:50%;bottom:calc(195px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);width:min(320px,calc(100vw - 32px));display:flex;flex-direction:column;align-items:center;gap:7px;z-index:18;pointer-events:none}
+.fc-toasts{position:fixed;left:50%;bottom:calc(195px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);width:min(320px,calc(100vw - 32px));display:flex;flex-direction:column;align-items:center;gap:7px;z-index:10010;pointer-events:none}
 .fc-toast{max-width:100%;padding:9px 14px;border-radius:10px;background:#132920ec;color:#f3fff8;border:1px solid #9ab9a375;box-shadow:0 5px 16px #0008;font:600 13px/1.35 system-ui,sans-serif;text-align:center;text-shadow:0 1px 2px #000b;animation:fc-toast-in .18s ease-out;transition:opacity .2s ease,transform .2s ease}
 .fc-toast[data-type="success"]{border-color:#83d3a3;background:#19392ceb}
 .fc-toast[data-type="warning"]{border-color:#ffbf71;background:#432c19f2}

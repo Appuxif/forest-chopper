@@ -83,3 +83,16 @@ test('restoring old offline furniture IDs does not collide with newly crafted be
   assert.equal(f.craft.place(),true);
   assert.deepEqual([...f.craft.items.keys()].sort((a,b)=>a-b),[-2,-1]);
 });
+
+test('bench accepts all four cardinal rotations and rejects out-of-range orientations',()=>{
+ const f=setup();
+ for(let i=0;i<4;i++){
+   const item={id:i+20,kind:'bench',x:i*3,z:0,orientation:i};
+   assert.equal(validBench(item),true);
+   assert.equal(f.craft.add(item),true);
+   const group=f.craft.items.get(i+20).group;
+   assert.ok(Math.abs(group.rotation.y-i*Math.PI/2)<1e-10);
+ }
+ assert.deepEqual(f.craft.snapshot().map(item=>item.orientation),[0,1,2,3]);
+ for(const orientation of [-1,4,0.5,'2',null])assert.equal(validBench({kind:'bench',x:0,z:0,orientation}),false);
+});
