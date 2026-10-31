@@ -8,6 +8,8 @@
  * Does not add anything to the game scene by itself.
  */
 import * as THREE from 'https://esm.sh/three@0.170.0';
+import {BIRCH_PRESET} from './tree-model-presets.js';
+export {BIRCH_PRESET};
 
 const clamp = THREE.MathUtils.clamp;
 const between = (rng, a, b) => a + (b - a) * rng();
@@ -35,43 +37,7 @@ function tangentOnLine(points, u) {
     .sub(pointOnLine(points, Math.max(0, u - delta))));
 }
 
-export const BIRCH_PRESET = {
-  name: 'Берёза · Foliage Cards',
-  generator: 'foliageCardsBirch',
-  species: 'birch',
-  background: '#0c1728',
-  params: {
-    seed: 7,
-    trunkHeight: 8,
-    trunkRadius: 0.23,
-    trunkCurve: 0.18,
-    branchStartHeight: 2.5,
-    branchCount: 28,
-    branchLength: 2.7,
-    branchPitch: 21,
-    branchTopPitch: 35,
-    branchDroop: 0.36,
-    branchCurve: 0.28,
-    shootsPerBranch: 3,
-    shootLength: 1.4,
-    shootDroop: 0.72,
-    showShootWood: false,
-    cardsPerShoot: 3,
-    cardLengthScale: 2,
-    cardWidthScale: 2,
-    cardTwist: 35,
-    cardCrossed: true,
-    cardAlphaTest: 0.38,
-    leafCount: 20,
-    showFoliage: true,
-    maxTriangles: 6500,
-    barkColor: '#dce0da',
-    barkMarkColor: '#333b38',
-    woodColor: '#514c40',
-    leafColor: '#4f913e',
-    leafAccent: '#99c965',
-  },
-};
+
 
 // Combine tapered open tube segments in one BufferGeometry, one draw call per material.
 function tubeBuilder() {

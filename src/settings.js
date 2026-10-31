@@ -1,6 +1,7 @@
 // Lightweight client-only preferences. No framework or new dependencies.
 import {collectDiagnostics, formatDiagnostics} from './diagnostics.js';
 import {FPS_OPTIONS} from './frame-limiter.js';
+import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js';
 const KEY = 'forest-chopper:settings:v1';
 const CAMERA_80_MIGRATION = 'forest-chopper:camera-80-default:v1';
 const DEFAULT = Object.freeze({mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 25, grassDistance: 50, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 70, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80});
@@ -70,7 +71,7 @@ export function sanitizeSettings(value) {
   return settings;
 }
 
-export function createSettings(doc = document, storage = null, onFovChange = null, onQualityChange = null) {
+export function createSettings(doc = document, storage = null, onFovChange = null, onQualityChange = null, treeModelStats = null) {
   let persisted;
   try {
     const local = storage ?? window.localStorage;
@@ -104,6 +105,27 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 .fc-settings-content{padding:9px 22px 18px;overflow-y:auto;overscroll-behavior:contain;min-height:120px;flex:1}
 .fc-settings-page[hidden]{display:none}
 .fc-settings-page{max-width:570px;margin:auto}
+.fc-settings-page[data-category=trees]{max-width:635px}
+.fc-tree-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fc-tree-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+.fc-tree-actions button{background:#214834;color:#e8fff0;border:1px solid #64836c}
+.fc-tree-actions button[aria-pressed=true]{background:#40885a;border-color:#98ddaf}
+.fc-tree-section{border:1px solid #ffffff27;border-radius:9px;margin:11px 0;background:#0e211a}
+.fc-tree-section summary{padding:10px;cursor:pointer;font-weight:650}
+.fc-tree-fields{padding:0 11px 12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 14px}
+.fc-tree-field{min-width:0;padding:3px 0}
+.fc-settings .fc-tree-field label{font-size:12px;margin:6px 0;color:#d5eedc}
+.fc-settings .fc-tree-field small{margin:5px 0;font-size:11px}
+.fc-tree-numeric{display:flex;align-items:center;gap:8px}
+.fc-settings .fc-tree-numeric input[type=range]{min-width:0;flex:1;margin:0}
+.fc-settings .fc-tree-numeric input[type=number]{width:75px;min-width:60px;flex-shrink:0}
+.fc-settings .fc-tree-field input[type=text],.fc-settings .fc-tree-field input[type=number],.fc-settings #fc-tree-json{box-sizing:border-box;width:100%;background:#0b2419;color:#fff;border:1px solid #617c69;border-radius:6px;padding:7px}
+.fc-settings .fc-tree-field input[type=color]{width:100%;height:34px;background:transparent;border:0;cursor:pointer}
+.fc-settings .fc-tree-apply{display:block;width:100%;background:#40885a;color:white;border:1px solid #a0cfad;font-weight:650;margin:12px 0}
+.fc-settings #fc-tree-json{resize:vertical;min-height:76px}
+.fc-settings #fc-tree-status{min-height:18px;font-size:12px;color:#a2dcb0}
+.fc-settings .fc-tree-active-stats{font-size:11px;line-height:1.5;background:#183529;border:1px solid #365947;border-radius:7px;padding:8px 10px;color:#d0e8d5}
+.fc-settings #fc-tree-status[data-error=true]{color:#ffb3a9}
 .fc-settings-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 20px;border-top:1px solid #ffffff26}
 .fc-settings-footer small{margin:0!important}
 .fc-settings :focus-visible{outline:2px solid #a8eec0;outline-offset:3px}
@@ -122,7 +144,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 .fc-angle-pair input[type=range]::-moz-range-thumb{width:17px;height:23px;border:2px solid #143c25;border-radius:6px;background:#96e3aa;cursor:ew-resize;pointer-events:auto}
 .fc-settings button{border-radius:7px;padding:7px 10px}
 .fc-fps{position:fixed;z-index:9;top:320px;left:16px;max-width:calc(100vw - 32px);border-radius:6px;padding:6px 8px;background:#10251fe8;color:#baf1ca;font:600 11px/1.5 ui-monospace,monospace;white-space:pre-line;pointer-events:none}
-@media(max-width:450px){.fc-settings{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:11px}.fc-settings-header{padding:11px 13px 7px}.fc-settings-tabs{padding:6px 10px 9px}.fc-settings .fc-settings-tab{min-width:80px;padding:8px 6px}.fc-settings-content{padding:7px 14px 12px}.fc-settings-footer{padding:9px 13px}.fc-settings-toggle{top:95px;right:12px;padding:8px 10px}}
+@media(max-width:450px){.fc-tree-fields{grid-template-columns:1fr}.fc-tree-toolbar{grid-template-columns:1fr}.fc-tree-actions button{flex:1}.fc-settings{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:11px}.fc-settings-header{padding:11px 13px 7px}.fc-settings-tabs{padding:6px 10px 9px}.fc-settings .fc-settings-tab{min-width:80px;padding:8px 6px}.fc-settings-content{padding:7px 14px 12px}.fc-settings-footer{padding:9px 13px}.fc-settings-toggle{top:95px;right:12px;padding:8px 10px}}
 `;
   doc.head.append(css);
   const toggle = doc.createElement('button');
@@ -145,6 +167,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <nav class="fc-settings-tabs" aria-label="Категории настроек">
       <button type="button" class="fc-settings-tab" data-category="graphics" aria-selected="true">🎨 Графика</button>
       <button type="button" class="fc-settings-tab" data-category="grass" aria-selected="false">🌿 Трава</button>
+      <button type="button" class="fc-settings-tab" data-category="trees" aria-selected="false">🌲 Деревья</button>
       <button type="button" class="fc-settings-tab" data-category="controls" aria-selected="false">🎮 Управление</button>
       <button type="button" class="fc-settings-tab" data-category="camera" aria-selected="false">📷 Камера</button>
       <button type="button" class="fc-settings-tab" data-category="world" aria-selected="false">🌍 Мир</button>
@@ -153,7 +176,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <section class="fc-settings-page" data-category="graphics" aria-label="Графика">
     <label>Качество графики
       <select id="fc-quality"><option value="low">Экономный (GPU)</option><option value="balanced">Сбалансированный</option><option value="high">Высокий</option></select></label>
-    <small>Меняет разрешение 3D-рендера, не затрагивая мир и управление.</small>
+    <small>Разрешение меняется сразу. Модели деревьев для нового качества применяются после перезагрузки (вкладка «Деревья»).</small>
     <label>Максимальный FPS
       <select id="fc-max-fps"><option value="30">30 FPS</option><option value="60">60 FPS</option>
       <option value="90">90 FPS</option><option value="120">120 FPS</option>
@@ -181,6 +204,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <input id="fc-fov" type="range" min="65" max="95" step="5"></label>
     <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
     </section>
+    <section class="fc-settings-page" data-category="trees" aria-label="Модели деревьев" hidden><div id="fc-tree-editor">${treeModelEditorMarkup()}</div></section>
     <section class="fc-settings-page" data-category="grass" aria-label="Трава" hidden>
     <label>Плотность мелкой травы: <output id="fc-grass-density-value"></output>
       <input id="fc-grass-density" type="range" min="1" max="50" step="1"></label>
@@ -341,7 +365,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const pages=Array.from(panel.querySelectorAll?.('.fc-settings-page')??[]);
   let activeCategory='graphics';
   function activateCategory(category) {
-    if(!['graphics','grass','controls','camera','world'].includes(category))return;
+    if(!['graphics','grass','trees','controls','camera','world'].includes(category))return;
     activeCategory=category;
     for(const tab of tabButtons)tab.setAttribute('aria-selected',String(tab.dataset.category===category));
     for(const page of pages)page.hidden=page.dataset.category!==category;
@@ -397,7 +421,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   windCheckbox.onchange = () => {state.windEnabled = windCheckbox.checked;reflect();save();};
   dayCheckbox.onchange = () => {state.dayCycleEnabled = dayCheckbox.checked;reflect();save();};
   sprintCheckbox.onchange = () => {state.autoSprint = sprintCheckbox.checked;reflect();save();};
-  qualitySelect.onchange = () => {state.quality = sanitizeSettings({...state,quality:qualitySelect.value}).quality;onQualityChange?.(state.quality);reflect();save();};
+  qualitySelect.onchange = () => {state.quality = sanitizeSettings({...state,quality:qualitySelect.value}).quality;onQualityChange?.(state.quality);reflect();save();treeEditor.selectProfile(state.quality);};
   fpsSelect.onchange = () => {
     state.maxFps = sanitizeSettings({...state,maxFps:Number(fpsSelect.value)}).maxFps;
     lastSample=null;frames=0;lastRate=null;
@@ -476,8 +500,18 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     onFovChange?.(state.fov);
     reflect();save();
   };
+  const treeEditor=mountTreeModelEditor(panel.querySelector('#fc-tree-editor'),{
+    storage,activeStats:treeModelStats,
+    getQuality:()=>state.quality,
+    applyQuality:quality=>{
+      state.quality=quality;
+      onQualityChange?.(quality);
+      reflect();save();
+    },
+    reload:()=>doc.defaultView?.location?.reload?.(),
+  });
   panel.querySelector('#fc-reset-settings').onclick = () => {
-    Object.assign(state, DEFAULT);onFovChange?.(state.fov);onQualityChange?.(state.quality);reflect();save();
+    Object.assign(state, DEFAULT);treeEditor.resetAll();onFovChange?.(state.fov);onQualityChange?.(state.quality);reflect();save();
   };
   reflect();
   onFovChange?.(state.fov);

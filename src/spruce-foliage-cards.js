@@ -10,6 +10,8 @@
  * instead of calling createSpruce hundreds of times.
  */
 import * as THREE from 'https://esm.sh/three@0.170.0';
+import {SPRUCE_PRESET} from './tree-model-presets.js';
+export {SPRUCE_PRESET};
 
 const num = (v, fallback) => v === undefined ? fallback : Number(v);
 
@@ -398,40 +400,7 @@ function buildFoliageCardsSpruce(spec={}, options={}) {
 
 
 /** Parameter set supplied for the forest game. */
-export const SPRUCE_PRESET = {
-  name: 'Ель · Foliage Cards',
-  generator: 'foliageCardsSpruce',
-  species: 'spruce',
-  background: '#0c1728', // Editor-only; does not change the game scene background.
-  params: {
-    seed: 7,
-    trunkStyle: 'cone',
-    trunkHeight: 6,
-    trunkRadius: 0.3,
-    levels: 2,
-    crownRatio: 0.98,
-    branchStartHeight: 2.5,
-    whorls: 13,
-    branchesPerWhorl: [7, 7, 6, 6, 6, 6, 5, 5, 4, 3, 3, 3, 3],
-    basePitch: -25,
-    topPitch: -10,
-    level1Length: 2.5,
-    level2LengthFactor: 0.5,
-    secondaryBranchDensity: 2,
-    showSecondaryBranches: false,
-    cardCountPerBranch: 20,
-    cardLengthScale: 2,
-    cardWidthScale: 2.5,
-    cardSpread: 35,
-    cardCrossed: true,
-    cardAlphaTest: 0.45,
-    showFoliage: true,
-    maxTriangles: 12000,
-    barkColor: '#705238',
-    leafColor: '#245c36',
-    leafAccent: '#44874d'
-  }
-};
+
 
 /**
  * @param {object} spec Full preset ({params}) or params object.

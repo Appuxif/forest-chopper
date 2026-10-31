@@ -69,7 +69,7 @@ if(!detailedModel)for(let i=0;i<4;i++){
  group.add(foliage);
 }
 // Damage stays in HP (and the damage bar). No flat rectangle on the trunk.
-group.position.set(x,0,z);group.userData={id,x,z,h,scale,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant,rare,spruceModel:!!spruceModel,birchModel:!!birchModel,species:birch?'birch':'conifer'};if(spruceHitMeshes)group.userData.hitMeshes=spruceHitMeshes;ctx.scene.add(group);ctx.trees.set(id,group);ctx.spruceDiagnostics?.applyTree(group)}
+group.position.set(x,0,z);group.userData={id,x,z,h,scale,proceduralModelHeight:detailedModel?(spruceModel?ctx.spruceModelHeight??6:ctx.birchModelHeight??8):null,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant,rare,spruceModel:!!spruceModel,birchModel:!!birchModel,species:birch?'birch':'conifer'};if(spruceHitMeshes)group.userData.hitMeshes=spruceHitMeshes;ctx.scene.add(group);ctx.trees.set(id,group);ctx.spruceDiagnostics?.applyTree(group)}
 function enableDecorShadow(node){
  if(node.isMesh||node.geometry){node.castShadow=true;
    if(node.userData?.decorType==='rock')node.receiveShadow=true;}

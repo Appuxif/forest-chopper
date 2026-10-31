@@ -1,9 +1,9 @@
 // One procedural birch template per page; all world birches instance its meshes.
 import {createBirch,BIRCH_PRESET} from './birch-foliage-cards.js?v=20261031-birch1';
 import {trimSpruceFoliageGeometry} from './spruce-foliage-opt.js?v=20261031-procedural-spruce1';
-export function generateBirchParts(){
+export function generateBirchParts(params=null){
   try{
-    const template=createBirch(BIRCH_PRESET);
+    const template=createBirch({...BIRCH_PRESET,params:{...BIRCH_PRESET.params,...(params??{})}});
     const parts=[];
     for(const mesh of template.children){
       if(!mesh.isMesh||!mesh.geometry?.getAttribute('position'))continue;
@@ -30,8 +30,9 @@ export function generateBirchParts(){
       }
       parts.push(part);
     }
-    if(parts.length<3||!parts.some(part=>part.foliage))
+    if(parts.length<2||!parts.some(part=>!part.foliage))
       throw new Error('Birch generator must provide bark, branches and foliage');
+    parts.stats=template.userData.stats;
     console.info('Procedural birch ready',template.userData.stats);
     return parts;
   }catch(error){

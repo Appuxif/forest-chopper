@@ -47,7 +47,7 @@ export function createTreeBatch(THREE, parent, trees, sharedMaterials=new Map(),
     mesh.castShadow = true;
     const procedural=group.originals[0]?.tree?.userData;
     if(treeWindShader && (procedural?.spruceModel||procedural?.birchModel)){
-      const height=procedural.spruceModel?6:8;
+      const height=procedural.proceduralModelHeight??(procedural.spruceModel?6:8);
       if(!group.material.userData?.fcWindHeight)
         treeWindShader.decorate(group.material,height);
       // Shadow alpha cutouts and trunk geometry use the same deformation.

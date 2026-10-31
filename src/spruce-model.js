@@ -4,9 +4,11 @@
 import {createSpruce, SPRUCE_PRESET} from './spruce-foliage-cards.js?v=20261031-spruce-bark1';
 import {trimSpruceFoliageGeometry} from './spruce-foliage-opt.js?v=20261031-procedural-spruce1';
 
-export function generateSpruceParts() {
+export function generateSpruceParts(params=null) {
   try {
-    const template=createSpruce(SPRUCE_PRESET,{quality:'balanced',maxAnisotropy:4});
+    const {generatorQuality='balanced',...configured}=params??{};
+    const template=createSpruce({...SPRUCE_PRESET,params:{...SPRUCE_PRESET.params,...configured}},
+      {quality:generatorQuality,maxAnisotropy:4});
     const parts=[];
     for(const mesh of template.children){
       if(!mesh.isMesh || !mesh.geometry?.getAttribute('position'))continue;
@@ -32,8 +34,9 @@ export function generateSpruceParts() {
       }
       parts.push(part);
     }
-    if(parts.length!==2 || !parts.some(p=>p.material.alphaTest>0))
+    if(!parts.length || !parts.some(p=>p.material.alphaTest===0))
       throw new Error('Spruce generator must provide wood and foliage meshes');
+    parts.stats=template.userData.spruceStats;
     console.info('Procedural spruce ready',template.userData.spruceStats);
     return parts;
   }catch(error){

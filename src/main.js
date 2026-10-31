@@ -3,6 +3,7 @@ import {createWorld} from './world.js?v=20261031-spruce-bark1';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
+import {readActiveTreeConfig} from './tree-model-config.js?v=20261031-tree-editor1';
 import {createSpruceDiagnostics} from './spruce-diagnostics.js?v=20261031-spruce-bark1';
 import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js';
@@ -18,7 +19,7 @@ import {createPlayer} from './player.js?v=20261030-spruce-diagnostics1';
 import {createMultiplayer} from './multiplayer.js?v=20261030-classic-instancing1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261030-camera-down80-1';
+import {createSettings} from './settings.js?v=20261031-tree-editor1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
@@ -41,8 +42,9 @@ const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THR
 
 
 const {modelActors,CHOP_SPEED,createLumberjack,actorChop,tickActor,rootMotion}=await createAnimations(THREE);
-const spruceParts=generateSpruceParts();
-const birchParts=generateBirchParts();
+const treeModels=readActiveTreeConfig();
+const spruceParts=generateSpruceParts(treeModels.models.spruce);
+const birchParts=generateBirchParts(treeModels.models.birch);
 const treeWindShader=createTreeWindShader({motionQuery:typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false}});
 let ownAvatar=null,thirdPerson=true;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
@@ -91,7 +93,7 @@ const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
 // Multiplayer: authoritative server state, client-side rendering.
 let socket=null,myId=null,lastMoveSent=0;const avatars=new Map();
 const notifications=createNotifications();
-const settings=createSettings(document,null,fov=>{camera.fov=fov;camera.updateProjectionMatrix();},quality=>applyQuality(renderer,quality,devicePixelRatio,innerWidth,innerHeight));
+const settings=createSettings(document,null,fov=>{camera.fov=fov;camera.updateProjectionMatrix();},quality=>applyQuality(renderer,quality,devicePixelRatio,innerWidth,innerHeight),{spruce:spruceParts?.stats,birch:birchParts?.stats});
 const atmosphere=createAtmosphere({
  THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
  getCharacterShadowCasters(){
@@ -259,6 +261,8 @@ const ctx={
  get requestJump(){return requestJump;},
  get rareLeafMat(){return rareLeafMat;},
  get spruceParts(){return spruceParts;},
+ get spruceModelHeight(){return treeModels.models.spruce.trunkHeight;},
+ get birchModelHeight(){return treeModels.models.birch.trunkHeight;},
  get birchParts(){return birchParts;},
  get treeWindShader(){return treeWindShader;},
  get spruceDiagnostics(){return spruceDiagnostics;},
