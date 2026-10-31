@@ -2,6 +2,8 @@
 import {baseTerrainHeight} from './terrain-noise.js';
 import {pondHeightAt,pondDepthAt,pondsNearTile,pondSandAt,pondPoint} from './ponds.js';
 import {lakesNearTile,lakePoint} from './lakes.js';
+import {terrainGridData} from './world-stream-data.js';
+import {WorldLRU,WORLD_PRIORITY} from './world-task-scheduler.js';
 
 export function terrainHeight(seed,x,z){
   const base=baseTerrainHeight(seed,x,z);
@@ -26,6 +28,10 @@ export class TerrainSystem {
     this.seed = null;
     this.chunks = new Map();
     this.lakeMeshes = new Map();
+    this.scheduler=null;
+    this.gridCache=new WorldLRU(32*1024*1024);
+    this.requested=new Set();this.visibleKeys=new Set();
+    this.streamEpoch=0;this.lastStreamX=null;this.lastStreamZ=null;
     this.centerX = null;
     this.centerZ = null;
 
@@ -83,6 +89,7 @@ export class TerrainSystem {
     scene.add(this.group);
   }
 
+  setScheduler(scheduler){this.scheduler=scheduler;}
   heightAt(x,z){return terrainHeight(this.seed??0,x,z);}
   normalAt(x,z){
     const step=.75;
@@ -162,7 +169,7 @@ export class TerrainSystem {
     }
   }
 
-  createChunk(cx, cz) {
+  createChunk(cx, cz, sampledHeights=null) {
     const {THREE, chunkSize: size, segments} = this;
     const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
     const positions = geometry.getAttribute('position');
@@ -175,14 +182,9 @@ export class TerrainSystem {
     const shoreline=new Float32Array(positions.count*2);
     // One extra vertex on each side gives smooth, matching normals at seams.
     const stride=segments+3;
-    const heights=new Float64Array(stride*stride);
-    for(let row=-1;row<=segments+1;row++){
-      const z=centerZ-size/2+row*step;
-      for(let col=-1;col<=segments+1;col++){
-        const x=centerX-size/2+col*step;
-        heights[(row+1)*stride+col+1]=this.heightAt(x,z);
-      }
-    }
+    const heights=sampledHeights??terrainGridData({
+      seed:this.seed,cx,cz,size,segments,
+    });
     for(let row=0;row<=segments;row++){
       for(let col=0;col<=segments;col++){
         const i=row*(segments+1)+col;
@@ -300,29 +302,101 @@ export class TerrainSystem {
     this.visibilityTarget=0;
   }
 
-  update(x, z, seed) {
+  update(x,z,seed){
     this.setSeed(seed);
     this.updateVisibilityTarget(x,z);
-    const cx = Math.floor(x / this.chunkSize);
-    const cz = Math.floor(z / this.chunkSize);
-    if (this.centerX === cx && this.centerZ === cz && this.lastRadius === this.radius) return;
-    for (let dx = -this.radius; dx <= this.radius; dx++) {
-      for (let dz = -this.radius; dz <= this.radius; dz++) {
-        const tx = cx + dx, tz = cz + dz, key = `${tx},${tz}`;
-        if (!this.chunks.has(key)) this.chunks.set(key, this.createChunk(tx, tz));
+    const cx=Math.floor(x/this.chunkSize),cz=Math.floor(z/this.chunkSize);
+    if(this.centerX===cx&&this.centerZ===cz&&this.lastRadius===this.radius)
+      return;
+    const desired=new Set();
+    const candidates=[];
+    for(let dx=-this.radius;dx<=this.radius;dx++)
+      for(let dz=-this.radius;dz<=this.radius;dz++){
+        const tx=cx+dx,tz=cz+dz,key=tx+','+tz;
+        desired.add(key);
+        if(this.chunks.has(key)||this.requested.has(key))continue;
+        const d=dx*dx+dz*dz;
+        candidates.push({tx,tz,key,d,priority:d<=2?WORLD_PRIORITY.collision:
+          d<=9?WORLD_PRIORITY.near:WORLD_PRIORITY.background});
       }
+    // Only the tile underfoot is built synchronously on a cold start.
+    // Collision uses exact heightAt(), independently of visual mesh loading;
+    // other tiles are prefetched in workers before the player reaches them.
+    candidates.sort((a,b)=>a.priority-b.priority||a.d-b.d);
+    for(const {tx,tz,key,d,priority} of candidates){
+      const gridKey=this.seed+'/'+this.segments+'/'+key;
+      const grid=this.gridCache.get(gridKey);
+      if(grid){
+        this.chunks.set(key,this.createChunk(tx,tz,grid));
+        continue;
+      }
+      if(d===0||!this.scheduler){
+        const samples=terrainGridData({seed:this.seed,cx:tx,cz:tz,
+          size:this.chunkSize,segments:this.segments});
+        this.gridCache.put(gridKey,samples,samples.byteLength);
+        this.chunks.set(key,this.createChunk(tx,tz,samples));
+        continue;
+      }
+      this.requested.add(key);
+      const epoch=this.streamEpoch,seedNow=this.seed,
+        segments=this.segments,size=this.chunkSize;
+      const payload={seed:seedNow,cx:tx,cz:tz,size,segments};
+      this.scheduler.schedule({key:'terrain:'+key,kind:'terrain',priority,
+        payload,fallback:()=>terrainGridData(payload),apply:heights=>{
+          this.requested.delete(key);
+          if(this.streamEpoch!==epoch||this.seed!==seedNow||
+             this.segments!==segments)return;
+          this.gridCache.put(gridKey,heights,heights.byteLength);
+          if(!this.visibleKeys.has(key)||this.chunks.has(key))return;
+          this.chunks.set(key,this.createChunk(tx,tz,heights));
+          this.syncLakes();
+        }});
     }
-    for (const [key, mesh] of this.chunks) {
-      const [tx, tz] = key.split(',').map(Number);
-      if (Math.abs(tx - cx) > this.radius || Math.abs(tz - cz) > this.radius) {
-        this.releaseChunk(mesh);
-        this.chunks.delete(key);
+    this.visibleKeys=desired;
+    for(const key of [...this.requested]){
+      if(desired.has(key))continue;
+      this.scheduler?.cancel('terrain:'+key);this.requested.delete(key);
+    }
+    for(const [key,mesh] of this.chunks){
+      if(desired.has(key))continue;
+      this.releaseChunk(mesh);this.chunks.delete(key);
+    }
+    // Directional one-chunk look-ahead: cache height grids, but do not create
+    // invisible GPU geometry outside the visible radius.
+    const vx=this.lastStreamX===null?0:x-this.lastStreamX,
+      vz=this.lastStreamZ===null?0:z-this.lastStreamZ;
+    this.lastStreamX=x;this.lastStreamZ=z;
+    const length=Math.hypot(vx,vz);
+    if(this.scheduler&&length>1){
+      const ox=Math.abs(vx)>Math.abs(vz)?Math.sign(vx):0;
+      const oz=Math.abs(vz)>=Math.abs(vx)?Math.sign(vz):0;
+      for(let offset=-1;offset<=1;offset++){
+        const tx=cx+ox*(this.radius+1)+(oz?offset:0);
+        const tz=cz+oz*(this.radius+1)+(ox?offset:0);
+        const key=tx+','+tz;
+        const gridKey=this.seed+'/'+this.segments+'/'+key;
+        if(this.gridCache.get(gridKey)||this.requested.has(key))continue;
+        this.requested.add(key);
+        const epoch=this.streamEpoch,seedNow=this.seed,
+          segments=this.segments,size=this.chunkSize;
+        const payload={seed:seedNow,cx:tx,cz:tz,size,segments};
+        this.scheduler.schedule({key:'terrain:'+key,kind:'terrain',
+          priority:WORLD_PRIORITY.prefetch,payload,
+          fallback:()=>terrainGridData(payload),
+          apply:heights=>{
+            this.requested.delete(key);
+            if(epoch!==this.streamEpoch||this.seed!==seedNow||
+               this.segments!==segments)return;
+            this.gridCache.put(gridKey,heights,heights.byteLength);
+            if(this.visibleKeys.has(key)&&!this.chunks.has(key)){
+              this.chunks.set(key,this.createChunk(tx,tz,heights));
+              this.syncLakes();
+            }
+          }});
       }
     }
     this.syncLakes();
-    this.centerX = cx;
-    this.centerZ = cz;
-    this.lastRadius=this.radius;
+    this.centerX=cx;this.centerZ=cz;this.lastRadius=this.radius;
   }
 
   releaseChunk(mesh){
@@ -335,6 +409,10 @@ export class TerrainSystem {
   }
 
   clear() {
+    this.streamEpoch++;
+    for(const key of this.requested)this.scheduler?.cancel('terrain:'+key);
+    this.requested.clear();this.visibleKeys.clear();
+    this.lastStreamX=this.lastStreamZ=null;
     for (const mesh of this.chunks.values()) this.releaseChunk(mesh);
     this.chunks.clear();
     this.lastRadius=null;
@@ -350,6 +428,7 @@ export class TerrainSystem {
     this.clear();
     this.group.parent?.remove(this.group);
     this.waterMaterial.dispose();
+    this.gridCache.clear();
     if(this.fog)this.fog.density=this.baseFogDensity;
     if(this.camera){
       this.camera.far=this.baseCameraFar;

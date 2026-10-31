@@ -2,7 +2,7 @@ import {decorResourceId} from './collectible-decor.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {treeCandidate,treeCanSpawn} from './tree-spacing.js?v=20261030-spacing-4m1';
 import {createTreeBatch} from './tree-instancing.js?v=20261031-spruce-sway1';
-import {createDistantForest} from './distant-forest.js?v=20261101-performance1';
+import {createDistantForest} from './distant-forest.js?v=20261101-worker-sector2';
 export function createWorld(ctx) {
 let distantForest=createDistantForest(ctx);
 function rand(x,z,n=0){let v=Math.sin(x*127.1+z*311.7+n*78.233+ctx.seed)*43758.5453;return v-Math.floor(v)}
@@ -184,13 +184,31 @@ function replaceTreeModels(){
   distantForest.update();
   ctx.atmosphere?.invalidateStaticShadows?.();
 }
+let previousChunkCenter=null;
 function updateChunks(){
   ctx.terrain.update(ctx.px,ctx.pz,ctx.seed);
   const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);
   const radius=ctx.radius;
-  // Detailed, interactive forest remains close to the player.
-  for(let x=cx-radius;x<=cx+radius;x++){
-    for(let z=cz-radius;z<=cz+radius;z++)build(x,z);
+  // Current chunk stays immediate for collision/gameplay. Neighbouring
+  // interactive chunks appear in small, distance-prioritized batches.
+  const missing=[];
+  const vx=previousChunkCenter?cx-previousChunkCenter[0]:0;
+  const vz=previousChunkCenter?cz-previousChunkCenter[1]:0;
+  previousChunkCenter=[cx,cz];
+  for(let x=cx-radius;x<=cx+radius;x++)
+    for(let z=cz-radius;z<=cz+radius;z++){
+      if(ctx.chunks.has(x+','+z))continue;
+      const dx=x-cx,dz=z-cz;
+      missing.push({x,z,d:dx*dx+dz*dz,
+        ahead:dx*vx+dz*vz});
+    }
+  missing.sort((a,b)=>a.d-b.d||b.ahead-a.ahead);
+  let built=0;
+  for(const item of missing){
+    const critical=item.d===0;
+    if(!critical&&built>=3)break;
+    build(item.x,item.z);
+    if(!critical)built++;
   }
   for(const [key,group] of ctx.chunks){
     const [x,z]=key.split(',').map(Number);

@@ -1,30 +1,23 @@
-// Procedurally generated low-detail forest beyond the interactive 24m tree chunks.
-// Tree positions, species and water exclusions match createWorld exactly.
-// Distant instances never enter ctx.trees, collision detection, or shadow passes.
-import {treeCanSpawn,treeCandidate,TREES_PER_CHUNK} from './tree-spacing.js';
+// Worker-fed distant forest. Each 96m sector owns instanced batches with
+// independent frustum culling; camera turns never rewrite instance matrices.
 import {lakesNearTile,lakeHorizonDistance} from './lakes.js';
+import {forestChunkData} from './world-stream-data.js';
+import {WorldLRU,WORLD_PRIORITY} from './world-task-scheduler.js';
 export const DISTANT_FOREST_BASE_METERS=165;
-export const DISTANT_FOREST_LAKE_METERS=410; // Visibility cap, NOT a full forest disk.
-export const DISTANT_FOREST_SHORE_WIDTH=54; // ~2 chunks of trees beyond lake shores.
+export const DISTANT_FOREST_LAKE_METERS=410;
+export const DISTANT_FOREST_SHORE_WIDTH=54;
 export const DISTANT_FOREST_CHUNKS_PER_TICK=48;
+export const DISTANT_SECTOR_CHUNKS=4;
 
-export function distantForestRange(terrain,lakes=[],x=0,z=0,
-  settings=null){
-  // The forest beyond 165m exists only around a nearby lake, not throughout
-  // the camera's field. Its actual extent depends on the lake's ellipse.
+export function distantForestRange(terrain,lakes=[],x=0,z=0,settings=null){
   const visibility=Math.max(terrain?.visibility??0,terrain?.visibilityTarget??0);
   const base=settings?.farForestDistance??DISTANT_FOREST_BASE_METERS;
   if(visibility<=.035||!lakes.length||settings?.lakeForestMode==='off')return base;
   if(settings?.lakeForestMode==='full')
     return Math.max(base,settings?.lakeViewDistance??DISTANT_FOREST_LAKE_METERS);
   return Math.min(settings?.lakeViewDistance??DISTANT_FOREST_LAKE_METERS,Math.max(base,
-    ...lakes.map(lake=>lakeHorizonDistance(
-      lake,x,z,DISTANT_FOREST_SHORE_WIDTH+12))));
+    ...lakes.map(lake=>lakeHorizonDistance(lake,x,z,DISTANT_FOREST_SHORE_WIDTH+12))));
 }
-
-// Signed, approximate distance in metres to the irregular shoreline.
-// Negative = inside the lake, positive = inland. Uses lake rotation and the
-// same perimeter harmonics as lakeNormalized/lakePoint.
 export function distanceToLakeShore(lake,x,z){
   const dx=x-lake.x,dz=z-lake.z;
   const rx=(dx*lake.cos+dz*lake.sin)/lake.rx;
@@ -35,209 +28,231 @@ export function distanceToLakeShore(lake,x,z){
     +.035*Math.sin(11*angle+lake.phase*.4);
   return (Math.hypot(rx,rz)-edge)*Math.min(lake.rx,lake.rz);
 }
-
-// Use real Foliage Cards trees generated from the same editor presets as
-// the near forest. Each part keeps its own bark/leaf atlas and alphaTest.
 export function createDistantForest(ctx){
   const THREE=ctx.THREE;
   if(!THREE.InstancedMesh||!THREE.Object3D)
-    return {update(){},invalidate(){},clear(){},dispose(){},get count(){return 0;}};
-  const CAPACITY=18000;
+    return {update(){},updateVisibility(){},invalidate(){},clear(){},
+      dispose(){},get count(){return 0;}};
   const templates={
     conifer:ctx.distantTreeParts?.conifer??ctx.spruceParts??[],
     birch:ctx.distantTreeParts?.birch??ctx.birchParts??[],
   };
-  const meshes={conifer:[],birch:[]};
-  for(const kind of ['conifer','birch']){
-    for(const part of templates[kind]){
-      if(!part.geometry||!part.material)continue;
-      const mesh=new THREE.InstancedMesh(part.geometry,part.material,CAPACITY);
-      mesh.name='Distant '+kind+' '+((part.foliage??part.material.alphaTest>0)?'foliage':'wood');
-      mesh.count=0;
-      mesh.frustumCulled=false;
-      mesh.castShadow=false;
-      mesh.receiveShadow=false;
-      ctx.scene.add(mesh);
-      meshes[kind].push(mesh);
-    }
-  }
+  const cache=new Map(); // active chunk -> packed Float64Array, stride 7
+  const lru=new WorldLRU(24*1024*1024);
+  const sectors=new Map(); // 4x4 tree chunks / 96m tile
+  const dirtySectors=new Set();
+  const requested=new Set();
   const dummy=new THREE.Object3D();
-  const cache=new Map(); // keyed 24m chunk; bounded to current visibility
-  let queue=[],lastCx=null,lastCz=null,lastRange=null,lastSeed=null,lastNear=null,lastLakeMode=null,lastDensity=null;
-  let dirty=true,viewDirty=true,lastViewYaw=null,lastViewX=null,lastViewZ=null;
-  const rand=(x,z,n=0)=>{
-    const value=Math.sin(x*127.1+z*311.7+n*78.233+ctx.seed)*43758.5453;
-    return value-Math.floor(value);
-  };
-  const key=(cx,cz)=>cx+','+cz;
+  const chunkKey=(cx,cz)=>cx+','+cz;
+  const sectorKey=(cx,cz)=>Math.floor(cx/DISTANT_SECTOR_CHUNKS)+','+
+    Math.floor(cz/DISTANT_SECTOR_CHUNKS);
+  let desired=new Set(),queue=[],signature='',generation=0,lastSeed=null,previousX=null,previousZ=null;
+  let count=0;
 
-  function makeChunk(cx,cz){
-    const trees=[];
-    for(let i=0;i<TREES_PER_CHUNK;i++){
-      if(!treeCanSpawn(cx,cz,i,rand,ctx.chunkSize))continue;
-      // Stable per-tree thinning: never changes candidate IDs or placement.
-      if(rand(cx,cz,8000+i)*100>=(ctx.settings?.farTreeDensity??100))continue;
-      const point=treeCandidate(cx,cz,i,rand,ctx.chunkSize);
-      if(!point||ctx.felled.has(key(cx,cz)+':'+i))continue;
-      if(ctx.terrain.waterDepthAt(point.x,point.z)>.12)continue;
-      const {x,z}=point;
-      trees.push({
-        id:key(cx,cz)+':'+i,
-        kind:rand(x,z,703)<.2?'birch':'conifer',x,z,
-        y:ctx.terrain.heightAt(x,z),
-        height:7.5+rand(x,z,4)*6.5,
-        scale:.9+rand(x,z,5)*.65,
-      });
-    }
-    return trees;
-  }
-
-  function rebuild(){
-    const counts={conifer:0,birch:0};
-    for(const trees of cache.values())for(const tree of trees){
-      const i=counts[tree.kind]++;
-      if(i>=CAPACITY){counts[tree.kind]=CAPACITY;continue;}
-      dummy.position.set(tree.x,tree.y,tree.z);
-      dummy.rotation.set(0,0,0);
-      // Identical transform to the detailed procedural models in world.js.
-      dummy.scale.set(tree.scale,tree.height/(tree.kind==='conifer'?6:8),tree.scale);
-      dummy.updateMatrix();
-      for(const mesh of meshes[tree.kind])mesh.setMatrixAt(i,dummy.matrix);
-    }
-    for(const kind of ['conifer','birch']){
-      for(const mesh of meshes[kind]){
-        mesh.count=counts[kind];
-        mesh.instanceMatrix.needsUpdate=true;
-      }
-    }
-    dirty=false;viewDirty=true;
-  }
-
-  function update(){
-    const size=ctx.chunkSize;
-    const cx=Math.floor(ctx.px/size),cz=Math.floor(ctx.pz/size);
-    const near=ctx.radius??3; // detailed forest; retained chunks are excluded below
-    // The ordinary 165m forest stays. A lake panorama adds ONLY a narrow
-    // shoreline belt, not a 410m disk filled with millions of triangles.
-    const visibility=Math.max(ctx.terrain?.visibility??0,
-      ctx.terrain?.visibilityTarget??0);
-    const lakeMode=visibility>.035&&ctx.settings?.lakeForestMode!=='off';
-    const nearbyLakes=lakeMode
-      ? lakesNearTile(ctx.seed,ctx.px-500,
-          ctx.pz-500,1000)
-        .filter(lake=>distanceToLakeShore(lake,ctx.px,ctx.pz)<145)
-      :[];
-    const outerRadius=distantForestRange(
-      ctx.terrain,nearbyLakes,ctx.px,ctx.pz,ctx.settings);
-    const range=Math.ceil(outerRadius/size);
-    const lakeIds=nearbyLakes.map(lake=>lake.id).sort().join('|');
-    const density=ctx.settings?.farTreeDensity??100;
-    if(cx!==lastCx||cz!==lastCz||near!==lastNear||
-        range!==lastRange||ctx.seed!==lastSeed||lakeIds!==lastLakeMode||
-        density!==lastDensity){
-      if(ctx.seed!==lastSeed||density!==lastDensity)cache.clear();
-      lastDensity=density;
-      lastCx=cx;lastCz=cz;lastRange=range;lastNear=near;
-      lastSeed=ctx.seed;lastLakeMode=lakeIds;
-      const desired=new Set();
-      const baseSq=((ctx.settings?.farForestDistance??DISTANT_FOREST_BASE_METERS)+size*.72)**2;
-      const outerSq=(outerRadius+size*.72)**2;
-      const chunkMargin=size*Math.SQRT2*.5;
-      for(let ix=cx-range;ix<=cx+range;ix++)for(let iz=cz-range;iz<=cz+range;iz++){
-        if(Math.abs(ix-cx)<=near&&Math.abs(iz-cz)<=near)continue;
-        if(ctx.chunks?.has(key(ix,iz)))continue;
-        const x=(ix+.5)*size,z=(iz+.5)*size;
-        const dx=x-ctx.px,dz=z-ctx.pz;
-        const d2=dx*dx+dz*dz;
-        // Trees outside the standard area only belong to the immediate
-        // lakeshore, including the far bank. No forest behind that strip.
-        const aroundLake=lakeMode&&nearbyLakes.length>0&&d2<=outerSq&&(
-          ctx.settings?.lakeForestMode==='full'||nearbyLakes.some(lake=>{
-          const shore=distanceToLakeShore(lake,x,z);
-          return shore>=-chunkMargin &&
-            shore<=DISTANT_FOREST_SHORE_WIDTH+chunkMargin;
-        }));
-        if(d2>baseSq&&!aroundLake)continue;
-        desired.add(key(ix,iz));
-      }
-      for(const k of cache.keys())if(!desired.has(k)){cache.delete(k);dirty=true;}
-      // Nearest missing chunks first. Work is divided over world ticks to avoid
-      // generating thousands of tree candidates in a single frame.
-      queue=[...desired].filter(k=>!cache.has(k)).map(k=>{
-        const [x,z]=k.split(',').map(Number);
-        return {k,x,z,d:(x+.5-cx)**2+(z+.5-cz)**2};
-      }).sort((a,b)=>a.d-b.d);
-    }
-    for(let i=0;i<DISTANT_FOREST_CHUNKS_PER_TICK&&queue.length;i++){
-      const next=queue.shift();
-      cache.set(next.k,makeChunk(next.x,next.z));
-      dirty=true;
-    }
-    if(dirty)rebuild();
-  }
-  // Cull instances behind the player; camera turns only upload matrices when
-  // the direction changes appreciably (~6 degrees), not on every frame.
-  function updateVisibility(yaw=0){
-    const moved=lastViewX===null ||
-      Math.hypot(ctx.px-lastViewX,ctx.pz-lastViewZ)>5;
-    if(!viewDirty&&!moved&&lastViewYaw!==null&&
-       Math.abs(Math.atan2(Math.sin(yaw-lastViewYaw),
-         Math.cos(yaw-lastViewYaw)))<.105)return;
-    viewDirty=false;lastViewYaw=yaw;lastViewX=ctx.px;lastViewZ=ctx.pz;
-    const counts={conifer:0,birch:0};
-    const fx=-Math.sin(yaw),fz=-Math.cos(yaw);
-    const vertical=(ctx.camera?.fov??75)*Math.PI/180;
-    const horizontal=2*Math.atan(Math.tan(vertical/2)*(ctx.camera?.aspect??1.78));
-    const threshold=Math.cos(Math.min(Math.PI,horizontal/2+.24));
-    for(const trees of cache.values())for(const tree of trees){
-      const dx=tree.x-ctx.px,dz=tree.z-ctx.pz;
-      const distance=Math.hypot(dx,dz);
-      if(distance>20&&(dx*fx+dz*fz)/distance<threshold)continue;
-      const i=counts[tree.kind]++;
-      if(i>=CAPACITY){counts[tree.kind]=CAPACITY;continue;}
-      dummy.position.set(tree.x,tree.y,tree.z);
-      dummy.rotation.set(0,0,0);
-      dummy.scale.set(tree.scale,tree.height/(tree.kind==='conifer'?6:8),tree.scale);
-      dummy.updateMatrix();
-      for(const mesh of meshes[tree.kind])mesh.setMatrixAt(i,dummy.matrix);
-    }
-    for(const kind of ['conifer','birch'])
-      for(const mesh of meshes[kind]){
-        mesh.count=counts[kind];
-        mesh.instanceMatrix.needsUpdate=true;
-      }
-  }
-  function invalidate(){
-    // E.g. a remote player fells a distant tree or the world is restored.
-    cache.clear();queue=[];lastCx=null;lastCz=null;dirty=true;
-    rebuild();
-  }
-  function invalidateTree(id){
-    const chunkKey=String(id).split(':')[0];
-    const trees=cache.get(chunkKey);
-    if(!trees)return;
-    const kept=trees.filter(tree=>tree.id!==id);
-    if(kept.length===trees.length)return;
-    cache.set(chunkKey,kept);
-    dirty=true;
-    rebuild();
-  }
-  function clear(){
-    invalidate();
-    lastSeed=null;
-  }
-  function dispose(){
-    // Only instance buffers belong here; generated geometry/atlases are
-    // shared by all distant batches and owned by the startup model templates.
-    for(const parts of Object.values(meshes))for(const mesh of parts){
+  function evictSector(key){
+    const sector=sectors.get(key);
+    if(!sector)return;
+    for(const mesh of sector.meshes){
       ctx.scene.remove(mesh);
       mesh.dispose();
     }
-    cache.clear();queue=[];
+    sectors.delete(key);
   }
-  return {update,invalidate,invalidateTree,clear,dispose,meshes,
-    get count(){return (meshes.conifer[0]?.count??0)+(meshes.birch[0]?.count??0);},
-    get pending(){return queue.length;},
-    get chunkCount(){return cache.size;},updateVisibility,
+  function rebuildSector(key){
+    const [sx,sz]=key.split(',').map(Number);
+    const trees={conifer:[],birch:[]};
+    for(let cx=sx*DISTANT_SECTOR_CHUNKS;cx<(sx+1)*DISTANT_SECTOR_CHUNKS;cx++)
+      for(let cz=sz*DISTANT_SECTOR_CHUNKS;cz<(sz+1)*DISTANT_SECTOR_CHUNKS;cz++){
+        const records=cache.get(chunkKey(cx,cz));
+        if(!records)continue;
+        for(let i=0;i<records.length;i+=7){
+          if(ctx.felled.has(chunkKey(cx,cz)+':'+records[i+6]))continue;
+          const kind=records[i+5]===1?'birch':'conifer';
+          trees[kind].push([records[i],records[i+1],records[i+2],
+            records[i+3],records[i+4]]);
+        }
+      }
+    const total=trees.conifer.length+trees.birch.length;
+    if(!total){
+      evictSector(key);
+      count=0;
+      for(const entry of sectors.values())count+=entry.total;
+      return;
+    }
+    let sector=sectors.get(key);
+    if(!sector){
+      sector={meshes:[],byKind:{conifer:[],birch:[]},total:0};
+      sectors.set(key,sector);
+    }
+    // Stable instance-buffer capacities: one sector has at most 16*8=128
+    // candidates. Reuse GPU buffers when additional worker chunks arrive.
+    for(const kind of ['conifer','birch']){
+      const instances=trees[kind];
+      if(instances.length&&!sector.byKind[kind].length)
+        for(const part of templates[kind]){
+          if(!part.geometry||!part.material)continue;
+          const mesh=new THREE.InstancedMesh(part.geometry,part.material,
+            DISTANT_SECTOR_CHUNKS*DISTANT_SECTOR_CHUNKS*8);
+          mesh.name='Distant '+kind+' '+(part.foliage?'foliage':'wood')+' '+key;
+          mesh.castShadow=false;mesh.receiveShadow=false;
+          mesh.frustumCulled=true;
+          ctx.scene.add(mesh);
+          sector.meshes.push(mesh);
+          sector.byKind[kind].push(mesh);
+        }
+      for(let i=0;i<instances.length;i++){
+        const [x,y,z,height,scale]=instances[i];
+        dummy.position.set(x,y,z);
+        dummy.rotation.set(0,0,0);
+        dummy.scale.set(scale,height/(kind==='conifer'?6:8),scale);
+        dummy.updateMatrix();
+        for(const mesh of sector.byKind[kind])mesh.setMatrixAt(i,dummy.matrix);
+      }
+      for(const mesh of sector.byKind[kind]){
+        mesh.count=instances.length;
+        mesh.instanceMatrix.needsUpdate=true;
+        mesh.computeBoundingSphere?.();
+      }
+    }
+    sector.total=total;
+    count=0;for(const entry of sectors.values())count+=entry.total;
+  }
+  function flush(limit=2){
+    for(const key of dirtySectors){
+      dirtySectors.delete(key);
+      rebuildSector(key);
+      if(--limit<=0)break;
+    }
+  }
+  function scheduleChunk(cx,cz,priority){
+    const key=chunkKey(cx,cz);
+    const dataKey=ctx.seed+'/'+(ctx.settings?.farTreeDensity??100)+'/'+ctx.chunkSize+'/'+key;
+    const hit=lru.get(dataKey);
+    if(hit){cache.set(key,hit);dirtySectors.add(sectorKey(cx,cz));return;}
+    if(requested.has(key))return;
+    requested.add(key);
+    const epoch=generation,seed=ctx.seed;
+    const payload={seed,cx,cz,size:ctx.chunkSize,
+      density:ctx.settings?.farTreeDensity??100};
+    const apply=records=>{
+      requested.delete(key);
+      if(epoch!==generation||seed!==ctx.seed||!desired.has(key))return;
+      cache.set(key,records);
+      lru.put(dataKey,records,records.byteLength);
+      dirtySectors.add(sectorKey(cx,cz));
+    };
+    if(ctx.worldStreamer)
+      ctx.worldStreamer.schedule({
+        key:'forest:'+key,kind:'forest',payload,priority,apply,
+        fallback:()=>forestChunkData(payload),
+      });
+    else apply(forestChunkData(payload));
+  }
+  function update(){
+    const size=ctx.chunkSize,cx=Math.floor(ctx.px/size),
+      cz=Math.floor(ctx.pz/size),near=ctx.radius??3;
+    const visibility=Math.max(ctx.terrain?.visibility??0,ctx.terrain?.visibilityTarget??0);
+    const lakeMode=visibility>.035&&ctx.settings?.lakeForestMode!=='off';
+    const nearbyLakes=lakeMode
+      ?lakesNearTile(ctx.seed,ctx.px-500,ctx.pz-500,1000)
+        .filter(lake=>distanceToLakeShore(lake,ctx.px,ctx.pz)<145):[];
+    const outerRadius=distantForestRange(ctx.terrain,nearbyLakes,ctx.px,ctx.pz,ctx.settings);
+    const range=Math.ceil(outerRadius/size);
+    const density=ctx.settings?.farTreeDensity??100;
+    const sign=[ctx.seed,cx,cz,near,range,density,
+      ctx.settings?.lakeForestMode,nearbyLakes.map(l=>l.id).join('|')].join('/');
+    if(sign===signature){
+      // Keep feeding work on every world tick; the queue contains all desired
+      // chunks and must not be considered permanently finished after 48.
+      enqueueMissing(12);
+      flush();
+      return;
+    }
+    const reset=ctx.seed!==lastSeed||signature.split('/')[5]!==String(density);
+    if(reset){
+      lru.clear();cache.clear();generation++;dirtySectors.clear();
+      for(const key of requested)ctx.worldStreamer?.cancel('forest:'+key);
+      requested.clear();
+      for(const key of [...sectors.keys()])evictSector(key);
+      count=0;
+    }
+    signature=sign;lastSeed=ctx.seed;
+    const next=new Set(),baseSq=((ctx.settings?.farForestDistance??
+      DISTANT_FOREST_BASE_METERS)+size*.72)**2;
+    const outerSq=(outerRadius+size*.72)**2;
+    const chunkMargin=size*Math.SQRT2*.5;
+    const vx=previousX===null?0:ctx.px-previousX;
+    const vz=previousZ===null?0:ctx.pz-previousZ;
+    previousX=ctx.px;previousZ=ctx.pz;
+    const norm=Math.hypot(vx,vz)||1;
+    for(let x=cx-range;x<=cx+range;x++)
+      for(let z=cz-range;z<=cz+range;z++){
+        if(Math.abs(x-cx)<=near&&Math.abs(z-cz)<=near)continue;
+        if(ctx.chunks?.has(chunkKey(x,z)))continue;
+        const wx=(x+.5)*size,wz=(z+.5)*size,
+          dx=wx-ctx.px,dz=wz-ctx.pz,d2=dx*dx+dz*dz;
+        const onLake=lakeMode&&nearbyLakes.length>0&&d2<=outerSq&&
+          (ctx.settings?.lakeForestMode==='full'||nearbyLakes.some(lake=>{
+            const distance=distanceToLakeShore(lake,wx,wz);
+            return distance>=-chunkMargin&&
+              distance<=DISTANT_FOREST_SHORE_WIDTH+chunkMargin;
+          }));
+        if(d2>baseSq&&!onLake)continue;
+        next.add(chunkKey(x,z));
+      }
+    for(const [key,records] of cache){
+      if(next.has(key))continue;
+      const [x,z]=key.split(',').map(Number);
+      cache.delete(key);dirtySectors.add(sectorKey(x,z));
+    }
+    for(const key of requested)
+      if(!next.has(key)){ctx.worldStreamer?.cancel('forest:'+key);requested.delete(key);}
+    desired=next;
+    queue=[...next].filter(key=>!cache.has(key)&&!requested.has(key)).map(key=>{
+      const [x,z]=key.split(',').map(Number);
+      const dx=(x+.5-cx),dz=(z+.5-cz);
+      const forward=(dx*vx+dz*vz)/norm;
+      return {x,z,d:dx*dx+dz*dz-4*Math.max(0,forward)};
+    }).sort((a,b)=>a.d-b.d);
+    enqueueMissing(24);
+    flush();
+  }
+  function enqueueMissing(budget){
+    if(!queue.length)return;
+    let started=0;
+    for(const job of queue){
+      const key=chunkKey(job.x,job.z);
+      if(cache.has(key)||requested.has(key))continue;
+      if(requested.size>=60)break;
+      scheduleChunk(job.x,job.z,
+        job.d<100?WORLD_PRIORITY.visible:WORLD_PRIORITY.prefetch);
+      if(++started>=budget)break;
+    }
+  }
+  function updateVisibility(){
+    // Sector frustum culling is handled by THREE without rewriting matrices.
+    // Never enqueue missing chunks here: camera rotation should be GPU-only.
+    flush(2);
+  }
+  function invalidate(){
+    generation++;signature='';queue=[];
+    for(const key of requested)ctx.worldStreamer?.cancel('forest:'+key);
+    requested.clear();cache.clear();desired.clear();dirtySectors.clear();
+    for(const key of [...sectors.keys()])evictSector(key);
+    count=0;
+  }
+  function invalidateTree(id){
+    const [key]=String(id).split(':');
+    if(!cache.has(key))return;
+    const [cx,cz]=key.split(',').map(Number);
+    dirtySectors.add(sectorKey(cx,cz));
+  }
+  function clear(){invalidate();lru.clear();lastSeed=null;previousX=previousZ=null;}
+  function dispose(){clear();}
+  return {update,updateVisibility,invalidate,invalidateTree,clear,dispose,
+    meshes:sectors,
+    get count(){return count;},get pending(){return [...desired].filter(k=>!cache.has(k)).length+dirtySectors.size;},
+    get chunkCount(){return cache.size;},
+    get sectorCount(){return sectors.size;},
   };
 }

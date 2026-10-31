@@ -1,5 +1,5 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261101-hot-tree-lod1';
+import {createWorld} from './world.js?v=20261101-streaming2';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
@@ -9,14 +9,14 @@ import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
-import {createMicroGrass} from './micro-grass.js?v=20261101-performance1';
+import {createMicroGrass} from './micro-grass.js?v=20261101-grass-worker1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
-import {TerrainSystem} from './terrain.js?v=20261101-performance1';
+import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
 import {createPhysics} from './physics.js?v=20261031-ponds1';
 import {createBuilding} from './building.js?v=20261031-ponds1';
 import {createChopping} from './chopping.js?v=20261031-jump-energy1';
 import {createControls} from './controls.js?v=20261101-distant-forest1';
-import {createPlayer} from './player.js?v=20261101-view-culling1';
+import {createPlayer} from './player.js?v=20261101-world-streamer1';
 import {createMultiplayer} from './multiplayer.js?v=20261101-distant-forest1';
 import {createMinimap} from './minimap.js?v=20261031-rare-lakes1';
 import {createNotifications} from './notifications.js';
@@ -43,6 +43,7 @@ import {createVitalsUI} from './vitals-ui.js?v=20261031-stability1';
 import {createForestResources} from './forest-resources.js?v=20261031-ponds1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261031-boxes1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
+import {WorldTaskScheduler} from './world-task-scheduler.js';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 
@@ -86,6 +87,12 @@ const groundTexture=createGroundTexture(THREE,document,renderer);
 const groundMaterial=new THREE.MeshLambertMaterial({map:groundTexture});
 enableGrassDensityShadows(THREE,groundMaterial);
 const terrain=new TerrainSystem(THREE,{scene,camera,material:groundMaterial});
+const worldStreamer=new WorldTaskScheduler({
+  workerUrl:new URL('./world-stream-worker.js',import.meta.url),
+  workers:2,applyPerTick:2,applyMs:2,
+});
+terrain.setScheduler(worldStreamer);
+
 const ground=terrain.group;
 const trunkGeo=new THREE.CylinderGeometry(.38,.6,1,9),leafGeo=new THREE.ConeGeometry(1,1,8),rockGeo=new THREE.DodecahedronGeometry(1,0);
 // The tiny octahedron is still shared by campfire sparks, not used as flower art.
@@ -249,6 +256,7 @@ const ctx={
  get grasses(){return grasses;},
  get ground(){return ground;},
  get terrain(){return terrain;},
+ get worldStreamer(){return worldStreamer;},
  get handle(){return handle;},
  get head(){return head;},
  get host(){return host;},
@@ -355,6 +363,41 @@ let spruceDiagnostics=createSpruceDiagnostics(THREE,ctx);
 ({rand, makeTree, build, updateChunks, distantForest, replaceTreeModels}=createWorld(ctx));
 ctx.distantForest=distantForest;
 let activeTreeKey='';
+const inactiveTreeModels=new Map(); // one previous graphics preset, bounded by bytes
+const TREE_MODEL_CACHE_BYTES=96*1024*1024;
+function modelBytes(parts){
+  let total=0;
+  const geometries=new Set(),textures=new Set();
+  for(const list of parts)for(const part of list??[]){
+    if(part.geometry&&!geometries.has(part.geometry)){
+      geometries.add(part.geometry);
+      for(const attr of Object.values(part.geometry.attributes??{}))
+        total+=attr.array?.byteLength??0;
+      total+=part.geometry.index?.array?.byteLength??0;
+    }
+    for(const mat of [part.material,part.rareMaterial]){
+      const tex=mat?.map;
+      if(tex&&!textures.has(tex)){
+        textures.add(tex);
+        total+=(tex.image?.width??0)*(tex.image?.height??0)*4;
+      }
+    }
+  }
+  return total;
+}
+function rememberTreeModels(key,parts){
+  if(!key){for(const list of parts)disposeProceduralParts(list);return;}
+  inactiveTreeModels.delete(key);
+  inactiveTreeModels.set(key,parts);
+  let bytes=0;for(const lists of inactiveTreeModels.values())bytes+=modelBytes(lists);
+  while((inactiveTreeModels.size>1||bytes>TREE_MODEL_CACHE_BYTES)&&inactiveTreeModels.size){
+    const oldest=inactiveTreeModels.keys().next().value;
+    const dropped=inactiveTreeModels.get(oldest);
+    inactiveTreeModels.delete(oldest);
+    bytes-=modelBytes(dropped);
+    for(const list of dropped)disposeProceduralParts(list);
+  }
+}
 function disposeProceduralParts(parts){
   for(const part of parts??[]){
     part.geometry?.dispose?.();
@@ -384,13 +427,16 @@ function distantProfile(spruce,birch){
 let pendingTreeUpdate=null,lastWorldGraphicsKey='';
 function applyTreeModels(models,lod,key){
   if(key===activeTreeKey)return;
-    const nextSpruce=generateSpruceParts(models.spruce);
-    const nextBirch=generateBirchParts(models.birch);
-    const nextDistantSpruce=generateSpruceParts(lod.spruce);
-    const nextDistantBirch=generateBirchParts(lod.birch);
+    const cached=inactiveTreeModels.get(key);
+    if(cached)inactiveTreeModels.delete(key);
+    const nextSpruce=cached?.[0]??generateSpruceParts(models.spruce);
+    const nextBirch=cached?.[1]??generateBirchParts(models.birch);
+    const nextDistantSpruce=cached?.[2]??generateSpruceParts(lod.spruce);
+    const nextDistantBirch=cached?.[3]??generateBirchParts(lod.birch);
     if(nextSpruce?.length&&nextBirch?.length&&
-      nextDistantSpruce?.length&&nextDistantBirch?.length){
+       nextDistantSpruce?.length&&nextDistantBirch?.length){
       const old=[spruceParts,birchParts,distantSpruceParts,distantBirchParts];
+      const previousKey=activeTreeKey;
       spruceDiagnostics.dispose?.();
       spruceParts=nextSpruce;birchParts=nextBirch;
       distantSpruceParts=nextDistantSpruce;
@@ -398,11 +444,11 @@ function applyTreeModels(models,lod,key){
       distantTreeParts={conifer:distantSpruceParts,birch:distantBirchParts};
       spruceDiagnostics=createSpruceDiagnostics(THREE,ctx);
       replaceTreeModels();
-      for(const parts of old)disposeProceduralParts(parts);
+      rememberTreeModels(previousKey,old);
       activeTreeKey=key;
     }else{
-      for(const parts of [nextSpruce,nextBirch,nextDistantSpruce,nextDistantBirch])
-        if(parts)disposeProceduralParts(parts);
+      for(const list of [nextSpruce,nextBirch,nextDistantSpruce,nextDistantBirch])
+        if(list)disposeProceduralParts(list);
     }
 }
 

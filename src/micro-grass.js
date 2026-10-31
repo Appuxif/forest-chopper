@@ -1,6 +1,7 @@
 // Low-poly, static grass carpet: cached instanced tiles with two distance LODs.
 import {gladesForTile,gladeAtPoint,gladeDensity} from './grass-glades.js?v=20261031-ponds1';
 import {lakesNearTile,lakeNormalized} from './lakes.js';
+import {WorldLRU,WORLD_PRIORITY} from './world-task-scheduler.js';
 // One shared geometry/material per LOD, no individual scene objects per tuft,
 // and no full-ring matrix uploads whenever the player walks a meter.
 export const MICRO_GRASS_CELL = 1.1;
@@ -257,6 +258,11 @@ export function createMicroGrass(ctx) {
     active:new Map(),unused:[],
   };
   let lastX=Infinity,lastZ=Infinity,lastSeed=null,lastDensity=null,lastRadius=null;
+  const sampleCache=new WorldLRU(20*1024*1024);
+  let streamingEpoch=0;
+  for(const layer of [near,far]){
+    layer.pending=new Set();layer.desired=new Set();
+  }
   let currentTriangles=6,currentInteraction=true;
   let generatedTiles=0;
   const grassTrail=[];
@@ -343,40 +349,48 @@ export function createMicroGrass(ctx) {
       disposePage(record.mesh);
     }
   }
-  function createPage(layer, x, z, seed, density) {
-    const samples=generateGrassTile(seed,x,z,layer.size,density,layer.tier);
-    if(!samples.length)return null;
+  function createPage(layer,x,z,seed,density,samples=null){
+    samples??=generateGrassTile(seed,x,z,layer.size,density,layer.tier);
+    const packed=samples instanceof Float32Array;
+    const count=packed?samples.length/9:samples.length;
+    if(!count)return null;
     let mesh=layer.unused.pop();
-    if(mesh && mesh.instanceMatrix.count<samples.length){
+    if(mesh && mesh.instanceMatrix.count<count){
       disposePage(mesh);
       mesh=null;
     }
     if(!mesh){
-      const capacity=Math.ceil(samples.length*1.08);
+      const capacity=Math.ceil(count*1.08);
       // Single draw call per tile; just two extra floats per grass instance.
       const geometry=layer.geometry.clone();
       geometry.setAttribute('fcGrassProfile',
         new THREE.InstancedBufferAttribute(new Float32Array(capacity*2),2));
       mesh=new THREE.InstancedMesh(geometry,layer.material,capacity);
     }
-    mesh.count=samples.length;
+    mesh.count=count;
     const profile=mesh.geometry.getAttribute('fcGrassProfile');
     mesh.frustumCulled=true; // Cull entire fixed world-space page.
     mesh.userData.microGrass=true;
     mesh.userData.grassTier=layer.tier;
-    for(let i=0;i<samples.length;i++){
-      const item=samples[i];
-      dummy.position.set(item.x,ctx.terrain.heightAt(item.x,item.z),item.z);
-      dummy.rotation.set(0,item.angle,0);
-      dummy.scale.setScalar(item.scale*
-        (ctx.settings?.grassInteraction===false?3.7:1));
+    for(let i=0;i<count;i++){
+      const j=i*9;
+      const x=packed?samples[j]:samples[i].x;
+      const z=packed?samples[j+2]:samples[i].z;
+      const y=packed?samples[j+1]:ctx.terrain.heightAt(x,z);
+      const angle=packed?samples[j+3]:samples[i].angle;
+      const scale=packed?samples[j+4]:samples[i].scale;
+      const tintValue=packed?samples[j+5]:samples[i].tint;
+      const biome=packed?samples[j+6]:samples[i].biome;
+      const patchKind=packed?samples[j+7]:samples[i].patchKind;
+      const patchWeight=packed?samples[j+8]:samples[i].patchWeight;
+      dummy.position.set(x,y,z);
+      dummy.rotation.set(0,angle,0);
+      dummy.scale.setScalar(scale*(ctx.settings?.grassInteraction===false?3.7:1));
       dummy.updateMatrix();
       mesh.setMatrixAt(i,dummy.matrix);
-      profile.setXY(i,item.patchKind,item.patchWeight);
-      // Slightly fresher and brighter than the ground, with soft variation:
-      // roots stay dark, tips catch more light. Keep colors muted, not neon.
-      tint.setHSL(.278 + item.biome*.034,.39 + item.tint*.13,
-        .355 + item.tint*.067);
+      profile.setXY(i,patchKind,patchWeight);
+      tint.setHSL(.278+biome*.034,.39+tintValue*.13,
+        .355+tintValue*.067);
       mesh.setColorAt(i,tint);
     }
     mesh.instanceMatrix.needsUpdate=true;
@@ -394,7 +408,7 @@ export function createMicroGrass(ctx) {
     const dx=Math.max(a-x,0,x-a-size),dz=Math.max(b-z,0,z-b-size);
     return dx*dx+dz*dz<radius*radius;
   }
-  function syncLayer(layer,x,z,radius,seed,density,refresh) {
+  function syncLayer(layer,x,z,radius,seed,density,refresh){
     const keep=new Set();
     if(radius>0){
       const startX=Math.floor((x-radius)/layer.size);
@@ -402,22 +416,55 @@ export function createMicroGrass(ctx) {
       const startZ=Math.floor((z-radius)/layer.size);
       const endZ=Math.floor((z+radius)/layer.size);
       for(let tx=startX;tx<=endX;tx++)for(let tz=startZ;tz<=endZ;tz++){
-        if(!intersects(tx,tz,layer.size,x,z,radius))continue;
-        const key=tx+','+tz;
-        keep.add(key);
+        if(intersects(tx,tz,layer.size,x,z,radius))keep.add(tx+','+tz);
       }
     }
-    // Return old pages to the pool before creating new ones.
+    layer.desired=keep;
     for(const [key,record] of layer.active){
       if(!refresh&&keep.has(key))continue;
-      release(layer,record);
-      layer.active.delete(key);
+      release(layer,record);layer.active.delete(key);
     }
-    for(const key of keep){
-      if(layer.active.has(key))continue;
-      const [tx,tz]=key.split(',').map(Number);
-      const page=createPage(layer,tx,tz,seed,density);
-      if(page)layer.active.set(key,page);
+    for(const key of [...layer.pending]){
+      if(!refresh&&keep.has(key))continue;
+      ctx.worldStreamer?.cancel('grass:'+layer.tier+':'+key);
+      layer.pending.delete(key);
+    }
+    const sorted=[...keep].filter(key=>!layer.active.has(key)&&!layer.pending.has(key))
+      .map(key=>{
+        const [tx,tz]=key.split(',').map(Number);
+        return {key,tx,tz,d:Math.hypot((tx+.5)*layer.size-x,
+          (tz+.5)*layer.size-z)};
+      }).sort((a,b)=>a.d-b.d);
+    for(const {key,tx,tz,d} of sorted){
+      const cacheKey=[seed,layer.tier,tx,tz,density].join('/');
+      const cached=sampleCache.get(cacheKey);
+      if(cached){
+        const page=createPage(layer,tx,tz,seed,density,cached);
+        if(page)layer.active.set(key,page);
+        continue;
+      }
+      if(!ctx.worldStreamer){
+        const page=createPage(layer,tx,tz,seed,density);
+        if(page)layer.active.set(key,page);
+        continue;
+      }
+      layer.pending.add(key);
+      const epoch=streamingEpoch;
+      const payload={seed,tx,tz,size:layer.size,density,tier:layer.tier};
+      ctx.worldStreamer.schedule({
+        key:'grass:'+layer.tier+':'+key,kind:'grass',payload,
+        priority:d<20?WORLD_PRIORITY.near:d<55?WORLD_PRIORITY.visible:WORLD_PRIORITY.background,
+        fallback:()=>generateGrassTile(seed,tx,tz,layer.size,density,layer.tier),
+        apply:samples=>{
+          layer.pending.delete(key);
+          if(epoch!==streamingEpoch||!layer.desired.has(key)||
+             layer.active.has(key))return;
+          if(samples instanceof Float32Array)
+            sampleCache.put(cacheKey,samples,samples.byteLength);
+          const page=createPage(layer,tx,tz,seed,density,samples);
+          if(page)layer.active.set(key,page);
+        },
+      });
     }
   }
   function tick() {
@@ -425,6 +472,7 @@ export function createMicroGrass(ctx) {
     const triangles=ctx.settings?.grassTriangles??6;
     const interaction=ctx.settings?.grassInteraction!==false;
     if(triangles!==currentTriangles||interaction!==currentInteraction){
+      streamingEpoch++;
       for(const layer of [near,far]){
         for(const record of layer.active.values())release(layer,record);
         layer.active.clear();
@@ -464,6 +512,7 @@ export function createMicroGrass(ctx) {
     far.material.userData.grassUniforms.fcGrassFade.value.set(
       NEAR_END-7,NEAR_END,Math.max(NEAR_END,radius-5),radius);
     const changed=lastSeed!==ctx.seed||lastDensity!==density||lastRadius!==radius;
+    if(changed)streamingEpoch++;
     if(!changed&&Math.abs(x-lastX)<REBUILD_DISTANCE&&
       Math.abs(z-lastZ)<REBUILD_DISTANCE)return false;
     lastX=x;lastZ=z;lastSeed=ctx.seed;lastDensity=density;lastRadius=radius;
@@ -483,7 +532,11 @@ export function createMicroGrass(ctx) {
     get generatedTiles(){return generatedTiles;},
     get mesh(){return near.active.values().next().value?.mesh??null;},
     dispose(){
+      streamingEpoch++;
       for(const layer of [near,far]){
+        for(const key of layer.pending)
+          ctx.worldStreamer?.cancel('grass:'+layer.tier+':'+key);
+        layer.pending.clear();
         for(const record of layer.active.values())release(layer,record);
         layer.active.clear();
         for(const mesh of layer.unused)disposePage(mesh);

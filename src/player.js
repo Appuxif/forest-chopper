@@ -61,6 +61,7 @@ function animate(now){
  ctx.moveHorizontal(dx,dz);
  ctx.waterSplashes?.tick(dt);
  ctx.microGrass?.tick();
+ ctx.worldStreamer?.tick();
  ctx.groundBoxes?.tick(now);
  ctx.plantInteraction?.tick(dt);
  if(ctx.ownAvatar)ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);

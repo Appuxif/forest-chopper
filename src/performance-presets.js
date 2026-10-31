@@ -26,7 +26,7 @@ export const PERFORMANCE_PRESETS=Object.freeze({
     detailedTreeRadius:3,farForestDistance:140,viewDistance:230,
     lakeForestMode:'off',lakeVisibility:false,lakeViewDistance:230,
     farTreeDensity:75,farSpruceTriangles:1500,farBirchTriangles:1200,
-    terrainSegments:32,waterQuality:'simple',decorDensity:75,antialias:true},
+    terrainSegments:32,waterQuality:'simple',decorDensity:75,antialias:false},
   low:{quality:'low',maxFps:30,renderScale:65,treeShadowsEnabled:false,
     shadowDistance:20,shadowRefreshSeconds:5,shadowMapSize:512,shadowContrast:70,characterShadowsEnabled:false,
     characterShadowDistance:10,windEnabled:false,spruceFoliageVisible:true,spruceFoliageShadows:false,treeTrianglesSpruce:2000,
