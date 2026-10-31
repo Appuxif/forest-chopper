@@ -9,7 +9,7 @@ test('bare avatar exposes every skin region and no garment owners',()=>{
 });
 test('long sleeves replace forearms, while neck/hands remain skin',()=>{
  const a=resolveSkinAssembly({top:'shirt'});
- for(const p of ['torso','upperArmL','upperArmR','forearmL','forearmR'])
+ for(const p of ['torso','sleeveL','sleeveR','upperArmL','upperArmR','forearmL','forearmR'])
    assert.equal(a.owners[p],'garment:shirt');
  for(const p of ['head','neck','handL','handR','pelvis'])
    assert.equal(a.owners[p],'skin:'+p);
@@ -19,7 +19,8 @@ test('T-shirt leaves both forearms exposed',()=>{
  const a=resolveSkinAssembly({top:'tshirt'});
  assert.equal(a.owners.forearmL,'skin:forearmL');
  assert.equal(a.owners.forearmR,'skin:forearmR');
- assert.equal(a.owners.upperArmL,'garment:tshirt');
+ assert.equal(a.owners.sleeveL,'skin:sleeveL');
+ assert.equal(a.owners.upperArmL,'skin:upperArmL');
 });
 test('pants and shoes replace all lower-body skin while leaving upper-body skin',()=>{
  const a=resolveSkinAssembly({bottom:'jeans',shoes:'shoes'});

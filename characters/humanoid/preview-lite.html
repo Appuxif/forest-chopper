@@ -35,6 +35,7 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <div class="control"><label>Клип</label><select id="animation"></select></div>
 <div class="control"><label>Скорость</label><input id="speed" type="range" min="0" max="3" step=".1" value="1"/></div>
 <div class="control"><label>Скелет</label><input type="checkbox" id="skeleton"/></div>
+<div class="control"><label>Проверить вид</label><select id="viewAngle"><option value="free">Свободный</option><option value="front">Спереди</option><option value="side">Сбоку</option><option value="back">Сзади</option><option value="below">Снизу: ворот/рукава</option><option value="shorts">Снизу: шорты</option></select></div>
 <h2>Статистика</h2><pre id="stats"></pre>
 <button id="copy">Скопировать конфигурацию</button>
 </aside><div id="help">Мышь — вращать · колесо — масштаб</div>
@@ -103,6 +104,20 @@ for(const slot of ['hair','top','bottom','shoes','outerwear','underwear']){
 $('animation').onchange=e=>actor.play(e.target.value,{loop:!['fall','jump','land'].includes(e.target.value)});
 $('speed').oninput=e=>{if(actor)actor.mixer.timeScale=Number(e.target.value)};
 $('skeleton').onchange=e=>{if(helper)helper.visible=e.target.checked};
+$('viewAngle').onchange=e=>{
+ const presets={
+  front:{position:[0,1.45,2.4],target:[0,1,0]},
+  side:{position:[1.6,1.28,.05],target:[0,1.1,0]},
+  back:{position:[0,1.42,-2.4],target:[0,1,0]},
+  below:{position:[.10,.40,.70],target:[0,1.17,0]},
+  shorts:{position:[.10,.42,-.68],target:[0,.75,0]}
+ };
+ const choice=presets[e.target.value];
+ if(!choice)return;
+ orbit.target.fromArray(choice.target);
+ camera.position.fromArray(choice.position);
+ orbit.update();
+};
 $('copy').onclick=()=>navigator.clipboard.writeText(JSON.stringify(cfg,null,2));
 try{
  const catalog=await getHumanoidCatalog();

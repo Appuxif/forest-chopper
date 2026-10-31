@@ -8,8 +8,8 @@ large body triangles were hidden, their cut edges exposed empty sky through the
 neck, sleeve and shirt hem. Insetting the body and adding linen strips reduced
 the visual error, but did not solve its cause.
 
-The *character is an assembly of visible skinned surfaces*, not one intact
-hidden body plus layers of clothing. Bare skin is the default appearance of a
+The *character is an assembly of skinned visible surfaces*, and skin is treated as
+default equipment rather than the required appearance under every garment. Bare skin is the default appearance of a
 surface slot, alongside clothing, armor and gloves.
 
 ## Rule
@@ -25,18 +25,25 @@ for unequipped/default state.
 
 Example:
 
-- Long-sleeve shirt replaces torso, upper arms and forearms. Neck/head and
-  hands are the exposed skin parts; there are NO arms or chest under cloth.
-- T-shirt replaces torso and upper arms. Forearms and hands remain exposed.
-- Jeans replace pelvis, thighs and calves. Shoes replace feet.
+- Long-sleeve shirt replaces the *visual ownership* of torso and arms up to
+  wrist. Hands/head/neck remain visibly skin. The inner covered geometry is
+  shaded as fabric, not naked skin.
+- T-shirt replaces the torso; its loose sleeves overlap intact upper-arm skin
+  to avoid visible sawtooth material boundaries. Forearms and hands stay skin.
+- Jeans replace the visual ownership of pelvis and legs; shoes cover feet.
+- Shorts own the pelvis while thighs stay skin beneath loose leg openings.
 - Bare upper body restores bare torso and both arms. Gloves could replace
   hand skin, and high boots may later also replace some calf skin.
 - Outer jacket is an outerwear layer, not another torso skin replacement; must
   mask the *inner clothes surface* where appropriate to avoid fabric clipping.
 
-See skin-assembly.js for the declarative part ownership rules. It does not yet
-switch live mesh topology, intentionally: Blender seam fitting must happen
-before enabling it in the viewer or game.
+The Lite viewer now uses skin-assembly.js and surface-groups.js live. The
+current implementation uses **material ownership** of triangles on the same
+continuous low-poly body skin (up to four material groups): uncovered areas
+render skin, covered areas render an opaque fabric-colored inner surface. The
+actual garment shell remains a separately skinned mesh. This avoids missing
+triangles and colored bare skin showing through openings, but is not yet a
+physically separated set of custom-fitted torso/arm/neck GLBs.
 
 ## Seam contract (critical; segmentation alone does not prevent holes)
 
@@ -58,16 +65,27 @@ use fabric to conceal any skin mesh joint. The lower visible skin region must
 remain present under an open shirt hem. This is a tailoring/design constraint,
 not something an arbitrary one-size-fits-all polygon masker can solve.
 
+## Verified Lite sample kits (October 2026)
+
+The renderer composes four combinations: long-sleeve shirt or short-sleeve
+T-shirt, each with jeans or shorts, for male and female source bodies. Both
+shirts have skinned inside seam bridges at the neckline, sleeves and lower hem.
+The loose shirt cuffs and hem were pulled toward the skinned body at bake time.
+All eight combinations preserve the complete body index buffer, use 53 shared
+bones, and retain the 12 original animation clips. Automated browser checks
+were run on idle/walk/back/run/strafe/jump/land/fall. Manual inspection covered
+front, side, back and below.
+
+The visual fit is improved but not guaranteed watertight under every extreme
+pose: UV-edge irregularities and cloth/cloth layering may still require
+manual 3D tailoring. The underlying skin material is not rasterized where
+inner fabric owns the surface; there are no artificially missing polygons.
+
 ## Next implementation increment
 
-1. Generate named skin region meshes/masks from the base low-poly humanoid,
-   including deliberately retained under-cuff/neck seam rings.
-2. Make **one** slim, fitted long-sleeve test garment with matched neckline,
-   wrist rings, and lower hem; test it with head/neck and hand skin modules.
-3. Validate visually from inside cuffs, under hem, front of collar, plus run
-   and arm raised poses. Iterate geometry before enabling for all clothes.
-4. Hook up the slot resolver in the live actor to replace body regions, then
-   extend to T-shirts, shorts, pants, armor, and gloves.
-
-Until the garment seams and body region partition match, keep current Lite
-viewer renderer as a fallback rather than shipping another visible hole.
+1. If true mesh replacement is later needed, cut separate skin meshes at
+   defined mesh seam rings, not at arbitrary low-poly bone-weight boundaries.
+2. Tailor clothing edges and bone weights to those rings in Blender.
+3. Validate with raised arms, running and deep bends before enabling for NPCs.
+4. Consider material atlas/batching for large multiplayer crowds; the current
+   grouping costs up to four draw calls on the inner body instead of one.
