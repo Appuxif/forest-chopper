@@ -159,12 +159,12 @@ const axe=player.attach('handRight',axeObject,{position:[0,0,0]});
 | --- | ---: |
 | Male default base (body, eyes, eyebrows, eyelashes) | 5,891 |
 | Female default base | 5,892 |
-| Long-sleeve shirt (male) | 1,209 |
+| Long-sleeve shirt (male, with skinned opening linings) | 1,553 |
 | Jeans (male) | 821 |
 | Shoes (male) | 1,062 |
 | Short hair 02 (male) | 1,069 |
-| **Dressed default male** | **10,052** |
-| **Dressed default female** | **10,051** |
+| **Dressed default male** | **10,396** |
+| **Dressed default female** | **10,373** |
 
 Actual counts depend on equipped items; a second jacket, long hair or other
 layers can push beyond 10k. The 10k target refers to one ordinary clothed
@@ -197,10 +197,23 @@ This operation runs only when changing clothes, not every animation frame.
 node --test tests/body-zones.test.mjs
 ```
 
-The clothing pieces themselves are still thin, sometimes loosely fitting
-models. Opening edges, cuffs, and layered garments can still benefit from
-actual tailored thickness, better topology or manual fitting in Blender.
-The fix removes missing-skin artifacts, not every cloth/cloth penetration.
+The body is continuous, but the imported MakeHuman garments also have
+**open cloth edges**. For long-sleeve shirts and T-shirts, `seal_openings.py`
+now **bakes skinned inside fabric bridges** from the collar, wrist cuffs and
+bottom hem to the nearest body surface. These additions are UV-textured,
+weighted to the same 53-bone skeleton and baked into each gender-specific
+clothing GLB. The long shirt gains ~320–344 triangles, without new mesh draw
+calls. On the runtime material, very subtle textured emissive bounce light
+prevents the interior bridge from looking like an unlit black void.
+
+To regenerate, build `body_male.glb` and `body_female.glb` first, since the
+seam baker projects toward their body surfaces. `build_all_lite.py --force`
+respects this dependency by staging the builds. The source CC0 GLBs are not
+modified.
+
+This is still an indie-game fix rather than a hand-tailored garment. These
+open models may need topology corrections for exact watertightness around all
+UV seams, and layering two garments may still intersect.
 
 Notes: The Blender process first bakes the selected body/face profile to mesh,
 then **removes all 92 shape keys**, then selectively decimates the source

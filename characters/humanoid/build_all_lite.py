@@ -20,16 +20,17 @@ if args.jobs<1 or args.jobs>8:
 garments=json.loads((HERE/'source/clothing.json').read_text())['items']
 hair=json.loads((HERE/'source/hair.json').read_text())['styles']
 files=sorted({x['file'] for x in garments+hair})
-jobs=[]
+body_jobs=[]
+gear_jobs=[]
 for gender in ('male','female'):
  for face in ('default','angular','soft'):
   output=HERE/'lite'/('body_'+gender+(('' if face=='default' else '_'+face))+'.glb')
   if args.force or not output.exists():
-   jobs.append((output,['--kind','body','--gender',gender,'--face',face]))
+   body_jobs.append((output,['--kind','body','--gender',gender,'--face',face]))
  for file in files:
   output=HERE/'lite'/(file.removesuffix('.glb')+'_'+gender+'.glb')
   if args.force or not output.exists():
-   jobs.append((output,['--kind','gear','--gender',gender,'--asset',file]))
+   gear_jobs.append((output,['--kind','gear','--gender',gender,'--asset',file]))
 def build(item):
  output,options=item
  command=['blender','-b','--factory-startup','-t','2','--python-exit-code','1',
@@ -39,11 +40,14 @@ def build(item):
  if result.returncode or not report:
   raise RuntimeError(output.name+': '+(result.stdout+' '+result.stderr)[-1200:])
  return report
-failed=[]
-with ThreadPoolExecutor(max_workers=args.jobs) as pool:
- for future in as_completed([pool.submit(build,x) for x in jobs]):
-  try:print(future.result(),flush=True)
-  except Exception as ex:failed.append(str(ex));print('FAILED:',ex,flush=True)
-if failed:
- raise SystemExit(f'{len(failed)} assets failed')
-print('DONE: rebuilt',len(jobs),'assets, 50 expected total')
+for phase,jobs in [('body',body_jobs),('equipment',gear_jobs)]:
+ # Cloth seam baking reads lite/body_{gender}.glb, so bodies must be
+ # fully built first when --force is used; never rebuild them concurrently.
+ failed=[]
+ with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+  for future in as_completed([pool.submit(build,x) for x in jobs]):
+   try:print(future.result(),flush=True)
+   except Exception as ex:failed.append(str(ex));print('FAILED:',ex,flush=True)
+ if failed:
+  raise SystemExit(f'{len(failed)} {phase} assets failed')
+print('DONE: rebuilt',len(body_jobs)+len(gear_jobs),'assets, 50 expected total')

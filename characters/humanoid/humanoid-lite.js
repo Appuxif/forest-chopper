@@ -42,7 +42,7 @@ export async function getHumanoidCatalog(){
  const [clothing,hair]=await Promise.all([loadJSON('source/clothing.json'),loadJSON('source/hair.json')]);
  return {clothing,hair};
 }
-const gearName=(file,gender)=>'lite/'+file.replace(/\.glb$/,'')+'_'+gender+'.glb';
+const gearName=(file,gender)=>'lite/'+file.replace(/\.glb$/,'')+'_'+gender+'.glb'+(file==='clothing_shirt.glb'||file==='clothing_tshirt.glb'?'?sealed=1':'');
 
 export class LiteHumanoid {
   constructor(scene,clips,appearance,catalog){
@@ -163,6 +163,14 @@ export class LiteHumanoid {
     if(slot!=='hair'){
       for(const material of (Array.isArray(mesh.material)?mesh.material:[mesh.material])){
         material.side=THREE.DoubleSide;
+        // Low-key textured bounce light: otherwise the inward-facing collar,
+        // wrist and hem linings appear as a featureless black hole when seen
+        // from below, even though there is real skinned fabric geometry.
+        if(slot==='top'&&(id==='shirt'||id==='tshirt')&&material.map){
+          material.emissive.set(0xffffff);
+          material.emissiveMap=material.map;
+          material.emissiveIntensity=.14;
+        }
         material.needsUpdate=true;
       }
     }

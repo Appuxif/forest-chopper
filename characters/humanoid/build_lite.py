@@ -99,6 +99,15 @@ for ob in list(meshes):
  ob['lod_level']=1
  ob['gender']=args.gender
 
+# Seal the open shirt cuffs, collar and hem at build time so you cannot see
+# through the garment shell when looking from below or along the arms.
+if args.kind=='gear' and args.asset in ('clothing_shirt.glb','clothing_tshirt.glb'):
+ sys.path.insert(0,str(P))
+ from seal_openings import seal_garment_openings
+ for garment in list(bpy.context.scene.objects):
+  if garment.type=='MESH' and garment.name.startswith('Cloth_'):
+   seal_garment_openings(garment,args.gender,args.asset,P)
+
 # Protect immutable source and select only skinned meshes + one skeleton.
 bpy.ops.object.select_all(action='DESELECT')
 for ob in bpy.context.scene.objects:

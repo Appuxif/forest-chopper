@@ -80,8 +80,20 @@ class HumanoidLiteTest(unittest.TestCase):
             files.append(f'hair_short02_{gender}.glb')
             total=triangles(model)+sum(triangles(doc(LITE/file)) for file in files)
             with self.subTest(gender=gender):
-                self.assertLessEqual(total,10300)
+                self.assertLessEqual(total,10800)  # +~340 skinned lining triangles around shirt openings
                 self.assertGreater(total,8500)
+
+    def test_shirt_openings_have_seam_lining_in_both_bodies(self):
+        for gender in self.body:
+            for garment,min_triangles in [('shirt',1450),('tshirt',790)]:
+                with self.subTest(gender=gender,garment=garment):
+                    obj=doc(LITE/f'clothing_{garment}_{gender}.glb')
+                    self.assertGreaterEqual(triangles(obj),min_triangles)
+                    self.assertEqual(joints(obj),joints(self.body[gender]))
+                    self.assertEqual(shape_keys(obj),0)
+                    self.assertTrue(all('JOINTS_0' in p['attributes'] and
+                        'WEIGHTS_0' in p['attributes'] for m in obj['meshes']
+                        for p in m['primitives']))
 
     def test_lite_code_and_standalone_viewer(self):
         self.assertTrue((ROOT/'humanoid-lite.js').exists())
