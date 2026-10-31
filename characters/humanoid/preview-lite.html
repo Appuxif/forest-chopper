@@ -39,6 +39,9 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 #matrixStatus,#repoMaskStatus{font-size:11px;color:#cce2d7}
 .saved-mask-check input:disabled{opacity:.65}
 #maskName:focus{outline-color:#e9b676}
+.variant-chooser{display:grid;grid-template-columns:1fr 20px;gap:7px;align-items:center;min-width:0}
+.variant-swatch{width:20px;height:20px;border:1px solid #9baba5;border-radius:5px;background:#52696c}
+.variant-row select{width:100%}
 [hidden]{display:none!important}
 </style>
 <script type="importmap">{"imports":{"three":"https://esm.sh/three@0.170.0"}}</script>
@@ -52,10 +55,15 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <div class="control"><label>Цвет волос</label><input type="color" id="hairColor" value="#ffffff"/></div>
 <h2>Снаряжение</h2>
 <div class="control"><label>Верх</label><select id="top"></select></div>
+<div class="control variant-row"><label>Ткань верха</label><div class="variant-chooser"><select id="topVariant"></select><span class="variant-swatch" id="topVariantSwatch"></span></div></div>
 <div class="control"><label>Низ</label><select id="bottom"></select></div>
+<div class="control variant-row"><label>Ткань низа</label><div class="variant-chooser"><select id="bottomVariant"></select><span class="variant-swatch" id="bottomVariantSwatch"></span></div></div>
 <div class="control"><label>Обувь</label><select id="shoes"></select></div>
+<div class="control variant-row"><label>Материал обуви</label><div class="variant-chooser"><select id="shoesVariant"></select><span class="variant-swatch" id="shoesVariantSwatch"></span></div></div>
 <div class="control"><label>Верхняя одежда</label><select id="outerwear"></select></div>
+<div class="control variant-row"><label>Материал куртки</label><div class="variant-chooser"><select id="outerwearVariant"></select><span class="variant-swatch" id="outerwearVariantSwatch"></span></div></div>
 <div class="control"><label>Нижнее бельё</label><select id="underwear"></select></div>
+<div class="control variant-row"><label>Цвет белья</label><div class="variant-chooser"><select id="underwearVariant"></select><span class="variant-swatch" id="underwearVariantSwatch"></span></div></div>
 <h2>Библиотека масок кожи</h2>
 <p class="mask-note">Базовые PNG загружаются из <code>masks/male/</code> и <code>masks/female/</code>. Новые и изменённые маски хранятся в браузере до экспорта ZIP.</p>
 <p class="mask-note" id="repoMaskStatus">Загружаю маски из проекта…</p>
@@ -69,8 +77,9 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <p class="mask-note" id="maskCount">Сохранено: 0</p>
 <div class="mask-actions"><button id="maskSelectAll">Включить все</button><button id="maskSelectNone">Выключить все</button></div>
 <label class="mask-row"><span>Скрыть одежду для осмотра</span><input type="checkbox" id="maskHideClothes"/></label>
-<h2>Автомаска слоёв одежды</h2>
-<label class="mask-row"><span>Скрывать нижнюю одежду под верхней</span><input type="checkbox" id="autoClothingLayers" checked/></label>
+<h2>Автомаска слоёв · эксперимент</h2>
+<p class="mask-note">По умолчанию выключена: текущий алгоритм ошибочно вырезает видимую ткань под расстёгнутой курткой.</p>
+<label class="mask-row"><span>Включить экспериментальную маску</span><input type="checkbox" id="autoClothingLayers"/></label>
 <div class="control"><label>Запас покрытия</label><input type="range" id="clothingLayerPadding" min="0" max="6" step="1" value="2"/></div>
 <p class="mask-note" id="clothingLayerInfo">Геометрия верхнего слоя определяет, какие пиксели нижней одежды скрыть. 2 — базовый запас.</p>
 <p class="mask-note" id="clothingLayerStats"></p>
@@ -108,7 +117,7 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <script type="module">
 import * as THREE from 'three';
 import {OrbitControls} from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
-import {createLiteHumanoid,getHumanoidCatalog,DEFAULT_APPEARANCE} from './humanoid-lite.js';
+import {createLiteHumanoid,getHumanoidCatalog,DEFAULT_APPEARANCE} from './humanoid-lite.js?v=clothing-fabrics-1';
 import {createSkinPainter,interpolateScreenPoints} from './skin-paint.js';
 const $=id=>document.getElementById(id);
 const renderer=new THREE.WebGLRenderer({canvas:$('view'),antialias:true});
@@ -129,8 +138,52 @@ const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.02,50);camer
 const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.target.set(0,.98,0);orbit.minDistance=.65;orbit.maxDistance=7;orbit.enableDamping=true;orbit.update();
 let actor,helper,skinPainter;
-const cfg={...DEFAULT_APPEARANCE};
-const clothingLayers={enabled:true,padding:2};
+const cfg={...DEFAULT_APPEARANCE,clothingVariants:{}};
+const clothingVariantSlots=['top','bottom','shoes','outerwear','underwear'];
+const clothingVariantStorageKey='forest-chopper:humanoid-lite:clothing-variants:v1';
+let clothingVariantsCatalog={items:{}};
+let chosenClothingVariants={};
+try{chosenClothingVariants=JSON.parse(localStorage.getItem(clothingVariantStorageKey)||'{}')}
+catch(error){console.warn('Could not load clothing selections',error)}
+function selectedClothingVariant(item){
+ if(!item)return 'default';
+ return chosenClothingVariants[cfg.body+':'+item]||'default';
+}
+function refreshClothingVariantChooser(slot){
+ const select=$(slot+'Variant');
+ if(!select)return;
+ const item=cfg[slot];
+ const values=clothingVariantsCatalog.items?.[item]||[];
+ select.replaceChildren(...values.map(v=>{
+  const option=document.createElement('option');
+  option.value=v.id;option.textContent=v.label;
+  return option;
+ }));
+ const requested=selectedClothingVariant(item);
+ select.value=values.some(v=>v.id===requested)?requested:'default';
+ const selected=values.find(v=>v.id===select.value);
+ select.disabled=!item||values.length<=1;
+ $(slot+'VariantSwatch').style.background=selected?.color||'#53656a';
+ cfg.clothingVariants[slot]=select.value||'default';
+}
+function refreshClothingVariantChoosers(){
+ for(const slot of clothingVariantSlots)refreshClothingVariantChooser(slot);
+}
+for(const slot of clothingVariantSlots){
+ $(slot+'Variant').onchange=async event=>{
+  const item=cfg[slot],variant=event.target.value;
+  if(!item)return;
+  chosenClothingVariants[cfg.body+':'+item]=variant;
+  try{localStorage.setItem(clothingVariantStorageKey,JSON.stringify(chosenClothingVariants))}
+  catch(error){console.warn('Could not save chosen texture',error)}
+  cfg.clothingVariants[slot]=variant;
+  refreshClothingVariantChooser(slot);
+  if(!actor)return;
+  try{await actor.setClothingVariant(slot,variant);drawStats()}
+  catch(error){setStatus('Ошибка текстуры: '+error.message);console.error(error)}
+ };
+}
+const clothingLayers={enabled:false,padding:2};
 function showClothingLayerStats(){
  const parts=Object.entries(actor?.layerMaskStats||{});
  $('clothingLayerStats').textContent=parts.length
@@ -391,6 +444,15 @@ async function startNewMask(){
  setPaintMode(true);
  maskStatus('Новая маска «'+name+'». Рисуй чёрным по коже, затем сохрани.');
 }
+// Keep editor-only hiding separate from the equipment visibility rule:
+// hoodie keeps a shirt/T-shirt equipped, but hides its mesh completely.
+function syncPreviewClothingVisibility(){
+ if(!actor)return;
+ actor.refreshOutfitVisibility();
+ if(painting||clothesHidden){
+  for(const [slot,part] of actor.parts)if(slot!=='hair')part.visible=false;
+ }
+}
 function setPaintMode(value){
  painting=Boolean(value);
  $('paintEnable').checked=painting;
@@ -398,9 +460,7 @@ function setPaintMode(value){
  renderer.domElement.classList.toggle('painting',painting);
  if(actor)actor.mixer.timeScale=painting?0:Number($('speed').value);
  $('paintView').textContent=painting?'Закончить рисование':'Продолжить рисование';
- for(const [slot,part] of actor?.parts||[]){
-  if(slot!=='hair')part.visible=painting?false:!clothesHidden;
- }
+ syncPreviewClothingVisibility();
  if(!painting){
   if(editing)editDraft=skinPainter.toPNG();
   void composeEnabledMasks();
@@ -524,7 +584,7 @@ $('maskDone').onclick=()=>{if(painting)setPaintMode(false);editing=null;editDraf
 };
 $('maskHideClothes').onchange=e=>{
  clothesHidden=e.target.checked;
- for(const [slot,part] of actor?.parts||[])if(slot!=='hair')part.visible=painting?false:!clothesHidden;
+ syncPreviewClothingVisibility();
 };
 $('maskSelectAll').onclick=()=>{for(const n of Object.keys(collection()))enabledForBody().add(n);
  try{persistLibrary()}catch(e){maskStatus(e.message)}renderMaskList();void composeEnabledMasks()};
@@ -541,8 +601,7 @@ $('matrixItem').onchange=async()=>{
   setStatus('Надеваю '+item.id+'…');
   try{
    await actor.equip(item.slot,item.id);
-   const part=actor.parts.get(item.slot);
-   if(part)part.visible=painting?false:!clothesHidden;
+   syncPreviewClothingVisibility();
    drawStats();showClothingLayerStats();
    setStatus('Готово');
   }catch(error){setStatus('Ошибка: '+error.message)}
@@ -621,12 +680,14 @@ function drawHelper(){
 async function reload(){
  setStatus('Загружаю '+cfg.body+'…');
  try{
+   refreshClothingVariantChoosers();
    const fresh=await createLiteHumanoid({...cfg,layerMaskEnabled:clothingLayers.enabled,layerMaskPadding:clothingLayers.padding});
    if(actor){scene.remove(actor.root);actor.mixer.stopAllAction();}
    if(skinPainter)skinPainter.dispose();
    painting=false;editing=null;editDraft=null;
    orbit.enabled=true;renderer.domElement.classList.remove('painting');
    actor=fresh;scene.add(actor.root);drawHelper();
+   syncPreviewClothingVisibility();
    skinPainter=createSkinPainter(actor.meshes.find(m=>m.name==='Body'));
    skinPainterCanvas();
    renderMatrixOptions();
@@ -643,9 +704,11 @@ $('skin').onchange=e=>{cfg.skin=e.target.value;actor.setSkinColor(cfg.skin);draw
 $('hairColor').oninput=e=>{cfg.hairColor=e.target.value;actor.setHairColor(cfg.hairColor)};
 for(const slot of ['hair','top','bottom','shoes','outerwear','underwear']){
  $(slot).onchange=async e=>{
-  cfg[slot]=e.target.value==='none'?null:e.target.value;setStatus('Меняю '+slot+'…');
-  try{await actor.equip(slot,cfg[slot]);const part=actor.parts.get(slot);
-    if(part&&slot!=='hair')part.visible=painting?false:!clothesHidden;
+  cfg[slot]=e.target.value==='none'?null:e.target.value;
+  refreshClothingVariantChooser(slot);
+  setStatus('Меняю '+slot+'…');
+  try{await actor.equip(slot,cfg[slot]);
+    syncPreviewClothingVisibility();
     if(!painting)await composeEnabledMasks();
     drawStats();showClothingLayerStats();setStatus('Готово')}
   catch(err){setStatus('Ошибка: '+err.message);console.error(err)}
@@ -657,9 +720,14 @@ $('skeleton').onchange=e=>{if(helper)helper.visible=e.target.checked};
 $('copy').onclick=()=>navigator.clipboard.writeText(JSON.stringify({...cfg,activeMasks:[...enabledForBody()]},null,2));
 try{
  const catalog=await getHumanoidCatalog();
+ // Use the same loaded catalog as the humanoid runtime.
+ clothingVariantsCatalog=catalog.variants;
+ if(!clothingVariantsCatalog?.items)
+   throw Error('Каталог тканей не содержит items');
  fill($('hair'),catalog.hair.styles,null,cfg.hair);
- for(const s of ['top','bottom','shoes','outerwear','underwear'])
-   fill($(s),catalog.clothing.items,s,cfg[s]);
+ for(const slot of ['top','bottom','shoes','outerwear','underwear'])
+   fill($(slot),catalog.clothing.items,slot,cfg[slot]);
+ refreshClothingVariantChoosers();
  clothingItems=catalog.clothing.items;
  await syncProjectMasks();
  await loadMatrix();

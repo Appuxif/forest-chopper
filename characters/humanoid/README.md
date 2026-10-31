@@ -365,3 +365,44 @@ still need geometry fitting or item-specific coverage overrides. Atlas generatio
 happens when equipment changes, not on each animation frame. This initial
 prototype has **not been visually verified or regression-tested**; per project
 vibe-coding agreement the user will perform the first acceptance test.
+
+## Reusable fabric and color variants (experimental)
+
+`source/clothing-variants.json` defines material variations for the existing
+low-poly clothing meshes: T-shirts, shirts, hoodies, jeans, shorts, boots,
+shoes, jackets, trenchcoats, briefs, panties, and bras. Skirts and dresses are
+intentionally excluded from this forest-themed assortment.
+
+`textures/clothing/<item-id>/<variant-id>.png` contains 512×512 sRGB albedo
+textures, including plaid flannel, denim twill, workwear canvas, fleece,
+leather, suede, and worn waxed fabric. Textures are deterministic and can be
+regenerated with `python3 characters/humanoid/tools/generate_clothing_textures.py`
+(Pillow required). All variants reuse existing male/female GLBs, shared
+skeletons, UV layouts, normal maps, and base skin/clothing mask logic.
+
+The default variant keeps the original GLB material. At runtime call
+`await actor.setClothingVariant(slot, variantId)`, where variantId is listed
+under `catalog.variants.items[actor.appearance[slot]]`. Switching variants
+updates only material maps, color, and roughness; the fitted mesh and automatic
+layer mask stay in place. `createLiteHumanoid({clothingVariants:{top:'red-plaid',
+shoes:'tan'}})` supports initial selections.
+
+`preview-lite.html` offers material dropdowns immediately beneath each piece of
+clothing. The editor remembers each chosen variant per gender and item via
+localStorage and includes current selections when copying the configuration.
+No new mesh files are generated. This feature is awaiting the user's visual
+review as agreed for fast vibe coding; no new tests were run.
+
+## Hoodie equipment slot
+
+Hoodie is an `outerwear` item (like jacket and trenchcoat), so only one of
+these can be equipped at a time. It retains the existing mesh, fabric variants,
+and per-item skin mask assignments. The experimental outerwear expansion
+slider was removed; no new overlap-baking work is needed.
+
+Hoodie-specific visibility rule: the `top` slot (shirt or T-shirt) stays
+fully equipped and keeps its chosen fabric, but its entire mesh is hidden
+while `outerwear=hoodie`. Removing the hoodie or changing outerwear to a
+jacket/trenchcoat restores the top immediately. The rule applies in both
+`LiteHumanoid` runtime and the preview, including when exiting mask-paint mode.
+No new alpha masks or skin changes are involved.
