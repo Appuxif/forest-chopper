@@ -139,19 +139,72 @@ def inv_take(inv,kind,amount):
             amount-=n
     return True
 
+RESOURCE_ZONE_SIZE=10
+RESOURCE_RADIUS=10
+RESOURCE_LIMIT=10
+RESOURCE_PER_ZONE=2
+RESOURCE_VIEW_DOT=-0.25
+
+def resource_behind(x,z,yaw,px,pz):
+    dx,dz=px-x,pz-z
+    distance=math.hypot(dx,dz)
+    return distance>1e-6 and (dx*-math.sin(yaw)+dz*-math.cos(yaw))/distance<=RESOURCE_VIEW_DOT
+
 def resources_update(player,now):
+    # The caller is responsible for only sending a state update when changed.
     if now-player['last_resources']<3:return None
     player['last_resources']=now
-    x,z=player['x'],player['z'];resources=player['resources']
+    x,z,yaw=player['x'],player['z'],player.get('yaw',0)
+    cx,cz=math.floor(x/RESOURCE_ZONE_SIZE),math.floor(z/RESOURCE_ZONE_SIZE)
+    current=(cx,cz)
+    entered=current!=player.get('resource_last_cell')
+    player['resource_last_cell']=current
+    zones=player.setdefault('resource_zones',set())
+    resources=player['resources']
+    changed=False
+    # Forget a zone after its 3x3 neighbourhood is left. Re-entering it will
+    # create a fresh random set, never reconstruct the old set from a seed.
+    for key in list(zones):
+        if abs(key[0]-cx)>1 or abs(key[1]-cz)>1:
+            zones.remove(key);changed=True
     for ident,item in list(resources.items()):
-        if math.hypot(item['x']-x,item['z']-z)>10:del resources[ident]
-    while len(resources)<10:
-        angle=random.random()*math.tau;distance=3+random.random()*5.4
-        player['resource_seq']+=1;ident=player['resource_seq']
-        resources[ident]={'id':ident,'kind':random.choice(('branch','stone')),
-                          'x':round(x+math.cos(angle)*distance,2),
-                          'z':round(z+math.sin(angle)*distance,2)}
-    return {'type':'resources_state','resources':list(resources.values())}
+        if item.get('zone') not in zones or math.hypot(item['x']-x,item['z']-z)>RESOURCE_RADIUS:
+            del resources[ident];changed=True
+    # Do not top up a partially collected patch in front of a stationary user.
+    if not entered and len(resources)>=2:
+        return {'type':'resources_state','resources':[{k:v for k,v in item.items() if k!='zone'} for item in resources.values()]} if changed else None
+    cells=[(a,b) for a in range(cx-1,cx+2) for b in range(cz-1,cz+2)]
+    cells.sort(key=lambda pair:math.hypot((pair[0]+.5)*RESOURCE_ZONE_SIZE-x,
+                                          (pair[1]+.5)*RESOURCE_ZONE_SIZE-z))
+    for cell in cells:
+        if cell in zones:continue
+        if len(resources)>=RESOURCE_LIMIT:break
+        points=[]
+        for _ in range(32):
+            if len(points)>=RESOURCE_PER_ZONE:break
+            px=(cell[0]+random.random())*RESOURCE_ZONE_SIZE
+            pz=(cell[1]+random.random())*RESOURCE_ZONE_SIZE
+            distance=math.hypot(px-x,pz-z)
+            if distance<3 or distance>RESOURCE_RADIUS or not resource_behind(x,z,yaw,px,pz):
+                continue
+            if any(math.hypot(px-p[0],pz-p[1])<.9 for p in points) or any(
+                math.hypot(px-r['x'],pz-r['z'])<.9 for r in resources.values()):
+                continue
+            points.append((round(px,2),round(pz,2)))
+        if not points:continue
+        zones.add(cell)
+        for px,pz in points:
+            if len(resources)>=RESOURCE_LIMIT:break
+            player['resource_seq']+=1
+            ident=player['resource_seq']
+            resources[ident]={'id':ident,'kind':random.choice(('branch','stone')),
+                              'x':px,'z':pz,'zone':cell}
+        changed=True
+    if not changed:return None
+    # Zone keys are internal implementation state; never transmit them.
+    return {'type':'resources_state','resources':[
+        {k:v for k,v in item.items() if k!='zone'} for item in resources.values()]}
+
 
 def inventory_view(player):
     return {'version':1,'bagTier':player.get('bag_tier',0),
@@ -302,11 +355,11 @@ class World:
             await self.bot_handler(ws);return
         if len(self.clients)+len(self.bots.bots)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
-        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'bag_tier':0,'resources':{},'last_resources':-10000,'resource_seq':0,'resources_enabled':False}
+        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'bag_tier':0,'resources':{},'last_resources':-10000,'resource_seq':0,'resources_enabled':False,'resource_zones':set(),'resource_last_cell':None}
         self.clients[ws]=player
         await self.prune_boxes()
         resources_update(player,time.monotonic())
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':list(player['resources'].values()),'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':[{k:v for k,v in item.items() if k!='zone'} for item in player['resources'].values()],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -322,7 +375,7 @@ class World:
                     if not inv_add(player['inventory'],{'id':resource['kind'],'count':1}):
                         await self.send(ws,{'type':'action_denied','reason':'Сумка заполнена'});continue
                     del player['resources'][ident]
-                    await self.send(ws,{'type':'resources_state','resources':list(player['resources'].values())})
+                    await self.send(ws,{'type':'resources_state','resources':[{k:v for k,v in item.items() if k!='zone'} for item in player['resources'].values()]})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='drop_item':
                     slot=data.get('slot')

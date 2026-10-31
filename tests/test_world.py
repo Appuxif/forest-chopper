@@ -10,7 +10,7 @@ from pathlib import Path
 
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import connect
-from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resources_update, inv_add, BOX_TTL_SECONDS
+from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resources_update, resource_behind, inv_add, BOX_TTL_SECONDS, RESOURCE_LIMIT
 
 
 class WorldTests(unittest.IsolatedAsyncioTestCase):
@@ -340,15 +340,73 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
     async def test_ephemeral_resources_only_exist_within_10m_and_are_not_world_saved(self):
         player={'x':0,'z':0,'last_resources':-9999,'resources':{},'resource_seq':0}
         first=resources_update(player,3)
-        self.assertEqual(len(first['resources']),10)
-        self.assertTrue(all(0<math.hypot(n['x'],n['z'])<10 for n in first['resources']))
+        self.assertGreater(len(first['resources']),0)
+        self.assertLessEqual(len(first['resources']),RESOURCE_LIMIT)
+        self.assertTrue(all(3<=math.hypot(n['x'],n['z'])<=10 for n in first['resources']))
+        self.assertTrue(all(resource_behind(0,0,0,n['x'],n['z']) for n in first['resources']))
         player['x']=50;player['z']=50
         second=resources_update(player,7)
-        self.assertEqual(len(second['resources']),10)
-        self.assertTrue(all(math.hypot(n['x']-50,n['z']-50)<10 for n in second['resources']))
+        self.assertGreater(len(second['resources']),0)
+        self.assertLessEqual(len(second['resources']),RESOURCE_LIMIT)
+        self.assertTrue(all(math.hypot(n['x']-50,n['z']-50)<=10 for n in second['resources']))
         self.assertFalse(set(n['id'] for n in first['resources']) & set(n['id'] for n in second['resources']))
         self.world.save()
         self.assertNotIn('resources',json.loads(self.path.read_text()))
+
+    async def test_zones_only_spawn_behind_player_and_do_not_refill_a_standing_patch(self):
+        player={'x':0,'z':0,'yaw':0,'last_resources':-9999,
+                'resources':{},'resource_seq':0}
+        first=resources_update(player,3)
+        self.assertGreater(len(first['resources']),0)
+        self.assertLessEqual(len(first['resources']),10)
+        original={r['id'] for r in first['resources']}
+        self.assertTrue(all(resource_behind(0,0,0,r['x'],r['z']) for r in first['resources']))
+        self.assertTrue(all('zone' not in r for r in first['resources']))
+        self.assertIsNone(resources_update(player,6.1))
+        player['yaw']=math.pi
+        self.assertIsNone(resources_update(player,9.2),
+                          'turning around should not spawn more objects in the watched zone')
+        self.assertEqual(set(player['resources']),original)
+        self.assertLessEqual(len(player['resource_zones']),9)
+        for zone in player['resource_zones']:
+            self.assertTrue(all(isinstance(c,int) for c in zone))
+        # Picking up some items does not trigger a top-up while resources remain.
+        if len(original)>=3:
+            removed=next(iter(original))
+            del player['resources'][removed]
+            retained=set(player['resources'])
+            self.assertIsNone(resources_update(player,12.4))
+            self.assertEqual(set(player['resources']),retained)
+
+    async def test_multiplayer_does_not_broadcast_new_loot_when_player_turns_in_place(self):
+        async with connect(self.url) as ws:
+            welcome=await self.receive(ws,'welcome')
+            self.assertGreater(len(welcome['resources']),0)
+            player=next(p for p in self.world.clients.values() if p['id']==welcome['id'])
+            ids=set(player['resources'])
+            # Do not wait three real seconds; force only the resource check due.
+            player['last_resources']=-9999
+            await ws.send(json.dumps({'type':'hello','name':'Gatherer','resources':True}))
+            await ws.send(json.dumps({'type':'move','x':0,'z':0,'yaw':math.pi}))
+            with self.assertRaises(asyncio.TimeoutError):
+                await asyncio.wait_for(ws.recv(),.07)
+            self.assertEqual(set(player['resources']),ids)
+            self.assertTrue(all(n['z']>0 for n in player['resources'].values()))
+
+    async def test_zones_repopulate_only_after_leaving_and_coming_back(self):
+        player={'x':0,'z':0,'yaw':0,'last_resources':-9999,'resources':{},'resource_seq':0}
+        first=resources_update(player,3)
+        old={r['id'] for r in first['resources']}
+        player['x']=50;player['z']=50
+        second=resources_update(player,7)
+        self.assertGreater(len(second['resources']),0)
+        self.assertFalse(old.intersection(n['id'] for n in second['resources']))
+        self.assertTrue(all(resource_behind(50,50,0,n['x'],n['z']) for n in second['resources']))
+        player['x']=0;player['z']=0
+        third=resources_update(player,11)
+        self.assertGreater(len(third['resources']),0)
+        self.assertFalse(old.intersection(n['id'] for n in third['resources']))
+        self.assertTrue(all(resource_behind(0,0,0,n['x'],n['z']) for n in third['resources']))
 
     async def test_invalid_furniture_save_does_not_crash_or_partially_restore(self):
         for malformed in ([], ['bench'], {'1': {'kind':'bench','x':float('nan'),'z':0,'orientation':0}}):

@@ -38,7 +38,7 @@ import {createOfflineSave} from './offline-save.js?v=20261031-loot1';
 import {createTutorial} from './tutorial.js';
 import {createProgress} from './progress.js?v=20261030-discoveries1';
 import {createInventory} from './inventory-ui.js?v=20261031-loot1';
-import {createForestResources} from './forest-resources.js?v=20261031-resources1';
+import {createForestResources} from './forest-resources.js?v=20261031-zoned-loot1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261031-boxes1';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}

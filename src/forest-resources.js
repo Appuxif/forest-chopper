@@ -1,8 +1,7 @@
-// Branches and stones are ephemeral, NOT seeded and NOT part of saved worlds.
-// Offline: random spots are replenished near the player every ~3 seconds.
-// Multiplayer: the server generates each player's own nearby spots and grants pickups.
-export const RESOURCE_RADIUS=10;
-export const RESOURCE_LIMIT=10;
+// Branches and stones: one-time, behind-camera generation per active 10m zone.
+// The multiplayer server applies the same rules and owns pickup state.
+import {createResourceZones,RESOURCE_RADIUS,RESOURCE_LIMIT,RESOURCE_UPDATE_MS} from './resource-zones.js';
+export {RESOURCE_RADIUS,RESOURCE_LIMIT};
 export function createForestResources(ctx){
  const {THREE,scene}=ctx;
  const models={
@@ -12,7 +11,8 @@ export function createForestResources(ctx){
     mat:new THREE.MeshLambertMaterial({color:0x919595})},
  };
  const dummy=new THREE.Object3D(),nodes=new Map(),meshes={};
- let lastTick=-Infinity,sequence=0;
+ let lastTick=-Infinity;
+ const spawner=createResourceZones();
  for(const [kind,{geo,mat}] of Object.entries(models)){
   const mesh=new THREE.InstancedMesh(geo,mat,RESOURCE_LIMIT);
   mesh.count=0;mesh.frustumCulled=false;mesh.castShadow=false;
@@ -42,16 +42,14 @@ export function createForestResources(ctx){
   refresh();
  }
  function tick(now=performance.now()){
-  if(now-lastTick<2900)return;
+  if(now-lastTick<RESOURCE_UPDATE_MS)return;
   lastTick=now;
   if(ctx.isOnline?.())return;
-  for(const [id,r] of nodes)if(Math.hypot(r.x-ctx.px,r.z-ctx.pz)>RESOURCE_RADIUS)nodes.delete(id);
-  while(nodes.size<RESOURCE_LIMIT){
-   const angle=Math.random()*Math.PI*2,dist=2.5+Math.random()*5.8;
-   const kind=Math.random()<.53?'branch':'stone';
-   nodes.set(++sequence,{id:sequence,kind,x:ctx.px+Math.cos(angle)*dist,z:ctx.pz+Math.sin(angle)*dist});
+  if(spawner.update({x:ctx.px,z:ctx.pz,yaw:ctx.yaw})){
+    nodes.clear();
+    for(const item of spawner.nodes)nodes.set(item.id,item);
+    refresh();
   }
-  refresh();
  }
  function closest(max=2.4){
   let best=null,dist=max;
@@ -67,12 +65,12 @@ export function createForestResources(ctx){
   if(!ctx.inventory?.state.addItem({id:near.kind,count:1})){
    ctx.notify?.('Сумка заполнена','warning','resource-full');return false;
   }
-  nodes.delete(near.id);refresh();
+  spawner.collect(near.id);nodes.delete(near.id);refresh();
   ctx.inventory.render();ctx.offlineSave?.markDirty?.();
   ctx.notify?.(near.kind==='branch'?'🌿 Ветка собрана':'🪨 Камень собран','success','resource-collected');
   return true;
  }
- function clear(){nodes.clear();lastTick=-Infinity;refresh();}
+ function clear(){nodes.clear();spawner.clear();lastTick=-Infinity;refresh();}
  function dispose(){
   clear();
   for(const mesh of Object.values(meshes))scene.remove(mesh);
