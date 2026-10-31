@@ -27,6 +27,13 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 #paintStatus{font-size:11px;color:#cce2d7;min-height:24px}
 #view.painting{cursor:crosshair;touch-action:none}
 .paint-section{background:#223b40;border:1px solid #51746e;border-radius:8px;padding:10px;margin:10px 0}
+#maskName{width:100%;margin-top:6px;background:#132b30;color:white;padding:8px;border:1px solid #69948b;border-radius:6px}
+.saved-mask-row{display:flex;align-items:center;gap:5px;padding:3px 0;border-bottom:1px solid #405654}
+.saved-mask-check{flex:1;display:flex;align-items:center;gap:8px;min-width:0;cursor:pointer}
+.saved-mask-check span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.saved-mask-check input{width:17px;height:17px;accent-color:#e9b676}
+.saved-mask-row button{width:30px;height:28px;padding:3px}
+[hidden]{display:none!important}
 </style>
 <script type="importmap">{"imports":{"three":"https://esm.sh/three@0.170.0"}}</script>
 </head><body><canvas id="view"></canvas><aside>
@@ -43,28 +50,32 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <div class="control"><label>Обувь</label><select id="shoes"></select></div>
 <div class="control"><label>Верхняя одежда</label><select id="outerwear"></select></div>
 <div class="control"><label>Нижнее бельё</label><select id="underwear"></select></div>
-<h2>Маска кожи · отладка</h2>
-<p class="mask-note">Скрывается только геометрия тела, одежда остаётся. Границы зон пока приблизительные и могут быть зубчатыми — это инструмент подбора.</p>
-<div id="maskControls"></div>
-<label class="mask-row"><span>Скрыть одежду для проверки маски</span><input type="checkbox" id="maskHideClothes"/></label>
-<div class="mask-actions"><button id="maskShowAll">Показать всё</button><button id="maskHideAll">Скрыть всё</button></div>
-<output id="maskStats"></output>
-<div class="mask-actions"><button id="maskSave">Запомнить для комплекта</button><button id="maskCopy">Копировать JSON</button></div>
-<p class="mask-note" id="maskHint">Настройки каждого комплекта можно сохранить и восстановить при следующем выборе.</p>
-<div class="paint-section">
-<h2>Рисование точной маски (UV)</h2>
+<h2>Библиотека масок кожи</h2>
+<p class="mask-note">Создавай именованные базовые маски, которые можно включать вместе. Маски сохраняются отдельно для мужского и женского тела.</p>
+<div class="mask-actions"><button id="newMask">+ Новая маска</button><button id="maskDownload">Скачать архив ZIP</button></div>
+<div id="newMaskForm" class="paint-section" hidden>
+<label>Имя маски (например, right-hand)</label>
+<input id="maskName" type="text" placeholder="right-hand" maxlength="64" autocomplete="off"/>
+<div class="mask-actions"><button id="maskCreate">Создать</button><button id="maskCancel">Отмена</button></div>
+</div>
+<div id="savedMasks"></div>
+<p class="mask-note" id="maskCount">Сохранено: 0</p>
+<div class="mask-actions"><button id="maskSelectAll">Включить все</button><button id="maskSelectNone">Выключить все</button></div>
+<label class="mask-row"><span>Скрыть одежду для осмотра</span><input type="checkbox" id="maskHideClothes"/></label>
+<p class="mask-note" id="editingName"></p>
+<div class="paint-section" id="paintPanel" hidden>
+<h2>Редактор маски</h2>
 <label class="mask-row"><span>Рисовать на персонаже</span><input type="checkbox" id="paintEnable"/></label>
 <div class="control"><label>Кисть</label><select id="paintAction"><option value="hide">Скрыть кожу</option><option value="show">Вернуть кожу</option></select></div>
 <div class="control"><label>Размер кисти</label><input id="paintRadius" type="range" min="2" max="72" value="18" step="1"/></div>
-<p class="mask-note" id="paintBrushText">18 пикселей UV · белое видно, чёрное скрыто</p>
-<div class="mask-actions"><button id="paintUndo">Отменить мазок</button><button id="paintClear">Очистить маску</button></div>
-<div class="mask-actions"><button id="paintSave">Сохранить кисть</button><button id="paintDownload">Скачать PNG</button></div>
-<div class="mask-actions"><button id="paintImport">Загрузить PNG</button><button id="paintView">Начать рисование</button></div>
+<p class="mask-note" id="paintBrushText">18 пикселей UV</p>
+<div class="mask-actions"><button id="paintUndo">Отменить мазок</button><button id="paintClear">Очистить</button></div>
+<div class="mask-actions"><button id="maskSave">Сохранить маску</button><button id="maskDone">Закрыть редактор</button></div>
+<div class="mask-actions"><button id="maskImport">Импорт PNG</button><button id="paintView">Закончить рисование</button></div>
 <input id="paintFile" type="file" accept="image/png" hidden/>
 <div id="uvMaskPreview"></div>
-<p class="mask-note" id="paintStatus">Маска хранится отдельно для пола и комплекта одежды.</p>
-<p class="mask-note">В режиме рисования одежда и грубая маска зон временно отключены, а анимация остановлена. Повернуть персонажа можно после выключения рисования. Текстура кожи не изменяется.</p>
 </div>
+<p class="mask-note" id="paintStatus">Создай маску или выбери ✎ для редактирования. Белое — кожа видна, чёрное — скрыта.</p>
 <h2>Анимация</h2>
 <div class="control"><label>Клип</label><select id="animation"></select></div>
 <div class="control"><label>Скорость</label><input id="speed" type="range" min="0" max="3" step=".1" value="1"/></div>
@@ -76,7 +87,6 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 import * as THREE from 'three';
 import {OrbitControls} from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
 import {createLiteHumanoid,getHumanoidCatalog,DEFAULT_APPEARANCE} from './humanoid-lite.js';
-import {SKIN_MASK_ZONES,createDebugSkinMask} from './skin-mask-debug.js';
 import {createSkinPainter,interpolateScreenPoints} from './skin-paint.js';
 const $=id=>document.getElementById(id);
 const renderer=new THREE.WebGLRenderer({canvas:$('view'),antialias:true});
@@ -96,169 +106,270 @@ grid.position.y=-.015;grid.material.transparent=true;grid.material.opacity=.28;s
 const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.02,50);camera.position.set(1.25,1.55,2.30);
 const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.target.set(0,.98,0);orbit.minDistance=.65;orbit.maxDistance=7;orbit.enableDamping=true;orbit.update();
-let actor,helper,skinMask,skinPainter;
-let clothesHiddenForDebug=false;
-let painting=false,paintPointer=null;
+let actor,helper,skinPainter;
+const cfg={...DEFAULT_APPEARANCE};
+let painting=false,paintPointer=null,editing=null,editDraft=null,clothesHidden=false;
+let library={male:{},female:{}};
+const enabled={male:new Set(),female:new Set()};
+const storageKey='forest-chopper:mask-library:v1';
 const brushRaycaster=new THREE.Raycaster();
 const brushPointerNDC=new THREE.Vector2();
-const paintStoragePrefix='forest-chopper:humanoid-lite:paint-mask:';
-const cfg={...DEFAULT_APPEARANCE};
-const hiddenSkin=new Set();
-const maskStoragePrefix='forest-chopper:humanoid-lite:skin-mask:';
-function maskKitKey(){return [cfg.body,cfg.face,cfg.top||'none',cfg.bottom||'none',cfg.shoes||'none',cfg.outerwear||'none'].join('|')}
-function maskPayload(){return {body:cfg.body,face:cfg.face,equipment:{top:cfg.top,bottom:cfg.bottom,shoes:cfg.shoes,outerwear:cfg.outerwear},hiddenSkinZones:[...hiddenSkin]}}
-function applySkinMask(){
- if(!skinMask)return;
- const result=skinMask.apply(painting?[]:hiddenSkin);
- for(const [slot,part] of actor.parts){if(slot!=='hair')part.visible=painting?false:!clothesHiddenForDebug;}
- for(const box of document.querySelectorAll('[data-skin-zone]'))box.checked=hiddenSkin.has(box.dataset.skinZone);
- $('maskStats').textContent=`Скрыто ${result.hidden} из ${result.total} треугольников тела`+(painting?' · грубые зоны временно отключены':'');
- if(actor)drawStats();
-}
-function restoreKitMask(){
- hiddenSkin.clear();
+const emptyMask=null;
+const collection=()=>library[cfg.body];
+const enabledForBody=()=>enabled[cfg.body];
+const maskStatus=message=>$('paintStatus').textContent=message;
+function loadLibrary(){
  try{
-  const saved=JSON.parse(localStorage.getItem(maskStoragePrefix+maskKitKey())||'null');
-  for(const region of saved?.hiddenSkinZones||[]){
-   if(SKIN_MASK_ZONES.some(z=>z.id===region))hiddenSkin.add(region);
+  const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');
+  for(const sex of ['male','female']){
+   library[sex]=saved.masks?.[sex]||{};
+   enabled[sex]=new Set((saved.enabled?.[sex]||[]).filter(n=>library[sex][n]));
   }
-  $('maskHint').textContent=saved?'Восстановлена маска этого комплекта.':'Для этого комплекта маска ещё не сохранена.';
- }catch(err){console.warn('Could not restore skin mask',err)}
- applySkinMask();
+ }catch(error){console.warn('Invalid saved mask library',error)}
 }
-function showPainterCanvas(){
- const slot=$('uvMaskPreview');
- slot.replaceChildren(skinPainter.canvas);
- skinPainter.canvas.title='UV маска: белое видно, чёрное скрыто';
+function persistLibrary(){
+ localStorage.setItem(storageKey,JSON.stringify({
+  version:1,resolution:1024,masks:library,
+  enabled:{male:[...enabled.male],female:[...enabled.female]}
+ }));
 }
-async function restorePaintMask(){
- if(!skinPainter)return;
- const key=paintStoragePrefix+maskKitKey();
- try{
-   await skinPainter.load(localStorage.getItem(key));
-   $('paintStatus').textContent=localStorage.getItem(key)
-     ?'Загружена маска кисти для выбранного комплекта.'
-     :'Для этого комплекта новая белая маска (вся кожа видна).';
- }catch(error){
-   console.warn('Bad saved paint mask',error);
-   skinPainter.clear({keepUndo:false});
-   $('paintStatus').textContent='Не удалось прочитать маску: '+error.message;
+function skinPainterCanvas(){
+ $('uvMaskPreview').replaceChildren(skinPainter.canvas);
+ skinPainter.canvas.title='Маска выбранной области / объединение активных масок';
+}
+function renderMaskList(){
+ const list=$('savedMasks');
+ list.replaceChildren();
+ const items=Object.keys(collection()).sort();
+ if(!items.length){
+  const empty=document.createElement('p');
+  empty.className='mask-note';
+  empty.textContent='Нет сохранённых масок. Нажми «Новая маска».';
+  list.append(empty);
  }
-}
-function savePaintMask(){
- if(!skinPainter)return false;
- try{
-   localStorage.setItem(paintStoragePrefix+maskKitKey(),skinPainter.toPNG());
-   $('paintStatus').textContent='Маска сохранена для '+cfg.body+' / '+(cfg.top||'без верха')+' / '+(cfg.bottom||'без низа')+'.';
-   return true;
- }catch(error){
-   $('paintStatus').textContent='Ошибка сохранения: '+error.message+'. Можно скачать PNG.';
-   return false;
+ for(const name of items){
+  const line=document.createElement('div');line.className='saved-mask-row';
+  const label=document.createElement('label');label.className='saved-mask-check';
+  const check=document.createElement('input');check.type='checkbox';
+  check.checked=enabledForBody().has(name);
+  check.onchange=()=>{if(check.checked)enabledForBody().add(name);else enabledForBody().delete(name);
+    try{persistLibrary()}catch(e){maskStatus('Не удалось сохранить выбор: '+e.message)}
+    if(!painting)void composeEnabledMasks();
+  };
+  const title=document.createElement('span');title.textContent=name;
+  label.append(check,title);line.append(label);
+  const edit=document.createElement('button');edit.textContent='✎';edit.title='Редактировать '+name;
+  edit.onclick=()=>void editSavedMask(name);line.append(edit);
+  const del=document.createElement('button');del.textContent='×';del.title='Удалить '+name;
+  del.onclick=()=>{if(!confirm('Удалить маску «'+name+'»?'))return;
+    delete collection()[name];enabledForBody().delete(name);
+    if(editing===name){editing=null;editDraft=null;setPaintMode(false)}
+    try{persistLibrary()}catch(e){maskStatus(e.message)}
+    renderMaskList();void composeEnabledMasks();
+  };
+  line.append(del);list.append(line);
  }
+ $('maskCount').textContent='Сохранено: '+items.length+' · Активно: '+enabledForBody().size;
 }
-function setPaintMode(enabled){
- painting=!!enabled;
- paintPointer=null;
+function showMaskEditor(name){
+ editing=name;editDraft=null;
+ $('editingName').textContent='Редактируется: '+name+' ('+cfg.body+')';
+ $('newMaskForm').hidden=true;
+ $('paintPanel').hidden=false;
+}
+async function editSavedMask(name){
+ if(!collection()[name])return;
+ showMaskEditor(name);
+ await skinPainter.load(collection()[name]);
+ setPaintMode(true);
+ maskStatus('Редактирование '+name+'. Нажми «Сохранить маску», когда закончишь.');
+}
+async function startNewMask(){
+ const name=$('maskName').value.trim().toLowerCase();
+ if(!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(name)){
+  maskStatus('Имя: латиница, цифры, - и _. Например right-hand.');return;
+ }
+ if(collection()[name]){maskStatus('Маска '+name+' уже существует. Выбери редактирование.');return}
+ showMaskEditor(name);
+ await skinPainter.load(null);
+ setPaintMode(true);
+ maskStatus('Новая маска «'+name+'». Рисуй чёрным по коже, затем сохрани.');
+}
+function setPaintMode(value){
+ painting=Boolean(value);
  $('paintEnable').checked=painting;
  orbit.enabled=!painting;
  renderer.domElement.classList.toggle('painting',painting);
- // A static pose lets the user paint a boundary accurately; when
- // painting ends, restore the animation speed chosen by the user.
  if(actor)actor.mixer.timeScale=painting?0:Number($('speed').value);
- if(painting)$('maskHideClothes').disabled=true;
- else $('maskHideClothes').disabled=false;
- for(const checkbox of document.querySelectorAll('[data-skin-zone]'))checkbox.disabled=painting;
- $('paintView').textContent=painting?'Закончить / показать одежду':'Начать рисование';
- if(skinMask)applySkinMask();
- $('paintStatus').textContent=painting
-   ?'Рисуй по коже левой кнопкой мыши. Для поворота выключи рисование.'
-   :'Рисование выключено. Можно вращать персонажа и проверять одежду.';
+ $('paintView').textContent=painting?'Закончить рисование':'Продолжить рисование';
+ for(const [slot,part] of actor?.parts||[]){
+  if(slot!=='hair')part.visible=painting?false:!clothesHidden;
+ }
+ if(!painting){
+  if(editing)editDraft=skinPainter.toPNG();
+  void composeEnabledMasks();
+ }
+ maskStatus(painting?'Рисуй по коже; для вращения выключи рисование.':
+   'Рисование остановлено. Можно проверить маску с одеждой.');
+}
+function imgFromDataURL(src){
+ return new Promise((resolve,reject)=>{
+  const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(Error('Bad PNG'));
+  img.src=src;
+ });
+}
+async function composeEnabledMasks(){
+ if(!skinPainter||painting)return;
+ const sex=cfg.body;
+ const names=[...enabledForBody()].filter(n=>collection()[n]);
+ const merged=document.createElement('canvas');
+ merged.width=merged.height=1024;
+ const ctx=merged.getContext('2d');
+ ctx.fillStyle='#fff';ctx.fillRect(0,0,1024,1024);
+ ctx.globalCompositeOperation='darken';
+ try{
+  for(const name of names)ctx.drawImage(await imgFromDataURL(library[sex][name]),0,0);
+  ctx.globalCompositeOperation='source-over';
+  await skinPainter.load(merged.toDataURL('image/png'));
+  $('maskCount').textContent='Сохранено: '+Object.keys(collection()).length+
+    ' · Активно: '+names.length;
+ }catch(error){maskStatus('Ошибка применения масок: '+error.message)}
+}
+async function saveCurrentMask(){
+ if(!editing){maskStatus('Сначала создай или выбери маску.');return}
+ const png=painting?skinPainter.toPNG():editDraft;
+ if(!png){maskStatus('Нет нарисованной маски.');return}
+ collection()[editing]=png;
+ enabledForBody().add(editing);
+ try{persistLibrary()}catch(error){maskStatus('Память браузера заполнена. Скачай ZIP: '+error.message);return}
+ const name=editing;
+ renderMaskList();
+ maskStatus('Маска «'+name+'» сохранена в браузере. Чекбокс включён.');
+ if(!painting)await composeEnabledMasks();
+}
+async function reloadMaskEditor(){
+ editing=null;editDraft=null;
+ $('editingName').textContent='';
+ $('paintPanel').hidden=true;
+ $('newMaskForm').hidden=true;
+ setPaintMode(false);
+ renderMaskList();
+ await composeEnabledMasks();
 }
 function raycastSkinAt(clientX,clientY){
  if(!skinPainter)return null;
  const rect=renderer.domElement.getBoundingClientRect();
  brushPointerNDC.set(
-   (clientX-rect.left)/rect.width*2-1,
-   -(clientY-rect.top)/rect.height*2+1
- );
+  (clientX-rect.left)/rect.width*2-1,
+  -(clientY-rect.top)/rect.height*2+1);
  brushRaycaster.setFromCamera(brushPointerNDC,camera);
- const hit=brushRaycaster.intersectObject(skinPainter.body,false)[0];
- return hit?.uv??null;
+ return brushRaycaster.intersectObject(skinPainter.body,false)[0]?.uv||null;
 }
-function paintAt(clientX,clientY){
- const uv=raycastSkinAt(clientX,clientY);
- if(!uv)return false;
- return skinPainter.stamp(uv,{
-   mode:$('paintAction').value,
-   radius:Number($('paintRadius').value)
- });
+function stampAt(x,y){
+ const uv=raycastSkinAt(x,y);
+ if(uv)skinPainter.stamp(uv,{mode:$('paintAction').value,radius:Number($('paintRadius').value)});
 }
 renderer.domElement.addEventListener('pointerdown',event=>{
- if(!painting||event.button!==0||!skinPainter)return;
- event.preventDefault();
- event.stopPropagation();
+ if(!painting||event.button!==0||!editing)return;
  if(!raycastSkinAt(event.clientX,event.clientY))return;
+ event.preventDefault();event.stopPropagation();
  skinPainter.snapshot();
  paintPointer={x:event.clientX,y:event.clientY};
  renderer.domElement.setPointerCapture(event.pointerId);
- paintAt(event.clientX,event.clientY);
+ stampAt(event.clientX,event.clientY);
 });
 renderer.domElement.addEventListener('pointermove',event=>{
- if(!painting||!paintPointer||!skinPainter)return;
+ if(!painting||!paintPointer)return;
  event.preventDefault();
  const next={x:event.clientX,y:event.clientY};
- for(const point of interpolateScreenPoints(paintPointer,next,4)){
-   paintAt(point.x,point.y);
- }
+ for(const pt of interpolateScreenPoints(paintPointer,next,4))stampAt(pt.x,pt.y);
  paintPointer=next;
 });
-function endPaintStroke(event){
- if(!paintPointer)return;
- paintPointer=null;
- if(renderer.domElement.hasPointerCapture(event.pointerId))
+for(const eventName of ['pointerup','pointercancel']){
+ renderer.domElement.addEventListener(eventName,event=>{
+  if(!paintPointer)return;
+  paintPointer=null;
+  if(renderer.domElement.hasPointerCapture(event.pointerId))
    renderer.domElement.releasePointerCapture(event.pointerId);
- savePaintMask();
+ });
 }
-renderer.domElement.addEventListener('pointerup',endPaintStroke);
-renderer.domElement.addEventListener('pointercancel',endPaintStroke);
-$('paintEnable').onchange=e=>setPaintMode(e.target.checked);
-$('paintView').onclick=()=>setPaintMode(!painting);
-$('paintRadius').oninput=e=>$('paintBrushText').textContent=
-   e.target.value+' пикселей UV · белое видно, чёрное скрыто';
-$('paintUndo').onclick=()=>{
- if(skinPainter?.undo())savePaintMask();
- else $('paintStatus').textContent='Нет мазков для отмены.';
+$('newMask').onclick=()=>{
+ $('newMaskForm').hidden=false;$('maskName').value='';$('maskName').focus();
 };
+$('maskCreate').onclick=()=>void startNewMask();
+$('maskCancel').onclick=()=>$('newMaskForm').hidden=true;
+$('maskName').onkeydown=e=>{if(e.key==='Enter')void startNewMask()};
+$('paintEnable').onchange=e=>{
+ if(!editing){e.target.checked=false;maskStatus('Сначала создай или выбери маску.');return}
+ if(painting&&!e.target.checked){setPaintMode(false);return}
+ if(!painting&&e.target.checked){
+  const source=editDraft||collection()[editing];
+  void skinPainter.load(source||null).then(()=>setPaintMode(true));
+ }
+};
+$('paintView').onclick=()=>{
+ if(!editing){maskStatus('Сначала создай или выбери маску.');return}
+ if(painting){setPaintMode(false);return}
+ void skinPainter.load(editDraft||collection()[editing]||null).then(()=>setPaintMode(true));
+};
+$('paintRadius').oninput=e=>$('paintBrushText').textContent=e.target.value+' пикселей UV';
+$('paintUndo').onclick=()=>{if(!skinPainter?.undo())maskStatus('Нет мазков для отмены.')};
 $('paintClear').onclick=()=>{
- if(!skinPainter)return;
+ if(!editing)return;
+ if(!painting){maskStatus('Включи рисование для очистки.');return}
  skinPainter.clear();
- savePaintMask();
 };
-$('paintSave').onclick=savePaintMask;
-$('paintDownload').onclick=()=>{
- if(!skinPainter)return;
- const a=document.createElement('a');
- a.href=skinPainter.toPNG();
- a.download='skin-mask-'+maskKitKey().replace(/[^a-zA-Z0-9_-]/g,'_')+'.png';
- document.body.append(a);a.click();a.remove();
- $('paintStatus').textContent='PNG экспортирован для выбранного комплекта.';
+$('maskSave').onclick=()=>void saveCurrentMask();
+$('maskDone').onclick=()=>{if(painting)setPaintMode(false);editing=null;editDraft=null;
+ $('paintPanel').hidden=true;$('editingName').textContent='';
 };
-$('paintImport').onclick=()=>$('paintFile').click();
+$('maskHideClothes').onchange=e=>{
+ clothesHidden=e.target.checked;
+ for(const [slot,part] of actor?.parts||[])if(slot!=='hair')part.visible=painting?false:!clothesHidden;
+};
+$('maskSelectAll').onclick=()=>{for(const n of Object.keys(collection()))enabledForBody().add(n);
+ try{persistLibrary()}catch(e){maskStatus(e.message)}renderMaskList();void composeEnabledMasks()};
+$('maskSelectNone').onclick=()=>{enabledForBody().clear();
+ try{persistLibrary()}catch(e){maskStatus(e.message)}renderMaskList();void composeEnabledMasks()};
+$('maskImport').onclick=()=>$('paintFile').click();
 $('paintFile').onchange=async e=>{
  const file=e.target.files?.[0];
- if(!file||!skinPainter)return;
- try{
-   const url=await new Promise((resolve,reject)=>{
-     const reader=new FileReader();
-     reader.onload=()=>resolve(reader.result);
-     reader.onerror=reject;
-     reader.readAsDataURL(file);
-   });
-   await skinPainter.load(url);
-   savePaintMask();
- }catch(error){$('paintStatus').textContent='Ошибка импорта: '+error.message;}
+ if(!file){return}
+ const data=await new Promise((resolve,reject)=>{
+  const reader=new FileReader();reader.onload=()=>resolve(reader.result);
+  reader.onerror=reject;reader.readAsDataURL(file);
+ });
+ if(editing){
+  await skinPainter.load(data);
+  editDraft=skinPainter.toPNG();
+  setPaintMode(true);
+ }else maskStatus('Сначала создай маску с именем, затем импортируй PNG.');
  e.target.value='';
 };
+$('maskDownload').onclick=async()=>{
+ try{
+  maskStatus('Упаковываю маски...');
+  const {default:JSZip}=await import('https://esm.sh/jszip@3.10.1');
+  const zip=new JSZip();
+  const manifest={version:1,resolution:1024,format:'white=visible black=hidden',masks:{}};
+  for(const sex of ['male','female']){
+   const folder=zip.folder('masks/'+sex);
+   manifest.masks[sex]=Object.keys(library[sex]).sort();
+   for(const name of manifest.masks[sex]){
+    const encoded=library[sex][name].split(',')[1];
+    folder.file(name+'.png',encoded,{base64:true});
+   }
+  }
+  zip.file('masks/manifest.json',JSON.stringify(manifest,null,2));
+  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='humanoid-skin-masks.zip';
+  document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+  maskStatus('Архив скачан: masks/male/, masks/female/, manifest.json.');
+ }catch(error){maskStatus('Не удалось создать ZIP: '+error.message)}
+};
+loadLibrary();
 const clock=new THREE.Clock();
 const setStatus=message=>$('status').textContent=message;
 const defaultOptions=[{id:'none',label:{en:'— Без предмета —'}}];
@@ -268,7 +379,7 @@ function fill(node,items,slot,selected){
  node.value=selected||'none';
 }
 function drawStats(){
- $('stats').textContent=JSON.stringify({...actor.stats(),bodyMask:skinMask?skinMask.stats():null,appearance:cfg},null,2);
+ $('stats').textContent=JSON.stringify({...actor.stats(),activeMasks:[...enabledForBody()],appearance:cfg},null,2);
 }
 function drawHelper(){
  if(helper){scene.remove(helper);helper.dispose?.();}
@@ -280,17 +391,16 @@ async function reload(){
    const fresh=await createLiteHumanoid(cfg);
    if(actor){scene.remove(actor.root);actor.mixer.stopAllAction();}
    if(skinPainter)skinPainter.dispose();
+   painting=false;editing=null;editDraft=null;
+   orbit.enabled=true;renderer.domElement.classList.remove('painting');
    actor=fresh;scene.add(actor.root);drawHelper();
-   skinMask=createDebugSkinMask(actor);
-   skinPainter=createSkinPainter(skinMask.body);
-   showPainterCanvas();
-   restoreKitMask();
-   await restorePaintMask();
-   if(painting){actor.mixer.timeScale=0;applySkinMask();}
+   skinPainter=createSkinPainter(actor.meshes.find(m=>m.name==='Body'));
+   skinPainterCanvas();
+   await reloadMaskEditor();
    $('animation').replaceChildren(...actor.clips.map(a=>{const el=document.createElement('option');el.value=el.textContent=a.name;return el}));
    $('animation').value='idle';actor.mixer.timeScale=+$('speed').value;
    drawStats();setStatus('Готово');
-   window.humanoidLitePreview={actor,cfg,skinMask,skinPainter,hiddenSkin,camera,orbit,applySkinMask};
+   window.humanoidLitePreview={actor,cfg,skinPainter,library,enabled,camera,orbit,composeEnabledMasks};
  }catch(err){setStatus('Ошибка: '+err.message);console.error(err);}
 }
 $('body').onchange=e=>{cfg.body=e.target.value;void reload()};
@@ -300,35 +410,14 @@ $('hairColor').oninput=e=>{cfg.hairColor=e.target.value;actor.setHairColor(cfg.h
 for(const slot of ['hair','top','bottom','shoes','outerwear','underwear']){
  $(slot).onchange=async e=>{
   cfg[slot]=e.target.value==='none'?null:e.target.value;setStatus('Меняю '+slot+'…');
-  try{await actor.equip(slot,cfg[slot]);restoreKitMask();await restorePaintMask();applySkinMask();drawStats();setStatus('Готово')}
+  try{await actor.equip(slot,cfg[slot]);const part=actor.parts.get(slot);if(part&&slot!=='hair')part.visible=painting?false:!clothesHidden;drawStats();setStatus('Готово')}
   catch(err){setStatus('Ошибка: '+err.message);console.error(err)}
  };
 }
 $('animation').onchange=e=>actor.play(e.target.value,{loop:!['fall','jump','land'].includes(e.target.value)});
-$('speed').oninput=e=>{if(actor)actor.mixer.timeScale=Number(e.target.value)};
+$('speed').oninput=e=>{if(actor&&!painting)actor.mixer.timeScale=Number(e.target.value)};
 $('skeleton').onchange=e=>{if(helper)helper.visible=e.target.checked};
-for(const z of SKIN_MASK_ZONES){
- const label=document.createElement('label');label.className='mask-row';
- const name=document.createElement('span');name.textContent='Скрыть: '+z.label;
- const check=document.createElement('input');check.type='checkbox';check.dataset.skinZone=z.id;
- check.onchange=()=>{if(check.checked)hiddenSkin.add(z.id);else hiddenSkin.delete(z.id);applySkinMask();$('maskHint').textContent='Маска изменена. Нажми «Запомнить», если этот вариант подходит.'};
- label.append(name,check);$('maskControls').append(label);
-}
-$('maskHideClothes').onchange=e=>{clothesHiddenForDebug=e.target.checked;applySkinMask()};
-$('maskShowAll').onclick=()=>{hiddenSkin.clear();applySkinMask()};
-$('maskHideAll').onclick=()=>{for(const z of SKIN_MASK_ZONES)hiddenSkin.add(z.id);applySkinMask()};
-$('maskSave').onclick=()=>{try{localStorage.setItem(maskStoragePrefix+maskKitKey(),JSON.stringify(maskPayload()));$('maskHint').textContent='Маска сохранена для этого пола и комплекта одежды.'}catch(err){$('maskHint').textContent='Не удалось сохранить: '+err.message}};
-async function copyText(content){
- try{
-  await navigator.clipboard.writeText(content);
-  $('maskHint').textContent='JSON скопирован в буфер обмена.';
- }catch(error){
-  console.warn('Clipboard unavailable',error);
-  $('maskHint').textContent='Не удалось скопировать JSON. Разреши доступ к буферу обмена.';
- }
-}
-$('maskCopy').onclick=()=>void copyText(JSON.stringify(maskPayload(),null,2));
-$('copy').onclick=()=>void copyText(JSON.stringify({...cfg,skinMask:[...hiddenSkin]},null,2));
+$('copy').onclick=()=>navigator.clipboard.writeText(JSON.stringify({...cfg,activeMasks:[...enabledForBody()]},null,2));
 try{
  const catalog=await getHumanoidCatalog();
  fill($('hair'),catalog.hair.styles,null,cfg.hair);

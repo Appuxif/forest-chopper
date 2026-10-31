@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "resolution": 1024,
+  "format": "white=visible black=hidden",
+  "masks": {
+    "male": [
+      "butt",
+      "front-chest",
+      "left-foot",
+      "left-forearm",
+      "left-hand",
+      "left-hip",
+      "left-knee",
+      "left-shin",
+      "left-shoulder",
+      "left-upper-shoulder",
+      "neck",
+      "right-foot",
+      "right-hand",
+      "right-hip",
+      "right-knee",
+      "right-shin",
+      "right-shoulder",
+      "right-upper-shoulder",
+      "tight-forearm"
+    ],
+    "female": []
+  }
+}
