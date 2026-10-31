@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "resolution": 1024,
+  "male": {
+    "shirt": [
+      "butt",
+      "left-upper-shoulder",
+      "right-upper-shoulder"
+    ],
+    "dress": [
+      "butt",
+      "front-chest",
+      "left-upper-shoulder",
+      "right-upper-shoulder"
+    ],
+    "tshirt": [
+      "front-chest"
+    ],
+    "jeans": [
+      "butt",
+      "left-hip",
+      "left-knee",
+      "left-shin",
+      "right-hip",
+      "right-knee",
+      "right-shin"
+    ],
+    "shorts": [
+      "butt"
+    ],
+    "boots": [
+      "left-foot",
+      "left-sock",
+      "right-foot",
+      "right-sock"
+    ],
+    "skirt": [
+      "skirt-front-hips"
+    ],
+    "shoes": [
+      "left-foot",
+      "left-sock",
+      "right-foot",
+      "right-sock"
+    ],
+    "briefs": [
+      "briefs"
+    ]
+  },
+  "female": {}
+}

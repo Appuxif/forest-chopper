@@ -4,6 +4,7 @@
   "format": "white=visible black=hidden",
   "masks": {
     "male": [
+      "briefs",
       "butt",
       "front-chest",
       "left-foot",
@@ -13,6 +14,7 @@
       "left-knee",
       "left-shin",
       "left-shoulder",
+      "left-sock",
       "left-upper-shoulder",
       "neck",
       "right-foot",
@@ -21,7 +23,9 @@
       "right-knee",
       "right-shin",
       "right-shoulder",
+      "right-sock",
       "right-upper-shoulder",
+      "skirt-front-hips",
       "tight-forearm"
     ],
     "female": []

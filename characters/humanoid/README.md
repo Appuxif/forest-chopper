@@ -310,3 +310,26 @@ wardrobe production pipeline.
 Tests: `node --test tests/skin-mask-debug.test.mjs tests/skin-paint-math.test.mjs`.
 Browser-checked: mouse painting, mask restoration on reload, independent outfit
 keys, toggling painting/orbit controls, and alpha-mapped visible skin.
+
+## Local PNG library and clothing-mask matrix (v1)
+
+`preview-lite.html` loads the mask list from `masks/manifest.json` and each
+`masks/<gender>/<name>.png` when the page opens. The repository PNGs are the
+baseline; masks saved or edited in the browser are local overrides until
+exported. The list marks repository files with a folder icon, and these files
+must be removed from the repository manually rather than from a browser button.
+
+The **Матрица одежды** panel assigns any number of reusable base masks to a
+specific clothing item, separately for male and female. Selecting an item in
+the matrix also equips it for immediate visual review. When **Автоматически
+применять матрицу** is checked, the viewer uses the union of the mask sets for
+all currently equipped items; switch it off to use the manual mask checkboxes.
+
+Assignments are saved automatically to browser `localStorage` while working.
+Use **Скачать JSON матрицы** and replace
+`characters/humanoid/masks/clothing-matrix.json` to commit them to Git. The
+**Взять из проекта** button discards the browser assignments and reloads that
+JSON from the project. Likewise, edited/new masks must be exported via
+**Скачать архив ZIP** and copied into the repository. The ZIP includes
+`masks/manifest.json`, `masks/clothing-matrix.json`, and mask PNGs by gender.
+No backend or direct browser write access to the project is assumed.
