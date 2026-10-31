@@ -67,6 +67,43 @@ def tree_info(key,seed):
         return x,z,hp
     except (ValueError,TypeError):return None
 
+MAX_VITALS=5
+LOW_VITALS_THRESHOLD=1
+HUNGER_INTERVAL_SECONDS=300
+FOOD_EFFECTS={
+    'mushroom:fly_agaric':(-1,0),
+    'mushroom:death_cap':(-1,0),
+    'mushroom:milkcap':(0,1),
+    'mushroom:boletus':(0,1),
+    'flower:daisy':(1,0),
+    'flower:buttercup':(0,0),
+    'flower:pink_wildflower':(0,0),
+    'flower:blue_wildflower':(0,0),
+}
+def vitals_view(player):
+    return {'health':player['health'],'hunger':player['hunger'],
+            'hungerProgress':player['hunger_progress']}
+
+def advance_hunger(player,now):
+    delta=max(0,min(now-player['last_hunger_at'],3600))
+    player['last_hunger_at']=now
+    if player['hunger']==0:return False
+    progress=player['hunger_progress']+delta
+    steps=int(progress//HUNGER_INTERVAL_SECONDS)
+    if steps==0:
+        player['hunger_progress']=progress
+        return False
+    player['hunger']=max(0,player['hunger']-steps)
+    player['hunger_progress']=progress%HUNGER_INTERVAL_SECONDS if player['hunger'] else 0
+    return True
+
+def apply_food(player,kind):
+    effect=FOOD_EFFECTS.get(kind)
+    if effect is None:return False
+    player['health']=max(0,min(MAX_VITALS,player['health']+effect[0]))
+    player['hunger']=max(0,min(MAX_VITALS,player['hunger']+effect[1]))
+    return True
+
 def new_inventory():
     return [{'id':'axe','tier':0}]+[None]*11
 
@@ -324,6 +361,10 @@ class World:
             await asyncio.sleep(1)
             await self.prune_boxes()
             await self.prune_resource_cooldowns()
+            current=time.monotonic()
+            for ws,player in list(self.clients.items()):
+                if advance_hunger(player,current):
+                    await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
 
     async def send(self,ws,data):
         try:await ws.send(json.dumps(data,separators=(',',':')))
@@ -410,10 +451,10 @@ class World:
             await self.bot_handler(ws);return
         if len(self.clients)+len(self.bots.bots)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
-        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'bag_tier':0}
+        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'last_hunger_at':time.monotonic()}
         self.clients[ws]=player
         await self.prune_boxes()
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -479,6 +520,17 @@ class World:
                     player['axe_equipped']=bool(player['inventory'][player['selected']] and player['inventory'][player['selected']]['id']=='axe')
                     await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                elif kind=='consume_food':
+                    slot=data.get('slot')
+                    if type(slot) is not int or not 0<=slot<len(player['inventory']):continue
+                    item=player['inventory'][slot]
+                    if not item or item['id'] not in FOOD_EFFECTS or item.get('count',0)<1:continue
+                    advance_hunger(player,now)
+                    player['inventory'][slot]['count']-=1
+                    if player['inventory'][slot]['count']==0:player['inventory'][slot]=None
+                    apply_food(player,item['id'])
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                    await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
                 elif kind=='craft_axe':
                     inv=player['inventory']
                     if inv_count(inv,'branch')<3 or inv_count(inv,'stone')<2:
@@ -621,6 +673,11 @@ class World:
                     self.save()
                 elif kind=='hit':
                     if not player['axe_equipped']:continue
+                    advance_hunger(player,now)
+                    if player['health']<=LOW_VITALS_THRESHOLD or player['hunger']<=LOW_VITALS_THRESHOLD:
+                        await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
+                        await self.send(ws,{'type':'action_denied','reason':'Нужны хотя бы 2 жизни и 2 сытости для рубки'})
+                        continue
                     tier=min(max(player.get('axe_tier',0),0),len(AXE_LEVELS)-1)
                     damage,speed=AXE_LEVELS[tier]
                     if now-player['last_hit']<.28/speed:continue

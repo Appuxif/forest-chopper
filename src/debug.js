@@ -1,3 +1,4 @@
+import {isFood} from './vitals.js';
 // Only loaded by index_debug.html. Never expose these controls on the normal page.
 export function installDebug(ctx) {
   const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight',
@@ -279,6 +280,20 @@ export function installDebug(ctx) {
     events(since = 0) { return events.filter(e=>e.time>=since); },
     clearEvents(){events.length=0;},
     inventory() {return ctx.inventory?.serialize()??null;},
+    vitals(){return ctx.vitals?.serialize()??null;},
+    grantFood(id,count=1){
+      if(ctx.isOnline())throw new Error('Offline debug helper only');
+      if(!isFood(id)||!Number.isInteger(count)||count<1||count>10)throw new Error('Invalid food');
+      if(!ctx.inventory.state.addItem({id,count}))return false;
+      ctx.inventory.render();ctx.offlineSave?.markDirty?.();
+      return api.inventory();
+    },
+    setVitals(health,hunger){
+      if(ctx.isOnline())throw new Error('Offline debug helper only');
+      if(!ctx.vitals?.restore({health,hunger,hungerProgress:0}))throw new Error('Invalid vitals');
+      ctx.offlineSave?.markDirty?.();
+      return api.vitals();
+    },
     resources(){return ctx.forestResources?.nodes??[];},
     boxes(){return ctx.groundBoxes?.snapshot()??[];},
     collectResource(){return ctx.forestResources?.collect()??false;},

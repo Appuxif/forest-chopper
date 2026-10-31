@@ -15,10 +15,20 @@ function aimed(){
  let best=null,dist=5.2;for(const t of ctx.trees.values()){if(Math.hypot(t.position.x-ctx.px,t.position.z-ctx.pz)>6)continue;const hits=ray.intersectObjects(t.userData.hitMeshes??t.children,false);if(hits.length&&hits[0].distance<dist){best=t;dist=hits[0].distance}}return best}
 const chipGeo=new ctx.THREE.BoxGeometry(.1,.1,.1),chipMat=new ctx.THREE.MeshLambertMaterial({color:0xc59560});function spawnChips(t){for(let i=0;i<Math.min(7,Math.max(0,96-ctx.particles.length));i++){const mesh=new ctx.THREE.Mesh(chipGeo,chipMat);mesh.position.set(t.position.x+(Math.random()-.5)*.7,1.15+Math.random()*.5,t.position.z+(Math.random()-.5)*.7);ctx.scene.add(mesh);ctx.particles.push({mesh,vx:(Math.random()-.5)*3,vy:1+Math.random()*3,vz:(Math.random()-.5)*3,life:.7})}}
 function chop(){
+ if(ctx.inventory){
+   const selected=ctx.inventory.state.slots[ctx.inventory.state.selectedQuick]?.id;
+   if(selected?.startsWith('mushroom:')||selected?.startsWith('flower:')){
+     ctx.vitals?.consume(ctx.inventory.state.selectedQuick);return;
+   }
+ }
  if(ctx.inventory?.selected==='log'){ctx.placeLog();return;}
  if(ctx.inventory?.selected==='bench'){ctx.crafting?.placeItem();return;}
  if(ctx.buildMode&&!ctx.inventory){ctx.placeLog();return;}
-if(ctx.inventory&&!ctx.inventory.equipped){ctx.notify?.('Выбери топор в быстром слоте (1–4)','warning','no-axe');return;}const now=performance.now();const chopCooldown=(ctx.ownAvatar?.actions?.Chop2?.getClip().duration??(1.4166666666666667))/(ctx.CHOP_SPEED*(ctx.inventory?.axe?.speed??1))*1000+35;if(now-ctx.lastHit<chopCooldown)return;ctx.lastHit=now;ctx.swing=1;ctx.actorChop(ctx.ownAvatar);const t=aimed();
+if(ctx.inventory&&!ctx.inventory.equipped){ctx.notify?.('Выбери топор в быстром слоте (1–4)','warning','no-axe');return;}
+if(ctx.vitals&&!ctx.vitals.canChop&&aimed()){
+ ctx.notify?.('Для рубки нужно хотя бы 2 жизни и 2 сытости','warning','vitals-chop');return;
+}
+const now=performance.now();const chopCooldown=(ctx.ownAvatar?.actions?.Chop2?.getClip().duration??(1.4166666666666667))/(ctx.CHOP_SPEED*(ctx.inventory?.axe?.speed??1))*1000+35;if(now-ctx.lastHit<chopCooldown)return;ctx.lastHit=now;ctx.swing=1;ctx.actorChop(ctx.ownAvatar);const t=aimed();
  if(!t && ctx.inventory?.equipped){
    const fx=-Math.sin(ctx.yaw),fz=-Math.cos(ctx.yaw);
    const hit=(x,z)=>{const dx=x-ctx.px,dz=z-ctx.pz,dist=dx*fx+dz*fz;
@@ -45,7 +55,11 @@ if(ctx.inventory&&!ctx.inventory.equipped){ctx.notify?.('Выбери топор
      return;
    }
  }
- if(!t)return;const u=t.userData;if(ctx.isOnline()){ctx.sendNet({type:"hit",tree:u.id});return;}u.hp-=(ctx.inventory?.axe?.damage??1);ctx.treeDamage.set(u.id,u.hp);ctx.offlineSave.markDirty();spawnChips(t);
+ if(!t)return;
+ if(ctx.vitals&&!ctx.vitals.canChop){
+   ctx.notify?.('Для рубки нужно хотя бы 2 жизни и 2 сытости','warning','vitals-chop');return;
+ }
+ const u=t.userData;if(ctx.isOnline()){ctx.sendNet({type:"hit",tree:u.id});return;}u.hp-=(ctx.inventory?.axe?.damage??1);ctx.treeDamage.set(u.id,u.hp);ctx.offlineSave.markDirty();spawnChips(t);
 if(u.hp<=0){ctx.detachTreeForFall?.(t);ctx.trees.delete(u.id);ctx.felled.add(u.id);ctx.treeDamage.delete(u.id);ctx.falling.push({tree:t,elapsed:0,direction:Math.atan2(ctx.px-u.x,ctx.pz-u.z)+Math.PI,removed:false});const reward=Math.min(5,ctx.inventory?.state.freeLogs()??5);ctx.wood+=reward;ctx.cuts++;ctx.tutorial.complete('tree-fell');ctx.progress.record('tree-fell');ctx.$('wood').textContent=ctx.wood;ctx.$('cut').textContent=ctx.cuts;ctx.notify(reward?('+'+reward+' 🪵 Древесина'):'Сумка полна','success','tree-reward');ctx.$('target').textContent=reward?('+'+reward+' 🪵 Древесина'):'Сумка полна';setTimeout(()=>{if(ctx.$('target').textContent.includes('🪵')||ctx.$('target').textContent==='Сумка полна')ctx.$('target').textContent=''},900)}}
 
 return {aimed, spawnChips, chop};

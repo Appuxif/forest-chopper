@@ -1,4 +1,5 @@
 import {DECOR_ITEM_NAMES} from './collectible-decor.js';
+import {isFood} from './vitals.js';
 import {createInventoryModel,AXE_STATS,QUICK_SLOTS} from './inventory.js';
 export function createInventory(ctx,doc=document){
  const state=createInventoryModel();
@@ -24,9 +25,9 @@ export function createInventory(ctx,doc=document){
  const bar=doc.createElement('div');bar.className='fc-hotbar';bar.setAttribute('aria-label','Быстрые слоты предметов');
  const toggle=doc.createElement('button');toggle.className='fc-bag-toggle';toggle.textContent='🎒 Сумка (I)';toggle.type='button';
  const bag=doc.createElement('section');bag.className='fc-bag';bag.hidden=true;bag.setAttribute('aria-label','Инвентарь');
- bag.innerHTML='<header><h2>🎒 Сумка</h2><button type="button" data-action="close" aria-label="Закрыть инвентарь">✕</button></header><p class="fc-bag-hint"></p><div class="fc-grid"></div><div class="fc-actions"><button type="button" data-action="craft">🔨 Скамейка: 3 🪵</button><button type="button" data-action="craft-axe">🪓 Топор: 3 🌿 + 2 🪨</button><button type="button" data-action="drop">📦 Выбросить выбранный стак</button><button type="button" data-action="pickup">⬆ Поднять топор (старые сохранения)</button></div><button type="button" class="fc-trash-slot fc-slot" data-action="trash" title="Удалить предмет без коробки">🗑️</button><p>Корзина: выбери предмет в сумке и нажми 🗑️, чтобы уничтожить его без коробки.</p><p>Нажми предмет, затем другой слот, чтобы переложить. Первые 4 ячейки — быстрые (1–4). Не более 5 брёвен в стопке. Чтобы рубить — выбери топор.</p><small>Предусмотрены уровни сумки и улучшения топора.</small>';
+ bag.innerHTML='<header><h2>🎒 Сумка</h2><button type="button" data-action="close" aria-label="Закрыть инвентарь">✕</button></header><p class="fc-bag-hint"></p><div class="fc-grid"></div><div class="fc-actions"><button type="button" data-action="craft">🔨 Скамейка: 3 🪵</button><button type="button" data-action="craft-axe">🪓 Топор: 3 🌿 + 2 🪨</button><button type="button" data-action="drop">📦 Выбросить выбранный стак</button><button type="button" data-action="pickup">⬆ Поднять топор (старые сохранения)</button></div><button type="button" class="fc-trash-slot fc-slot" data-action="trash" title="Удалить предмет без коробки">🗑️</button><p>Корзина: выбери предмет в сумке и нажми 🗑️, чтобы уничтожить его без коробки.</p><p>Нажми предмет, затем другой слот, чтобы переложить. Двойной клик по еде — съесть. Первые 4 ячейки — быстрые (1–4). Не более 5 брёвен в стопке. Чтобы рубить — выбери топор.</p><small>Предусмотрены уровни сумки и улучшения топора.</small>';
  doc.body.append(bar,toggle,bag);
- let moving=-1,groundMesh=null,lastSelected=null;
+ let moving=-1,groundMesh=null,lastSelected=null,lastFoodClick=-1,lastFoodTime=-Infinity;
  const speciesTag={
    'mushroom:fly_agaric':'Мух.','mushroom:boletus':'Боров.','mushroom:death_cap':'Пог.','mushroom:milkcap':'Груздь',
    'flower:daisy':'Ром.','flower:buttercup':'Лют.','flower:pink_wildflower':'Роз.','flower:blue_wildflower':'Син.',
@@ -47,7 +48,18 @@ export function createInventory(ctx,doc=document){
    if(speciesTag[item?.id]){const tag=doc.createElement('span');tag.className='fc-item-tag';tag.textContent=speciesTag[item.id];b.append(tag);}
    if(hot){const key=doc.createElement('span');key.className='fc-key';key.textContent=i+1;b.append(key);}
    if(item&&item.id!=='axe'){const count=doc.createElement('small');count.textContent=hot&&item.id==='log'?state.wood():item.count;b.append(count);}
-   b.onclick=()=>{if(hot){select(i);return;}if(moving<0)moving=i;else{if(moving!==i){if(ctx.isOnline?.())ctx.sendNet?.({type:'move_slot',from:moving,to:i});else state.move(moving,i);}moving=-1;changed({equip:false});}render();};
+   b.onclick=()=>{
+     if(hot){select(i);return;}
+     const now=performance.now();
+     if(item&&isFood(item.id)&&lastFoodClick===i&&now-lastFoodTime<450){
+       lastFoodClick=-1;lastFoodTime=-Infinity;moving=-1;
+       ctx.vitals?.consume(i);render();return;
+     }
+     lastFoodClick=item&&isFood(item.id)?i:-1;lastFoodTime=now;
+     if(moving<0)moving=i;
+     else {if(moving!==i){if(ctx.isOnline?.())ctx.sendNet?.({type:'move_slot',from:moving,to:i});else state.move(moving,i);}moving=-1;changed({equip:false});}
+     render();
+   };
    return b;
  }
  function render(){

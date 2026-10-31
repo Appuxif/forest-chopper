@@ -2,6 +2,7 @@ import {isDecorResourceId} from './collectible-decor.js';
 import {validBench,MAX_BENCHES} from './crafting.js';
 import {validItem} from './inventory.js';
 import {RESOURCE_RESPAWN_SECONDS} from './resource-zones.js';
+import {MAX_VITALS,HUNGER_INTERVAL_SECONDS} from './vitals.js';
 // Offline-only world snapshots. Server saves are independent and authoritative.
 // This module intentionally never reads/writes the multiplayer world JSON.
 export const OFFLINE_SAVE_KEY = 'forest-chopper:offline-world:v1';
@@ -59,10 +60,15 @@ export function parseOfflineSave(raw) {
         ||expires>Date.now()/1000+RESOURCE_RESPAWN_SECONDS)return null;
       if(expires>Date.now()/1000)cooldowns[id]=expires;
     }
+    const vitals=data.vitals??null;
+    if(vitals!==null&&(!Number.isInteger(vitals.health)||vitals.health<0||vitals.health>MAX_VITALS
+        ||!Number.isInteger(vitals.hunger)||vitals.hunger<0||vitals.hunger>MAX_VITALS
+        ||!Number.isFinite(vitals.hungerProgress)||vitals.hungerProgress<0
+        ||vitals.hungerProgress>=HUNGER_INTERVAL_SECONDS))return null;
     const furniture=[];
     for(const item of data.furniture ?? []){if(!validBench(item))return null;furniture.push({kind:'bench',x:item.x,z:item.z,orientation:item.orientation});}
     return {
-      furniture,boxes,resource_cooldowns:cooldowns,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
+      furniture,boxes,resource_cooldowns:cooldowns,vitals,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
     };
   } catch {
@@ -89,6 +95,7 @@ export function createOfflineSave(ctx, {
       logs: ctx.placed.map(({x,z,level,orientation}) => ({x,z,level,orientation})),
       furniture: ctx.crafting?.snapshot() ?? [],
       inventory:ctx.inventory?.serialize?.()??undefined,
+      vitals:ctx.vitals?.serialize?.()??undefined,
       boxes:ctx.groundBoxes?.snapshot?.()??[],
       resource_cooldowns:ctx.forestResources?.snapshotCooldowns?.()??{},
     };
@@ -119,6 +126,7 @@ export function createOfflineSave(ctx, {
     try {raw = storage.getItem(OFFLINE_SAVE_KEY);} catch {return false;}
     const state = parseOfflineSave(raw);
     if (!state) return false;
+    if(ctx.vitals&&!ctx.vitals.restore(state.vitals))return false;
     if(ctx.inventory&&!ctx.inventory.restore(state.inventory,state.wood))return false;
     if(ctx.forestResources&&!ctx.forestResources.restoreCooldowns(state.resource_cooldowns))return false;
     ctx.seed = state.seed;

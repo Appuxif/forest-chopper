@@ -91,7 +91,15 @@ export function createInventoryModel(){
   [slots[a],slots[b]]=[slots[b],slots[a]];return true;
  }
  function select(i){if(!Number.isInteger(i)||i<0||i>=QUICK_SLOTS)return false;quick=i;return true;}
- function consumeSelected(id){if(selected()!==id)return false;return spend(id,1);}
+ function consumeAt(index,id){
+  if(!Number.isInteger(index)||index<0||index>=slots.length)return false;
+  const item=slots[index];
+  if(!item||item.id!==id||!Number.isInteger(item.count)||item.count<=0)return false;
+  item.count--;
+  if(item.count===0)slots[index]=null;
+  return true;
+ }
+ function consumeSelected(id){return consumeAt(quick,id);}
  function removeSlot(i){
   if(!Number.isInteger(i)||i<0||i>=slots.length||!slots[i])return null;
   const item=copy(slots[i]);slots[i]=null;return item;
@@ -123,7 +131,7 @@ export function createInventoryModel(){
   return setWood(legacyWood,{migrate:true});
  }
  return {capacity,count,wood,free,freeLogs,equipped,axe,selected,hasSpace,canAdd,addItem,spend,craft,
-  upgradeBag,addLogs,spendLogs,setWood,move,select,consumeSelected,removeSlot,restoreSlot,addBench,removeBench,craftBench,
+  upgradeBag,addLogs,spendLogs,setWood,move,select,consumeAt,consumeSelected,removeSlot,restoreSlot,addBench,removeBench,craftBench,
   dropAxe,pickupAxe,serialize,restore,get slots(){return slots.map(copy)},
   get bagTier(){return tier},get selectedQuick(){return quick},get dropped(){return dropped?{...dropped}:null}};
 }

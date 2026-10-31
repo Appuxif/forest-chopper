@@ -13,10 +13,10 @@ import {createMicroGrass} from './micro-grass.js?v=20261030-grass-density-shadow
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261030-grass-density-shadows1';
 import {createPhysics} from './physics.js?v=20261030-rock-collision1';
 import {createBuilding} from './building.js?v=20261031-inventory2';
-import {createChopping} from './chopping.js?v=20261031-inventory2';
-import {createControls} from './controls.js?v=20261031-loot1';
+import {createChopping} from './chopping.js?v=20261031-vitals1';
+import {createControls} from './controls.js?v=20261031-vitals1';
 import {createPlayer} from './player.js?v=20261031-loot1';
-import {createMultiplayer} from './multiplayer.js?v=20261031-loot1';
+import {createMultiplayer} from './multiplayer.js?v=20261031-vitals1';
 import {createMinimap} from './minimap.js?v=20261030-map-ping1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261031-tree-editor1';
@@ -34,10 +34,11 @@ import {createCrafting} from './crafting.js?v=20261031-inventory2';
 import {createInteractionHighlight} from './interaction-highlight.js';
 import {createDiscoveries} from './discoveries.js';
 import {createCommunityGoal} from './community-goal.js';
-import {createOfflineSave} from './offline-save.js?v=20261031-loot1';
+import {createOfflineSave} from './offline-save.js?v=20261031-vitals1';
 import {createTutorial} from './tutorial.js';
 import {createProgress} from './progress.js?v=20261030-discoveries1';
-import {createInventory} from './inventory-ui.js?v=20261031-loot1';
+import {createInventory} from './inventory-ui.js?v=20261031-vitals1';
+import {createVitalsUI} from './vitals-ui.js?v=20261031-vitals1';
 import {createForestResources} from './forest-resources.js?v=20261031-collectible-plants1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261031-boxes1';
 
@@ -148,7 +149,7 @@ const atmosphere=createAtmosphere({
 });
 const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere});
 const tutorial=createTutorial({notify:notifications.notify});
-let offlineSave=null,progress=null,inventory=null,forestResources=null,groundBoxes=null;
+let offlineSave=null,progress=null,inventory=null,vitals=null,forestResources=null,groundBoxes=null;
 
 let addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
@@ -162,6 +163,7 @@ const ctx={
  get playerList(){return playerList;},
  get crafting(){return crafting;},
  get inventory(){return inventory;},
+ get vitals(){return vitals;},
  get forestResources(){return forestResources;},
  get groundBoxes(){return groundBoxes;},
  get highlight(){return highlight;},
@@ -325,6 +327,7 @@ ownAvatar=createLumberjack();if(ownAvatar){
 }
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));
 inventory=createInventory(ctx);
+vitals=createVitalsUI(ctx);
 forestResources=createForestResources(ctx);
 groundBoxes=createGroundBoxes(ctx);
 const emotes=createEmotes(ctx);
@@ -344,7 +347,7 @@ progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}})
 ({showMapPing,clearMapPings}=createMinimap(ctx));
 ({look}=createControls(ctx));
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261031-loot1');
+  const { installDebug } = await import('./debug.js?v=20261031-vitals1');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

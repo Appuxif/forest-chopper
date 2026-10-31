@@ -180,3 +180,23 @@ test('collected flowers and mushrooms use existing resource cooldowns in offline
   malformed.resource_cooldowns['d:0,0:25']=now+100;
   assert.equal(parseOfflineSave(JSON.stringify(malformed)),null);
 });
+
+test('survival vitals roundtrip and legacy saves restore full health',()=>{
+ const original=fixture();
+ const vitals={health:2,hunger:1,hungerProgress:172};
+ original.ctx.vitals={serialize(){return vitals;}};
+ assert.equal(original.save.save(),true);
+ const raw=original.storage.getItem(OFFLINE_SAVE_KEY);
+ assert.deepEqual(parseOfflineSave(raw).vitals,vitals);
+ const restored=fixture(raw);
+ let actual=null;
+ restored.ctx.vitals={restore(x){actual=x;return true;}};
+ assert.equal(restored.save.restore(),true);
+ assert.deepEqual(actual,vitals);
+ const legacy=JSON.parse(raw);delete legacy.vitals;
+ assert.equal(parseOfflineSave(JSON.stringify(legacy)).vitals,null);
+ const invalid={...legacy,vitals:{health:6,hunger:3,hungerProgress:0}};
+ assert.equal(parseOfflineSave(JSON.stringify(invalid)),null);
+ invalid.vitals={health:4,hunger:1,hungerProgress:300};
+ assert.equal(parseOfflineSave(JSON.stringify(invalid)),null);
+});

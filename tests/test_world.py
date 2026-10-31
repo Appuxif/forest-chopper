@@ -10,7 +10,7 @@ from pathlib import Path
 
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import connect
-from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, decor_resource, nearby_decor, DECOR_ITEM_IDS, inv_count, inv_add, BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
+from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, decor_resource, nearby_decor, DECOR_ITEM_IDS, inv_count, inv_add, vitals_view,advance_hunger,apply_food,FOOD_EFFECTS,LOW_VITALS_THRESHOLD,HUNGER_INTERVAL_SECONDS,BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
 
 
 class WorldTests(unittest.IsolatedAsyncioTestCase):
@@ -522,6 +522,86 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loaded.community_cuts,0)
         self.assertEqual(loaded.seed,9000)
         self.assertFalse(loaded.felled)
+
+    async def test_vitals_are_bounded_and_server_hunger_is_time_based(self):
+        self.assertEqual(HUNGER_INTERVAL_SECONDS,300)
+        self.assertEqual(LOW_VITALS_THRESHOLD,1)
+        self.assertEqual(len(FOOD_EFFECTS),8)
+        player={'health':5,'hunger':5,'hunger_progress':0,
+                'last_hunger_at':100.0}
+        self.assertFalse(advance_hunger(player,399))
+        self.assertEqual(player['hunger'],5)
+        self.assertTrue(advance_hunger(player,400))
+        self.assertEqual(player['hunger'],4)
+        self.assertEqual(player['hunger_progress'],0)
+        self.assertTrue(advance_hunger(player,1000))
+        self.assertEqual(player['hunger'],2)
+        self.assertTrue(advance_hunger(player,1300))
+        self.assertEqual(player['hunger'],1)
+        self.assertFalse(apply_food(player,'branch'))
+        self.assertTrue(apply_food(player,'mushroom:boletus'))
+        self.assertEqual(player['hunger'],2)
+        self.assertTrue(apply_food(player,'mushroom:milkcap'))
+        self.assertEqual(player['hunger'],3)
+        for _ in range(7):apply_food(player,'mushroom:death_cap')
+        self.assertEqual(player['health'],0)
+        apply_food(player,'flower:daisy')
+        self.assertEqual(player['health'],1)
+        for species in ('flower:buttercup','flower:pink_wildflower','flower:blue_wildflower'):
+            self.assertTrue(apply_food(player,species))
+        self.assertEqual(player['health'],1)
+        self.assertEqual(vitals_view(player)['hunger'],3)
+
+    async def test_eating_is_authoritative_and_does_not_duplicate_an_item(self):
+        async with connect(self.url) as ws:
+            welcome=await self.receive(ws,'welcome')
+            self.assertEqual(welcome['vitals'],{'health':5,'hunger':5,'hungerProgress':0.0})
+            player=next(iter(self.world.clients.values()))
+            player['health']=3;player['hunger']=2
+            player['inventory'][1]={'id':'mushroom:fly_agaric','count':2}
+            player['inventory'][2]={'id':'flower:daisy','count':2}
+            player['inventory'][3]={'id':'mushroom:boletus','count':1}
+            for slot,kind,expected in ((1,'mushroom:fly_agaric',(2,2)),
+                                       (2,'flower:daisy',(3,2)),
+                                       (3,'mushroom:boletus',(3,3)),
+                                       (1,'mushroom:fly_agaric',(2,3))):
+                await ws.send(json.dumps({'type':'consume_food','slot':slot}))
+                inventory=await self.receive(ws,'inventory_state')
+                vitals=await self.receive(ws,'vitals_state')
+                self.assertEqual((vitals['vitals']['health'],vitals['vitals']['hunger']),expected)
+                self.assertEqual(player['inventory'][slot] is None,kind=='mushroom:boletus' or
+                                 (kind=='mushroom:fly_agaric' and expected==(2,3)))
+                self.assertEqual(inventory['inventory']['slots'][slot],player['inventory'][slot])
+            # No remaining poisonous mushrooms, so replayed packets cannot duplicate consumption.
+            await ws.send(json.dumps({'type':'consume_food','slot':1}))
+            await ws.send(json.dumps({'type':'consume_food','slot':-1}))
+            await ws.send(json.dumps({'type':'consume_food','slot':100}))
+            with self.assertRaises(asyncio.TimeoutError):
+                await asyncio.wait_for(ws.recv(),.07)
+            self.assertEqual(player['health'],2)
+
+    async def test_server_rejects_tree_hits_with_low_health_or_low_hunger(self):
+        async with connect(self.url) as ws:
+            await self.receive(ws,'welcome')
+            player=next(iter(self.world.clients.values()))
+            key=next(k for k in (f'{x},{z}:{i}' for x in range(-2,3)
+                       for z in range(-2,3) for i in range(8))
+                       if tree_info(k,self.world.seed))
+            tx,tz,_=tree_info(key,self.world.seed)
+            player.update(x=tx+1.5,z=tz)
+            for health,hunger in ((1,5),(5,1),(0,0)):
+                player.update(health=health,hunger=hunger,last_hit=0)
+                await ws.send(json.dumps({'type':'hit','tree':key}))
+                state=await self.receive(ws,'vitals_state')
+                denial=await self.receive(ws,'action_denied')
+                self.assertEqual(state['vitals']['health'],health)
+                self.assertIn('2 жизни',denial['reason'])
+                self.assertNotIn(key,self.world.damage)
+                self.assertNotIn(key,self.world.felled)
+            player.update(health=2,hunger=2,last_hit=0)
+            await ws.send(json.dumps({'type':'hit','tree':key}))
+            event=await self.receive(ws,'tree_hit')
+            self.assertEqual(event['tree'],key)
 
     async def test_hits_save_and_restore_world(self):
         async with connect(self.url) as ws:
