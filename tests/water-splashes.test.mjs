@@ -37,23 +37,20 @@ function visible(mesh){
   return [...mesh.matrices.values()].filter(m=>m.scale.x>.001).length;
 }
 
-test('shallow-water movement emits bounded droplets and rings; clearing releases them',()=>{
+test('shallow-water movement emits bounded droplets without rings; clearing releases them',()=>{
   const {ctx,effect,members}=fixture();
-  const [droplets,rings]=[...members];
+  const [droplets]=[...members];
+  assert.equal(members.size,1,'ripples should not be rendered');
   assert.equal(droplets.capacity,88);
-  assert.equal(rings.capacity,20);
   assert.equal(visible(droplets),0);
   for(let i=0;i<5;i++){ctx.px+=.2;effect.tick(.04);}
   effect.tick(.016);
   assert.ok(visible(droplets)>0,'footstep produces airborne water droplets');
-  assert.ok(visible(rings)>0,'footstep produces surface ripples');
   ctx.sprinting=true;
   for(let i=0;i<150;i++){ctx.px+=.1;effect.tick(.025);}
   assert.equal(droplets.matrices.size,88,'instanced droplet allocation remains capped');
-  assert.equal(rings.matrices.size,20,'instanced ring allocation remains capped');
   effect.clear();
   assert.equal(visible(droplets),0);
-  assert.equal(visible(rings),0);
   effect.dispose();
   assert.equal(members.size,0);
   assert.equal(droplets.disposed,true);

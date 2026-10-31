@@ -1,5 +1,5 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261031-distant-forest1';
+import {createWorld} from './world.js?v=20261031-adaptive-lake-shore2';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
@@ -20,14 +20,14 @@ import {createPlayer} from './player.js?v=20261031-water-footsteps1';
 import {createMultiplayer} from './multiplayer.js?v=20261101-distant-forest1';
 import {createMinimap} from './minimap.js?v=20261031-rare-lakes1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261031-inventory-drag1';
+import {createSettings} from './settings.js?v=20261031-shadow-every-frame1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
 import {createPlantInteraction} from './plant-interaction.js?v=20261031-collectible-plants1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
 import {createDayCycle} from './day-cycle.js?v=20261030-darker-night1';
-import {createAtmosphere} from './atmosphere.js?v=20261030-spruce-diagnostics1';
+import {createAtmosphere} from './atmosphere.js?v=20261031-shadow-every-frame1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
@@ -42,7 +42,7 @@ import {createInventory} from './inventory-ui.js?v=20261031-stability1';
 import {createVitalsUI} from './vitals-ui.js?v=20261031-stability1';
 import {createForestResources} from './forest-resources.js?v=20261031-ponds1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261031-boxes1';
-import {createWaterSplashes} from './water-splashes.js?v=20261031-water-footsteps1';
+import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 
@@ -51,6 +51,26 @@ const {modelActors,CHOP_SPEED,createLumberjack,actorChop,tickActor,rootMotion}=a
 const treeModels=readActiveTreeConfig();
 const spruceParts=generateSpruceParts(treeModels.models.spruce);
 const birchParts=generateBirchParts(treeModels.models.birch);
+// Same procedural tree generators and textures, with a small fixed triangle
+// budget for the visible horizon. Generate once, reuse via InstancedMesh.
+const originalSpruce=treeModels.models.spruce;
+const distantSpruceParts=generateSpruceParts({
+  ...originalSpruce,
+  generatorQuality:'low',
+  whorls:Math.min(11,originalSpruce.whorls),
+  branchesPerWhorl:originalSpruce.branchesPerWhorl
+    .slice(0,11).map(count=>Math.max(0,Math.round(count*.7))),
+  showSecondaryBranches:false,
+  maxTriangles:2000,
+});
+const originalBirch=treeModels.models.birch;
+const distantBirchParts=generateBirchParts({
+  ...originalBirch,
+  branchCount:Math.min(16,originalBirch.branchCount),
+  showShootWood:false,
+  maxTriangles:1200,
+});
+const distantTreeParts={conifer:distantSpruceParts,birch:distantBirchParts};
 const treeWindShader=createTreeWindShader({motionQuery:typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false}});
 let ownAvatar=null,thirdPerson=true;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
@@ -279,6 +299,7 @@ const ctx={
  get spruceModelHeight(){return treeModels.models.spruce.trunkHeight;},
  get birchModelHeight(){return treeModels.models.birch.trunkHeight;},
  get birchParts(){return birchParts;},
+ get distantTreeParts(){return distantTreeParts;},
  get treeWindShader(){return treeWindShader;},
  get spruceDiagnostics(){return spruceDiagnostics;},
  get rockColliders(){return rockColliders;},

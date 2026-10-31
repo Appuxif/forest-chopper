@@ -28,6 +28,12 @@ test('sensitivity boundaries are inclusive and persistence stays independent of 
   assert.equal(sanitizeSettings({dayCycleEnabled:'true'}).dayCycleEnabled,false);
   assert.equal(sanitizeSettings({autoSprint:true}).autoSprint,true);
   assert.equal(sanitizeSettings({autoSprint:'true'}).autoSprint,false);
+  assert.equal(sanitizeSettings({shadowRefreshSeconds:0}).shadowRefreshSeconds,0,
+    'zero means every rendered frame and must survive persistence');
+  assert.equal(sanitizeSettings({shadowRefreshSeconds:.5}).shadowRefreshSeconds,.5);
+  assert.equal(sanitizeSettings({shadowRefreshSeconds:5}).shadowRefreshSeconds,5);
+  assert.equal(sanitizeSettings({shadowRefreshSeconds:-.5}).shadowRefreshSeconds,1);
+  assert.equal(sanitizeSettings({shadowRefreshSeconds:5.5}).shadowRefreshSeconds,1);
   assert.equal(sanitizeSettings({characterShadowFps:0}).characterShadowsEnabled,false,
     'old 0 FPS setting migrates to disabled shadows');
   assert.equal(sanitizeSettings({characterShadowFps:20}).characterShadowsEnabled,true);
@@ -101,6 +107,14 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   foliageShadows.checked=false;foliageShadows.onchange();
   assert.equal(settings.spruceFoliageShadows,false);
   assert.deepEqual(updates,[85]);
+  const refresh=element('#fc-shadow-refresh');
+  assert.equal(refresh.value,'1');
+  refresh.value='0';refresh.oninput();
+  assert.equal(settings.shadowRefreshSeconds,0);
+  assert.equal(element('#fc-shadow-refresh-value').textContent,'каждый кадр');
+  assert.equal(writes.at(-1)[1].shadowRefreshSeconds,0);
+  refresh.value='0.5';refresh.oninput();
+  assert.equal(element('#fc-shadow-refresh-value').textContent,'0.5 с');
   const radius=element('#fc-character-shadow-distance');
   assert.equal(radius.value,'30');
   radius.value='100';radius.oninput();

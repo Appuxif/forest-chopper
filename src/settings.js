@@ -34,7 +34,7 @@ export function sanitizeSettings(value) {
     shadowDistance: Number.isInteger(source.shadowDistance) && source.shadowDistance >= 20
       && source.shadowDistance <= 100 ? source.shadowDistance : DEFAULT.shadowDistance,
     shadowRefreshSeconds: Number.isFinite(source.shadowRefreshSeconds)
-      && source.shadowRefreshSeconds >= 1 && source.shadowRefreshSeconds <= 5
+      && source.shadowRefreshSeconds >= 0 && source.shadowRefreshSeconds <= 5
       ? Math.round(source.shadowRefreshSeconds * 2) / 2 : DEFAULT.shadowRefreshSeconds,
     // Read both the old 0–60 FPS slider and the original checkbox setting.
     characterShadowsEnabled: source.characterShadowsEnabled === false
@@ -184,8 +184,8 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <small>Ограничивает только рендеринг; физика и анимации обновляются с частотой дисплея. По умолчанию 60 FPS.</small>
     <label>Дальность теней от деревьев: <output id="fc-shadow-distance-value"></output> м
       <input id="fc-shadow-distance" type="range" min="20" max="100" step="1"></label>
-    <label>Обновлять тени деревьев каждые: <output id="fc-shadow-refresh-value"></output> с
-      <input id="fc-shadow-refresh" type="range" min="1" max="5" step="0.5"></label>
+    <label>Обновлять тени деревьев: <output id="fc-shadow-refresh-value"></output>
+      <input id="fc-shadow-refresh" type="range" min="0" max="5" step="0.5"></label>
     <label><input id="fc-character-shadows" type="checkbox"> Динамические тени персонажей</label>
     <label>Дальность детальных теней персонажей: <output id="fc-character-shadow-distance-value"></output> м
       <input id="fc-character-shadow-distance" type="range" min="10" max="100" step="1"></label>
@@ -333,7 +333,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     shadowContrastInput.value = String(state.shadowContrast);
     shadowContrastValue.textContent = String(state.shadowContrast);
     shadowDistanceValue.textContent = String(state.shadowDistance);
-    shadowRefreshValue.textContent = String(state.shadowRefreshSeconds);
+    shadowRefreshValue.textContent = state.shadowRefreshSeconds===0?'каждый кадр':String(state.shadowRefreshSeconds)+' с';
     grassDensityInput.value = String(state.grassDensity);
     grassDistanceInput.value = String(state.grassDistance);
     grassDensityValue.textContent = String(state.grassDensity);

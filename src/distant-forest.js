@@ -1,96 +1,65 @@
-// Lightweight visual-only forest beyond the fully interactive 24m tree chunks.
+// Procedurally generated low-detail forest beyond the interactive 24m tree chunks.
 // Tree positions, species and water exclusions match createWorld exactly.
 // Distant instances never enter ctx.trees, collision detection, or shadow passes.
 import {treeCanSpawn,treeCandidate,TREES_PER_CHUNK} from './tree-spacing.js';
+import {lakesNearTile,lakeHorizonDistance} from './lakes.js';
 export const DISTANT_FOREST_BASE_METERS=165;
-export const DISTANT_FOREST_LAKE_METERS=410;
+export const DISTANT_FOREST_LAKE_METERS=410; // Visibility cap, NOT a full forest disk.
+export const DISTANT_FOREST_SHORE_WIDTH=54; // ~2 chunks of trees beyond lake shores.
 export const DISTANT_FOREST_CHUNKS_PER_TICK=48;
 
-export function distantForestRange(terrain){
-  // Prefetch against the target fog visibility, not its delayed animation.
-  return DISTANT_FOREST_BASE_METERS+
-    Math.max(terrain?.visibility??0,terrain?.visibilityTarget??0)*
-      (DISTANT_FOREST_LAKE_METERS-DISTANT_FOREST_BASE_METERS);
+export function distantForestRange(terrain,lakes=[],x=0,z=0){
+  // The forest beyond 165m exists only around a nearby lake, not throughout
+  // the camera's field. Its actual extent depends on the lake's ellipse.
+  const visibility=Math.max(terrain?.visibility??0,terrain?.visibilityTarget??0);
+  if(visibility<=.035||!lakes.length)return DISTANT_FOREST_BASE_METERS;
+  return Math.min(DISTANT_FOREST_LAKE_METERS,Math.max(DISTANT_FOREST_BASE_METERS,
+    ...lakes.map(lake=>lakeHorizonDistance(
+      lake,x,z,DISTANT_FOREST_SHORE_WIDTH+12))));
 }
 
-function silhouetteGeometry(THREE,kind){
-  const positions=[],normals=[],colors=[];
-  const addTriangle=(a,b,c,color)=>{
-    const ab=b.map((v,i)=>v-a[i]),ac=c.map((v,i)=>v-a[i]);
-    const nx=ab[1]*ac[2]-ab[2]*ac[1];
-    const ny=ab[2]*ac[0]-ab[0]*ac[2];
-    const nz=ab[0]*ac[1]-ab[1]*ac[0];
-    const inv=1/(Math.hypot(nx,ny,nz)||1);
-    for(const p of [a,b,c]){
-      positions.push(...p);
-      normals.push(nx*inv,ny*inv,nz*inv);
-      colors.push(...color);
-    }
-  };
-  const tier=(cx,cz,bottom,top,r1,r2,color,n=7)=>{
-    for(let i=0;i<n;i++){
-      const a=i/n*Math.PI*2,b=(i+1)/n*Math.PI*2;
-      const p1=[cx+Math.cos(a)*r1,bottom,cz+Math.sin(a)*r1];
-      const p2=[cx+Math.cos(b)*r1,bottom,cz+Math.sin(b)*r1];
-      const q1=[cx+Math.cos(a)*r2,top,cz+Math.sin(a)*r2];
-      const q2=[cx+Math.cos(b)*r2,top,cz+Math.sin(b)*r2];
-      addTriangle(p1,p2,q1,color);
-      if(r2>0)addTriangle(p2,q2,q1,color);
-    }
-  };
-  if(kind==='birch'){
-    tier(0,0,0,.84,.019,.013,[.76,.72,.61],6);
-    tier(0,0,.49,.69,.13,.25,[.25,.41,.19],7);
-    tier(0,0,.69,.99,.25,0,[.33,.52,.24],7);
-    tier(-.11,0,.56,.72,.09,.14,[.30,.47,.21],6);
-    tier(-.11,0,.72,.90,.14,0,[.36,.56,.26],6);
-    tier(.12,.03,.53,.70,.10,.15,[.26,.44,.19],6);
-    tier(.12,.03,.70,.87,.15,0,[.32,.51,.24],6);
-  }else{
-    tier(0,0,0,.76,.031,.021,[.30,.22,.13],6);
-    for(let i=0;i<4;i++){
-      const bottom=.20+i*.16,top=.57+i*.14;
-      tier(0,0,bottom,top,.26-i*.036,0,
-        i%2?[.19,.35,.24]:[.23,.40,.25],7);
-    }
-  }
-  const geometry=new THREE.BufferGeometry();
-  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-  geometry.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
-  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
-  geometry.computeBoundingSphere();
-  return geometry;
+// Signed, approximate distance in metres to the irregular shoreline.
+// Negative = inside the lake, positive = inland. Uses lake rotation and the
+// same perimeter harmonics as lakeNormalized/lakePoint.
+export function distanceToLakeShore(lake,x,z){
+  const dx=x-lake.x,dz=z-lake.z;
+  const rx=(dx*lake.cos+dz*lake.sin)/lake.rx;
+  const rz=(-dx*lake.sin+dz*lake.cos)/lake.rz;
+  const angle=Math.atan2(rz,rx);
+  const edge=1+.085*Math.sin(3*angle+lake.phase)
+    +.06*Math.sin(7*angle-lake.phase*.65)
+    +.035*Math.sin(11*angle+lake.phase*.4);
+  return (Math.hypot(rx,rz)-edge)*Math.min(lake.rx,lake.rz);
 }
 
+// Use real Foliage Cards trees generated from the same editor presets as
+// the near forest. Each part keeps its own bark/leaf atlas and alphaTest.
 export function createDistantForest(ctx){
   const THREE=ctx.THREE;
-  if(!THREE.InstancedMesh||!THREE.BufferGeometry||
-      !THREE.Float32BufferAttribute||!THREE.Object3D){
+  if(!THREE.InstancedMesh||!THREE.Object3D)
     return {update(){},invalidate(){},clear(){},dispose(){},get count(){return 0;}};
-  }
   const CAPACITY=18000;
-  const geometry={
-    conifer:silhouetteGeometry(THREE,'conifer'),
-    birch:silhouetteGeometry(THREE,'birch'),
+  const templates={
+    conifer:ctx.distantTreeParts?.conifer??ctx.spruceParts??[],
+    birch:ctx.distantTreeParts?.birch??ctx.birchParts??[],
   };
-  const material=new THREE.MeshLambertMaterial({
-    vertexColors:true,side:THREE.DoubleSide,
-  });
-  const meshes={};
+  const meshes={conifer:[],birch:[]};
   for(const kind of ['conifer','birch']){
-    const mesh=new THREE.InstancedMesh(geometry[kind],material,CAPACITY);
-    mesh.name='Distant '+kind+' silhouettes';
-    mesh.count=0;
-    mesh.frustumCulled=false;
-    mesh.castShadow=false;
-    mesh.receiveShadow=false;
-    mesh.renderOrder=0;
-    ctx.scene.add(mesh);
-    meshes[kind]=mesh;
+    for(const part of templates[kind]){
+      if(!part.geometry||!part.material)continue;
+      const mesh=new THREE.InstancedMesh(part.geometry,part.material,CAPACITY);
+      mesh.name='Distant '+kind+' '+((part.foliage??part.material.alphaTest>0)?'foliage':'wood');
+      mesh.count=0;
+      mesh.frustumCulled=false;
+      mesh.castShadow=false;
+      mesh.receiveShadow=false;
+      ctx.scene.add(mesh);
+      meshes[kind].push(mesh);
+    }
   }
   const dummy=new THREE.Object3D();
   const cache=new Map(); // keyed 24m chunk; bounded to current visibility
-  let queue=[],lastCx=null,lastCz=null,lastRange=null,lastSeed=null,lastNear=null;
+  let queue=[],lastCx=null,lastCz=null,lastRange=null,lastSeed=null,lastNear=null,lastLakeMode=null;
   let dirty=true;
   const rand=(x,z,n=0)=>{
     const value=Math.sin(x*127.1+z*311.7+n*78.233+ctx.seed)*43758.5453;
@@ -124,13 +93,16 @@ export function createDistantForest(ctx){
       if(i>=CAPACITY){counts[tree.kind]=CAPACITY;continue;}
       dummy.position.set(tree.x,tree.y,tree.z);
       dummy.rotation.set(0,0,0);
-      dummy.scale.set(tree.height*tree.scale,tree.height,tree.height*tree.scale);
+      // Identical transform to the detailed procedural models in world.js.
+      dummy.scale.set(tree.scale,tree.height/(tree.kind==='conifer'?6:8),tree.scale);
       dummy.updateMatrix();
-      meshes[tree.kind].setMatrixAt(i,dummy.matrix);
+      for(const mesh of meshes[tree.kind])mesh.setMatrixAt(i,dummy.matrix);
     }
     for(const kind of ['conifer','birch']){
-      meshes[kind].count=counts[kind];
-      meshes[kind].instanceMatrix.needsUpdate=true;
+      for(const mesh of meshes[kind]){
+        mesh.count=counts[kind];
+        mesh.instanceMatrix.needsUpdate=true;
+      }
     }
     dirty=false;
   }
@@ -139,19 +111,43 @@ export function createDistantForest(ctx){
     const size=ctx.chunkSize;
     const cx=Math.floor(ctx.px/size),cz=Math.floor(ctx.pz/size);
     const near=ctx.radius??3; // detailed forest; retained chunks are excluded below
-    const range=Math.ceil(distantForestRange(ctx.terrain)/size);
+    // The ordinary 165m forest stays. A lake panorama adds ONLY a narrow
+    // shoreline belt, not a 410m disk filled with millions of triangles.
+    const visibility=Math.max(ctx.terrain?.visibility??0,
+      ctx.terrain?.visibilityTarget??0);
+    const lakeMode=visibility>.035;
+    const nearbyLakes=lakeMode
+      ? lakesNearTile(ctx.seed,ctx.px-DISTANT_FOREST_LAKE_METERS,
+          ctx.pz-DISTANT_FOREST_LAKE_METERS,DISTANT_FOREST_LAKE_METERS*2)
+        .filter(lake=>distanceToLakeShore(lake,ctx.px,ctx.pz)<145)
+      :[];
+    const outerRadius=distantForestRange(
+      ctx.terrain,nearbyLakes,ctx.px,ctx.pz);
+    const range=Math.ceil(outerRadius/size);
+    const lakeIds=nearbyLakes.map(lake=>lake.id).sort().join('|');
     if(cx!==lastCx||cz!==lastCz||near!==lastNear||
-        range!==lastRange||ctx.seed!==lastSeed){
+        range!==lastRange||ctx.seed!==lastSeed||lakeIds!==lastLakeMode){
       if(ctx.seed!==lastSeed)cache.clear();
-      lastCx=cx;lastCz=cz;lastRange=range;lastNear=near;lastSeed=ctx.seed;
+      lastCx=cx;lastCz=cz;lastRange=range;lastNear=near;
+      lastSeed=ctx.seed;lastLakeMode=lakeIds;
       const desired=new Set();
-      const radius=(range+.5)*size;
-      const radiusSq=radius*radius;
+      const baseSq=(DISTANT_FOREST_BASE_METERS+size*.72)**2;
+      const outerSq=(outerRadius+size*.72)**2;
+      const chunkMargin=size*Math.SQRT2*.5;
       for(let ix=cx-range;ix<=cx+range;ix++)for(let iz=cz-range;iz<=cz+range;iz++){
         if(Math.abs(ix-cx)<=near&&Math.abs(iz-cz)<=near)continue;
         if(ctx.chunks?.has(key(ix,iz)))continue;
-        const dx=(ix+.5)*size-ctx.px,dz=(iz+.5)*size-ctx.pz;
-        if(dx*dx+dz*dz>radiusSq)continue;
+        const x=(ix+.5)*size,z=(iz+.5)*size;
+        const dx=x-ctx.px,dz=z-ctx.pz;
+        const d2=dx*dx+dz*dz;
+        // Trees outside the standard area only belong to the immediate
+        // lakeshore, including the far bank. No forest behind that strip.
+        const aroundLake=d2<=outerSq&&nearbyLakes.some(lake=>{
+          const shore=distanceToLakeShore(lake,x,z);
+          return shore>=-chunkMargin &&
+            shore<=DISTANT_FOREST_SHORE_WIDTH+chunkMargin;
+        });
+        if(d2>baseSq&&!aroundLake)continue;
         desired.add(key(ix,iz));
       }
       for(const k of cache.keys())if(!desired.has(k)){cache.delete(k);dirty=true;}
@@ -189,16 +185,16 @@ export function createDistantForest(ctx){
     lastSeed=null;
   }
   function dispose(){
-    for(const mesh of Object.values(meshes)){
+    // Only instance buffers belong here; generated geometry/atlases are
+    // shared by all distant batches and owned by the startup model templates.
+    for(const parts of Object.values(meshes))for(const mesh of parts){
       ctx.scene.remove(mesh);
       mesh.dispose();
     }
-    for(const geo of Object.values(geometry))geo.dispose();
-    material.dispose();
     cache.clear();queue=[];
   }
   return {update,invalidate,invalidateTree,clear,dispose,meshes,
-    get count(){return meshes.conifer.count+meshes.birch.count;},
+    get count(){return (meshes.conifer[0]?.count??0)+(meshes.birch[0]?.count??0);},
     get pending(){return queue.length;},
     get chunkCount(){return cache.size;},
   };

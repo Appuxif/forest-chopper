@@ -82,6 +82,15 @@ export function lakesNearTile(seed,x0,z0,size){
   }
   return result;
 }
+// Conservative horizon distance for a lake viewed from (x,z).
+// The ellipse axes are already available; irregular coastline can extend
+// roughly 18% beyond them. The margin includes the outer forest belt.
+export function lakeHorizonDistance(lake,x,z,margin=54){
+  const centerDistance=Math.hypot(x-lake.x,z-lake.z);
+  const farShore=Math.max(lake.rx,lake.rz)*1.18;
+  return centerDistance+farShore+margin;
+}
+
 export function lakeNormalized(lake,x,z){
   const dx=x-lake.x,dz=z-lake.z;
   if(Math.abs(dx)>lake.reach||Math.abs(dz)>lake.reach)return null;

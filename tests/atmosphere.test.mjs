@@ -130,6 +130,28 @@ test('point-light shadow renders a bounded local caster scene and restores camer
   assert.equal(f.renders.length,1,'cached point-shadow map does not redraw when unchanged');
 });
 
+test('zero refresh interval updates forest shadows every rendered frame',()=>{
+  const f=fixture();
+  f.settings.shadowRefreshSeconds=0;
+  f.atmosphere.tick(0,0,0);
+  assert.equal(f.sun.shadow.needsUpdate,true);
+  f.renderer.shadowMap.render([f.sun],f.scene,f.camera);
+  assert.equal(f.renders.filter(r=>r.light===f.sun).length,1);
+  f.atmosphere.tick(1000/60,0,0);
+  assert.equal(f.sun.shadow.needsUpdate,true,'sun shadow must update on second frame');
+  f.renderer.shadowMap.render([f.sun],f.scene,f.camera);
+  assert.equal(f.renders.filter(r=>r.light===f.sun).length,2);
+  f.settings.shadowRefreshSeconds=.5;
+  f.atmosphere.tick(1000/60*2,0,0);
+  f.renderer.shadowMap.render([f.sun],f.scene,f.camera);
+  assert.equal(f.renders.filter(r=>r.light===f.sun).length,3,
+    'switching to a timed interval immediately refreshes the map');
+  f.atmosphere.tick(1000/60*3,0,0);
+  assert.equal(f.sun.shadow.needsUpdate,false,
+    'timed mode must not update the forest shadow map every frame');
+  f.atmosphere.dispose();
+});
+
 test('new crafted structures enter cached forest shadows on invalidation',()=>{
   const f=fixture();
   f.atmosphere.tick(0,0,0);

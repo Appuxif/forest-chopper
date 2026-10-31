@@ -264,7 +264,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     sunBody.position.copy(camera.position).addScaledVector(sunVector,210);
     moonBody.position.copy(camera.position).addScaledVector(moonVector,210);
     const radius=Math.max(20,Math.min(100,settings.shadowDistance??SHADOW_TREE_RADIUS));
-    const interval=Math.max(1000,Math.min(5000,
+    const interval=Math.max(0,Math.min(5000,
       (settings.shadowRefreshSeconds??SHADOW_UPDATE_MS/1000)*1000));
     const settingsChanged=radius!==shadowRadius || interval!==refreshInterval ||
       quality!==settings.quality;
@@ -305,7 +305,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
       characterLight.updateMatrixWorld();
       characterLight.shadow.needsUpdate=true;
     }
-    // Tree map still updates only once per selected 1–5s interval.
+    // Zero refresh interval updates the tree shadow map each rendered frame.
     if(!treeDue)return;
     // Refresh on schedule even while the local player stands still:
     // remote players (and idle animations) can keep moving independently.
