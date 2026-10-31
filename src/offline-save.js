@@ -1,5 +1,6 @@
 import {validBench,MAX_BENCHES} from './crafting.js';
 import {validItem} from './inventory.js';
+import {RESOURCE_RESPAWN_SECONDS} from './resource-zones.js';
 // Offline-only world snapshots. Server saves are independent and authoritative.
 // This module intentionally never reads/writes the multiplayer world JSON.
 export const OFFLINE_SAVE_KEY = 'forest-chopper:offline-world:v1';
@@ -48,10 +49,19 @@ export function parseOfflineSave(raw) {
         ||!validItem(box.item))return null;
       if(box.expires_at>Date.now()/1000)boxes.push({id:box.id,x:box.x,z:box.z,expires_at:box.expires_at,item:box.item});
     }
+    const cooldowns={};
+    const rawCooldowns=data.resource_cooldowns??{};
+    if(!rawCooldowns||typeof rawCooldowns!=='object'||Array.isArray(rawCooldowns)
+      ||Object.keys(rawCooldowns).length>100000)return null;
+    for(const [id,expires] of Object.entries(rawCooldowns)){
+      if(!/^-?\d+,-?\d+:[01]$/.test(id)||!Number.isFinite(expires)
+        ||expires>Date.now()/1000+RESOURCE_RESPAWN_SECONDS)return null;
+      if(expires>Date.now()/1000)cooldowns[id]=expires;
+    }
     const furniture=[];
     for(const item of data.furniture ?? []){if(!validBench(item))return null;furniture.push({kind:'bench',x:item.x,z:item.z,orientation:item.orientation});}
     return {
-      furniture,boxes,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
+      furniture,boxes,resource_cooldowns:cooldowns,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
     };
   } catch {
@@ -79,6 +89,7 @@ export function createOfflineSave(ctx, {
       furniture: ctx.crafting?.snapshot() ?? [],
       inventory:ctx.inventory?.serialize?.()??undefined,
       boxes:ctx.groundBoxes?.snapshot?.()??[],
+      resource_cooldowns:ctx.forestResources?.snapshotCooldowns?.()??{},
     };
   }
   function save() {
@@ -108,6 +119,7 @@ export function createOfflineSave(ctx, {
     const state = parseOfflineSave(raw);
     if (!state) return false;
     if(ctx.inventory&&!ctx.inventory.restore(state.inventory,state.wood))return false;
+    if(ctx.forestResources&&!ctx.forestResources.restoreCooldowns(state.resource_cooldowns))return false;
     ctx.seed = state.seed;
     ctx.wood = state.wood;ctx.cuts = state.cuts;
     ctx.px = state.position.x;ctx.pz = state.position.z;

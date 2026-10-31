@@ -10,7 +10,7 @@ from pathlib import Path
 
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import connect
-from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resources_update, resource_behind, inv_add, BOX_TTL_SECONDS, RESOURCE_LIMIT
+from forest_server import World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, inv_add, BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
 
 
 class WorldTests(unittest.IsolatedAsyncioTestCase):
@@ -295,10 +295,11 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 node=next(n for n in wa['resources'] if n['kind'] in ('stone','branch'))
                 owner.update(x=node['x'],z=node['z'])
                 await alice.send(json.dumps({'type':'collect_resource','id':node['id']}))
-                await self.receive(alice,'resources_state')
+                self.assertEqual((await self.receive(alice,'resource_remove'))['id'],node['id'])
+                self.assertEqual((await self.receive(bob,'resource_remove'))['id'],node['id'])
                 state=await self.receive(alice,'inventory_state')
                 self.assertEqual(sum(x['count'] for x in state['inventory']['slots'] if x and x['id']==node['kind']),1)
-                self.assertNotIn(node['id'],owner['resources'])
+                self.assertIn(node['id'],self.world.resource_cooldowns)
                 # Server makes crafting authoritative; 3 branches + 2 stones.
                 inv_add(owner['inventory'],{'id':'branch','count':3})
                 inv_add(owner['inventory'],{'id':'stone','count':2})
@@ -337,76 +338,81 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(12,self.world.boxes)
         self.assertNotIn(12,World(self.path).boxes)
 
-    async def test_ephemeral_resources_only_exist_within_10m_and_are_not_world_saved(self):
-        player={'x':0,'z':0,'last_resources':-9999,'resources':{},'resource_seq':0}
-        first=resources_update(player,3)
-        self.assertGreater(len(first['resources']),0)
-        self.assertLessEqual(len(first['resources']),RESOURCE_LIMIT)
-        self.assertTrue(all(3<=math.hypot(n['x'],n['z'])<=10 for n in first['resources']))
-        self.assertTrue(all(resource_behind(0,0,0,n['x'],n['z']) for n in first['resources']))
-        player['x']=50;player['z']=50
-        second=resources_update(player,7)
-        self.assertGreater(len(second['resources']),0)
-        self.assertLessEqual(len(second['resources']),RESOURCE_LIMIT)
-        self.assertTrue(all(math.hypot(n['x']-50,n['z']-50)<=10 for n in second['resources']))
-        self.assertFalse(set(n['id'] for n in first['resources']) & set(n['id'] for n in second['resources']))
+    async def test_seeded_resources_are_stable_and_in_nine_cells(self):
+        key='-3,7:0'
+        self.assertEqual(resource_info(key,123456),
+            {'id':'-3,7:0','kind':'branch','x':-23.75,'z':75.69})
+        self.assertEqual(resource_info('-3,7:1',123456),
+            {'id':'-3,7:1','kind':'branch','x':-25.92,'z':77.06})
+        self.assertIsNone(resource_info('garbage',123456))
+        first=resource_nearby(123456,0,0,{})
+        self.assertEqual(len(first),RESOURCE_LIMIT)
+        self.assertEqual(first,resource_nearby(123456,0,0,{}))
+        self.assertEqual(first,resource_nearby(123456,0,0,{},now=time.time()+1000))
+        self.assertEqual(resource_cell(-.1,10),(-1,1))
+        self.assertEqual(len(set(i['id'] for i in first)),RESOURCE_LIMIT)
+        self.assertTrue(any(i['z']<0 for i in first))
+        self.assertTrue(any(i['z']>0 for i in first))
+        second=resource_nearby(123456,51,0,{})
+        self.assertNotEqual(first,second)
+        self.assertEqual(first,resource_nearby(123456,0,0,{}),
+                         'returning to zone does not reroll its positions')
+
+    async def test_shared_pickup_prevents_duplication_and_expires_in_ten_minutes(self):
+        async with connect(self.url) as alice:
+            welcome=await self.receive(alice,'welcome')
+            item=welcome['resources'][0]
+            async with connect(self.url) as bob:
+                other=await self.receive(bob,'welcome')
+                self.assertIn(item,other['resources'])
+                for player in self.world.clients.values():
+                    player.update(x=item['x'],z=item['z'])
+                await alice.send(json.dumps({'type':'collect_resource','id':item['id']}))
+                self.assertEqual((await self.receive(bob,'resource_remove'))['id'],item['id'])
+                self.assertEqual((await self.receive(alice,'resource_remove'))['id'],item['id'])
+                inventory=await self.receive(alice,'inventory_state')
+                self.assertEqual(sum(v['count'] for v in inventory['inventory']['slots'] if v and v['id']==item['kind']),1)
+                self.assertIn(item['id'],self.world.resource_cooldowns)
+                self.assertNotIn(item,resource_nearby(self.world.seed,0,0,self.world.resource_cooldowns))
+                await bob.send(json.dumps({'type':'collect_resource','id':item['id']}))
+                with self.assertRaises(asyncio.TimeoutError):
+                    await asyncio.wait_for(bob.recv(),.055)
+                deadline=self.world.resource_cooldowns[item['id']]
+                self.assertTrue(time.time()+599<deadline<=time.time()+601)
+                self.world.save()
+                self.assertIn(item['id'],World(self.path).resource_cooldowns)
+                self.assertEqual(await self.world.prune_resource_cooldowns(now=deadline-.1),[])
+                self.assertEqual(await self.world.prune_resource_cooldowns(now=deadline+.1),[item['id']])
+                self.assertIn(item,(await self.receive(alice,'resources_state'))['resources'])
+                self.assertIn(item,(await self.receive(bob,'resources_state'))['resources'])
+                self.assertNotIn(item['id'],World(self.path).resource_cooldowns)
+
+    async def test_cooldown_entries_are_saved_and_invalid_values_cannot_poison_world(self):
+        item=resource_nearby(self.world.seed,0,0,{})[0]
+        deadline=time.time()+200
+        self.world.resource_cooldowns[item['id']]=deadline
         self.world.save()
-        self.assertNotIn('resources',json.loads(self.path.read_text()))
+        fresh=World(self.path)
+        self.assertIn(item['id'],fresh.resource_cooldowns)
+        self.assertNotIn(item,resource_nearby(fresh.seed,0,0,fresh.resource_cooldowns))
+        self.assertIn(item,resource_nearby(fresh.seed,0,0,{},now=deadline+1))
+        bad=json.loads(self.path.read_text())
+        bad['resource_cooldowns']['not-a-resource']=deadline
+        self.path.write_text(json.dumps(bad))
+        with patch('forest_server.random.randrange',return_value=12345):
+            invalid=World(self.path)
+        self.assertEqual(invalid.seed,12345)
+        self.assertFalse(invalid.resource_cooldowns)
 
-    async def test_zones_only_spawn_behind_player_and_do_not_refill_a_standing_patch(self):
-        player={'x':0,'z':0,'yaw':0,'last_resources':-9999,
-                'resources':{},'resource_seq':0}
-        first=resources_update(player,3)
-        self.assertGreater(len(first['resources']),0)
-        self.assertLessEqual(len(first['resources']),10)
-        original={r['id'] for r in first['resources']}
-        self.assertTrue(all(resource_behind(0,0,0,r['x'],r['z']) for r in first['resources']))
-        self.assertTrue(all('zone' not in r for r in first['resources']))
-        self.assertIsNone(resources_update(player,6.1))
-        player['yaw']=math.pi
-        self.assertIsNone(resources_update(player,9.2),
-                          'turning around should not spawn more objects in the watched zone')
-        self.assertEqual(set(player['resources']),original)
-        self.assertLessEqual(len(player['resource_zones']),9)
-        for zone in player['resource_zones']:
-            self.assertTrue(all(isinstance(c,int) for c in zone))
-        # Picking up some items does not trigger a top-up while resources remain.
-        if len(original)>=3:
-            removed=next(iter(original))
-            del player['resources'][removed]
-            retained=set(player['resources'])
-            self.assertIsNone(resources_update(player,12.4))
-            self.assertEqual(set(player['resources']),retained)
-
-    async def test_multiplayer_does_not_broadcast_new_loot_when_player_turns_in_place(self):
+    async def test_player_heading_does_not_affect_seeded_generation(self):
         async with connect(self.url) as ws:
             welcome=await self.receive(ws,'welcome')
-            self.assertGreater(len(welcome['resources']),0)
             player=next(p for p in self.world.clients.values() if p['id']==welcome['id'])
-            ids=set(player['resources'])
-            # Do not wait three real seconds; force only the resource check due.
-            player['last_resources']=-9999
             await ws.send(json.dumps({'type':'hello','name':'Gatherer','resources':True}))
             await ws.send(json.dumps({'type':'move','x':0,'z':0,'yaw':math.pi}))
             with self.assertRaises(asyncio.TimeoutError):
-                await asyncio.wait_for(ws.recv(),.07)
-            self.assertEqual(set(player['resources']),ids)
-            self.assertTrue(all(n['z']>0 for n in player['resources'].values()))
-
-    async def test_zones_repopulate_only_after_leaving_and_coming_back(self):
-        player={'x':0,'z':0,'yaw':0,'last_resources':-9999,'resources':{},'resource_seq':0}
-        first=resources_update(player,3)
-        old={r['id'] for r in first['resources']}
-        player['x']=50;player['z']=50
-        second=resources_update(player,7)
-        self.assertGreater(len(second['resources']),0)
-        self.assertFalse(old.intersection(n['id'] for n in second['resources']))
-        self.assertTrue(all(resource_behind(50,50,0,n['x'],n['z']) for n in second['resources']))
-        player['x']=0;player['z']=0
-        third=resources_update(player,11)
-        self.assertGreater(len(third['resources']),0)
-        self.assertFalse(old.intersection(n['id'] for n in third['resources']))
-        self.assertTrue(all(resource_behind(0,0,0,n['x'],n['z']) for n in third['resources']))
+                await asyncio.wait_for(ws.recv(),.06)
+            self.assertEqual(self.world.resource_view(player)['resources'],welcome['resources'])
 
     async def test_invalid_furniture_save_does_not_crash_or_partially_restore(self):
         for malformed in ([], ['bench'], {'1': {'kind':'bench','x':float('nan'),'z':0,'orientation':0}}):

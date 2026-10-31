@@ -1,84 +1,74 @@
-// Transient, non-seeded resource zones. Each 10m square generates only once
-// while active; moving outside the neighbouring 3x3 zone grid forgets it.
-// No re-spawn while standing still (even after collecting every item).
+// Deterministic loot generated only for the player's nearby 3x3 grid of cells.
+// Only collected IDs and respawn deadlines require persistence.
 export const RESOURCE_ZONE_SIZE=10;
-export const RESOURCE_RADIUS=10;
-export const RESOURCE_LIMIT=10;
 export const RESOURCE_PER_ZONE=2;
-export const RESOURCE_UPDATE_MS=3000;
-export const RESOURCE_VIEW_DOT=-0.25; // spawn only distinctly behind the player
+export const RESOURCE_LIMIT=9*RESOURCE_PER_ZONE;
+export const RESOURCE_UPDATE_MS=1000;
+export const RESOURCE_RESPAWN_SECONDS=600;
 
 export function zoneCoords(x,z){
   return [Math.floor(x/RESOURCE_ZONE_SIZE),Math.floor(z/RESOURCE_ZONE_SIZE)];
 }
-export function behindPlayer(x,z,yaw,pointX,pointZ){
-  const dx=pointX-x,dz=pointZ-z,distance=Math.hypot(dx,dz);
-  if(distance<1e-6)return false;
-  // Player forward in Three.js world space: (-sin(yaw),-cos(yaw)).
-  return (dx*-Math.sin(yaw)+dz*-Math.cos(yaw))/distance<=RESOURCE_VIEW_DOT;
+export function resourceHash(seed,zx,zz,index,channel){
+  let h=(seed>>>0)^Math.imul(zx,0x9e3779b1)^Math.imul(zz,0x85ebca77)
+    ^Math.imul(index+1,0xc2b2ae3d)^Math.imul(channel+1,0x27d4eb2f);
+  h^=h>>>16;h=Math.imul(h,0x7feb352d);h^=h>>>15;
+  h=Math.imul(h,0x846ca68b);h^=h>>>16;
+  return (h>>>0)/4294967296;
 }
-
-export function createResourceZones({random=Math.random}={}){
-  let resources=new Map(),zones=new Map(),nextId=0,lastCell=null;
-  function update({x,z,yaw=0}){
-    const [cx,cz]=zoneCoords(x,z);
-    const currentCell=cx+','+cz;
-    const enteredNewCell=currentCell!==lastCell;
-    lastCell=currentCell;
-    let changed=false;
-    // Keep the current square and its 8 neighbours. Leaving them starts a
-    // fresh visit, but never restores previously collected items by seed.
-    for(const key of zones.keys()){
-      const [zx,zz]=key.split(',').map(Number);
-      if(Math.abs(zx-cx)>1||Math.abs(zz-cz)>1){
-        zones.delete(key);changed=true;
-      }
+export function zoneResources(seed,zx,zz){
+  const result=[];
+  for(let i=0;i<RESOURCE_PER_ZONE;i++){
+    const u=resourceHash(seed,zx,zz,i,0),v=resourceHash(seed,zx,zz,i,1);
+    result.push({
+      id:String(zx)+','+String(zz)+':'+String(i),
+      kind:resourceHash(seed,zx,zz,i,2)<.52?'branch':'stone',
+      x:Math.round((zx+.14+u*.72)*RESOURCE_ZONE_SIZE*100)/100,
+      z:Math.round((zz+.14+v*.72)*RESOURCE_ZONE_SIZE*100)/100,
+    });
+  }
+  return result;
+}
+export function nearbyResources(seed,x,z,cooldowns={},now=Date.now()/1000){
+  const [cx,cz]=zoneCoords(x,z),result=[];
+  for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
+    for(const resource of zoneResources(seed,cx+dx,cz+dz)){
+      if((cooldowns[resource.id]??0)<=now)result.push(resource);
     }
-    for(const [id,r] of resources){
-      if(!zones.has(r.zone)||Math.hypot(r.x-x,r.z-z)>RESOURCE_RADIUS){
-        resources.delete(id);changed=true;
-      }
-    }
-    // Do not refill a partly collected patch while the player stands still.
-    // Entering a new square may activate new adjacent zones.
-    if(!enteredNewCell && resources.size>=2)return changed;
-    // Visit current zone first, then nearest neighbours. Maximum of 10 live
-    // instances total, regardless of how many zones are nearby.
-    const cells=[];
-    for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
-      const zx=cx+dx,zz=cz+dz;
-      const centerX=(zx+.5)*RESOURCE_ZONE_SIZE,centerZ=(zz+.5)*RESOURCE_ZONE_SIZE;
-      cells.push({zx,zz,key:zx+','+zz,dist:Math.hypot(centerX-x,centerZ-z)});
-    }
-    cells.sort((a,b)=>a.dist-b.dist);
-    for(const cell of cells){
-      if(zones.has(cell.key))continue;
-      if(resources.size>=RESOURCE_LIMIT)break; // Leave untouched zones pending.
-      // Pick candidate points INSIDE this zone, and only in the rear sector.
-      // No eligible points => try again after the player turns (not a visit).
-      const points=[];
-      for(let i=0;i<32&&points.length<RESOURCE_PER_ZONE;i++){
-        const px=(cell.zx+random())*RESOURCE_ZONE_SIZE;
-        const pz=(cell.zz+random())*RESOURCE_ZONE_SIZE;
-        const dist=Math.hypot(px-x,pz-z);
-        if(dist<3||dist>RESOURCE_RADIUS||!behindPlayer(x,z,yaw,px,pz))continue;
-        if(points.some(p=>Math.hypot(px-p.x,pz-p.z)<.9)
-           || [...resources.values()].some(p=>Math.hypot(px-p.x,pz-p.z)<.9))continue;
-        points.push({x:px,z:pz});
-      }
-      if(!points.length)continue;
-      zones.set(cell.key,true);
-      for(const point of points){
-        if(resources.size>=RESOURCE_LIMIT)break;
-        const id=++nextId;
-        resources.set(id,{id,kind:random()<.52?'branch':'stone',...point,zone:cell.key});
-      }
-      changed=true;
-    }
+  }
+  return result;
+}
+export function createResourceZones({seed=0,now=()=>Date.now()/1000}={}){
+  let worldSeed=seed,resources=[],cooldowns={};
+  function update({x,z,seed:nextSeed=worldSeed}){
+    worldSeed=nextSeed;
+    const time=now();
+    for(const [id,expires] of Object.entries(cooldowns))if(expires<=time)delete cooldowns[id];
+    const next=nearbyResources(worldSeed,x,z,cooldowns,time);
+    const changed=next.length!==resources.length||next.some((r,i)=>r.id!==resources[i]?.id);
+    if(changed)resources=next;
     return changed;
   }
-  function collect(id){return resources.delete(id);}
-  function clear(){resources.clear();zones.clear();lastCell=null;}
-  return {update,collect,clear,get nodes(){return [...resources.values()]},
-    get zones(){return [...zones.keys()]},get count(){return resources.size}};
+  function collect(id){
+    if(!resources.some(r=>r.id===id))return false;
+    cooldowns[id]=now()+RESOURCE_RESPAWN_SECONDS;
+    resources=resources.filter(r=>r.id!==id);
+    return true;
+  }
+  function restore(data){
+    if(!data||typeof data!=='object'||Array.isArray(data))return false;
+    const fresh={};
+    for(const [id,expires] of Object.entries(data)){
+      if(!/^-?\d+,-?\d+:[01]$/.test(id)||!Number.isFinite(expires)
+         ||expires>now()+RESOURCE_RESPAWN_SECONDS)return false;
+      if(expires>now())fresh[id]=expires;
+    }
+    cooldowns=fresh;resources=[];return true;
+  }
+  function clear({keepCooldowns=false}={}){
+    resources=[];
+    if(!keepCooldowns)cooldowns={};
+  }
+  return {update,collect,restore,clear,get nodes(){return resources.map(x=>({...x}))},
+    get cooldowns(){return {...cooldowns}},get count(){return resources.length}};
 }

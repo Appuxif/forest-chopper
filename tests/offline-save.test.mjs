@@ -132,3 +132,28 @@ test('boxes save their UTC expiry, reload until the 60-minute deadline, then sta
   assert.equal(restored.save.restore(),true);
   assert.deepEqual(actual,[dropped]);
 });
+
+test('collected seeded resources keep respawn deadlines across offline saves',()=>{
+  const original=fixture();
+  const now=Date.now()/1000;
+  const deadline=now+300;
+  const cooldowns={'-1,0:0':deadline,'2,-3:1':now+500};
+  original.ctx.forestResources={snapshotCooldowns:()=>cooldowns};
+  assert.equal(original.save.save(),true);
+  const payload=original.storage.getItem(OFFLINE_SAVE_KEY);
+  assert.deepEqual(parseOfflineSave(payload).resource_cooldowns,cooldowns);
+  const restored=fixture(payload);
+  let accepted=null;
+  restored.ctx.forestResources={restoreCooldowns(value){accepted=value;return true;}};
+  assert.equal(restored.save.restore(),true);
+  assert.deepEqual(accepted,cooldowns);
+  const stale=JSON.parse(payload);
+  stale.resource_cooldowns['-1,0:0']=now-1;
+  assert.deepEqual(parseOfflineSave(JSON.stringify(stale)).resource_cooldowns,
+    {'2,-3:1':cooldowns['2,-3:1']});
+  stale.resource_cooldowns['invalid-id']=now+10;
+  assert.equal(parseOfflineSave(JSON.stringify(stale)),null);
+  delete stale.resource_cooldowns['invalid-id'];
+  stale.resource_cooldowns['-1,0:0']=now+50000;
+  assert.equal(parseOfflineSave(JSON.stringify(stale)),null);
+});

@@ -1,7 +1,6 @@
-// Branches and stones: one-time, behind-camera generation per active 10m zone.
-// The multiplayer server applies the same rules and owns pickup state.
-import {createResourceZones,RESOURCE_RADIUS,RESOURCE_LIMIT,RESOURCE_UPDATE_MS} from './resource-zones.js';
-export {RESOURCE_RADIUS,RESOURCE_LIMIT};
+// Deterministic branch/stone positions in the nearby 3x3 grid. Server-authoritative cooldowns online.
+import {createResourceZones,RESOURCE_LIMIT,RESOURCE_UPDATE_MS} from './resource-zones.js';
+export {RESOURCE_LIMIT};
 export function createForestResources(ctx){
  const {THREE,scene}=ctx;
  const models={
@@ -24,8 +23,8 @@ export function createForestResources(ctx){
    for(const node of nodes.values()){
     if(node.kind!==kind)continue;
     dummy.position.set(node.x,node.kind==='branch'?.10:.17,node.z);
-    dummy.rotation.set(node.kind==='branch'?Math.PI/2:0,node.kind==='branch'?node.id*.79:0,node.kind==='stone'?node.id*.47:0);
-    dummy.scale.setScalar(node.kind==='stone'?.7+(node.id%4)*.13:1);
+    dummy.rotation.set(node.kind==='branch'?Math.PI/2:0,node.kind==='branch'?node.x*.79:0,node.kind==='stone'?node.z*.47:0);
+    dummy.scale.setScalar(node.kind==='stone'?.7+(Math.abs(Math.floor(node.x*17+node.z*11))%4)*.13:1);
     dummy.updateMatrix();
     mesh.setMatrixAt(index++,dummy.matrix);
    }
@@ -35,7 +34,7 @@ export function createForestResources(ctx){
  function set(resources){
   nodes.clear();
   for(const r of resources??[]){
-   if(!Number.isInteger(r.id)||!['branch','stone'].includes(r.kind)
+   if(typeof r.id!=='string'||!['branch','stone'].includes(r.kind)
      ||!Number.isFinite(r.x)||!Number.isFinite(r.z)||nodes.size>=RESOURCE_LIMIT)continue;
    nodes.set(r.id,{id:r.id,kind:r.kind,x:r.x,z:r.z});
   }
@@ -45,11 +44,15 @@ export function createForestResources(ctx){
   if(now-lastTick<RESOURCE_UPDATE_MS)return;
   lastTick=now;
   if(ctx.isOnline?.())return;
-  if(spawner.update({x:ctx.px,z:ctx.pz,yaw:ctx.yaw})){
+  if(spawner.update({x:ctx.px,z:ctx.pz,seed:ctx.seed})){
     nodes.clear();
     for(const item of spawner.nodes)nodes.set(item.id,item);
     refresh();
   }
+ }
+ function remove(id){
+  if(!nodes.delete(id))return false;
+  refresh();return true;
  }
  function closest(max=2.4){
   let best=null,dist=max;
@@ -70,11 +73,16 @@ export function createForestResources(ctx){
   ctx.notify?.(near.kind==='branch'?'🌿 Ветка собрана':'🪨 Камень собран','success','resource-collected');
   return true;
  }
+ function restoreCooldowns(data){
+  if(!spawner.restore(data))return false;
+  nodes.clear();lastTick=-Infinity;refresh();return true;
+ }
  function clear(){nodes.clear();spawner.clear();lastTick=-Infinity;refresh();}
  function dispose(){
   clear();
   for(const mesh of Object.values(meshes))scene.remove(mesh);
   for(const {geo,mat} of Object.values(models)){geo.dispose();mat.dispose();}
  }
- return {tick,set,collect,closest,clear,dispose,get count(){return nodes.size},get nodes(){return [...nodes.values()]}};
+ return {tick,set,remove,collect,closest,clear,dispose,restoreCooldowns,
+  snapshotCooldowns:()=>spawner.cooldowns,get count(){return nodes.size},get nodes(){return [...nodes.values()]}};
 }

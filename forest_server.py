@@ -139,71 +139,52 @@ def inv_take(inv,kind,amount):
             amount-=n
     return True
 
+# Seeded resource positions are shared by every player. Only respawn deadlines
+# for COLLECTED IDs live in the world save.
 RESOURCE_ZONE_SIZE=10
-RESOURCE_RADIUS=10
-RESOURCE_LIMIT=10
 RESOURCE_PER_ZONE=2
-RESOURCE_VIEW_DOT=-0.25
+RESOURCE_LIMIT=9*RESOURCE_PER_ZONE
+RESOURCE_RESPAWN_SECONDS=600
 
-def resource_behind(x,z,yaw,px,pz):
-    dx,dz=px-x,pz-z
-    distance=math.hypot(dx,dz)
-    return distance>1e-6 and (dx*-math.sin(yaw)+dz*-math.cos(yaw))/distance<=RESOURCE_VIEW_DOT
+def resource_hash(seed,zx,zz,index,channel):
+    mask=0xffffffff
+    h=((seed&mask)^((zx*0x9e3779b1)&mask)^((zz*0x85ebca77)&mask)
+       ^(((index+1)*0xc2b2ae3d)&mask)^(((channel+1)*0x27d4eb2f)&mask))
+    h=(h^(h>>16))&mask
+    h=(h*0x7feb352d)&mask
+    h=(h^(h>>15))&mask
+    h=(h*0x846ca68b)&mask
+    h=(h^(h>>16))&mask
+    return h/4294967296
 
-def resources_update(player,now):
-    # The caller is responsible for only sending a state update when changed.
-    if now-player['last_resources']<3:return None
-    player['last_resources']=now
-    x,z,yaw=player['x'],player['z'],player.get('yaw',0)
-    cx,cz=math.floor(x/RESOURCE_ZONE_SIZE),math.floor(z/RESOURCE_ZONE_SIZE)
-    current=(cx,cz)
-    entered=current!=player.get('resource_last_cell')
-    player['resource_last_cell']=current
-    zones=player.setdefault('resource_zones',set())
-    resources=player['resources']
-    changed=False
-    # Forget a zone after its 3x3 neighbourhood is left. Re-entering it will
-    # create a fresh random set, never reconstruct the old set from a seed.
-    for key in list(zones):
-        if abs(key[0]-cx)>1 or abs(key[1]-cz)>1:
-            zones.remove(key);changed=True
-    for ident,item in list(resources.items()):
-        if item.get('zone') not in zones or math.hypot(item['x']-x,item['z']-z)>RESOURCE_RADIUS:
-            del resources[ident];changed=True
-    # Do not top up a partially collected patch in front of a stationary user.
-    if not entered and len(resources)>=2:
-        return {'type':'resources_state','resources':[{k:v for k,v in item.items() if k!='zone'} for item in resources.values()]} if changed else None
-    cells=[(a,b) for a in range(cx-1,cx+2) for b in range(cz-1,cz+2)]
-    cells.sort(key=lambda pair:math.hypot((pair[0]+.5)*RESOURCE_ZONE_SIZE-x,
-                                          (pair[1]+.5)*RESOURCE_ZONE_SIZE-z))
-    for cell in cells:
-        if cell in zones:continue
-        if len(resources)>=RESOURCE_LIMIT:break
-        points=[]
-        for _ in range(32):
-            if len(points)>=RESOURCE_PER_ZONE:break
-            px=(cell[0]+random.random())*RESOURCE_ZONE_SIZE
-            pz=(cell[1]+random.random())*RESOURCE_ZONE_SIZE
-            distance=math.hypot(px-x,pz-z)
-            if distance<3 or distance>RESOURCE_RADIUS or not resource_behind(x,z,yaw,px,pz):
-                continue
-            if any(math.hypot(px-p[0],pz-p[1])<.9 for p in points) or any(
-                math.hypot(px-r['x'],pz-r['z'])<.9 for r in resources.values()):
-                continue
-            points.append((round(px,2),round(pz,2)))
-        if not points:continue
-        zones.add(cell)
-        for px,pz in points:
-            if len(resources)>=RESOURCE_LIMIT:break
-            player['resource_seq']+=1
-            ident=player['resource_seq']
-            resources[ident]={'id':ident,'kind':random.choice(('branch','stone')),
-                              'x':px,'z':pz,'zone':cell}
-        changed=True
-    if not changed:return None
-    # Zone keys are internal implementation state; never transmit them.
-    return {'type':'resources_state','resources':[
-        {k:v for k,v in item.items() if k!='zone'} for item in resources.values()]}
+def resource_info(key,seed):
+    try:
+        pair,index=key.split(':')
+        zx,zz=map(int,pair.split(','))
+        i=int(index)
+        if not(-24001<=zx<=24001 and -24001<=zz<=24001 and 0<=i<RESOURCE_PER_ZONE):
+            return None
+        u,v=(resource_hash(seed,zx,zz,i,axis) for axis in (0,1))
+        return {'id':f'{zx},{zz}:{i}',
+                'kind':'branch' if resource_hash(seed,zx,zz,i,2)<.52 else 'stone',
+                'x':round((zx+.14+u*.72)*RESOURCE_ZONE_SIZE,2),
+                'z':round((zz+.14+v*.72)*RESOURCE_ZONE_SIZE,2)}
+    except (AttributeError,ValueError,TypeError):return None
+
+def resource_cell(x,z):
+    return math.floor(x/RESOURCE_ZONE_SIZE),math.floor(z/RESOURCE_ZONE_SIZE)
+
+def resource_nearby(seed,x,z,cooldowns,now=None):
+    current=time.time() if now is None else now
+    cx,cz=resource_cell(x,z)
+    result=[]
+    for dx in range(-1,2):
+        for dz in range(-1,2):
+            for i in range(RESOURCE_PER_ZONE):
+                info=resource_info(f'{cx+dx},{cz+dz}:{i}',seed)
+                if info and cooldowns.get(info['id'],0)<=current:
+                    result.append(info)
+    return result
 
 
 def inventory_view(player):
@@ -214,7 +195,7 @@ def inventory_view(player):
 class World:
     def __init__(self,path,bot_token=""):
         self.path=Path(path);self.clients={};self.next_id=1;self.seed=random.randrange(1,999999)
-        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.boxes={};self.next_box=1;self.community_cuts=0;self.chat=[];self.chat_seq=0
+        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.boxes={};self.next_box=1;self.resource_cooldowns={};self.community_cuts=0;self.chat=[];self.chat_seq=0
         self.bots=BotManager(self);self.bot_token=bot_token
         if self.path.exists():
             try:
@@ -246,15 +227,24 @@ class World:
                     if type(box.get('expires_at')) not in (int,float) or not math.isfinite(box['expires_at']):raise ValueError('Invalid expiry')
                     if box['expires_at']>time.time():boxes[ident]=box
                 self.boxes=boxes;self.next_box=max((int(k) for k in boxes_raw),default=0)+1
+                cooldown_raw=data.get('resource_cooldowns',{})
+                if not isinstance(cooldown_raw,dict) or len(cooldown_raw)>100000:
+                    raise ValueError('Invalid resource cooldowns')
+                cooldowns={}
+                for key,value in cooldown_raw.items():
+                    if resource_info(key,seed) is None or type(value) not in (int,float) or not math.isfinite(value):
+                        raise ValueError('Invalid resource cooldown entry')
+                    if time.time()<value<=time.time()+RESOURCE_RESPAWN_SECONDS:
+                        cooldowns[key]=value
                 community_cuts=data.get('community_cuts',0)
                 if type(community_cuts) is not int or not 0<=community_cuts<=1_000_000_000:
                     raise ValueError('Invalid community progress')
-                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.community_cuts=community_cuts
+                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.community_cuts=community_cuts;self.resource_cooldowns=cooldowns
                 self.next_log=max(logs,default=0)+1
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
-        data={'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'boxes':self.boxes,'community_cuts':self.community_cuts}
+        data={'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts}
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,self.path)
     async def prune_boxes(self,now=None):
         now=time.time() if now is None else now
@@ -265,10 +255,28 @@ class World:
             for ident in expired:await self.broadcast({'type':'box_remove','id':ident})
         return expired
 
+    def resource_view(self,player,now=None):
+        return {'type':'resources_state','resources':resource_nearby(
+            self.seed,player['x'],player['z'],self.resource_cooldowns,now)}
+
+    async def prune_resource_cooldowns(self,now=None):
+        current=time.time() if now is None else now
+        expired=[key for key,deadline in self.resource_cooldowns.items() if deadline<=current]
+        if not expired:return []
+        for key in expired:del self.resource_cooldowns[key]
+        self.save()
+        for ws,player in list(self.clients.items()):
+            cx,cz=resource_cell(player['x'],player['z'])
+            if any(abs(int(key.split(':')[0].split(',')[0])-cx)<=1 and
+                   abs(int(key.split(':')[0].split(',')[1])-cz)<=1 for key in expired):
+                await self.send(ws,self.resource_view(player,current))
+        return expired
+
     async def box_expiration_loop(self):
         while True:
-            await asyncio.sleep(15)
+            await asyncio.sleep(1)
             await self.prune_boxes()
+            await self.prune_resource_cooldowns()
 
     async def send(self,ws,data):
         try:await ws.send(json.dumps(data,separators=(',',':')))
@@ -355,11 +363,10 @@ class World:
             await self.bot_handler(ws);return
         if len(self.clients)+len(self.bots.bots)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
-        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'bag_tier':0,'resources':{},'last_resources':-10000,'resource_seq':0,'resources_enabled':False,'resource_zones':set(),'resource_last_cell':None}
+        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'bag_tier':0}
         self.clients[ws]=player
         await self.prune_boxes()
-        resources_update(player,time.monotonic())
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':[{k:v for k,v in item.items() if k!='zone'} for item in player['resources'].values()],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -369,13 +376,19 @@ class World:
                 kind=data.get('type');now=time.monotonic()
                 if kind=='collect_resource':
                     ident=data.get('id')
-                    if type(ident) is not int:continue
-                    resource=player['resources'].get(ident)
-                    if not resource or math.hypot(player['x']-resource['x'],player['z']-resource['z'])>2.5:continue
+                    if not isinstance(ident,str) or len(ident)>40:continue
+                    resource=resource_info(ident,self.seed)
+                    if resource is None or resource['id']!=ident:continue
+                    cx,cz=resource_cell(player['x'],player['z'])
+                    rx,rz=resource_cell(resource['x'],resource['z'])
+                    if abs(rx-cx)>1 or abs(rz-cz)>1:continue
+                    if math.hypot(player['x']-resource['x'],player['z']-resource['z'])>2.5:continue
+                    if self.resource_cooldowns.get(ident,0)>time.time():continue
                     if not inv_add(player['inventory'],{'id':resource['kind'],'count':1}):
                         await self.send(ws,{'type':'action_denied','reason':'Сумка заполнена'});continue
-                    del player['resources'][ident]
-                    await self.send(ws,{'type':'resources_state','resources':[{k:v for k,v in item.items() if k!='zone'} for item in player['resources'].values()]})
+                    self.resource_cooldowns[ident]=time.time()+RESOURCE_RESPAWN_SECONDS
+                    self.save()
+                    await self.broadcast({'type':'resource_remove','id':ident})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='drop_item':
                     slot=data.get('slot')
@@ -426,7 +439,6 @@ class World:
                         await self.send(ws,{'type':'action_denied','reason':'Нет свободного слота для топора'});continue
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='hello':
-                    player['resources_enabled']=data.get('resources') is True
                     player['name']=str(data.get('name','Игрок'))[:22].strip() or f'Игрок {uid}'
                     await self.broadcast({'type':'join','player':{k:player[k] for k in ('id','name','x','z','y','yaw','jumping','axe_equipped')}},ws)
                 elif kind=='ping':
@@ -467,10 +479,12 @@ class World:
                     if not all(map(math.isfinite,(x,z,yaw,y))) or y<0 or y>12 or abs(x)>240000 or abs(z)>240000:continue
                     dt=max(.05,now-player['last_pos']);distance=math.hypot(x-player['x'],z-player['z'])
                     if distance>max(4,dt*11) or not can_stand(self,x,z,y):continue
+                    old_x,old_z=player['x'],player['z']
                     player.update(x=x,z=z,y=y,yaw=yaw,jumping=jumping,last_pos=now)
                     await self.broadcast({'type':'move','id':uid,'x':x,'z':z,'y':y,'yaw':yaw,'jumping':jumping},ws)
-                    resources=resources_update(player,now)
-                    if resources and player['resources_enabled']:await self.send(ws,resources)
+                    cell=resource_cell(x,z)
+                    if cell!=resource_cell(old_x,old_z):
+                        await self.send(ws,self.resource_view(player))
                 elif kind=='equip':
                     if data.get('item') not in ('axe',None):continue
                     player['axe_equipped']=player['inventory'][player['selected']] is not None and player['inventory'][player['selected']]['id']=='axe'

@@ -155,6 +155,7 @@ function connectSocket(ws) {
    if(ctx.inventory?.acceptServer?.(d.inventory,d.wood))ctx.wood=d.wood;
    break;
  case 'resources_state':ctx.forestResources?.set?.(d.resources);break;
+ case 'resource_remove':ctx.forestResources?.remove?.(d.id);break;
  case 'box_add':ctx.groundBoxes?.add?.(d.box);break;
  case 'box_remove':ctx.groundBoxes?.remove?.(d.id);break;
  case 'action_denied':ctx.notify?.(String(d.reason||'Действие отклонено'),'warning','inventory-denied');break;
