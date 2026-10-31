@@ -1,5 +1,6 @@
 // Low-poly, static grass carpet: cached instanced tiles with two distance LODs.
-import {gladesForTile,gladeAtPoint,gladeDensity} from './grass-glades.js?v=20261030-glades-soft2';
+import {gladesForTile,gladeAtPoint,gladeDensity} from './grass-glades.js?v=20261031-ponds1';
+import {lakesNearTile,lakeNormalized} from './lakes.js';
 // One shared geometry/material per LOD, no individual scene objects per tuft,
 // and no full-ring matrix uploads whenever the player walks a meter.
 export const MICRO_GRASS_CELL = 1.1;
@@ -46,6 +47,7 @@ export function generateGrassTile(seed, tileX, tileZ, tileSize, density, tier) {
   // Glades replace local grass density (including when the player's slider
   // is low), so generate enough candidates for the densest overlapping glade.
   const glades=gladesForTile(seed,x0,z0,tileSize);
+  const nearbyLakes=lakesNearTile(seed,x0,z0,tileSize);
   const maxGladeDensity=glades.some(g=>g.kind===2) ? 46
     : glades.some(g=>g.kind===3) ? 42 : 0;
   const samplingDensity=Math.max(density,maxGladeDensity);
@@ -65,6 +67,12 @@ export function generateGrassTile(seed, tileX, tileZ, tileSize, density, tier) {
     const x = x0 + u * tileSize, z = z0 + v * tileSize;
     if (Math.abs(z) < 1.75) continue; // preserve the existing clear trail
     gladeAtPoint(x,z,glades,patchState);
+    if(patchState.kind===5&&patchState.weight>.15)continue;
+    // Avoid generating tens of thousands of blades on the sandy lakebed.
+    if(nearbyLakes.some(lake=>{
+      const u=lakeNormalized(lake,x,z);
+      return u!==null&&u<.97;
+    }))continue;
     const requestedDensity=gladeDensity(patchState.kind);
     const localDensity=requestedDensity===null ? density
       : density+(requestedDensity-density)*patchState.weight;
@@ -345,7 +353,7 @@ export function createMicroGrass(ctx) {
     mesh.userData.grassTier=layer.tier;
     for(let i=0;i<samples.length;i++){
       const item=samples[i];
-      dummy.position.set(item.x,0,item.z);
+      dummy.position.set(item.x,ctx.terrain.heightAt(item.x,item.z),item.z);
       dummy.rotation.set(0,item.angle,0);
       dummy.scale.setScalar(item.scale);
       dummy.updateMatrix();

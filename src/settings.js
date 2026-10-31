@@ -89,7 +89,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     storage = null;
   }
   const state = sanitizeSettings(persisted);
-  let connected = false, latency = null, lastRate = null, lastDiagnostics = '';
+  let connected = false, latency = null, lastRate = null, lastDiagnostics = '', lastPosition = '';
   const css = doc.createElement('style');
   css.textContent = `
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
@@ -307,7 +307,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const fovSlider = panel.querySelector('#fc-fov');
   const fovOutput = panel.querySelector('#fc-fov-value');
   const networkLabel = () => connected ? `Ping ${latency === null ? '—' : latency + ' ms'}` : 'offline';
-  const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
+  const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}${lastPosition ? '\n'+lastPosition : ''}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
   function reflect() {
     for(const [key,id,digits] of cameraControls){
       panel.querySelector('#fc-'+id).value=String(state[key]);
@@ -534,6 +534,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     if (now - lastSample >= 950) {
       const rate = Math.round(frames * 1000 / (now - lastSample));
       lastRate = Math.max(0, rate);
+      lastPosition = gameCtx ? `X ${gameCtx.px.toFixed(1)} · Y ${gameCtx.feetY.toFixed(1)} · Z ${gameCtx.pz.toFixed(1)}` : '';
       lastDiagnostics = gameCtx ? formatDiagnostics(collectDiagnostics(gameCtx)) : '';
       renderFps();
       frames = 0;

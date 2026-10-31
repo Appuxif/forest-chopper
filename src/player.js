@@ -59,6 +59,7 @@ function animate(now){
   dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*speed*dt;
  }
  ctx.moveHorizontal(dx,dz);
+ ctx.waterSplashes?.tick(dt);
  ctx.microGrass?.tick();
  ctx.groundBoxes?.tick(now);
  ctx.plantInteraction?.tick(dt);
@@ -94,6 +95,7 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
  if(!limiter.allow(now,ctx.settings.maxFps))return;
  ctx.settings.tick(now,ctx);
  ctx.spruceDiagnostics?.tick();
+ ctx.terrain?.tick(now);
  ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
  ctx.renderer.render(ctx.scene,ctx.camera);
 }

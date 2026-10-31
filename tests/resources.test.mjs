@@ -1,3 +1,4 @@
+import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorld} from '../src/world.js';
@@ -48,7 +49,7 @@ function fixture() {
     });
     return elements.get(id);
   };
-  const ctx = {
+  const ctx = {terrain:flatTerrain(),
     THREE, scene, $, trunkGeo: sharedGeometry, leafGeo: sharedGeometry,
     birchLeafGeo: sharedGeometry, birchTrunkMat: sharedMaterial,
     birchLeafMats: [sharedMaterial,sharedMaterial,sharedMaterial],

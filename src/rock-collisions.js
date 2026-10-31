@@ -27,8 +27,8 @@ export function rockBlocksPlayer(rocks, chunkSize, x, z, feet, playerRadius, pla
 
 // A conservative horizontal platform on the faceted boulder's upper surface.
 // Works with both jumping and simply walking off a rock.
-export function highestRockSupport(rocks,chunkSize,x,z,previous,next,playerRadius) {
-  let highest=0;
+export function highestRockSupport(rocks,chunkSize,x,z,previous,next,playerRadius,baseline=0) {
+  let highest=baseline;
   nearbyRocks(rocks,chunkSize,x,z,rock=>{
     if(!rockFootprint(rock,x,z,playerRadius*.25))return;
     const top=rock.top;

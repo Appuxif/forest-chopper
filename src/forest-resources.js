@@ -41,8 +41,8 @@ export function createForestResources(ctx){
   for(const kind of ['branch','stone']){
    const mesh=meshes[kind];let index=0;
    for(const node of nodes.values()){
-    if(node.kind!==kind)continue;
-    dummy.position.set(node.x,node.kind==='branch'?.10:.17,node.z);
+    if(node.kind!==kind||ctx.terrain.waterDepthAt(node.x,node.z)>.12)continue;
+    dummy.position.set(node.x,ctx.terrain.heightAt(node.x,node.z)+(node.kind==='branch'?.10:.17),node.z);
     dummy.rotation.set(node.kind==='branch'?Math.PI/2:0,node.kind==='branch'?node.x*.79:0,node.kind==='stone'?node.z*.47:0);
     dummy.scale.setScalar(node.kind==='stone'?.7+(Math.abs(Math.floor(node.x*17+node.z*11))%4)*.13:1);
     dummy.updateMatrix();
@@ -79,6 +79,7 @@ export function createForestResources(ctx){
  function closest(max=2.4){
   let best=null,dist=max;
   for(const n of nodes.values()){
+   if(ctx.terrain.waterDepthAt(n.x,n.z)>.12)continue;
    const d=Math.hypot(n.x-ctx.px,n.z-ctx.pz);
    if(d<dist){best=n;dist=d;}
   }

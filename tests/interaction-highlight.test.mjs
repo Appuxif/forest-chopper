@@ -1,3 +1,4 @@
+import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createInteractionHighlight} from '../src/interaction-highlight.js';
@@ -14,7 +15,7 @@ function fixture(){
     }
   }
   const scene={objects:[],add(x){this.objects.push(x)}};
-  const ctx={THREE:{Mesh,RingGeometry,MeshBasicMaterial,DoubleSide:2},
+  const ctx={terrain:flatTerrain(),THREE:{Mesh,RingGeometry,MeshBasicMaterial,DoubleSide:2},
     scene,buildMode:false,crafting:{items:new Map()},candidate:()=>({x:4,z:5})};
   const highlight=createInteractionHighlight(ctx);
   return {ctx,scene,resources,highlight};
@@ -45,4 +46,18 @@ test('build mode selects nearest bench, not all furniture, and restores when lea
  assert.equal(f.highlight.update(null),false);
  f.ctx.buildMode=false;f.highlight.clear();
  assert.equal(f.highlight.mesh.visible,false);
+});
+
+
+test('tree and bench highlight rings follow local terrain elevation instead of Y=0',()=>{
+  const f=fixture();
+  f.ctx.terrain.heightAt=(x,z)=>x*.2+z*.1;
+  const tree={position:{x:20,y:5,z:10},userData:{hp:3}};
+  f.highlight.update(tree);
+  assert.ok(Math.abs(f.highlight.mesh.position.y-5.065)<1e-9);
+  f.ctx.buildMode=true;
+  f.ctx.candidate=()=>({x:20,z:10});
+  f.ctx.crafting.items.set(1,{id:1,x:20,z:10});
+  f.highlight.update(null);
+  assert.ok(Math.abs(f.highlight.mesh.position.y-5.065)<1e-9);
 });

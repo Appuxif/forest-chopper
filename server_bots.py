@@ -6,6 +6,8 @@ one task at a time. Human players still use the existing client-side physics.
 import asyncio
 import math
 import time
+from terrain_height import height_at
+from ponds import pond_depth_at
 
 CHUNK = 24
 BOT_SPEED = 4.6
@@ -28,8 +30,11 @@ def trees_near(world, x, z, radius=30):
                     yield key, info
 
 
-def can_stand(world, x, z, feet=0):
-    # Exact same trunk clearance and ground-level log footprint as physics.js.
+def can_stand(world, x, z, feet=None):
+    # Match terrain support and the existing horizontal obstruction checks.
+    ground=height_at(world.seed,x,z)
+    if feet is None:feet=ground
+    if feet<ground-.35 or pond_depth_at(world.seed,x,z)>.8:return False
     for _, (tx, tz, _) in trees_near(world, x, z, 1.5):
         if math.hypot(x-tx, z-tz) < TREE_RADIUS:
             return False
@@ -63,7 +68,7 @@ class BotManager:
             raise ValueError('Server full (32 players/bots max)')
         uid = self.world.next_id
         self.world.next_id += 1
-        bot = {'id':uid, 'name':str(name or f'Bot {uid}')[:22], 'x':0.,'y':0.,'z':0.,
+        bot = {'id':uid, 'name':str(name or f'Bot {uid}')[:22], 'x':0.,'y':height_at(self.world.seed,0,0),'z':0.,
                'yaw':0.,'jumping':False,'wood':0,'cuts':0,'task':None,'last_task':None,
                'last_hit':0.,'last_move':0.,'blocked_for':0.,'last_pos':(0.,0.),'last_yaw':0.}
         self.bots[uid] = bot
@@ -164,15 +169,15 @@ class BotManager:
             heading=angle+offset
             vx=math.sin(heading)*step;vz=math.cos(heading)*step
             nx=bot['x']+vx;nz=bot['z']+vz
-            if can_stand(self.world,nx,nz):
+            if can_stand(self.world,nx,nz) and height_at(self.world.seed,nx,nz)<=bot['y']+.45:
                 bot['x'],bot['z']=nx,nz
                 bot['yaw']=-heading
                 bot['blocked_for']=0.
                 return False
-            if can_stand(self.world,nx,bot['z']):
+            if can_stand(self.world,nx,bot['z']) and height_at(self.world.seed,nx,bot['z'])<=bot['y']+.45:
                 bot['x']=nx;bot['yaw']=-heading;bot['blocked_for']=0.
                 return False
-            if can_stand(self.world,bot['x'],nz):
+            if can_stand(self.world,bot['x'],nz) and height_at(self.world.seed,bot['x'],nz)<=bot['y']+.45:
                 bot['z']=nz;bot['yaw']=-heading;bot['blocked_for']=0.
                 return False
         bot['blocked_for']+=dt
@@ -227,7 +232,7 @@ class BotManager:
                         speed=BOT_SPEED if params.get('sprint',False) else 2.5
                         step=min(speed*dt,speed*(duration-elapsed))
                         nx=bot['x']+math.sin(heading)*step;nz=bot['z']+math.cos(heading)*step
-                        if can_stand(self.world,nx,nz):
+                        if can_stand(self.world,nx,nz) and height_at(self.world.seed,nx,nz)<=bot['y']+.45:
                             bot['x'],bot['z']=nx,nz
                             task['phase']='moving'
                         else:self.finish(bot,'blocked')
@@ -263,6 +268,8 @@ class BotManager:
                                     if key in self.world.felled:
                                         if kind=='harvest':task.pop('treeId',None)
                                         else:self.finish(bot,'felled')
+            # Headless actors walk on the deterministic heightfield.
+            bot['y']=height_at(self.world.seed,bot['x'],bot['z'])
             if now-bot['last_move']>=.1 and (bot['last_pos']!=(bot['x'],bot['z']) or bot['last_yaw']!=bot['yaw']):
                 bot['last_move']=now
                 bot['last_pos']=(bot['x'],bot['z']);bot['last_yaw']=bot['yaw']

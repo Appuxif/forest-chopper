@@ -1,6 +1,6 @@
 // Deterministic forest glades, independent of camera/player movement.
-// Four profiles: 1 bare, 2 tall dense (5-7x), 3 short dense (1-4x),
-// 4 short sparse (1-4x). Type 0 means ordinary user-configured grass.
+// Five profiles: 1 bare, 2 tall dense, 3 short dense, 4 short sparse,
+// 5 pond (sparse grass on its banks). Type 0 means ordinary forest grass.
 //
 // One site per 42m world cell; sizes vary and boundaries are irregular.
 // Each 2x2 group has all four types in a seed-dependent shuffled order.
@@ -25,13 +25,29 @@ function gladeType(seed, gx, gz) {
   return order[((gz & 1)*2)+(gx & 1)];
 }
 
-function gladeAt(seed, gx, gz) {
+// Guaranteed first pond east/south of spawn; other ponds are sparse and
+// mutually spaced by a seed-dependent priority within adjacent 42m cells.
+export function isPondCell(seed,gx,gz,x,z){
+  if(gx===2&&gz===1)return true;
+  if(Math.hypot(x,z)<75||Math.abs(z)<29)return false;
+  if(Math.abs(gx-2)<=1&&Math.abs(gz-1)<=1)return false;
+  const priority=hash(seed,gx,gz,77);
+  if(priority>=.20)return false;
+  for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
+    if(!dx&&!dz)continue;
+    if(hash(seed,gx+dx,gz+dz,77)<priority)return false;
+  }
+  return true;
+}
+
+export function gladeAt(seed, gx, gz) {
   const radius = 1.5 * (6.3 + 4.6 * hash(seed,gx,gz,7));
   const angle = hash(seed,gx,gz,8) * Math.PI * 2;
+  const x=(gx+.5)*GLADE_CELL + (hash(seed,gx,gz,2)-.5)*15;
+  const z=(gz+.5)*GLADE_CELL + (hash(seed,gx,gz,3)-.5)*15;
   return {
-    kind: gladeType(seed,gx,gz),
-    x:(gx+.5)*GLADE_CELL + (hash(seed,gx,gz,2)-.5)*15,
-    z:(gz+.5)*GLADE_CELL + (hash(seed,gx,gz,3)-.5)*15,
+    kind:isPondCell(seed,gx,gz,x,z)?5:gladeType(seed,gx,gz),
+    gx,gz,x,z,
     rx:radius*(.82 + hash(seed,gx,gz,9)*.36),
     rz:radius*(.82 + hash(seed,gx,gz,10)*.36),
     cos:Math.cos(angle), sin:Math.sin(angle),
@@ -95,6 +111,7 @@ export function gladeDensity(kind) {
     case 2:return 46; // tall and very dense
     case 3:return 42; // short and very dense
     case 4:return 2;  // short and very sparse
+    case 5:return 0;  // pond basin and grassy bank fade into the forest
     default:return null;
   }
 }

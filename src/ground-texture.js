@@ -13,12 +13,13 @@ export function enableGrassDensityShadows(THREE, material) {
   material.onBeforeCompile=shader=>{
     Object.assign(shader.uniforms,uniforms);
     shader.vertexShader=shader.vertexShader.replace('#include <common>',
-      '#include <common>\nvarying vec2 fcGroundPosition;')
+      '#include <common>\nattribute vec2 fcShoreData;\nvarying vec2 fcShoreMask;\nvarying vec2 fcGroundPosition;')
       .replace('#include <worldpos_vertex>',
-        '#include <worldpos_vertex>\nfcGroundPosition=(modelMatrix*vec4(transformed,1.0)).xz;');
+        '#include <worldpos_vertex>\nfcGroundPosition=(modelMatrix*vec4(transformed,1.0)).xz;\nfcShoreMask=fcShoreData;');
     shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
       `#include <common>
       varying vec2 fcGroundPosition;
+      varying vec2 fcShoreMask;
       uniform float fcGroundGrassDensity;
       uniform vec4 fcGroundGrassClearings[24];
       float fcGrassHash(vec2 p) {
@@ -32,12 +33,28 @@ export function enableGrassDensityShadows(THREE, material) {
       }`)
       .replace('#include <map_fragment>',
         `#include <map_fragment>
+        // World-aligned sand on the pond floor and banks. Fragment noise is
+        // subtle enough to feel granular without creating moving patterns.
+        float fcSand=clamp(fcShoreMask.x,0.0,1.0);
+        if(fcSand>0.001){
+          float fcBroad=fcGrassNoise(fcGroundPosition*0.65)-0.5;
+          float fcGrain=fcGrassNoise(fcGroundPosition*7.5)-0.5;
+          float fcFine=fcGrassHash(floor(fcGroundPosition*15.0))-0.5;
+          vec3 fcBeach=vec3(.54,.43,.26)
+            +fcBroad*vec3(.09,.08,.06)
+            +fcGrain*vec3(.065,.055,.038)
+            +fcFine*vec3(.025,.022,.018);
+          float fcWet=clamp(fcShoreMask.y,0.0,1.0);
+          fcBeach*=1.0-.24*fcWet;
+          diffuseColor.rgb=mix(diffuseColor.rgb,fcBeach,fcSand);
+        }
         // Small-scale overlapping blades create an uneven soft ground shadow.
         float fcCoverage=0.48*fcGrassNoise(fcGroundPosition*1.9)
           +0.52*fcGrassNoise(fcGroundPosition*4.3);
         float fcShadow=clamp((fcCoverage-0.28)*0.36,0.,0.22)
           *clamp(fcGroundGrassDensity/25.,0.,1.5);
         fcShadow*=smoothstep(1.68,2.1,abs(fcGroundPosition.y));
+        fcShadow*=1.0-clamp(fcShoreMask.x,0.0,1.0)*.94;
         for(int i=0;i<24;++i){
           vec4 area=fcGroundGrassClearings[i];
           if(area.w>0.5){

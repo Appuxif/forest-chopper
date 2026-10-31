@@ -1,3 +1,4 @@
+import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {gladesForTile,gladeAtPoint,gladeDensity,GLADE_CELL} from '../src/grass-glades.js';
@@ -64,7 +65,7 @@ function fixture({radius=12,density=2}={}) {
     InstancedBufferAttribute:Attribute,MeshLambertMaterial:Material,
     Vector2,Vector4,Object3D,Color,InstancedMesh,DoubleSide:2,
   };
-  const ctx={THREE,scene:{add(mesh){sceneItems.add(mesh);},remove(mesh){sceneItems.delete(mesh);}},
+  const ctx={THREE,terrain:flatTerrain(),scene:{add(mesh){sceneItems.add(mesh);},remove(mesh){sceneItems.delete(mesh);}},
     px:5,pz:6,seed:7812,avatars:new Map(),settings:{
       grassDensity:density,grassDistance:radius,grassMinSize:2.5,grassMaxSize:5.5,
       grassWidth:1,grassTurnMin:-30,grassTurnMax:30,

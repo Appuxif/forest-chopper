@@ -42,6 +42,7 @@ test('opt-in FPS overlay samples diagnostics once a second and never stores worl
   assert.ok(fps);
   assert.equal(fps.hidden,false);
   const ctx={renderer:{info:{render:{calls:88,triangles:3300},memory:{geometries:28,textures:10}}},
+    px:12.5,pz:-3.5,feetY:2,
     chunks:{size:25}, trees:{size:155}, particles:[]};
   settings.tick(1000,ctx);
   assert.doesNotMatch(fps.textContent,/Draws/);
@@ -50,6 +51,7 @@ test('opt-in FPS overlay samples diagnostics once a second and never stores worl
   settings.tick(2010,ctx);
   assert.match(fps.textContent,/Draws 88 · Tri 3300 · Geom 28 · Tex 10/);
   assert.match(fps.textContent,/Chunks 25 · Trees 155 · FX 0/);
+  assert.match(fps.textContent,/X 12.5 · Y 2.0 · Z -3.5/);
   assert.equal(storage.saved.length,0,'renderer stats never persist');
   const toggle=nodes.get('#fc-show-fps');
   toggle.checked=false;

@@ -1,3 +1,4 @@
+import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createTreeVariants,TREE_VARIANT_COUNT} from '../src/tree-variants.js';
@@ -58,7 +59,7 @@ test('restored original forest uses trunk plus four low-poly crown meshes',()=>{
   const trunkGeo={type:'CylinderGeometry'},leafGeo={type:'ConeGeometry'};
   const birchLeafGeo={type:'IcosahedronGeometry'};
   const ctx={
-    THREE:{Group,Mesh},
+    terrain:flatTerrain(),THREE:{Group,Mesh},
     seed:3428,treeDamage:new Map(),trees:new Map(),
     trunkGeo,leafGeo,birchLeafGeo,
     birchTrunkMat:{},trunkMats:[{},{},{}],

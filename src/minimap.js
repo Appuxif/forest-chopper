@@ -26,6 +26,24 @@ export function createMinimap(ctx) {
       g.beginPath();g.moveTo(sx,0);g.lineTo(sx,size);g.stroke();
       g.beginPath();g.moveTo(0,sy);g.lineTo(size,sy);g.stroke();
     }
+    // Show local ponds and the separately streamed, much larger lakes.
+    const waterBodies=[
+      ...[...(ctx.terrain?.chunks?.values()??[])].flatMap(chunk=>chunk.userData.ponds??[]),
+      ...[...(ctx.terrain?.lakeMeshes?.values()??[])].map(entry=>entry.body),
+    ];
+    for(const body of waterBodies){
+      const [x,y]=position(body.x,body.z);
+      const r=Math.max(body.rx,body.rz)*metersToPixels;
+      if(Math.hypot(x-center,y-center)>radius+r)continue;
+      g.save();
+      g.translate(x,y);
+      g.rotate(Math.atan2(body.sin,body.cos));
+      g.scale(body.rx*metersToPixels*.79,body.rz*metersToPixels*.79);
+      g.beginPath();g.arc(0,0,1,0,Math.PI*2);
+      g.fillStyle=body.kind==='lake'?'#2b8ca9dd':'#287e94bb';
+      g.fill();
+      g.restore();
+    }
     // Nearby trees and constructed logs give useful landmarks.
     for (const tree of ctx.trees.values()) {
       const [x,y] = position(tree.position.x, tree.position.z);

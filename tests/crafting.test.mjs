@@ -1,3 +1,4 @@
+import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCrafting,validBench,BENCH_COST,BENCH_REFUND} from '../src/crafting.js';
@@ -15,7 +16,7 @@ function setup(online=false){
   const elements={buildbar:{append(...x){buttons.push(...x)}},wood:{textContent:0}};
   const doc={createElement(){return {style:{},type:'',textContent:'',onclick:null}}};
   const sent=[],notifications=[],marks=[];
-  const ctx={THREE:{BoxGeometry:Geometry,MeshLambertMaterial:Material,Mesh,Group:Obj},
+  const ctx={terrain:flatTerrain(),THREE:{BoxGeometry:Geometry,MeshLambertMaterial:Material,Mesh,Group:Obj},
     scene,$:id=>elements[id],yaw:0,px:0,pz:0,orientation:0,wood:8,buildMode:true,
     isOnline:()=>online,sendNet:d=>sent.push(d),notify:(...a)=>notifications.push(a),
     offlineSave:{markDirty:()=>marks.push(1)},trees:new Map(),blocksPlayerAt:()=>false};
@@ -95,4 +96,23 @@ test('bench accepts all four cardinal rotations and rejects out-of-range orienta
  }
  assert.deepEqual(f.craft.snapshot().map(item=>item.orientation),[0,1,2,3]);
  for(const orientation of [-1,4,0.5,'2',null])assert.equal(validBench({kind:'bench',x:0,z:0,orientation}),false);
+});
+
+
+test('placing an already-crafted inventory bench requires zero additional logs',()=>{
+  const f=setup();
+  let removed=0,rendered=0;
+  f.ctx.inventory={
+    selected:'bench',
+    state:{selectedSlot:()=>2,removeBench(slot){assert.equal(slot,2);removed++;return true;}},
+    render(){rendered++;},
+  };
+  f.ctx.wood=0;
+  const position=f.craft.candidate();
+  assert.equal(f.craft.placeError(position),'');
+  assert.equal(f.craft.placeItem(),true);
+  assert.equal(f.craft.items.size,1);
+  assert.equal(f.ctx.wood,0,'crafting already paid the three-log cost');
+  assert.equal(removed,1,'the correct crafted item is consumed exactly once');
+  assert.equal(rendered,1);
 });

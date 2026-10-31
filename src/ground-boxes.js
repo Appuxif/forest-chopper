@@ -24,7 +24,7 @@ export function createGroundBoxes(ctx,doc=document){
   const mesh=new THREE.Group();
   const body=new THREE.Mesh(geo,mat);body.position.y=.21;
   const strap=new THREE.Mesh(strapGeo,strapMat);strap.position.y=.39;
-  mesh.add(body,strap);mesh.position.set(box.x,0,box.z);
+  mesh.add(body,strap);mesh.position.set(box.x,ctx.terrain.heightAt(box.x,box.z),box.z);
   scene.add(mesh);boxes.set(box.id,{...box,item:{...box.item},mesh});
   next=Math.max(next,box.id+1);
   return true;

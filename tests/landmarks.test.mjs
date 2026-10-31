@@ -1,3 +1,4 @@
+import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorld} from '../src/world.js';
@@ -5,7 +6,38 @@ import {createLandmarks} from '../src/landmarks.js';
 
 function fixture(seed=321) {
   const assets=[], groups=[];
-  class Geometry {constructor(...args){this.args=args;assets.push(this)}}
+  class Geometry {
+    constructor(...args){
+      this.args=args;assets.push(this);
+      const [width,height,xSegments,ySegments]=args;
+      if(Number.isFinite(width)&&Number.isFinite(height)&&
+          Number.isInteger(xSegments)&&Number.isInteger(ySegments)){
+        this.vertices=[];
+        for(let row=0;row<=ySegments;row++)for(let col=0;col<=xSegments;col++)
+          this.vertices.push([width*(col/xSegments-.5),height*(.5-row/ySegments),0]);
+      }else this.vertices=[[0,0,0]];
+      this.attr={
+        count:this.vertices.length,
+        getX:i=>this.vertices[i][0],
+        getY:i=>this.vertices[i][1],
+        setZ:(i,z)=>{this.vertices[i][2]=z;},
+      };
+    }
+    getAttribute(name){return name==='position'?this.attr:null;}
+    computeVertexNormals(){}
+    clone(){
+      const copy=new Geometry(...this.args);
+      copy.vertices=this.vertices.map(v=>[...v]);
+      copy.attr={
+        count:copy.vertices.length,
+        getX:i=>copy.vertices[i][0],
+        getY:i=>copy.vertices[i][1],
+        setZ:(i,z)=>{copy.vertices[i][2]=z;},
+      };
+      return copy;
+    }
+    dispose(){}
+  }
   class Material {constructor(opts={}){this.opts=opts;assets.push(this)}}
   class Texture {constructor(canvas){this.canvas=canvas;this.repeat={set(x,y){this.x=x;this.y=y}};assets.push(this)}}
   class Group {constructor(){this.children=[];this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};this.rotation={x:0,y:0,z:0};this.scale={x:1,y:1,z:1,setScalar(n){this.x=this.y=this.z=n}};this.userData={}}
@@ -31,7 +63,7 @@ function fixture(seed=321) {
   const THREE={Mesh,Group,PlaneGeometry:Geometry,CylinderGeometry:Geometry,ConeGeometry:Geometry,
     MeshLambertMaterial:Material,PointLight,
     CanvasTexture:Texture,SRGBColorSpace:'srgb',DoubleSide:2};
-  const ctx={THREE,seed,chunkSize:24,px:0,pz:0,radius:1,trees:new Map(),chunks:new Map(),
+  const ctx={THREE,terrain:flatTerrain(),seed,chunkSize:24,px:0,pz:0,radius:1,trees:new Map(),chunks:new Map(),
     felled:new Set(),treeDamage:new Map(),trunkGeo:sharedGeo,leafGeo:sharedGeo,
     birchLeafGeo:sharedGeo,flowerGeo:sharedGeo,mushroomGeo:sharedGeo,rockGeo:sharedGeo,
     grasses:{create(shape,palette){const mesh=new THREE.Mesh(sharedGeo,sharedMat);mesh.userData.grassShape=['meadow','lush','sedge','fan'][shape];mesh.userData.grassPalette=['forest','fresh','dry'][palette];return mesh;}},
@@ -75,8 +107,9 @@ function generated(seed=321){
 test('continuous, seed-stable trail uses exactly one shared quad per z=0 chunk',()=>{
   const f=generated();
   assert.equal(f.trail.length,15);
-  assert.ok(f.trail.every(([cx,cz,x,y,z])=>cz===0 && x===cx*24+12 && y===.025 && z===0));
-  assert.equal(new Set(f.trail.map(x=>x[5])).size,1,'trail geometry is shared');
+  assert.ok(f.trail.every(([cx,cz,x,y,z])=>cz===0 && x===cx*24+12 && y===0 && z===0));
+  assert.equal(new Set(f.trail.map(x=>x[5])).size,15,
+    'each trail tile owns its terrain-conforming geometry');
   assert.equal(new Set(f.trail.map(x=>x[6])).size,1,'trail material is shared');
   assert.equal(f.posts.length,f.board.length);
   assert.ok(f.posts.length>=3&&f.posts.length<=5,'signs are sparse, not one every chunk');
@@ -86,7 +119,9 @@ test('continuous, seed-stable trail uses exactly one shared quad per z=0 chunk',
   assert.equal(new Set(f.posts.map(x=>x[3])).size,1,'posts share geometry');
   assert.equal(new Set(f.board.map(x=>x[4])).size,1,'boards share geometry');
   assert.ok(new Set(f.board.map(x=>x[5])).size<=2,'only two globally shared sign textures/materials');
-  assert.equal(f.assets.length,16,'shared resources: 2 fixture, 5 geometries, 6 materials, 3 textures');
+  assert.equal(f.assets.length,31,'15 trail geometry clones; shared materials/textures stay cached');
+  assert.ok(f.trail.every(entry=>entry[5].vertices.every(vertex=>vertex[2]===.025)),
+    'terrain-following vertices are 2.5 cm above flat ground');
   const trail=f.ctx.chunks.get('0,0').children.find(m=>m.userData.landmark==='trail');
   assert.equal(trail.receiveShadow,true,'visible trail surface must receive tree shadows');
   assert.equal(trail.material.opts.map.repeat.x,3,'texture repeats cleanly over 24 m chunks');

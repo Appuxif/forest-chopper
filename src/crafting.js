@@ -28,7 +28,7 @@ export function createCrafting(ctx,doc=document) {
     g.traverse?.(node=>{if(node.isMesh)node.castShadow=true;});
     // Test doubles and new craftable types can use plain children as well.
     for(const part of g.children)if(part.geometry)part.castShadow=true;
-    g.position.set(item.x,0,item.z);
+    g.position.set(item.x,ctx.terrain.heightAt(item.x,item.z),item.z);
     g.rotation.y=item.orientation*Math.PI/2;
     if(preview)g.userData.itemPreview='bench';
     return g;
@@ -78,10 +78,12 @@ export function createCrafting(ctx,doc=document) {
   function allowed(item){
     if(ctx.inventory){if(ctx.inventory.selected!=='bench')return 'Выбери скамейку в быстром слоте';}
     else if(!ctx.buildMode)return 'Включите строительство';
-    if(ctx.wood<BENCH_COST)return 'Для скамейки нужны 3 🪵';
+    // The inventory bench is already paid for during crafting.
+    if(!ctx.inventory && ctx.wood<BENCH_COST)return 'Для скамейки нужны 3 🪵';
     if(items.size>=MAX_BENCHES)return 'Достигнут лимит скамеек';
+    if(ctx.terrain.waterDepthAt(item.x,item.z)>.2)return 'Нельзя ставить скамейку в воде';
     if([...ctx.trees.values()].some(t=>Math.hypot(t.position.x-item.x,t.position.z-item.z)<.75)
-       || ctx.blocksPlayerAt(item.x,item.z,0))return 'Место занято';
+       || ctx.blocksPlayerAt(item.x,item.z,ctx.terrain.heightAt(item.x,item.z)))return 'Место занято';
     if([...items.values()].some(x=>Math.hypot(x.x-item.x,x.z-item.z)<2.5))
       return 'Скамейка уже стоит слишком близко';
     return '';

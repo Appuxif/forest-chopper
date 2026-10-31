@@ -27,7 +27,7 @@ export function createInteractionHighlight(ctx) {
     if(!target){
       mesh.visible=false;previous='';return false;
     }
-    mesh.position.set(target.x,.065,target.z);
+    mesh.position.set(target.x,ctx.terrain.heightAt(target.x,target.z)+.065,target.z);
     mesh.scale.setScalar(kind==='bench'?1.45:1);
     if(previous!==kind){
       material.color.setHex(kind==='bench'?0xf7d58f:0xa9f2b8);

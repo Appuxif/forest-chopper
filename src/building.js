@@ -21,7 +21,7 @@ export function createBuilding(ctx) {
     for (const p of ctx.placed) {
       if (overlaps({x, z, orientation: ctx.orientation % 2}, p)) level = Math.max(level, p.level + 1);
     }
-    return {x, z, orientation: ctx.orientation % 2, level, y: ctx.logRadius + level * ctx.logRadius * 1.8};
+    return {x, z, orientation: ctx.orientation % 2, level, y: ctx.terrain.heightAt(x,z) + ctx.logRadius + level * ctx.logRadius * 1.8};
   }
 
   function placeError(p) {
@@ -29,6 +29,7 @@ export function createBuilding(ctx) {
     if (!ctx.buildMode) return 'Сначала включите строительство';
     if (!p) return 'Место установки не выбрано';
     if (ctx.wood < 1) return 'Недостаточно древесины';
+    if(ctx.terrain.waterDepthAt(p.x,p.z)>.2)return 'Нельзя строить в воде';
     if (p.level >= 16) return 'Слишком высокая стена (не более 16 уровней)';
     return '';
   }
@@ -44,7 +45,7 @@ export function createBuilding(ctx) {
         if(ctx.preview)ctx.scene.add(ctx.preview);
       }
       if(ctx.preview&&ctx.placement){
-        ctx.preview.position.set(ctx.placement.x,0,ctx.placement.z);
+        ctx.preview.position.set(ctx.placement.x,ctx.terrain.heightAt(ctx.placement.x,ctx.placement.z),ctx.placement.z);
         ctx.preview.rotation.y=ctx.orientation*Math.PI/2;
       }
       const error=ctx.crafting?.placeError?.(ctx.placement)??'';

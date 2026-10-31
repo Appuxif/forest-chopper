@@ -1,4 +1,6 @@
 import {isDecorResourceId} from './collectible-decor.js';
+import {baseTerrainHeight} from './terrain-noise.js';
+import {pondHeightBeforeLakes} from './ponds.js';
 import {validBench,MAX_BENCHES} from './crafting.js';
 import {validItem} from './inventory.js';
 import {RESOURCE_RESPAWN_SECONDS} from './resource-zones.js';
@@ -25,7 +27,7 @@ export function parseOfflineSave(raw) {
         || !Array.isArray(data.logs) || data.logs.length > MAX_LOGS
         || !Array.isArray(data.furniture ?? []) || (data.furniture ?? []).length > MAX_BENCHES
         || !data.position || !coordinate(data.position.x) || !coordinate(data.position.z)
-        || !Number.isFinite(data.position.y ?? 0) || (data.position.y ?? 0) < 0 || (data.position.y ?? 0) > 12
+        || !Number.isFinite(data.position.y ?? 0) || Math.abs(data.position.y ?? 0) > 240012
         || !Number.isFinite(data.position.yaw) || Math.abs(data.position.yaw) > 1e6
         || !Number.isFinite(data.position.pitch) || Math.abs(data.position.pitch) > 1.43)
       return null;
@@ -70,6 +72,7 @@ export function parseOfflineSave(raw) {
     const furniture=[];
     for(const item of data.furniture ?? []){if(!validBench(item))return null;furniture.push({kind:'bench',x:item.x,z:item.z,orientation:item.orientation});}
     return {
+      terrainVersion:[1,2,3].includes(data.terrainVersion)?data.terrainVersion:0,
       furniture,boxes,resource_cooldowns:cooldowns,vitals,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
     };
@@ -91,7 +94,7 @@ export function createOfflineSave(ctx, {
 
   function snapshot() {
     return {
-      version: 1, seed: ctx.seed, wood: ctx.wood, cuts: ctx.cuts,
+      version: 1, terrainVersion: 3, seed: ctx.seed, wood: ctx.wood, cuts: ctx.cuts,
       position: {x: ctx.px, y: ctx.feetY, z: ctx.pz, yaw: ctx.yaw, pitch: ctx.pitch},
       felled: [...ctx.felled], damage: Object.fromEntries(ctx.treeDamage),
       logs: ctx.placed.map(({x,z,level,orientation}) => ({x,z,level,orientation})),
@@ -135,12 +138,19 @@ export function createOfflineSave(ctx, {
     ctx.wood = state.wood;ctx.cuts = state.cuts;
     ctx.px = state.position.x;ctx.pz = state.position.z;
     ctx.yaw = state.position.yaw;ctx.pitch = state.position.pitch;
-    ctx.feetY = state.position.y;ctx.verticalSpeed = 0;ctx.onGround = true;
+    const floor=ctx.terrain.heightAt(ctx.px,ctx.pz);
+    // Old flat-world saves stored Y relative to ground at zero.
+    const oldFloor=state.terrainVersion===3?floor:
+      state.terrainVersion===2?pondHeightBeforeLakes(ctx.seed,ctx.px,ctx.pz):
+      state.terrainVersion===1?baseTerrainHeight(ctx.seed,ctx.px,ctx.pz):0;
+    const restoredY=state.position.y+floor-oldFloor;
+    ctx.feetY=Math.max(restoredY,floor);ctx.verticalSpeed=0;
+    ctx.onGround=Math.abs(ctx.feetY-floor)<.08;
     ctx.felled.clear();for (const id of state.felled)ctx.felled.add(id);
     ctx.treeDamage.clear();for (const [id,hp] of state.damage)ctx.treeDamage.set(id,hp);
     for (const log of state.logs) {
       const mesh = ctx.makeLog();
-      const y = ctx.logRadius + log.level * ctx.logRadius * 1.8;
+      const y = ctx.terrain.heightAt(log.x,log.z)+ctx.logRadius + log.level * ctx.logRadius * 1.8;
       mesh.position.set(log.x, y, log.z);
       if (log.orientation === 1) mesh.rotation.y = Math.PI / 2;
       ctx.scene.add(mesh);

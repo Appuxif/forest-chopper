@@ -6,12 +6,15 @@ import json
 import math
 import os
 import random
+import re
 import time
 from functools import lru_cache
 from pathlib import Path
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
 from server_bots import BotManager, can_stand
+from terrain_height import height_at, base_height
+from ponds import pond_depth_at, pond_height_before_lakes
 
 MAX_MESSAGE = 2048
 # Twelve initial bag slots; the axe occupies one. Future bag upgrades increase this.
@@ -62,7 +65,7 @@ def tree_info(key,seed):
         if not (-10000<=cx<=10000 and -10000<=cz<=10000 and 0<=i<8):return None
         x=cx*24+r(cx,cz,i*3,seed)*24
         z=cz*24+r(cx,cz,i*3+1,seed)*24
-        if not tree_can_spawn(cx,cz,i,seed):return None
+        if not tree_can_spawn(cx,cz,i,seed) or pond_depth_at(seed,x,z)>.12:return None
         hp=7+int(r(x,z,8,seed)*5)
         return x,z,hp
     except (ValueError,TypeError):return None
@@ -260,9 +263,10 @@ def decor_resource(seed,cx,cz,i):
     elif decor_rand(seed,cx,cz,900+i)>.79:
         kind='flower:'+FLOWER_SPECIES[int(decor_rand(seed,cx,cz,1100+i)*4)]
     else:return None
-    return {'id':f'd:{cx},{cz}:{i}','kind':kind,
-            'x':cx*DECOR_CHUNK_SIZE+decor_rand(seed,cx,cz,100+i*2)*DECOR_CHUNK_SIZE,
-            'z':cz*DECOR_CHUNK_SIZE+decor_rand(seed,cx,cz,101+i*2)*DECOR_CHUNK_SIZE}
+    x=cx*DECOR_CHUNK_SIZE+decor_rand(seed,cx,cz,100+i*2)*DECOR_CHUNK_SIZE
+    z=cz*DECOR_CHUNK_SIZE+decor_rand(seed,cx,cz,101+i*2)*DECOR_CHUNK_SIZE
+    if pond_depth_at(seed,x,z)>.12:return None
+    return {'id':f'd:{cx},{cz}:{i}','kind':kind,'x':x,'z':z}
 
 def nearby_decor(seed,x,z,cooldowns,now):
     cx,cz=math.floor(x/DECOR_CHUNK_SIZE),math.floor(z/DECOR_CHUNK_SIZE)
@@ -290,10 +294,12 @@ def resource_info(key,seed):
         if not(-24001<=zx<=24001 and -24001<=zz<=24001 and 0<=i<RESOURCE_PER_ZONE):
             return None
         u,v=(resource_hash(seed,zx,zz,i,axis) for axis in (0,1))
+        x=round((zx+.14+u*.72)*RESOURCE_ZONE_SIZE,2)
+        z=round((zz+.14+v*.72)*RESOURCE_ZONE_SIZE,2)
+        if pond_depth_at(seed,x,z)>.12:return None
         return {'id':f'{zx},{zz}:{i}',
                 'kind':'branch' if resource_hash(seed,zx,zz,i,2)<.52 else 'stone',
-                'x':round((zx+.14+u*.72)*RESOURCE_ZONE_SIZE,2),
-                'z':round((zz+.14+v*.72)*RESOURCE_ZONE_SIZE,2)}
+                'x':x,'z':z}
     except (AttributeError,ValueError,TypeError):return None
 
 def resource_cell(x,z):
@@ -373,6 +379,14 @@ class World:
                 felled=set(data.get('felled',[]))
                 damage={str(k):int(v) for k,v in data.get('damage',{}).items()}
                 logs={int(k):v for k,v in data.get('logs',{}).items()}
+                terrain_version=int(data.get('terrain_version',0))
+                if terrain_version<3:
+                    # Preserve existing structures across added water features.
+                    for log in logs.values():
+                        x,z=log['x'],log['z']
+                        old_ground=(pond_height_before_lakes(seed,x,z) if terrain_version==2
+                            else base_height(seed,x,z) if terrain_version==1 else 0.)
+                        log['y']+=height_at(seed,x,z)-old_ground
                 raw_furniture=data.get('furniture',{})
                 if not isinstance(raw_furniture,dict):raise ValueError('Invalid furniture save')
                 furniture={int(k):v for k,v in raw_furniture.items()}
@@ -399,8 +413,13 @@ class World:
                     raise ValueError('Invalid resource cooldowns')
                 cooldowns={}
                 for key,value in cooldown_raw.items():
-                    if resource_info(key,seed) is None or type(value) not in (int,float) or not math.isfinite(value):
+                    if type(value) not in (int,float) or not math.isfinite(value):
                         raise ValueError('Invalid resource cooldown entry')
+                    # A new pond may cover an old resource. Drop its cooldown,
+                    # never invalidate an otherwise legitimate saved world.
+                    if not re.fullmatch(r'(?:d:)?-?\d+,-?\d+:\d+',key):
+                        raise ValueError('Invalid resource cooldown entry')
+                    if resource_info(key,seed) is None:continue
                     if time.time()<value<=time.time()+RESOURCE_RESPAWN_SECONDS:
                         cooldowns[key]=value
                 community_cuts=data.get('community_cuts',0)
@@ -411,7 +430,7 @@ class World:
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
-        data={'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts}
+        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts}
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,self.path)
     async def prune_boxes(self,now=None):
         now=time.time() if now is None else now
@@ -546,7 +565,7 @@ class World:
             await self.bot_handler(ws);return
         if len(self.clients)+len(self.bots.bots)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
-        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':0,'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'quick_refs':[0,1,2,3],'quick_ids':['axe',None,None,None],'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'last_hunger_at':time.monotonic(),'stamina':float(MAX_VITALS),'last_stamina_at':time.monotonic(),'stamina_sprint_locked':False,'sprinting':False,'last_stamina_sent':0,'last_jump':-10000,'jump_authorized_until':0}
+        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':height_at(self.seed,0,0),'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'quick_refs':[0,1,2,3],'quick_ids':['axe',None,None,None],'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'last_hunger_at':time.monotonic(),'stamina':float(MAX_VITALS),'last_stamina_at':time.monotonic(),'stamina_sprint_locked':False,'sprinting':False,'last_stamina_sent':0,'last_jump':-10000,'jump_authorized_until':0}
         self.clients[ws]=player
         await self.prune_boxes()
         await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
@@ -687,7 +706,9 @@ class World:
                 elif kind=='move':
                     try:x=float(data['x']);z=float(data['z']);yaw=float(data['yaw']);y=float(data.get('y',0));jumping=bool(data.get('jumping',False))
                     except (ValueError,KeyError,TypeError):continue
-                    if not all(map(math.isfinite,(x,z,yaw,y))) or y<0 or y>12 or abs(x)>240000 or abs(z)>240000:continue
+                    if not all(map(math.isfinite,(x,z,yaw,y))) or abs(x)>240000 or abs(z)>240000:continue
+                    ground=height_at(self.seed,x,z)
+                    if y<ground-.35 or y>ground+12:continue
                     dt=max(.05,now-player['last_pos']);distance=math.hypot(x-player['x'],z-player['z'])
                     if distance>max(4,dt*11) or not can_stand(self,x,z,y):continue
                     if jumping and y>player['y']+.08 and now>player['jump_authorized_until']:
@@ -792,18 +813,19 @@ class World:
                     except (ValueError,KeyError,TypeError,OverflowError):continue
                     if not math.isfinite(x) or not math.isfinite(z) or orientation not in ((0,1) if item['id']=='log' else (0,1,2,3)) or math.hypot(x-player['x'],z-player['z'])>6:continue
                     if abs(x)>240000 or abs(z)>240000 or abs(x*2-round(x*2))>1e-4 or abs(z*2-round(z*2))>1e-4:continue
+                    if pond_depth_at(self.seed,x,z)>.2:continue
                     if item['id']=='log':
                         p={'x':x,'z':z,'orientation':orientation}
                         def overlaps(a,b):return abs(a['x']-b['x'])<(3.2 if a['orientation']==b['orientation']==0 else 1.65) and abs(a['z']-b['z'])<(3.2 if a['orientation']==b['orientation']==1 else 1.65)
                         p['level']=max((v['level']+1 for v in self.logs.values() if overlaps(p,v)),default=0)
                         if p['level']>=16:continue
-                        p['y']=.29+p['level']*.29*1.8
+                        p['y']=height_at(self.seed,x,z)+.29+p['level']*.29*1.8
                         if not inv_take_logs(player['inventory'],1):continue
                         player['wood']-=1
                         lid=self.next_log;self.next_log+=1;self.logs[lid]=p
                         await self.broadcast({'type':'log_add','log':{'id':lid,**p},'by':uid,'wood':player['wood']})
                     else:
-                        if len(self.furniture)>=200 or not can_stand(self,x,z,0):continue
+                        if len(self.furniture)>=200 or not can_stand(self,x,z,height_at(self.seed,x,z)):continue
                         if any(math.hypot(x-v['x'], z-v['z'])<2.5 for v in self.furniture.values()):continue
                         player['inventory'][slot]=None
                         item={'kind':'bench','x':x,'z':z,'orientation':orientation}

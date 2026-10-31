@@ -1,3 +1,4 @@
+import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createBuilding} from '../src/building.js';
@@ -20,7 +21,7 @@ function setup(online = false) {
     if (!elements.has(id)) elements.set(id, {textContent: '', style: {}, classList: {toggle() {}}});
     return elements.get(id);
   };
-  const ctx = {
+  const ctx={terrain:flatTerrain(),
     THREE: {Mesh, MeshLambertMaterial: Material},
     logGeo: {}, logMat: {}, endMat: {},
     scene: {add: mesh => added.push(mesh), remove: mesh => removed.push(mesh)},

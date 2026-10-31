@@ -70,7 +70,7 @@ if(!detailedModel)for(let i=0;i<4;i++){
  group.add(foliage);
 }
 // Damage stays in HP (and the damage bar). No flat rectangle on the trunk.
-group.position.set(x,0,z);group.userData={id,x,z,h,scale,proceduralModelHeight:detailedModel?(spruceModel?ctx.spruceModelHeight??6:ctx.birchModelHeight??8):null,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant,rare,spruceModel:!!spruceModel,birchModel:!!birchModel,species:birch?'birch':'conifer'};if(spruceHitMeshes)group.userData.hitMeshes=spruceHitMeshes;ctx.scene.add(group);ctx.trees.set(id,group);ctx.spruceDiagnostics?.applyTree(group)}
+group.position.set(x,ctx.terrain.heightAt(x,z),z);group.userData={id,x,z,h,scale,proceduralModelHeight:detailedModel?(spruceModel?ctx.spruceModelHeight??6:ctx.birchModelHeight??8):null,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant,rare,spruceModel:!!spruceModel,birchModel:!!birchModel,species:birch?'birch':'conifer'};if(spruceHitMeshes)group.userData.hitMeshes=spruceHitMeshes;ctx.scene.add(group);ctx.trees.set(id,group);ctx.spruceDiagnostics?.applyTree(group)}
 function enableDecorShadow(node){
  if(node.isMesh||node.geometry){node.castShadow=true;
    if(node.userData?.decorType==='rock')node.receiveShadow=true;}
@@ -83,6 +83,7 @@ const newTrees=[];
 for(let i=0;i<8;i++){
  if(!treeCanSpawn(cx,cz,i,rand,ctx.chunkSize))continue;
  const {x,z}=treeCandidate(cx,cz,i,rand,ctx.chunkSize);
+ if(ctx.terrain.waterDepthAt(x,z)>.12)continue;
  const id=key+':'+i;
  if(!ctx.felled.has(id)){makeTree(x,z,id);newTrees.push(ctx.trees.get(id));}
 }
@@ -91,6 +92,8 @@ ctx.spruceDiagnostics?.applyBatch(decor.userData.treeBatch);
 for(let i=0;i<25;i++){
  const x=cx*ctx.chunkSize+rand(cx,cz,100+i*2)*ctx.chunkSize;
  const z=cz*ctx.chunkSize+rand(cx,cz,101+i*2)*ctx.chunkSize;
+ // No decorative plants or boulders on the underwater bed.
+ if(ctx.terrain.waterDepthAt(x,z)>.12)continue;
  const isRock=rand(cx,cz,300+i)>.86;
  // Only swap a few existing grass meshes, with separate deterministic indices.
  const type=isRock?'rock':rand(cx,cz,800+i)>.94?'mushroom':rand(cx,cz,900+i)>.79?'flower':'grass';
@@ -111,7 +114,8 @@ for(let i=0;i<25;i++){
  // Half-size mushrooms on all axes; flower roots sit at ground level.
  const scale=type==='mushroom'?baseScale*.5:
    type==='flower'?baseScale*.65:baseScale;
- obj.position.set(x,height,z);obj.scale.setScalar(scale);
+ const groundY=ctx.terrain.heightAt(x,z);
+ obj.position.set(x,groundY+height,z);obj.scale.setScalar(scale);
  obj.rotation.y=rand(cx,cz,i+500)*6.28;
  obj.userData.decorType=type;
  if(type==='mushroom'||type==='flower'){
@@ -125,7 +129,7 @@ for(let i=0;i<25;i++){
   obj.receiveShadow=true;
   // Convex faceted boulder approximated by a circular footprint and flat
   // upper contact patch. The renderer continues to use the real dodecahedron.
-  rockColliders.push({x,z,radius:scale*.84,bottom:0,top:.19+scale*.78});
+  rockColliders.push({x,z,radius:scale*.84,bottom:groundY,top:groundY+.19+scale*.78});
  }
  decor.add(obj);
 }
@@ -137,7 +141,7 @@ for(const obj of decor.userData.reactivePlants){
 ctx.rockColliders?.set(key,rockColliders);
 ctx.forestResources?.syncDecorChunk?.(decor);
 }
-function updateChunks(){const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);for(let x=cx-ctx.radius;x<=cx+ctx.radius;x++)for(let z=cz-ctx.radius;z<=cz+ctx.radius;z++)build(x,z);for(const [key,group] of ctx.chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>ctx.radius+1||Math.abs(z-cz)>ctx.radius+1){group.userData.treeBatch?.dispose();ctx.scene.remove(group);ctx.chunks.delete(key);ctx.rockColliders?.delete(key)}}for(const [key,t] of ctx.trees){if(Math.abs(t.position.x-ctx.px)>ctx.chunkSize*(ctx.radius+1.5)||Math.abs(t.position.z-ctx.pz)>ctx.chunkSize*(ctx.radius+1.5)){t.userData.treeBatch?.remove(t,false);ctx.scene.remove(t);ctx.trees.delete(key)}}}
+function updateChunks(){ctx.terrain.update(ctx.px,ctx.pz,ctx.seed);const cx=Math.floor(ctx.px/ctx.chunkSize),cz=Math.floor(ctx.pz/ctx.chunkSize);for(let x=cx-ctx.radius;x<=cx+ctx.radius;x++)for(let z=cz-ctx.radius;z<=cz+ctx.radius;z++)build(x,z);for(const [key,group] of ctx.chunks){const [x,z]=key.split(',').map(Number);if(Math.abs(x-cx)>ctx.radius+1||Math.abs(z-cz)>ctx.radius+1){group.userData.treeBatch?.dispose();for(const geo of group.userData.terrainGeometries??[])geo.dispose();ctx.scene.remove(group);ctx.chunks.delete(key);ctx.rockColliders?.delete(key)}}for(const [key,t] of ctx.trees){if(Math.abs(t.position.x-ctx.px)>ctx.chunkSize*(ctx.radius+1.5)||Math.abs(t.position.z-ctx.pz)>ctx.chunkSize*(ctx.radius+1.5)){t.userData.treeBatch?.remove(t,false);ctx.scene.remove(t);ctx.trees.delete(key)}}}
 
 return {rand, makeTree, build, updateChunks};
 }

@@ -1,3 +1,4 @@
+import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createPhysics} from '../src/physics.js';
@@ -6,7 +7,7 @@ import {
 } from '../src/rock-collisions.js';
 
 function fixture(){
-  const ctx={chunkSize:24,rockColliders:new Map(),
+  const ctx={terrain:flatTerrain(),chunkSize:24,rockColliders:new Map(),
     logLength:3.6,logRadius:.29,PLAYER_RADIUS:.31,PLAYER_HEIGHT:1.7,
     GRAVITY:19,JUMP_SPEED:7.5,trees:new Map(),placed:[],
     px:0,pz:0,feetY:0,verticalSpeed:0,onGround:true,jumpRequested:false};

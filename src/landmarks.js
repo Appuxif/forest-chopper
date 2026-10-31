@@ -3,7 +3,7 @@ import {createTrailTexture} from './trail-texture.js';
 // tree spawn coordinates, collision, server and save state remain unchanged.
 export function createLandmarks(ctx,doc=document) {
   const THREE=ctx.THREE;
-  const trailGeometry=new THREE.PlaneGeometry(ctx.chunkSize,3.2);
+  const trailGeometry=new THREE.PlaneGeometry(ctx.chunkSize,3.2,12,4);
   const trailMaterial=new THREE.MeshLambertMaterial({
     map:createTrailTexture(THREE,doc,ctx.chunkSize,ctx.renderer),
     side:THREE.DoubleSide,
@@ -50,7 +50,7 @@ export function createLandmarks(ctx,doc=document) {
   }
 
   function createCampfire(parent) {
-    const fire=new THREE.Group();fire.position.set(5,0,5);
+    const fire=new THREE.Group();fire.position.set(5,ctx.terrain.heightAt(5,5),5);
     fire.userData.landmark='campfire';
     for(let i=0;i<6;i++){
       const a=i*Math.PI/3;
@@ -124,10 +124,20 @@ export function createLandmarks(ctx,doc=document) {
 
   function decorate(group,cx,cz) {
     if(cz!==0)return;
-    // One continuous west-east band: exactly one shared flat quad per trail chunk.
-    const trail=new THREE.Mesh(trailGeometry,trailMaterial);
+    // Trail follows the heightfield; each chunk owns its subdivided geometry.
+    const centerX=cx*ctx.chunkSize+ctx.chunkSize/2;
+    const geometry=trailGeometry.clone();
+    const vertices=geometry.getAttribute('position');
+    for(let i=0;i<vertices.count;i++){
+      const x=centerX+vertices.getX(i),z=-vertices.getY(i);
+      vertices.setZ(i,ctx.terrain.heightAt(x,z)+.025);
+    }
+    vertices.needsUpdate=true;
+    geometry.computeVertexNormals();
+    (group.userData.terrainGeometries??=[]).push(geometry);
+    const trail=new THREE.Mesh(geometry,trailMaterial);
     trail.rotation.x=-Math.PI/2;
-    trail.position.set(cx*ctx.chunkSize+ctx.chunkSize/2,.025,0);
+    trail.position.set(centerX,0,0);
     // This plane covers the real ground; without receiveShadow trees cannot
     // darken the trail even though the ground below receives shadows.
     trail.receiveShadow=true;
@@ -140,14 +150,14 @@ export function createLandmarks(ctx,doc=document) {
     const position=signPosition(cx,cz);
     if(!position)return;
     const pole=new THREE.Mesh(poleGeometry,poleMaterial);
-    pole.position.set(position.x,1.05,position.z);
+    pole.position.set(position.x,ctx.terrain.heightAt(position.x,position.z)+1.05,position.z);
     pole.userData.landmark='signpost';
     pole.castShadow=true;
     group.add(pole);
     group.userData?.shadowDecor?.push(pole);
     group.userData?.grassClearings?.push({x:position.x,z:position.z,radius:.85});
     const board=new THREE.Mesh(boardGeometry,boardMaterials[cx<0?1:0]);
-    board.position.set(position.x,2.0,position.z);
+    board.position.set(position.x,ctx.terrain.heightAt(position.x,position.z)+2.0,position.z);
     board.rotation.y=Math.PI; // Facing the trail to the south; readable from the path.
     board.userData.landmark='signboard';
     board.castShadow=true;

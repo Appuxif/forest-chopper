@@ -1,3 +1,4 @@
+import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createOfflineSave, parseOfflineSave, OFFLINE_SAVE_KEY} from '../src/offline-save.js';
@@ -13,7 +14,7 @@ function fixture(existing = null) {
   const elements=new Map();
   const $=id=>{if(!elements.has(id))elements.set(id,{textContent:''});return elements.get(id);};
   const added=[];
-  const ctx={
+  const ctx={terrain:flatTerrain(),
     seed:678,wood:7,cuts:3,px:10,pz:-12,feetY:.58,verticalSpeed:0,onGround:true,yaw:.5,pitch:-.25,
     felled:new Set(['0,0:1']),treeDamage:new Map([['0,0:3',4]]),
     placed:[{x:2,z:3,level:0,orientation:1,mesh:{}}],
@@ -69,7 +70,9 @@ test('invalid or large saves do not mutate the current world',()=>{
   assert.equal(parseOfflineSave(JSON.stringify({...valid,logs:[{x:NaN,z:3,level:0,orientation:1}]})),null);
   assert.equal(parseOfflineSave(JSON.stringify({...valid,felled:['../sensitive']})),null);
   assert.equal(parseOfflineSave(JSON.stringify({...valid,position:{x:Infinity,z:0,yaw:0,pitch:0}})),null);
-  assert.equal(parseOfflineSave(JSON.stringify({...valid,position:{x:0,y:25,z:0,yaw:0,pitch:0}})),null);
+  assert.ok(parseOfflineSave(JSON.stringify({...valid,position:{x:0,y:25,z:0,yaw:0,pitch:0}})),
+    'high-altitude terrain and mountain saves are valid');
+  assert.equal(parseOfflineSave(JSON.stringify({...valid,position:{x:0,y:250000,z:0,yaw:0,pitch:0}})),null);
   const invalid=fixture(JSON.stringify({...valid,damage:{'0,0:2':'invalid'}}));
   assert.equal(invalid.save.restore(),false);
   assert.equal(invalid.ctx.seed,678);
