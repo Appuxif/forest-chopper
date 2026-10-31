@@ -57,12 +57,6 @@ def seal_garment_openings(cloth, gender, asset, base_dir):
         cuff_max_z=1.02 if gender=='female' else 1.105
         if is_long and min(abs(v.x),abs(w.x))>cuff_x and max(v.z,w.z)<cuff_max_z:
             return 'cuff'
-        if not is_long:
-            # Short sleeves end near the biceps, not at the wrists.
-            short_max=1.34 if gender=='female' else 1.43
-            short_min=1.14 if gender=='female' else 1.22
-            if min(abs(v.x),abs(w.x))>.143 and min(v.z,w.z)>short_min and max(v.z,w.z)<short_max:
-                return 'cuff'
         # Center opening of the shirt; do not close over the face.
         collar_top=1.31 if gender=='female' else 1.395
         if min(v.z,w.z)>collar_top and mx<.145 and mz<max_z+.003:
@@ -73,22 +67,10 @@ def seal_garment_openings(cloth, gender, asset, base_dir):
         return None
 
     new_points={}  # (boundary vertex id, opening type) -> bmesh vertex
-    adjusted=set()
     for edge in list(e for e in bm.edges if e.is_boundary):
         opening=classify(edge)
         if opening is None: continue
         v0,v1=edge.verts
-        # Tailor open cuffs toward the skin (rather than broad hollow tubes).
-        # A small margin preserves a plausible cloth thickness and keeps
-        # animated fingers/arms from piercing directly through the cuff.
-        fit_ratio={'cuff':.56,'collar':.28,'hem':.42}.get(opening,0)
-        if fit_ratio:
-            for vertex in (v0,v1):
-                if vertex in adjusted:continue
-                nearest_skin=bvh.find_nearest(vertex.co)
-                if nearest_skin and .006<nearest_skin[3]<.09:
-                    vertex.co.lerp(nearest_skin[0],fit_ratio)
-                adjusted.add(vertex)
         mid=(v0.co+v1.co)*.5
         nearest=bvh.find_nearest(mid)
         if not nearest or nearest[3]>.095: continue

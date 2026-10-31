@@ -7,7 +7,6 @@ import * as THREE from 'https://esm.sh/three@0.170.0';
 import {GLTFLoader} from 'https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'https://esm.sh/three@0.170.0/examples/jsm/utils/SkeletonUtils.js';
 import {makeBodySkinZones,insetBodyPositions} from './body-zones.js';
-import {compileSurfaceGroups,surfaceColor} from './surface-groups.js';
 
 const BASE=new URL('./',import.meta.url);
 const loader=new GLTFLoader();
@@ -43,7 +42,7 @@ export async function getHumanoidCatalog(){
  const [clothing,hair]=await Promise.all([loadJSON('source/clothing.json'),loadJSON('source/hair.json')]);
  return {clothing,hair};
 }
-const gearName=(file,gender)=>'lite/'+file.replace(/\.glb$/,'')+'_'+gender+'.glb'+(file==='clothing_shirt.glb'||file==='clothing_tshirt.glb'?'?sealed=3':'');
+const gearName=(file,gender)=>'lite/'+file.replace(/\.glb$/,'')+'_'+gender+'.glb'+(file==='clothing_shirt.glb'||file==='clothing_tshirt.glb'?'?sealed=1':'');
 
 export class LiteHumanoid {
   constructor(scene,clips,appearance,catalog){
@@ -63,9 +62,6 @@ export class LiteHumanoid {
     // changing other players' bodies or the cached GLB templates.
     this.body.geometry=this.body.geometry.clone();
     this._bodySkinZones=makeBodySkinZones(this.body);
-    this._skinMaterial=this.body.material.clone();
-    this._surfaceMaterials=new Map();
-    this.body.material=this._skinMaterial;
     this.mixer=new THREE.AnimationMixer(this.root);
     this.clips=clips;
     this.action=null;
@@ -91,11 +87,15 @@ export class LiteHumanoid {
   }
   setSkinColor(color){
     const tint=COLORS.skin[color]||color||'#ffffff';
-    // Material slot 0 is always bare skin, even when the same body mesh has
-    // shirt/trousers materials for the regions owned by those garments.
-    const skin=this._skinMaterial;
-    if(!skin.userData.originalColor)skin.userData.originalColor=skin.color.clone();
-    skin.color.copy(skin.userData.originalColor).multiply(new THREE.Color(tint));
+    for(const mesh of this.meshes){
+      // Only skin, not eyes, eyelashes, eyebrow textures, clothing etc.
+      if(mesh.name!=='Body')continue;
+      if(!mesh.material.userData.originalColor) {
+        mesh.material=mesh.material.clone();
+        mesh.material.userData.originalColor=mesh.material.color.clone();
+      }
+      mesh.material.color.copy(mesh.material.userData.originalColor).multiply(new THREE.Color(tint));
+    }
     this.appearance.skin=color;
     return this;
   }
@@ -191,43 +191,23 @@ export class LiteHumanoid {
     return this;
   }
   updateBodyVisibility(){
-    const equipped=Object.fromEntries([...this.parts]
-      .filter(([slot])=>slot!=='hair')
-      .map(([slot,mesh])=>[slot,mesh.userData.catalogId]));
-    const catalogItems=Object.values(equipped)
-      .map(id=>this.catalog.clothing.items.find(i=>i.id===id))
+    const equipped=[...this.parts.values()]
+      .map(p=>this.catalog.clothing.items.find(i=>i.id===p.userData.catalogId))
       .filter(Boolean);
+    const coordinates=insetBodyPositions(this._bodySkinZones,equipped);
     const geometry=this.body.geometry;
-    // Slightly inset the covered parts so cloth does not Z-fight with skin;
-    // unlike the old mask, no geometry is ever removed.
-    const coordinates=insetBodyPositions(this._bodySkinZones,catalogItems);
     const position=geometry.getAttribute('position');
     position.array.set(coordinates);
     position.needsUpdate=true;
-
-    const {indices,chunks}=compileSurfaceGroups(this._bodySkinZones,equipped);
-    geometry.setIndex(new THREE.BufferAttribute(indices,1));
-    geometry.clearGroups();
-    const materials=[];
-    for(const chunk of chunks){
-      let material=this._skinMaterial;
-      if(chunk.owner!=='skin'){
-        const id=chunk.owner.slice('garment:'.length);
-        if(!this._surfaceMaterials.has(id)){
-          this._surfaceMaterials.set(id,new THREE.MeshStandardMaterial({
-            color:surfaceColor(id),roughness:1,
-            side:THREE.DoubleSide,
-            name:'InnerFabric.'+id
-          }));
-        }
-        material=this._surfaceMaterials.get(id);
-      }
-      let index=materials.indexOf(material);
-      if(index<0){index=materials.length;materials.push(material);}
-      geometry.addGroup(chunk.start,chunk.count,index);
+    if(equipped.some(item=>item.hidesBodyZones?.length)){
+      geometry.computeVertexNormals();
+    }else{
+      const normal=geometry.getAttribute('normal');
+      normal.array.set(this._bodySkinZones.normals);
+      normal.needsUpdate=true;
     }
-    this.body.material=materials.length===1?materials[0]:materials;
-    geometry.computeVertexNormals();
+    // Full index buffer stays in place: collar, wrists, hems and underside
+    // always have a continuous skin surface. No holes, no additional meshes.
   }
   attach(slot,object,{position,rotation,scale}={}){
     const socket=this.sockets.get(slot);

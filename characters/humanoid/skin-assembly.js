@@ -4,30 +4,24 @@
  */
 export const BODY_PARTS=Object.freeze([
  'head','neck','torso','pelvis',
- 'sleeveL','sleeveR','upperArmL','upperArmR','forearmL','forearmR','handL','handR',
+ 'upperArmL','upperArmR','forearmL','forearmR','handL','handR',
  'thighL','thighR','calfL','calfR','footL','footR'
 ]);
 export const SKIN_DEFAULTS=Object.freeze(Object.fromEntries(BODY_PARTS.map(p=>[p,'skin:'+p])));
 export const APPAREL_REPLACEMENTS=Object.freeze({
- shirt:{replace:['torso','sleeveL','sleeveR','upperArmL','upperArmR','forearmL','forearmR'],
+ shirt:{replace:['torso','upperArmL','upperArmR','forearmL','forearmR'],
         joints:['neck','wristL','wristR','waist']},
- // The short sleeves are loose: keep *skin* on the whole upper arm and let
- // the T-shirt shell overlay it. Otherwise coarse triangles create jagged
- // artificial cloth-colored spikes below the short sleeve hem.
- tshirt:{replace:['torso'],
+ tshirt:{replace:['torso','upperArmL','upperArmR'],
          joints:['neck','upperArmL','upperArmR','waist']},
- hoodie:{replace:['torso','sleeveL','sleeveR','upperArmL','upperArmR','forearmL','forearmR'],
+ hoodie:{replace:['torso','upperArmL','upperArmR','forearmL','forearmR'],
          joints:['neck','wristL','wristR','waist']},
- dress:{replace:['torso','sleeveL','sleeveR','pelvis','thighL','thighR'],
+ dress:{replace:['torso','upperArmL','upperArmR','pelvis','thighL','thighR'],
         joints:['neck','upperArmL','upperArmR','thighL','thighR']},
  jeans:{replace:['pelvis','thighL','thighR','calfL','calfR'],
         joints:['waist','ankleL','ankleR']},
- // Loose shorts cover the proximal thigh with their own shell. The upper
- // leg skin remains intact behind the opening; cutting it by entire bone
- // regions creates visibly jagged cloth triangles below the hem.
- shorts:{replace:['pelvis'],
+ shorts:{replace:['pelvis','thighL','thighR'],
          joints:['waist','thighL','thighR']},
- skirt:{replace:['pelvis'],
+ skirt:{replace:['pelvis','thighL','thighR'],
         joints:['waist','thighL','thighR']},
  shoes:{replace:['footL','footR'],joints:['ankleL','ankleR']},
  boots:{replace:['footL','footR'],joints:['ankleL','ankleR']},
