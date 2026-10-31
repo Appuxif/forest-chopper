@@ -190,5 +190,11 @@ remain in the exported GLB. All source GLBs are retained as a quality fallback.
   texture/material batching and distant LOD as needed.
 - Animations are inherited from the upstream source. They have not been
   upgraded with foot IK, weapon grip IK or chopping clips.
+- The source idle clip pulls the narrower female avatar's wrists against its
+  hips. The lite runtime adds a small *gender-specific shoulder pose correction*
+  after animation playback (0.17 rad for idle, reduced for locomotion, disabled
+  for jumps/falls). This is a skeleton pose adjustment, **not a morph**. It
+  restores the uncorrected rotation before every mixer tick, including when
+  animation playback is paused, preventing cumulative shoulder drift.
 - Not yet integrated into the production player / multiplayer code. The old
   `lumberjack.glb` loader is unchanged.

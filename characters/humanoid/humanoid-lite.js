@@ -59,6 +59,17 @@ export class LiteHumanoid {
     this.mixer=new THREE.AnimationMixer(this.root);
     this.clips=clips;
     this.action=null;
+    // The stock unisex idle clip was authored on a wider male silhouette.
+    // On the narrower female body, it brings hands through the hips. Apply a
+    // small, rig-space shoulder abduction *after* the mixer without morphs.
+    this._femaleArmOutset=0;
+    this._armAxis=new THREE.Vector3(0,0,1);
+    this._armWorldAxis=new THREE.Vector3();
+    this._armQuat=new THREE.Quaternion();
+    this._armParentQuat=new THREE.Quaternion();
+    this._armLocalQuat=new THREE.Quaternion();
+    this._rootWorldQuat=new THREE.Quaternion();
+    this._unadjustedArmRotations=new Map();
     this.parts=new Map();this.sockets=new Map();
     for(const [name,boneName] of Object.entries(SOCKET_BONES)){
       const parent=this.bones.get(boneName);
@@ -155,7 +166,41 @@ export class LiteHumanoid {
     if(this.action)next.crossFadeFrom(this.action,fade,true);
     this.action=next;return this;
   }
-  update(dt){this.mixer.update(Math.min(.10,Math.max(0,dt)));}
+  update(dt){
+    const delta=Math.min(.10,Math.max(0,dt));
+    // Undo last frame's procedural adjustment before the mixer evaluates.
+    // In particular, paused clips must never accumulate shoulder rotation.
+    for(const [name,rotation] of this._unadjustedArmRotations){
+      this.bones.get(name).quaternion.copy(rotation);
+    }
+    this.mixer.update(delta);
+    if(this.appearance.body!=='female')return;
+
+    // Keep the arms relaxed but visibly clear of the narrower torso.
+    // Gentle correction for locomotion; none for dramatic fall/jump poses.
+    const name=this.action?.getClip()?.name||'idle';
+    const target=name.startsWith('idle')?0.17
+      : name==='walk'||name==='walk_back'||name.startsWith('strafe_')?0.12
+      : name==='run'?0.085 : 0;
+    this._femaleArmOutset+=(target-this._femaleArmOutset)*(1-Math.exp(-12*delta));
+    if(this._femaleArmOutset<0.0001)return;
+
+    // A body-relative forward axis ensures this works when players turn.
+    this.root.getWorldQuaternion(this._rootWorldQuat);
+    this._armWorldAxis.copy(this._armAxis).applyQuaternion(this._rootWorldQuat);
+    for(const [boneName,sign] of [['upperarm_l',1],['upperarm_r',-1]]){
+      const bone=this.bones.get(boneName);
+      if(!this._unadjustedArmRotations.has(boneName)){
+        this._unadjustedArmRotations.set(boneName,new THREE.Quaternion());
+      }
+      this._unadjustedArmRotations.get(boneName).copy(bone.quaternion);
+      bone.parent.getWorldQuaternion(this._armParentQuat);
+      this._armQuat.setFromAxisAngle(this._armWorldAxis,sign*this._femaleArmOutset);
+      this._armLocalQuat.copy(this._armParentQuat).invert()
+        .multiply(this._armQuat).multiply(this._armParentQuat);
+      bone.quaternion.premultiply(this._armLocalQuat);
+    }
+  }
   stats(){
     let triangles=0,drawables=0;
     this.root.traverse(o=>{
