@@ -1,0 +1,118 @@
+<!doctype html><html lang="ru"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Forest Chopper | Humanoid Lite 10k</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#182730;color:#eef1e8;overflow:hidden}
+canvas{width:100vw;height:100vh;display:block}
+aside{position:fixed;left:14px;top:14px;bottom:14px;width:min(320px,calc(100vw - 30px));overflow:auto;background:#152a31ef;
+border:1px solid #607b77;border-radius:12px;padding:15px;box-shadow:0 15px 40px #0009}
+h1{font-size:20px;margin:0 0 3px}p{margin:0 0 12px;font-size:12px;color:#bfd0c7}
+h2{margin:18px 0 10px;border-bottom:1px solid #456362;padding-bottom:6px;text-transform:uppercase;letter-spacing:.07em;font-size:12px}
+.control{display:grid;grid-template-columns:95px 1fr;align-items:center;gap:8px;margin:8px 0}
+label{font-size:12px}select,button,input{min-width:0}select,button{background:#294a4a;color:#edf1ea;border:1px solid #69948b;border-radius:7px;padding:7px;width:100%;cursor:pointer}
+input[type=color]{width:100%;height:30px;padding:0;cursor:pointer;border:1px solid #69948b}
+input[type=range]{width:100%;accent-color:#d4ad6a}
+#status{font-size:12px;color:#e9cd96;min-height:18px}
+pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
+#help{position:fixed;bottom:15px;right:15px;font-size:12px;background:#1b3037a8;padding:10px;border-radius:8px}
+</style>
+<script type="importmap">{"imports":{"three":"https://esm.sh/three@0.170.0"}}</script>
+</head><body><canvas id="view"></canvas><aside>
+<h1>Humanoid Lite</h1><p>Forest Chopper · fixed male/female body · no runtime morphs</p><div id="status">Загрузка...</div>
+<h2>Внешность</h2>
+<div class="control"><label>Пол</label><select id="body"><option value="male">Мужской</option><option value="female">Женский</option></select></div>
+<div class="control"><label>Лицо</label><select id="face"><option value="default">Обычное</option><option value="angular">Угловатое</option><option value="soft">Мягкие черты</option></select></div>
+<div class="control"><label>Кожа</label><select id="skin"><option value="default">Оригинальная</option><option value="pale">Светлая</option><option value="warm">Тёплая</option><option value="tan">Загар</option><option value="deep">Тёмная</option></select></div>
+<div class="control"><label>Причёска</label><select id="hair"></select></div>
+<div class="control"><label>Цвет волос</label><input type="color" id="hairColor" value="#ffffff"/></div>
+<h2>Снаряжение</h2>
+<div class="control"><label>Верх</label><select id="top"></select></div>
+<div class="control"><label>Низ</label><select id="bottom"></select></div>
+<div class="control"><label>Обувь</label><select id="shoes"></select></div>
+<div class="control"><label>Верхняя одежда</label><select id="outerwear"></select></div>
+<div class="control"><label>Нижнее бельё</label><select id="underwear"></select></div>
+<h2>Анимация</h2>
+<div class="control"><label>Клип</label><select id="animation"></select></div>
+<div class="control"><label>Скорость</label><input id="speed" type="range" min="0" max="3" step=".1" value="1"/></div>
+<div class="control"><label>Скелет</label><input type="checkbox" id="skeleton"/></div>
+<h2>Статистика</h2><pre id="stats"></pre>
+<button id="copy">Скопировать конфигурацию</button>
+</aside><div id="help">Мышь — вращать · колесо — масштаб</div>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
+import {createLiteHumanoid,getHumanoidCatalog,DEFAULT_APPEARANCE} from './humanoid-lite.js';
+const $=id=>document.getElementById(id);
+const renderer=new THREE.WebGLRenderer({canvas:$('view'),antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
+const scene=new THREE.Scene();scene.background=new THREE.Color('#263a44');
+scene.add(new THREE.HemisphereLight(0xe1efff,0x554337,2));
+const light=new THREE.DirectionalLight(0xffe0b8,3.1);light.position.set(-4,6,4);
+light.castShadow=true;light.shadow.mapSize.set(1024,1024);
+light.shadow.camera.left=-3;light.shadow.camera.right=3;light.shadow.camera.top=3;light.shadow.camera.bottom=-3;scene.add(light);
+const fillLight=new THREE.DirectionalLight(0x8ab2e9,1.2);fillLight.position.set(2,2,-3);scene.add(fillLight);
+const floor=new THREE.Mesh(new THREE.CircleGeometry(3.8,64),new THREE.MeshStandardMaterial({color:0x426655,roughness:1}));
+floor.rotation.x=-Math.PI/2;floor.position.y=-.018;floor.receiveShadow=true;scene.add(floor);
+const grid=new THREE.GridHelper(7,14,0x779789,0x426655);
+grid.position.y=-.015;grid.material.transparent=true;grid.material.opacity=.28;scene.add(grid);
+const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.02,50);camera.position.set(2.4,1.8,3.35);
+const orbit=new OrbitControls(camera,renderer.domElement);
+orbit.target.set(0,.95,0);orbit.minDistance=.65;orbit.maxDistance=7;orbit.enableDamping=true;orbit.update();
+let actor,helper;
+const cfg={...DEFAULT_APPEARANCE};
+const clock=new THREE.Clock();
+const setStatus=message=>$('status').textContent=message;
+const defaultOptions=[{id:'none',label:{en:'— Без предмета —'}}];
+function fill(node,items,slot,selected){
+ const choices=[...defaultOptions,...items.filter(i=>!slot||i.slot===slot)];
+ node.replaceChildren(...choices.map(x=>{const el=document.createElement('option');el.value=x.id;el.textContent=x.label?.en||x.id;return el}));
+ node.value=selected||'none';
+}
+function drawStats(){
+ $('stats').textContent=JSON.stringify({...actor.stats(),appearance:cfg},null,2);
+}
+function drawHelper(){
+ if(helper){scene.remove(helper);helper.dispose?.();}
+ helper=new THREE.SkeletonHelper(actor.model);helper.visible=$('skeleton').checked;scene.add(helper);
+}
+async function reload(){
+ setStatus('Загружаю '+cfg.body+'…');
+ try{
+   const fresh=await createLiteHumanoid(cfg);
+   if(actor){scene.remove(actor.root);actor.mixer.stopAllAction();}
+   actor=fresh;scene.add(actor.root);drawHelper();
+   $('animation').replaceChildren(...actor.clips.map(a=>{const el=document.createElement('option');el.value=el.textContent=a.name;return el}));
+   $('animation').value='idle';actor.mixer.timeScale=+$('speed').value;
+   drawStats();setStatus('Готово');
+   window.humanoidLitePreview={actor,cfg};
+ }catch(err){setStatus('Ошибка: '+err.message);console.error(err);}
+}
+$('body').onchange=e=>{cfg.body=e.target.value;void reload()};
+$('face').onchange=e=>{cfg.face=e.target.value;void reload()};
+$('skin').onchange=e=>{cfg.skin=e.target.value;actor.setSkinColor(cfg.skin);drawStats()};
+$('hairColor').oninput=e=>{cfg.hairColor=e.target.value;actor.setHairColor(cfg.hairColor)};
+for(const slot of ['hair','top','bottom','shoes','outerwear','underwear']){
+ $(slot).onchange=async e=>{
+  cfg[slot]=e.target.value==='none'?null:e.target.value;setStatus('Меняю '+slot+'…');
+  try{await actor.equip(slot,cfg[slot]);drawStats();setStatus('Готово')}
+  catch(err){setStatus('Ошибка: '+err.message);console.error(err)}
+ };
+}
+$('animation').onchange=e=>actor.play(e.target.value,{loop:!['fall','jump','land'].includes(e.target.value)});
+$('speed').oninput=e=>{if(actor)actor.mixer.timeScale=Number(e.target.value)};
+$('skeleton').onchange=e=>{if(helper)helper.visible=e.target.checked};
+$('copy').onclick=()=>navigator.clipboard.writeText(JSON.stringify(cfg,null,2));
+try{
+ const catalog=await getHumanoidCatalog();
+ fill($('hair'),catalog.hair.styles,null,cfg.hair);
+ for(const s of ['top','bottom','shoes','outerwear','underwear'])
+   fill($(s),catalog.clothing.items,s,cfg[s]);
+ await reload();
+}catch(err){setStatus('Ошибка: '+err.message);console.error(err)}
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}
+window.addEventListener('resize',resize);resize();
+function frame(){requestAnimationFrame(frame);actor?.update(Math.min(.05,clock.getDelta()));orbit.update();renderer.render(scene,camera)}
+frame();
+</script></body></html>

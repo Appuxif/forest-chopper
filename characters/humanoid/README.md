@@ -102,3 +102,93 @@ python3 -m unittest discover -s tests -p 'test_humanoid_assets.py' -v
 Tests confirm 53 matching bones, complete finger skeleton, 92 shape targets,
 catalog asset file availability and compatibility, animation targets, and
 presence of the editable Blender workbench.
+
+
+## Lite modular system — intended indie-game version (post-checkpoint)
+
+The original system above is retained verbatim under Git checkpoint **f055736**.
+The lightweight system is separate, with pre-baked meshes and **zero runtime morph targets**.
+
+- `humanoid-lite-workbench.blend`: editable Blender inspection scene, with one male
+  humanoid and independently removable shirt, jeans, shoes, hair on a single 53-bone rig.
+  This is currently also open in the connected Blender in scene
+  **Forest Chopper | HUMANOID LITE**. The earlier WIP scene remains in the blend.
+- `lite/body_male.glb`, `lite/body_female.glb`: fixed anatomy + face,
+  no morph targets, but all 12 original clips and the full 53-bone humanoid rig.
+- `lite/body_{gender}_{angular,soft}.glb`: two optional **pre-baked face presets**
+  for each body, sharing the same rig/animations. Three face variants per body total.
+- `lite/clothing_*_{gender}.glb`, `lite/hair_*_{gender}.glb`: skinned gear
+  exported individually for both genders (44 files).
+- `humanoid-lite.js`: asset composer and attachment API. All equipped SkinnedMeshes
+  share the actual avatar's 53 bones; no runtime shape keys or independent cloth rigs.
+- `preview-lite.html`: 3D test page for body, face, skin tone, hair, hair color,
+  clothes, animations and skeleton overlay.
+- `build_lite.py`, `build_all_lite.py`: reproducible source-driven CC0 asset
+  processing. The original upstream assets remain untouched in `source/`.
+
+From the project root:
+
+```bash
+python3 -m http.server 8790
+# open http://127.0.0.1:8790/characters/humanoid/preview-lite.html
+python3 characters/humanoid/build_all_lite.py --jobs 4 # cached skips existing
+# optionally: --force
+python3 -m unittest discover -s tests -p test_humanoid_lite.py -v
+```
+
+Use this API in the standalone Three.js scene (not yet plugged into the
+existing game character loader):
+
+```js
+import { createLiteHumanoid } from './characters/humanoid/humanoid-lite.js';
+const player=await createLiteHumanoid({
+  body:'male',face:'angular',skin:'tan',hair:'short04',
+  hairColor:'#d5c097',top:'shirt',bottom:'jeans',shoes:'boots'
+});
+scene.add(player.root);
+player.play('walk');
+player.update(dt);
+await player.equip('outerwear','jacket'); // independent SkinnedMesh, shared rig
+const axe=player.attach('handRight',axeObject,{position:[0,0,0]});
+// Other sockets: handLeft, head, chest, back, waist
+```
+
+### Observed geometry (not estimates)
+
+| Avatar | Triangles |
+| --- | ---: |
+| Male default base (body, eyes, eyebrows, eyelashes) | 5,891 |
+| Female default base | 5,892 |
+| Long-sleeve shirt (male) | 1,209 |
+| Jeans (male) | 821 |
+| Shoes (male) | 1,062 |
+| Short hair 02 (male) | 1,069 |
+| **Dressed default male** | **10,052** |
+| **Dressed default female** | **10,051** |
+
+Actual counts depend on equipped items; a second jacket, long hair or other
+layers can push beyond 10k. The 10k target refers to one ordinary clothed
+avatar without extra layers. A two-layer outfit can reach ~11–12k.
+
+Notes: The Blender process first bakes the selected body/face profile to mesh,
+then **removes all 92 shape keys**, then selectively decimates the source
+geometry. Clothing is decimated and slightly expanded at the surface to reduce
+visible shoulder skin pokes. Material texture maps/UV and the bone weights
+remain in the exported GLB. All source GLBs are retained as a quality fallback.
+
+### Limits / follow-up work
+
+- The asset remains fairly realistic; art-direction stylization can be added
+  with clothes, custom hairstyles, hats, beard and texture palette.
+- Face options are whole pre-baked variants, not separate movable facial parts.
+- Bone transforms remain on a common MakeHuman rest skeleton for both genders;
+  large additional body-shape changes are deliberately out of scope.
+- Rigid gear sockets are supported but **no actual weapon, headwear or beard mesh**
+  is included yet. They will need modeled or licensed source assets.
+- 53 bones and 10 skinned drawables per visible avatar are still meaningful
+  costs for a crowded multiplayer scene; plan instancing impostors,
+  texture/material batching and distant LOD as needed.
+- Animations are inherited from the upstream source. They have not been
+  upgraded with foot IK, weapon grip IK or chopping clips.
+- Not yet integrated into the production player / multiplayer code. The old
+  `lumberjack.glb` loader is unchanged.
