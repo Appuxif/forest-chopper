@@ -2,6 +2,15 @@
 // Reuses existing physics + root motion. The old avatar remains the invisible
 // movement driver; the replacement is visual-only and never changes world data.
 const LABELS={legacy:'Старый',male:'Male · 53 кости',female:'Female · 53 кости'};
+const SELECTION_KEY='forest-chopper.humanoid-preview.gender';
+function savedChoice(){
+  try { const choice=sessionStorage.getItem(SELECTION_KEY); return Object.hasOwn(LABELS,choice)?choice:'legacy'; }
+  catch { return 'legacy'; }
+}
+function saveChoice(choice){
+  try { sessionStorage.setItem(SELECTION_KEY,choice); } catch { /* storage may be disabled */ }
+}
+
 const MOTIONS={Idle:'idle',Walk:'walk',Run:'run',StrafeLeft:'strafe_left',StrafeRight:'strafe_right',Jump:'jump',Fall:'fall'};
 // The animator authored Chop at normal speed; legacy Chop2 has a different duration.
 const CHOP_PLAYBACK_SPEED=1;
@@ -145,7 +154,12 @@ export function createHumanoidGamePreview({THREE,avatar,game,renderer}){
       avatar.shadowMeshes.splice(0,avatar.shadowMeshes.length,...originalShadows);
     }
   }
-  select.addEventListener('change',()=>{void choose(select.value)});
+  select.addEventListener('change',()=>{saveChoice(select.value);void choose(select.value)});
+  // Ctrl+Shift+R should reload the previously selected model, not silently
+  // switch the user back to the legacy character and hide the updated GLB.
+  const initialChoice=savedChoice();
+  select.value=initialChoice;
+  if(initialChoice!=='legacy')void choose(initialChoice);
   // This counter runs only after an actual WebGL render, not on every
   // requestAnimationFrame / simulation update (which can be ~144 Hz at 60 FPS).
   function renderTick(now){
