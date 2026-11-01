@@ -302,11 +302,13 @@
     "da": "Hættetrøje",
     "en": "Hoodie"
    },
-   "slot": "outerwear",
+   "slot": "top",
    "occupies": [
-    "outerwear"
+    "top"
    ],
-   "conflicts": [],
+   "conflicts": [
+    "trenchcoat"
+   ],
    "layer": 4,
    "hidesBodyZones": [
     "hoodie"
@@ -484,6 +486,7 @@
    ],
    "conflicts": [
     "trenchcoat",
+    "hoodie",
     "dress"
    ],
    "layer": 4,

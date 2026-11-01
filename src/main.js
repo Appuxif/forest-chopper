@@ -1,5 +1,4 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createHumanoidGamePreview} from './humanoid-game-preview.js?v=20261101-demo1';
 import {createWorld} from './world.js?v=20261101-startup-loader2';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
@@ -87,7 +86,7 @@ let distantBirchParts=generateBirchParts({
 });
 let distantTreeParts={conifer:distantSpruceParts,birch:distantBirchParts};
 const treeWindShader=createTreeWindShader({motionQuery:typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false}});
-let ownAvatar=null,humanoidPreview=null,thirdPerson=true;
+let ownAvatar=null,thirdPerson=true;
 let refreshPerformance=()=>{};
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 let initialAntialias=true;
@@ -322,7 +321,6 @@ const ctx={
  get orientation(){return orientation;}, set orientation(value){orientation=value;},
  get overlaps(){return overlaps;},
  get ownAvatar(){return ownAvatar;}, set ownAvatar(value){ownAvatar=value;},
- get humanoidPreview(){return humanoidPreview;},
  get particles(){return particles;},
  get pitch(){return pitch;}, set pitch(value){pitch=value;},
  get placeLog(){return placeLog;},
@@ -526,7 +524,6 @@ ownAvatar=createLumberjack();if(ownAvatar){
  camera.layers.enable(1);
  camera.layers.enable(3);
  scene.add(ownAvatar.group);
- humanoidPreview=createHumanoidGamePreview({THREE,avatar:ownAvatar,game:host,renderer});
 }
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));
 inventory=createInventory(ctx);

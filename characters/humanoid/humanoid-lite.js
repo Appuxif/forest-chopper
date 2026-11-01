@@ -6,29 +6,10 @@
 import * as THREE from 'https://esm.sh/three@0.170.0';
 import {GLTFLoader} from 'https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'https://esm.sh/three@0.170.0/examples/jsm/utils/SkeletonUtils.js';
-import {applyClothingLayerMask,clearClothingLayerMask,CLOTHING_LAYER_RANK} from './clothing-layer-mask.js';
+import {makeBodySkinZones,insetBodyPositions} from './body-zones.js';
 
 const BASE=new URL('./',import.meta.url);
 const loader=new GLTFLoader();
-const variantTextureLoader=new THREE.TextureLoader();
-const variantTextures=new Map();
-function loadClothingVariantTexture(itemId,variantId){
-  const key=itemId+'/'+variantId;
-  if(!variantTextures.has(key)){
-    const url=new URL('textures/clothing/'+itemId+'/'+variantId+'.png',BASE).href;
-    const request=variantTextureLoader.loadAsync(url).then(texture=>{
-      // Clothing UVs were exported as glTF: keep same vertical orientation.
-      texture.flipY=false;
-      texture.colorSpace=THREE.SRGBColorSpace;
-      texture.wrapS=texture.wrapT=THREE.RepeatWrapping;
-      texture.anisotropy=4;
-      texture.needsUpdate=true;
-      return texture;
-    }).catch(error=>{variantTextures.delete(key);throw error});
-    variantTextures.set(key,request);
-  }
-  return variantTextures.get(key);
-}
 const gltfCache=new Map();
 const jsonCache=new Map();
 const loadGLTF=relative=>{
@@ -58,19 +39,16 @@ const COLORS={
   }
 };
 export async function getHumanoidCatalog(){
- const [clothing,hair,variants]=await Promise.all([
-   loadJSON('source/clothing.json'),loadJSON('source/hair.json'),
-   loadJSON('source/clothing-variants.json')
- ]);
- return {clothing,hair,variants};
+ const [clothing,hair]=await Promise.all([loadJSON('source/clothing.json'),loadJSON('source/hair.json')]);
+ return {clothing,hair};
 }
-const gearName=(file,gender)=>'lite/'+file.replace(/\.glb$/,'')+'_'+gender+'.glb';
+const gearName=(file,gender)=>'lite/'+file.replace(/\.glb$/,'')+'_'+gender+'.glb'+(file==='clothing_shirt.glb'||file==='clothing_tshirt.glb'?'?sealed=1':'');
 
 export class LiteHumanoid {
   constructor(scene,clips,appearance,catalog){
     this.root=new THREE.Group();this.root.name='Humanoid.'+appearance.body;
     this.model=scene;this.root.add(scene);
-    this.appearance={...appearance,clothingVariants:{...(appearance.clothingVariants||{})}};
+    this.appearance={...appearance};
     this.catalog=catalog;
     this.bones=new Map();this.meshes=[];
     scene.traverse(o=>{
@@ -78,7 +56,12 @@ export class LiteHumanoid {
       if(o.isSkinnedMesh){this.meshes.push(o);o.castShadow=true;o.frustumCulled=false;}
     });
     if(this.bones.size!==53)throw Error('Expected exactly 53 humanoid joints');
-    this.skeleton=this.meshes.find(o=>o.name==='Body')?.skeleton || this.meshes[0].skeleton;
+    this.body=this.meshes.find(o=>o.name==='Body')||this.meshes[0];
+    this.skeleton=this.body.skeleton;
+    // Every avatar gets its own body geometry: garments may inset skin without
+    // changing other players' bodies or the cached GLB templates.
+    this.body.geometry=this.body.geometry.clone();
+    this._bodySkinZones=makeBodySkinZones(this.body);
     this.mixer=new THREE.AnimationMixer(this.root);
     this.clips=clips;
     this.action=null;
@@ -94,12 +77,6 @@ export class LiteHumanoid {
     this._rootWorldQuat=new THREE.Quaternion();
     this._unadjustedArmRotations=new Map();
     this.parts=new Map();this.sockets=new Map();
-    // Not reliable for open jackets: the projection cuts visible undershirts.
-    // Only enable this legacy experiment when the caller explicitly opts in.
-    this.layerMaskEnabled=appearance.layerMaskEnabled===true;
-    this.layerMaskPadding=appearance.layerMaskPadding??2;
-    this.layerMaskStats={};
-    this._layerMaskBatch=false;
     for(const [name,boneName] of Object.entries(SOCKET_BONES)){
       const parent=this.bones.get(boneName);
       if(!parent)throw Error('Missing socket bone: '+boneName);
@@ -128,50 +105,6 @@ export class LiteHumanoid {
     if(!hair)return this;
     if(!hair.material.userData.baseHairColor) hair.material.userData.baseHairColor=hair.material.color.clone();
     hair.material.color.copy(hair.material.userData.baseHairColor).multiply(new THREE.Color(color));
-    return this;
-  }
-  /**
-   * Switch a clothing material without replacing the skinned mesh.
-   * Existing body/garment masks and animations remain untouched.
-   */
-  async setClothingVariant(slot,variantId='default'){
-    const mesh=this.parts.get(slot);
-    if(!mesh||slot==='hair')return this;
-    const itemId=mesh.userData.assetId;
-    const options=this.catalog.variants?.items?.[itemId]||[];
-    const choice=options.find(x=>x.id===variantId)||options[0];
-    if(!choice)return this;
-    const material=mesh.material;
-    if(!mesh.userData.clothingVariantBase){
-      mesh.userData.clothingVariantBase={
-        map:material.map,color:material.color.clone(),
-        roughness:material.roughness,metalness:material.metalness
-      };
-    }
-    const revision=(mesh.userData.clothingVariantRevision||0)+1;
-    mesh.userData.clothingVariantRevision=revision;
-    const original=mesh.userData.clothingVariantBase;
-    if(choice.original){
-      material.map=original.map;
-      material.color.copy(original.color);
-      material.roughness=original.roughness;
-      material.metalness=original.metalness;
-    }else{
-      const map=await loadClothingVariantTexture(itemId,choice.id);
-      // A new item or newer selection may have arrived while loading PNG.
-      if(this.parts.get(slot)!==mesh||mesh.userData.clothingVariantRevision!==revision)
-        return this;
-      material.map=map;
-      material.color.set('#ffffff');
-      material.roughness={
-        leather:.72,suede:.94,denim:.88,plaid:.92,
-        fleece:.98,canvas:.90,waxed:.70,cotton:.91
-      }[choice.style]??original.roughness;
-      material.metalness=0;
-    }
-    material.needsUpdate=true;
-    mesh.userData.clothingVariant=choice.id;
-    this.appearance.clothingVariants[slot]=choice.id;
     return this;
   }
   async equip(slot,id){
@@ -204,73 +137,77 @@ export class LiteHumanoid {
     mesh.bind(skeleton,mesh.bindMatrix.clone());
     mesh.frustumCulled=false;mesh.castShadow=true;mesh.receiveShadow=true;
     mesh.name='Equip.'+slot+'.'+id;
+    // The stock MakeHuman shirts flare away from the abdomen; a restrained
+    // torso-only fit (~1 cm) makes them less hollow while keeping free arms.
+    // Clone the geometry before editing: other players share the source GLB.
+    if(slot==='top'&&(id==='shirt'||id==='tshirt')){
+      const geo=mesh.geometry=mesh.geometry.clone();
+      const position=geo.getAttribute('position');
+      const smooth=(a,b,x)=>{
+        const t=Math.min(1,Math.max(0,(x-a)/(b-a)));
+        return t*t*(3-2*t);
+      };
+      for(let i=0;i<position.count;i++){
+        const x=position.getX(i),y=position.getY(i),z=position.getZ(i);
+        const center=1-smooth(.23,.32,Math.abs(x));
+        const shoulderFade=1-smooth(1.30,1.40,y);
+        const fit=.055*center*shoulderFade;
+        position.setXYZ(i,x*(1-fit),y,z*(1-fit));
+      }
+      position.needsUpdate=true;
+      geo.computeVertexNormals();
+    }
     mesh.material=mesh.material.clone();
+    // Garments are thin shells; their inside must remain visible when viewed
+    // through collars, open sleeves, or from beneath the shirt/coat.
+    if(slot!=='hair'){
+      for(const material of (Array.isArray(mesh.material)?mesh.material:[mesh.material])){
+        material.side=THREE.DoubleSide;
+        // Low-key textured bounce light: otherwise the inward-facing collar,
+        // wrist and hem linings appear as a featureless black hole when seen
+        // from below, even though there is real skinned fabric geometry.
+        if(slot==='top'&&(id==='shirt'||id==='tshirt')&&material.map){
+          material.emissive.set(0xffffff);
+          material.emissiveMap=material.map;
+          material.emissiveIntensity=.14;
+        }
+        material.needsUpdate=true;
+      }
+    }
     mesh.userData.assetId=id;
-    this.unequip(slot,{refresh:false});
+    this.unequip(slot);
     this.parts.set(slot,mesh);
+    mesh.userData.catalogId=id;
+    this.updateBodyVisibility();
     if(slot==='hair')this.setHairColor(this.appearance.hairColor);
-    else await this.setClothingVariant(slot,this.appearance.clothingVariants?.[slot]||'default');
     this.appearance[slot]=id;
-    this.refreshOutfitVisibility();
-    if(!this._layerMaskBatch&&slot!=='hair')this.refreshClothingLayers();
     return this;
   }
-  unequip(slot,{refresh=true}={}){
+  unequip(slot){
     const previous=this.parts.get(slot);
-    if(previous){
-      clearClothingLayerMask(previous);
-      previous.removeFromParent();previous.skeleton.dispose();this.parts.delete(slot);
-    }
+    if(previous){previous.removeFromParent();previous.skeleton.dispose();this.parts.delete(slot);}
     this.appearance[slot]=null;
-    this.refreshOutfitVisibility();
-    if(refresh&&!this._layerMaskBatch&&slot!=='hair')this.refreshClothingLayers();
+    this.updateBodyVisibility();
     return this;
   }
-  // Hoodie replaces the visible top layer but does not unequip it.
-  // Taking hoodie off (or replacing it with a jacket) restores the top.
-  refreshOutfitVisibility(){
-    const hideTop=this.parts.get('outerwear')?.userData.assetId==='hoodie';
-    for(const [slot,mesh] of this.parts){
-      if(slot!=='hair')mesh.visible=!(slot==='top'&&hideTop);
+  updateBodyVisibility(){
+    const equipped=[...this.parts.values()]
+      .map(p=>this.catalog.clothing.items.find(i=>i.id===p.userData.catalogId))
+      .filter(Boolean);
+    const coordinates=insetBodyPositions(this._bodySkinZones,equipped);
+    const geometry=this.body.geometry;
+    const position=geometry.getAttribute('position');
+    position.array.set(coordinates);
+    position.needsUpdate=true;
+    if(equipped.some(item=>item.hidesBodyZones?.length)){
+      geometry.computeVertexNormals();
+    }else{
+      const normal=geometry.getAttribute('normal');
+      normal.array.set(this._bodySkinZones.normals);
+      normal.needsUpdate=true;
     }
-    return this;
-  }
-  setClothingLayerMaskEnabled(enabled){
-    this.layerMaskEnabled=Boolean(enabled);
-    this.refreshClothingLayers();
-    return this;
-  }
-  setClothingLayerPadding(padding){
-    this.layerMaskPadding=Math.min(6,Math.max(0,Number(padding)||0));
-    this.refreshClothingLayers();
-    return this;
-  }
-  refreshClothingLayers(){
-    // No per-combination assets or hand-painted clothing-to-clothing masks:
-    // the higher garment is projected onto each lower garment's UVs.
-    for(const mesh of this.parts.values())clearClothingLayerMask(mesh);
-    this.layerMaskStats={};
-    if(!this.layerMaskEnabled)return this;
-    const order=Object.entries(CLOTHING_LAYER_RANK)
-      .filter(([slot])=>this.parts.has(slot));
-    const canCover=(outer,inner)=>(
-      outer==='outerwear'&&['top','underwear','bra'].includes(inner)||
-      outer==='top'&&['underwear','bra'].includes(inner)||
-      // Pants and footwear need separate leg-aware coverage. The current
-      // cylindrical atlas groups both legs into 'torso', and projecting boots
-      // onto trousers cuts long, incorrect holes around the ankles.
-      outer==='bottom'&&['underwear'].includes(inner)
-    );
-    for(const [slot] of order){
-      const mesh=this.parts.get(slot);
-      const outerMeshes=order.filter(([o])=>canCover(o,slot))
-        .map(([o])=>this.parts.get(o)).filter(Boolean);
-      if(!outerMeshes.length)continue;
-      const result=applyClothingLayerMask(mesh,outerMeshes,
-        {padding:this.layerMaskPadding});
-      if(result)this.layerMaskStats[slot]=result;
-    }
-    return this;
+    // Full index buffer stays in place: collar, wrists, hems and underside
+    // always have a continuous skin surface. No holes, no additional meshes.
   }
   attach(slot,object,{position,rotation,scale}={}){
     const socket=this.sockets.get(slot);
@@ -354,14 +291,8 @@ export async function createLiteHumanoid(options={}){
  ]);
  const model=cloneSkinned(glb.scene);
  const actor=new LiteHumanoid(model,glb.animations,appearance,catalog);
- actor._layerMaskBatch=true;
- try{
-   for(const slot of ['underwear','bra','top','bottom','shoes','outerwear','hair']){
-     if(appearance[slot])await actor.equip(slot,appearance[slot]);
-   }
- }finally{
-   actor._layerMaskBatch=false;
-   actor.refreshClothingLayers();
+ for(const slot of ['underwear','bra','top','bottom','shoes','outerwear','hair']){
+   if(appearance[slot])await actor.equip(slot,appearance[slot]);
  }
  actor.play('idle',{fade:0});
  return actor;
