@@ -7,6 +7,7 @@ import {createAnimations} from './animations.js?v=20261102-chop-frame18';
 import {createWorld} from './world.js?v=20261103-region-default-3';
 import {generateSpruceParts} from './spruce-model.js?v=20261103-shared-birch-all1';
 import {generateBirchParts} from './birch-model.js?v=20261103-shared-birch-all1';
+import {createHumanoidGamePreview} from './humanoid-game-preview.js?v=20261101-demo1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
 import {readActiveTreeConfig,limitTreeModelTriangles} from './tree-model-config.js?v=20261103-shared-birch-all1';
 import {createSpruceDiagnostics} from './spruce-diagnostics.js?v=20261031-spruce-bark1';
@@ -102,7 +103,7 @@ let distantBirchParts=generateBirchParts({
 let distantTreeParts={conifer:distantSpruceParts,birch:distantBirchParts};
 const treeWindShader=createTreeWindShader({motionQuery:typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false}});
 let mobs=null;
-let ownAvatar=null,thirdPerson=true,ragdoll=null,ragdollControls=null,ragdollCamera=null;
+let ownAvatar=null,humanoidPreview=null,thirdPerson=true,ragdoll=null,ragdollControls=null,ragdollCamera=null;
 let refreshPerformance=()=>{};
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 let initialAntialias=true;
@@ -376,6 +377,7 @@ const ctx={
  get fallImpactSpeed(){return fallImpactSpeed;},set fallImpactSpeed(v){fallImpactSpeed=v;},
  applyFallImpact(impact,options){return applyFallImpact(ctx,impact,options);},
  get collisionWorld(){return collisionWorld;},
+ get humanoidPreview(){return humanoidPreview;},
  get particles(){return particles;},
  get pitch(){return pitch;}, set pitch(value){pitch=value;},
  get placeLog(){return placeLog;},
@@ -587,6 +589,7 @@ ownAvatar=createLumberjack();if(ownAvatar){
  camera.layers.enable(1);
  camera.layers.enable(3);
  scene.add(ownAvatar.group);
+ humanoidPreview=createHumanoidGamePreview({THREE,avatar:ownAvatar,game:host,renderer});
 }
 ragdoll=createRagdoll(ctx);
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));

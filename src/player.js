@@ -116,6 +116,7 @@ function animate(now){
  if(ctx.ownAvatar&&!posing&&!dead){
   ctx.ownAvatar.group.rotation.y=ctx.yaw;
   const rootDelta=ctx.tickActor(ctx.ownAvatar,dt,motion,!ctx.onGround,rate);
+  ctx.humanoidPreview?.tick(dt,motion,rate,ctx.ownAvatar);
   dx=rootDelta.x;dz=rootDelta.z;
   // Diagonal input keeps its intended direction; step distance still comes
   // from the animation, rather than an independent hard-coded speed.
@@ -244,6 +245,7 @@ for(const avatar of ctx.avatars.values()){
    if(gpuStarted)gpuTimer.end();
  }
  ctx.worldStartupGate?.tick(now,ctx);
+ ctx.humanoidPreview?.renderTick(now);
  if(profiling)ctx.settings.recordCpuFrame(performance.now()-cpuStart,now);
 }
 
