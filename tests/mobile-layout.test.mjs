@@ -15,6 +15,9 @@ test('both game entrypoints keep the touch layout and cache-busted UI modules al
     assert.match(html,/<div id="game" hidden>/);
     assert.match(html,/id="menu-backgame"/);
     assert.match(html,/id="minimap"[^>]+role="button"/);
+    assert.match(html,/id="pickup"[^>]+aria-label="Поднять предмет"/);
+    assert.match(html,/#pickup\[hidden\]\{display:none!important\}/);
+
   }
   const settings=readFileSync(new URL('../src/settings.js',import.meta.url),'utf8');
   const progress=readFileSync(new URL('../src/progress.js',import.meta.url),'utf8');

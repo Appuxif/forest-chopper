@@ -137,7 +137,7 @@ async function launch(options){
   menuSettings=null;
   menu.hidden=true;game.hidden=false;
   try{
-    await import('./main.js?v=20261101-startup-loader2');
+    await import('./main.js?v=20261101-pickup-reticle2');
   }catch(error){
     console.error('Forest Chopper startup failed',error);
     delete globalThis.__forestLaunch;

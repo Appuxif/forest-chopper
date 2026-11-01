@@ -85,8 +85,22 @@ export function createForestResources(ctx){
   }
   return best?{...best,distance:dist}:null;
  }
- function collect(){
-  const near=closest();if(!near)return false;
+ function isVisible(id){
+  const node=nodes.get(id);
+  if(!node)return false;
+  if(!isDecorResourceId(id))return true;
+  const chunkKey=id.slice(2).split(':')[0];
+  const chunk=ctx.chunks?.get(chunkKey);
+  if(!chunk)return false;
+  const visual=(chunk.userData?.collectibles??[]).find(obj=>
+    obj.userData.collectibleId===id);
+  return !!visual?.visible&&!visual.userData.collectedResource;
+ }
+ function collect(id=null){
+  const near=id===null?closest():nodes.get(id);
+  if(!near)return false;
+  if(Math.hypot(near.x-ctx.px,near.z-ctx.pz)>2.4||
+    ctx.terrain.waterDepthAt(near.x,near.z)>.12)return false;
   if(ctx.isOnline?.()){ctx.sendNet?.({type:'collect_resource',id:near.id});return true;}
   if(!ctx.inventory?.state.addItem({id:near.kind,count:1})){
    ctx.notify?.('Сумка заполнена','warning','resource-full');return false;
@@ -107,7 +121,7 @@ export function createForestResources(ctx){
   for(const mesh of Object.values(meshes))scene.remove(mesh);
   for(const {geo,mat} of Object.values(models)){geo.dispose();mat.dispose();}
  }
- return {tick,set,remove,collect,closest,clear,dispose,restoreCooldowns,syncDecorChunk,syncDecor,
+ return {tick,set,remove,collect,closest,isVisible,clear,dispose,restoreCooldowns,syncDecorChunk,syncDecor,
   createIconModel(kind){
     const model=models[kind];
     if(!model)return null;

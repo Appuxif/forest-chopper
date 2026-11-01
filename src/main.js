@@ -15,8 +15,8 @@ import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
 import {createPhysics} from './physics.js?v=20261031-ponds1';
 import {createBuilding} from './building.js?v=20261031-ponds1';
 import {createChopping} from './chopping.js?v=20261031-jump-energy1';
-import {createControls} from './controls.js?v=20261101-startup-loader1';
-import {createPlayer} from './player.js?v=20261101-startup-loader1';
+import {createControls} from './controls.js?v=20261101-pickup-reticle1';
+import {createPlayer} from './player.js?v=20261101-pickup-reticle1';
 import {createMultiplayer} from './multiplayer.js?v=20261101-shared-day-clock1';
 import {createMinimap} from './minimap.js?v=20261031-rare-lakes1';
 import {createNotifications} from './notifications.js';
@@ -40,11 +40,12 @@ import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261031-stability1';
 import {createVitalsUI} from './vitals-ui.js?v=20261031-stability1';
-import {createForestResources} from './forest-resources.js?v=20261031-ponds1';
-import {createGroundBoxes} from './ground-boxes.js?v=20261031-boxes1';
+import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
+import {createGroundBoxes} from './ground-boxes.js?v=20261101-pickup-reticle1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 import {WorldTaskScheduler} from './world-task-scheduler.js';
 import {createWorldStartupGate} from './world-startup.js';
+import {createPickupInteraction} from './pickup-interaction.js?v=20261101-touch-pickup2';
 
 // Read and consume launch mode before touching any saved game data.
 const MENU_LAUNCH_KEY='forest-chopper:launch:v1';
@@ -210,6 +211,7 @@ if(menuLaunch.mode==='new'){
 }
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null,inventory=null,vitals=null,forestResources=null,groundBoxes=null;
+let pickupInteraction=null;
 let worldStartupGate=null;
 
 let distantForest, replaceTreeModels, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
@@ -227,6 +229,7 @@ const ctx={
  get vitals(){return vitals;},
  get forestResources(){return forestResources;},
  get groundBoxes(){return groundBoxes;},
+ get pickupInteraction(){return pickupInteraction;},
  get highlight(){return highlight;},
  get discoveries(){return discoveries;},
  get communityGoal(){return communityGoal;},
@@ -525,6 +528,7 @@ inventory=createInventory(ctx);
 vitals=createVitalsUI(ctx);
 forestResources=createForestResources(ctx);
 groundBoxes=createGroundBoxes(ctx);
+pickupInteraction=createPickupInteraction(ctx);
 const emotes=createEmotes(ctx);
 const playerList=createPlayerList(ctx);
 crafting=createCrafting(ctx);
