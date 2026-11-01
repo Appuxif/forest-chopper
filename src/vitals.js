@@ -1,3 +1,4 @@
+import {sanitizeEffects,applyTimedEffect,staminaRegenMultiplier} from './status-effects.js';
 // Pure player survival state. No death/respawn until a later game feature.
 export const MAX_VITALS=5;
 export const LOW_VITALS_THRESHOLD=1;
@@ -17,6 +18,8 @@ export const FOOD_EFFECTS=Object.freeze({
   'flower:buttercup': {health:0,hunger:0},
   'flower:pink_wildflower': {health:0,hunger:0},
   'flower:blue_wildflower': {health:0,hunger:0},
+  'potion:health':{health:2,hunger:0},
+  'potion:stamina':{health:0,hunger:0},
 });
 const clamp=n=>Math.max(0,Math.min(MAX_VITALS,n));
 export const isFood=id=>Object.hasOwn(FOOD_EFFECTS,id);
@@ -32,9 +35,9 @@ export function eatEffect(health,hunger,id){
   const effect=FOOD_EFFECTS[id];
   return {health:clamp(health+effect.health),hunger:clamp(hunger+effect.hunger)};
 }
-export function createVitals({now=()=>performance.now()/1000}={}){
-  let health=MAX_VITALS,hunger=MAX_VITALS,stamina=MAX_VITALS,progress=0,lastTick=now(),sprintLocked=false;
-  function snapshot(){return {health,hunger,stamina,staminaLocked:sprintLocked,hungerProgress:progress};}
+export function createVitals({now=()=>performance.now()/1000,epoch=()=>Date.now()/1000}={}){
+  let health=MAX_VITALS,hunger=MAX_VITALS,stamina=MAX_VITALS,progress=0,lastTick=now(),sprintLocked=false,effects=[];
+  function snapshot(){return {health,hunger,stamina,staminaLocked:sprintLocked,hungerProgress:progress,...(effects.length?{effects:effects.map(e=>({...e}))}:{})};}
   function restore(value){
     if(!value||!Number.isInteger(value.health)||value.health<0||value.health>MAX_VITALS
       ||!Number.isInteger(value.hunger)||value.hunger<0||value.hunger>MAX_VITALS
@@ -42,21 +45,24 @@ export function createVitals({now=()=>performance.now()/1000}={}){
       ||(value.staminaLocked!==undefined&&typeof value.staminaLocked!=='boolean')
       ||!Number.isFinite(value.hungerProgress)||value.hungerProgress<0
       ||value.hungerProgress>=HUNGER_INTERVAL_SECONDS)return false;
-    health=value.health;hunger=value.hunger;stamina=value.stamina??MAX_VITALS;progress=value.hungerProgress;
+    const restoredEffects=sanitizeEffects(value.effects,epoch());
+    if(restoredEffects===null)return false;
+    health=value.health;hunger=value.hunger;stamina=value.stamina??MAX_VITALS;progress=value.hungerProgress;effects=restoredEffects;
     sprintLocked=stamina<=0||(value.staminaLocked===true&&stamina<STAMINA_SPRINT_RECOVER);
     lastTick=now();return true;
   }
-  function reset(){health=MAX_VITALS;hunger=MAX_VITALS;stamina=MAX_VITALS;progress=0;lastTick=now();sprintLocked=false;}
+  function reset(){health=MAX_VITALS;hunger=MAX_VITALS;stamina=MAX_VITALS;progress=0;lastTick=now();sprintLocked=false;effects=[];}
   function tick({sprinting=false}={}){
     const time=now();
     const elapsed=Math.max(0,time-lastTick);lastTick=time;
     const delta=Math.min(elapsed,1);
     const beforeStamina=stamina;
+    effects=effects.filter(e=>e.expires_at>epoch());
     if(sprinting&&canSprint()){
       stamina=clamp(stamina-STAMINA_SPRINT_DRAIN*delta);
       if(stamina<=0)sprintLocked=true;
     }else{
-      stamina=clamp(stamina+STAMINA_REGEN*delta);
+      stamina=clamp(stamina+STAMINA_REGEN*staminaRegenMultiplier(effects,epoch())*delta);
       if(stamina>=STAMINA_SPRINT_RECOVER)sprintLocked=false;
     }
     if(hunger===0)return stamina!==beforeStamina;
@@ -87,6 +93,7 @@ export function createVitals({now=()=>performance.now()/1000}={}){
     const result=eatEffect(health,hunger,id);
     if(!result)return false;
     health=result.health;hunger=result.hunger;
+    if(id==='potion:stamina'){stamina=clamp(stamina+2);applyTimedEffect(effects,'stamina_regen',epoch());sprintLocked=false;}
     return true;
   }
   return {tick,eat,hit,jump,chopWarning,canSprint,reset,restore,snapshot,

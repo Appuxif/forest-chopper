@@ -34,7 +34,7 @@ export function createRecipeBook({ctx,state,craftAxe,craftBench,onOpen},doc=docu
  const names={log:'🪵 Бревно',branch:'🌿 Ветка',stone:'🪨 Камень',dry_grass:'🌾 Сухая трава'};
  function canCraftAfterWeight(entry){
   const spent=Object.entries(entry.ingredients??{}).reduce((sum,[id,count])=>sum+count*(ITEM_WEIGHT[id]??0),0);
-  const output=entry.id==='axe'?ITEM_WEIGHT.axe:entry.id==='bench'?ITEM_WEIGHT.bench:0;
+  const output=entry.id==='axe'?ITEM_WEIGHT.axe:entry.id==='bench'?ITEM_WEIGHT.bench:ITEM_WEIGHT[entry.id]??0;
   return state.weight()-spent+output<=MAX_CARRY_WEIGHT;
  }
  function render(){
@@ -101,8 +101,11 @@ export function createRecipeBook({ctx,state,craftAxe,craftBench,onOpen},doc=docu
    const id=event.target.dataset.recipe;
    if(id==='bench')craftBench();
    else if(id==='axe')craftAxe();
+   else if(id==='potion:health'||id==='potion:stamina')ctx.vitals?.craftPotion?.(id);
    else if(['chest','rack'].includes(id)){
     if(!ctx.storages?.place(id))ctx.notify?.('Не хватает ресурсов или место занято','warning');
+   }else if(['campfire','torch','table','fence','workbench'].includes(id)){
+    if(!ctx.campStructures?.place(id))ctx.notify?.('Не хватает ресурсов или место занято','warning');
    }
    render();
   }

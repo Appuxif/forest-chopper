@@ -6,6 +6,7 @@ import {validItem} from './inventory.js';
 import {segmentMask} from './fallen-log-layout.js';
 import {BOX_LIFETIME_SECONDS} from './ground-boxes.js';
 import {validStorage} from './storage-model.js';
+import {validCampStructure,MAX_CAMP_STRUCTURES} from './camp-rules.js';
 import {RESOURCE_RESPAWN_SECONDS} from './resource-zones.js';
 import {MAX_VITALS,HUNGER_INTERVAL_SECONDS} from './vitals.js';
 // Offline-only world snapshots. Server saves are independent and authoritative.
@@ -30,6 +31,7 @@ export function parseOfflineSave(raw) {
         || !Array.isArray(data.logs) || data.logs.length > MAX_LOGS
         || !Array.isArray(data.furniture ?? []) || (data.furniture ?? []).length > MAX_BENCHES
         || !Array.isArray(data.storages??[]) || data.storages?.length>120
+        || !Array.isArray(data.camp_structures??[]) || data.camp_structures?.length>MAX_CAMP_STRUCTURES
         || (data.dayPhase!==undefined&&
            (typeof data.dayPhase!=='number'||!Number.isFinite(data.dayPhase)||
             data.dayPhase<0||data.dayPhase>=1))
@@ -99,8 +101,10 @@ export function parseOfflineSave(raw) {
     for(const item of data.furniture ?? []){if(!validBench(item))return null;furniture.push({kind:'bench',x:item.x,z:item.z,orientation:item.orientation});}
     const storages=data.storages??[];
     if(storages.some(item=>!validStorage(item)))return null;
+    const campStructures=data.camp_structures??[];
+    if(campStructures.some(item=>!validCampStructure(item)))return null;
     return {
-      storages,terrainVersion:[1,2,3].includes(data.terrainVersion)?data.terrainVersion:0,
+      camp_structures:campStructures,storages,terrainVersion:[1,2,3].includes(data.terrainVersion)?data.terrainVersion:0,
       dayPhase:data.dayPhase??0,
       furniture,boxes,migrateLegacyFallenLogs,resource_cooldowns:cooldowns,vitals,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
@@ -133,6 +137,7 @@ export function createOfflineSave(ctx, {
       inventory:ctx.inventory?.serialize?.()??undefined,
       vitals:ctx.vitals?.serialize?.()??undefined,
       boxes:ctx.groundBoxes?.snapshot?.()??[],
+      camp_structures:ctx.campStructures?.snapshot?.()??[],
       resource_cooldowns:ctx.forestResources?.snapshotCooldowns?.()??{},
     };
   }
@@ -190,6 +195,7 @@ export function createOfflineSave(ctx, {
     }
     for(const furniture of state.furniture){ctx.crafting?.add({...furniture,id:-(ctx.crafting.items.size+1)});}
     ctx.storages?.set?.(state.storages);
+    ctx.campStructures?.set?.(state.camp_structures);
     ctx.groundBoxes?.set?.(state.boxes);
     ctx.$('wood').textContent = ctx.wood;
     ctx.$('cut').textContent = ctx.cuts;

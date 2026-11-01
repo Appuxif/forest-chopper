@@ -63,10 +63,10 @@ def fallen_logs_box(x,z,count=TREE_LOG_COUNT,direction=0,tree=None,ready_at=None
 MUSHROOM_SPECIES=('fly_agaric','boletus','death_cap','milkcap')
 FLOWER_SPECIES=('daisy','buttercup','pink_wildflower','blue_wildflower')
 DECOR_ITEM_IDS=tuple('mushroom:'+name for name in MUSHROOM_SPECIES)+tuple('flower:'+name for name in FLOWER_SPECIES)+('dry_grass',)
-ITEM_LIMITS={"log":5,"branch":10,"stone":10,"bench":1,"axe":1,
+ITEM_LIMITS={"log":5,"branch":10,"stone":10,"bench":1,"axe":1,"potion:health":10,"potion:stamina":10,
              **{name:10 for name in DECOR_ITEM_IDS}}
 MAX_CARRY_WEIGHT=100
-ITEM_WEIGHT={"log":10,"branch":0.5,"stone":2,"bench":15,"axe":3,
+ITEM_WEIGHT={"log":10,"branch":0.5,"stone":2,"bench":15,"axe":3,"potion:health":0.5,"potion:stamina":0.5,
              **{name:0.1 for name in DECOR_ITEM_IDS}}
 
 def item_weight(item):
@@ -141,12 +141,24 @@ FOOD_EFFECTS={
     'flower:buttercup':(0,0),
     'flower:pink_wildflower':(0,0),
     'flower:blue_wildflower':(0,0),
+    'potion:health':(2,0),
+    'potion:stamina':(0,0),
 }
+POTION_RECIPES={
+    'potion:health':{'flower:daisy':2,'mushroom:boletus':1},
+    'potion:stamina':{'flower:blue_wildflower':2,'dry_grass':2},
+}
+STATUS_DURATION=30
+STATUS_REGEN_MULTIPLIER=1.7
+
 def vitals_view(player):
-    return {'health':player['health'],'hunger':player['hunger'],
-            'stamina':round(player.get('stamina',MAX_VITALS),3),
-            'staminaLocked':player.get('stamina_sprint_locked',False),
-            'hungerProgress':player['hunger_progress']}
+    view={'health':player['health'],'hunger':player['hunger'],
+          'stamina':round(player.get('stamina',MAX_VITALS),3),
+          'staminaLocked':player.get('stamina_sprint_locked',False),
+          'hungerProgress':player['hunger_progress']}
+    if player.get('stamina_boost_until',0)>time.time():
+        view['effects']=[{'id':'stamina_regen','expires_at':player['stamina_boost_until']}]
+    return view
 
 def advance_hunger(player,now):
     delta=max(0,min(now-player['last_hunger_at'],3600))
@@ -172,7 +184,7 @@ def advance_stamina(player,now):
             player['stamina_sprint_locked']=True
             player['sprinting']=False
     else:
-        value=min(MAX_VITALS,before+STAMINA_REGEN*elapsed)
+        value=min(MAX_VITALS,before+STAMINA_REGEN*(STATUS_REGEN_MULTIPLIER if player.get('stamina_boost_until',0)>time.time() else 1)*elapsed)
         if value>=STAMINA_SPRINT_RECOVER:
             player['stamina_sprint_locked']=False
     player['stamina']=value
@@ -206,6 +218,10 @@ def apply_food(player,kind):
     if effect is None:return False
     player['health']=max(0,min(MAX_VITALS,player['health']+effect[0]))
     player['hunger']=max(0,min(MAX_VITALS,player['hunger']+effect[1]))
+    if kind=='potion:stamina':
+        player['stamina']=min(MAX_VITALS,player.get('stamina',MAX_VITALS)+2)
+        player['stamina_boost_until']=time.time()+STATUS_DURATION
+        player['stamina_sprint_locked']=False
     return True
 
 def new_inventory():
@@ -298,6 +314,24 @@ def inv_take(inv,kind,amount):
             amount-=n
     return True
 
+# Bounded, persistent campsite structures; no autonomous respawn or fuel.
+CAMP_RECIPES={
+    'campfire':{'log':2,'stone':3},
+    'torch':{'branch':1,'stone':3,'dry_grass':1},
+    'table':{'log':3},
+    'fence':{'log':2,'branch':2},
+    'workbench':{'log':4,'stone':2},
+}
+MAX_CAMP_STRUCTURES=100
+def valid_camp_structure(item):
+    return (isinstance(item,dict) and item.get('kind') in CAMP_RECIPES
+            and type(item.get('id')) is int and 0<item['id']<2147483647
+            and type(item.get('orientation')) is int and item['orientation'] in range(4)
+            and type(item.get('lit')) is bool
+            and (item['kind'] in ('campfire','torch') or not item['lit'])
+            and all(type(item.get(axis)) in (int,float) and
+                    math.isfinite(item[axis]) and abs(item[axis])<=240000
+                    for axis in ('x','z')))
 # Server-authoritative chest and log-rack inventory transactions.
 CHEST_SLOTS=24
 CHEST_MAX_WEIGHT=300
@@ -527,7 +561,7 @@ class World:
 
     def __init__(self,path,bot_token=""):
         self.path=Path(path);self.clients={};self.next_id=1;self.seed=random.randrange(1,999999)
-        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.storages={};self.next_storage=1;self.boxes={};self.next_box=1;self.resource_cooldowns={};self.community_cuts=0;self.chat=[];self.chat_seq=0
+        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.storages={};self.next_storage=1;self.camp_structures={};self.next_camp=1;self.boxes={};self.next_box=1;self.resource_cooldowns={};self.community_cuts=0;self.chat=[];self.chat_seq=0
         self.day_epoch=time.time()
         self.world_created_at=self.day_epoch
         self.last_day_sync=time.monotonic()
@@ -567,6 +601,12 @@ class World:
                 storages={int(k):v for k,v in raw_storages.items()}
                 if any(not valid_storage({'id':k,**v}) or v.get('id',k)!=k for k,v in storages.items()):
                     raise ValueError('Invalid storage save')
+                raw_camp=data.get('camp_structures',{})
+                if not isinstance(raw_camp,dict) or len(raw_camp)>MAX_CAMP_STRUCTURES:
+                    raise ValueError('Invalid camp structures')
+                camp={int(k):v for k,v in raw_camp.items()}
+                if any(not valid_camp_structure({'id':k,**v}) or v.get('id',k)!=k for k,v in camp.items()):
+                    raise ValueError('Invalid camp structures')
                 boxes_raw=data.get('boxes',{})
                 if not isinstance(boxes_raw,dict) or len(boxes_raw)>MAX_GROUND_DROPS:raise ValueError('Invalid boxes')
                 boxes={}
@@ -613,13 +653,13 @@ class World:
                     raise ValueError('Invalid world creation date')
                 self.day_epoch=epoch
                 self.world_created_at=created
-                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.storages=storages;self.next_storage=max(storages,default=0)+1;self.community_cuts=community_cuts;self.resource_cooldowns=cooldowns
+                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.storages=storages;self.next_storage=max(storages,default=0)+1;self.camp_structures=camp;self.next_camp=max(camp,default=0)+1;self.community_cuts=community_cuts;self.resource_cooldowns=cooldowns
                 self.next_log=max(logs,default=0)+1
                 if migrated_legacy_logs:self.save()
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
-        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'storages':self.storages,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts,'day_epoch':self.day_epoch,'world_created_at':self.world_created_at}
+        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'storages':self.storages,'camp_structures':self.camp_structures,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts,'day_epoch':self.day_epoch,'world_created_at':self.world_created_at}
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,self.path)
     async def prune_boxes(self,now=None):
         now=time.time() if now is None else now
@@ -800,7 +840,7 @@ class World:
         player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':height_at(self.seed,0,0),'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'quick_refs':[0,1,2,3],'quick_ids':['axe',None,None,None],'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'last_hunger_at':time.monotonic(),'stamina':float(MAX_VITALS),'last_stamina_at':time.monotonic(),'stamina_sprint_locked':False,'sprinting':False,'last_stamina_sent':0,'last_jump':-10000,'jump_authorized_until':0}
         self.clients[ws]=player
         await self.prune_boxes()
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'camp_structures':[{'id':k,**v} for k,v in self.camp_structures.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -828,13 +868,42 @@ class World:
                     self.save()
                     await self.broadcast({'type':'resource_remove','id':ident})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                elif kind=='camp_place':
+                    typ=data.get('kind')
+                    if typ not in CAMP_RECIPES or len(self.camp_structures)>=MAX_CAMP_STRUCTURES:continue
+                    x,z,orientation=data.get('x'),data.get('z'),data.get('orientation',0)
+                    if type(x) not in (int,float) or type(z) not in (int,float) or type(orientation) is not int:continue
+                    if not math.isfinite(x) or not math.isfinite(z) or orientation not in range(4):continue
+                    if abs(x)>240000 or abs(z)>240000 or math.hypot(x-player['x'],z-player['z'])>5:continue
+                    if pond_depth_at(self.seed,x,z)>.12 or any(
+                        math.hypot(x-st['x'],z-st['z'])<2.4
+                        for st in list(self.storages.values())+list(self.camp_structures.values())):continue
+                    cost=CAMP_RECIPES[typ]
+                    if not all(inv_count(player['inventory'],i)>=n for i,n in cost.items()):continue
+                    for i,n in cost.items():
+                        inv_take(player['inventory'],i,n)
+                        if i=='log':player['wood']-=n
+                    ident=self.next_camp;self.next_camp+=1
+                    placed={'id':ident,'kind':typ,'x':x,'z':z,'orientation':orientation,'lit':False}
+                    self.camp_structures[ident]={k:v for k,v in placed.items() if k!='id'}
+                    await self.broadcast({'type':'camp_add','structure':placed})
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                    self.save()
+                elif kind=='camp_toggle':
+                    ident=data.get('id')
+                    if type(ident) is not int or ident not in self.camp_structures:continue
+                    item=self.camp_structures[ident]
+                    if item['kind'] not in ('campfire','torch') or math.hypot(item['x']-player['x'],item['z']-player['z'])>3.2:continue
+                    item['lit']=not item['lit']
+                    await self.broadcast({'type':'camp_update','structure':{'id':ident,**item}})
+                    self.save()
                 elif kind=='storage_place':
                     typ=data.get('kind')
                     if typ not in STORAGE_COST or len(self.storages)>=120:continue
                     x,z=data.get('x'),data.get('z')
                     if type(x) not in (int,float) or type(z) not in (int,float) or not math.isfinite(x) or not math.isfinite(z):continue
                     if abs(x)>240000 or abs(z)>240000 or math.hypot(x-player['x'],z-player['z'])>5:continue
-                    if pond_depth_at(self.seed,x,z)>.12 or any(math.hypot(x-st['x'],z-st['z'])<2.4 for st in self.storages.values()):continue
+                    if pond_depth_at(self.seed,x,z)>.12 or any(math.hypot(x-st['x'],z-st['z'])<2.4 for st in list(self.storages.values())+list(self.camp_structures.values())):continue
                     cost=STORAGE_COST[typ]
                     if not all(inv_count(player['inventory'],ingredient)>=amount for ingredient,amount in cost.items()):continue
                     for ingredient,amount in cost.items():
@@ -924,6 +993,18 @@ class World:
                     if item['id']=='log':player['wood']-=item['count']
                     refresh_equipment(player)
                     await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                elif kind=='craft_potion':
+                    name=data.get('recipe')
+                    if name not in POTION_RECIPES:continue
+                    cost=POTION_RECIPES[name]
+                    inv=player['inventory']
+                    if not all(inv_count(inv,ingredient)>=amount for ingredient,amount in cost.items()):continue
+                    snapshot=[entry.copy() if entry else None for entry in inv]
+                    for ingredient,amount in cost.items():inv_take(inv,ingredient,amount)
+                    if not inv_add(inv,{'id':name,'count':1}):
+                        player['inventory']=snapshot
+                        await self.send(ws,{'type':'action_denied','reason':'Недостаточно места или веса'});continue
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='consume_food':
                     slot=data.get('slot')

@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {RECIPE_TABS,RECIPE_PAGES,recipeAvailable,recipeById} from '../src/recipe-book.js';
 import {createInventoryModel} from '../src/inventory.js';
 test('recipe book has category tabs, two executable recipes and future construction plans',()=>{
- assert.deepEqual(RECIPE_TABS.map(t=>t.id),['tools','structures','free']);
- assert.deepEqual(RECIPE_PAGES.filter(r=>r.craftable).map(r=>r.id),['axe','bench','chest','rack']);
- assert.equal(RECIPE_PAGES.filter(r=>r.tab==='structures').length,5);
- assert.equal(RECIPE_PAGES.filter(r=>r.guide).length,3);
+ assert.deepEqual(RECIPE_TABS.map(t=>t.id),['tools','alchemy','structures','free']);
+ assert.deepEqual(RECIPE_PAGES.filter(r=>r.craftable).map(r=>r.id),['axe','bench','chest','rack','potion:health','potion:stamina','campfire','torch','table','fence','workbench']);
+ assert.equal(RECIPE_PAGES.filter(r=>r.tab==='structures').length,9);
+ assert.equal(RECIPE_PAGES.filter(r=>r.guide).length,5);
  assert.ok(RECIPE_PAGES.every(r=>r.name&&r.description&&r.icon));
  assert.equal(recipeById('missing'),null);
 });

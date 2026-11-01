@@ -1,0 +1,47 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {sanitizeEffects,applyTimedEffect,staminaRegenMultiplier} from '../src/status-effects.js';
+import {createVitals} from '../src/vitals.js';
+import {createInventoryModel} from '../src/inventory.js';
+test('status effects refresh instead of stacking and expire by real-world time',()=>{
+ const list=[];
+ assert.equal(applyTimedEffect(list,'stamina_regen',100),true);
+ assert.deepEqual(list,[{id:'stamina_regen',expires_at:130}]);
+ assert.equal(staminaRegenMultiplier(list,105),1.7);
+ applyTimedEffect(list,'stamina_regen',110);
+ assert.deepEqual(list,[{id:'stamina_regen',expires_at:140}]);
+ assert.equal(staminaRegenMultiplier(list,141),1);
+ assert.deepEqual(sanitizeEffects(list,145),[]);
+ assert.equal(sanitizeEffects([{id:'hack',expires_at:120}],100),null);
+ assert.equal(sanitizeEffects([{id:'stamina_regen',expires_at:900}],100),null);
+ assert.equal(sanitizeEffects([{id:'stamina_regen',expires_at:120},{id:'stamina_regen',expires_at:121}],100),null);
+});
+test('health and stamina potions are bounded and timed regen survives offline restore',()=>{
+ let time=0,epoch=100;
+ const vitals=createVitals({now:()=>time,epoch:()=>epoch});
+ vitals.restore({health:1,hunger:5,stamina:0,staminaLocked:true,hungerProgress:0});
+ assert.equal(vitals.eat('potion:health'),true);
+ assert.equal(vitals.health,3);
+ assert.equal(vitals.eat('potion:stamina'),true);
+ assert.equal(vitals.stamina,2);
+ const snap=vitals.snapshot();
+ assert.deepEqual(snap.effects,[{id:'stamina_regen',expires_at:130}]);
+ time=1;epoch=101;vitals.tick();
+ assert.ok(vitals.stamina>3,'regen boosted at first second');
+ const restored=createVitals({now:()=>time,epoch:()=>epoch});
+ assert.equal(restored.restore(vitals.snapshot()),true);
+ time=2;restored.tick();
+ assert.ok(restored.stamina>4);
+ epoch=140;
+ const expired=createVitals({now:()=>time,epoch:()=>epoch});
+ assert.equal(expired.restore(snap),true);
+ assert.equal(expired.snapshot().effects,undefined,'expired status is removed on reload');
+});
+test('potion item stacks respect bag mass and limits',()=>{
+ const bag=createInventoryModel();
+ assert.equal(bag.addItem({id:'potion:health',count:2}),true);
+ assert.equal(bag.addItem({id:'potion:stamina',count:1}),true);
+ assert.equal(bag.count('potion:health'),2);
+ assert.equal(bag.consumeAt(1,'potion:health'),true);
+ assert.equal(bag.count('potion:health'),1);
+});

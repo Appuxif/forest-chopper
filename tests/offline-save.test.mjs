@@ -268,3 +268,29 @@ test('legacy permanent fallen logs migrate once to a saved one-hour TTL',()=>{
   expired.boxes[0].expires_at=Date.now()/1000-1;
   assert.deepEqual(parseOfflineSave(JSON.stringify(expired)).boxes,[]);
 });
+
+test('camp structures persist and older v1 offline saves default to no camp',()=>{
+  const original=fixture();
+  const list=[
+    {id:-1,kind:'campfire',x:2,z:3,orientation:0,lit:true},
+    {id:-2,kind:'table',x:8,z:3,orientation:1,lit:false},
+  ];
+  original.ctx.campStructures={snapshot(){return list}};
+  assert.equal(original.save.save(),true);
+  const raw=original.storage.getItem(OFFLINE_SAVE_KEY);
+  assert.deepEqual(parseOfflineSave(raw).camp_structures,list);
+  const loaded=fixture(raw);
+  let restored;
+  loaded.ctx.campStructures={set(next){restored=next}};
+  assert.equal(loaded.save.restore(),true);
+  assert.deepEqual(restored,list);
+  const legacy=JSON.parse(raw);
+  delete legacy.camp_structures;
+  assert.deepEqual(parseOfflineSave(JSON.stringify(legacy)).camp_structures,[]);
+  for(const bad of [
+    [{...list[0],lit:'true'}],
+    [{...list[0],kind:'unknown'}],
+    [{...list[0],orientation:5}],
+    Array.from({length:101},()=>list[0]),
+  ])assert.equal(parseOfflineSave(JSON.stringify({...legacy,camp_structures:bad})),null);
+});

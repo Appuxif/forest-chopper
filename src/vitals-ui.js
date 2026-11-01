@@ -1,4 +1,5 @@
 import {createVitals,MAX_VITALS,isFood,FOOD_EFFECTS} from './vitals.js';
+import {recipeById} from './recipe-book.js';
 
 export function createVitalsUI(ctx,doc=document){
  const state=createVitals();
@@ -69,6 +70,18 @@ export function createVitalsUI(ctx,doc=document){
   if(!ctx.isOnline?.())ctx.offlineSave?.markDirty?.();
   return true;
  }
+ function craftPotion(id){
+  const cost=recipeById(id)?.ingredients,inventory=ctx.inventory?.state;
+  if(!cost||!id.startsWith('potion:')||!inventory||
+    !Object.entries(cost).every(([kind,amount])=>inventory.count(kind)>=amount))return false;
+  if(ctx.isOnline?.()){ctx.sendNet?.({type:'craft_potion',recipe:id});return true;}
+  const snapshot=inventory.serialize();
+  for(const [kind,amount] of Object.entries(cost))inventory.spend(kind,amount);
+  if(!inventory.addItem({id,count:1})){
+    inventory.restore(snapshot,inventory.wood());return false;
+  }
+  ctx.inventory.render();ctx.offlineSave?.markDirty?.();return true;
+ }
  function consume(index){
   const item=ctx.inventory?.state.slots[index];
   if(!item||!isFood(item.id))return false;
@@ -77,7 +90,7 @@ export function createVitalsUI(ctx,doc=document){
   state.eat(item.id);
   ctx.inventory.render();render();ctx.offlineSave?.markDirty?.();
   const {health,hunger}=FOOD_EFFECTS[item.id];
-  const message=health<0?'Отравление: −1 жизнь':health>0?'Восстановлена жизнь':hunger>0?'Сытость +1':'Предмет съеден';
+  const message=item.id==='potion:stamina'?'Выносливость восстановлена · регенерация усилена':health<0?'Отравление: −1 жизнь':health>0?'Восстановлена жизнь':hunger>0?'Сытость +1':'Предмет съеден';
   ctx.notify?.(message,health<0?'warning':'success','food-consumed');
   return true;
  }
@@ -91,7 +104,7 @@ export function createVitalsUI(ctx,doc=document){
   lastVisualStamina=state.stamina;lastVisualHunger=state.hunger;render();return true;
  }
  render();
- return {state,tick,consume,hit,jump,chopWarning:()=>state.chopWarning(),canSprint,restore,acceptServer,render,serialize:()=>state.snapshot(),
+ return {state,tick,consume,craftPotion,hit,jump,chopWarning:()=>state.chopWarning(),canSprint,restore,acceptServer,render,serialize:()=>state.snapshot(),
   get health(){return state.health},get hunger(){return state.hunger},get stamina(){return state.stamina},
   get canChop(){return state.canChop}};
 }

@@ -40,6 +40,7 @@ import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261101-standalone-recipes1';
 import {createStorages} from './storages.js';
+import {createCampStructures} from './camp-structures.js';
 import {createVitalsUI} from './vitals-ui.js?v=20261031-stability1';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261101-pickup-reticle1';
@@ -167,6 +168,9 @@ const atmosphere=createAtmosphere({
   for(const item of crafting?.items?.values()??[]){
    if(Math.hypot(item.x-x,item.z-z)<radius+3)result.push(item.group);
   }
+  for(const item of campStructures?.items?.values()??[]){
+   if(Math.hypot(item.x-x,item.z-z)<radius+3)result.push(item.group);
+  }
   for(const item of placed){
    if(item.mesh?.castShadow && Math.hypot(item.x-x,item.z-z)<radius+3)
     result.push(item.mesh);
@@ -212,7 +216,7 @@ if(menuLaunch.mode==='new'){
 }
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null,inventory=null,vitals=null,forestResources=null,groundBoxes=null;
-let pickupInteraction=null,storages=null;
+let pickupInteraction=null,storages=null,campStructures=null;
 let worldStartupGate=null;
 
 let distantForest, replaceTreeModels, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
@@ -226,6 +230,7 @@ const ctx={
  get emotes(){return emotes;},
  get playerList(){return playerList;},
  get crafting(){return crafting;},
+ get campStructures(){return campStructures;},
  get inventory(){return inventory;},
  get storages(){return storages;},
  get vitals(){return vitals;},
@@ -528,6 +533,7 @@ ownAvatar=createLumberjack();if(ownAvatar){
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));
 inventory=createInventory(ctx);
 storages=createStorages(ctx);
+campStructures=createCampStructures(ctx);
 vitals=createVitalsUI(ctx);
 forestResources=createForestResources(ctx);
 groundBoxes=createGroundBoxes(ctx);
