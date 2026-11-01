@@ -38,7 +38,7 @@ import {createCommunityGoal} from './community-goal.js';
 import {createOfflineSave} from './offline-save.js?v=20261101-main-menu2';
 import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
-import {createInventory} from './inventory-ui.js?v=20261031-stability1';
+import {createInventory} from './inventory-ui.js?v=20261101-standalone-recipes1';
 import {createStorages} from './storages.js';
 import {createVitalsUI} from './vitals-ui.js?v=20261031-stability1';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
