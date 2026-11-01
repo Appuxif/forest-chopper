@@ -258,6 +258,90 @@ def inv_take(inv,kind,amount):
             amount-=n
     return True
 
+# Server-authoritative chest and log-rack inventory transactions.
+CHEST_SLOTS=24
+CHEST_MAX_WEIGHT=300
+RACK_MAX_LOGS=48
+STORAGE_COST={'chest':{'log':2,'branch':4},'rack':{'log':2}}
+
+def valid_storage(storage):
+    if not isinstance(storage,dict) or type(storage.get('id')) is not int or not 0<storage['id']<2147483647:
+        return False
+    if any(type(storage.get(k)) not in (int,float) or not math.isfinite(storage[k]) or abs(storage[k])>240000 for k in ('x','z')):
+        return False
+    if storage.get('kind')=='rack':
+        return type(storage.get('logs')) is int and 0<=storage['logs']<=RACK_MAX_LOGS
+    if storage.get('kind')!='chest' or not isinstance(storage.get('name'),str) or len(storage['name'])>40:
+        return False
+    slots=storage.get('slots')
+    return (isinstance(slots,list) and len(slots)==CHEST_SLOTS
+            and all(item is None or valid_item(item) for item in slots)
+            and inv_weight(slots)<=CHEST_MAX_WEIGHT+1e-8)
+
+def new_storage(kind,ident,x,z):
+    if kind=='chest':
+        return {'kind':kind,'id':ident,'x':x,'z':z,'name':'Сундук','slots':[None]*CHEST_SLOTS}
+    return {'kind':kind,'id':ident,'x':x,'z':z,'logs':0}
+
+def storage_transfer(player,storage,direction,slot,qty):
+    if type(qty) is not int or qty<1 or qty>50000 or type(slot) is not int:return False
+    player_inv=player['inventory']
+    if storage['kind']=='rack':
+        if direction=='deposit':
+            if storage['logs']+qty>RACK_MAX_LOGS or inv_count(player_inv,'log')<qty:return False
+            inv_take(player_inv,'log',qty);storage['logs']+=qty;player['wood']-=qty;return True
+        if direction=='withdraw':
+            if storage['logs']<qty or not inv_space_for(player_inv,'log',qty):return False
+            if inv_give_logs(player_inv,qty)!=qty:return False
+            storage['logs']-=qty;player['wood']+=qty;return True
+        return False
+    if storage['kind']!='chest':return False
+    if direction=='deposit':
+        if not 0<=slot<len(player_inv):return False
+        source=player_inv[slot]
+        if not source or qty>(1 if source['id']=='axe' else source['count']):return False
+        moving=source.copy() if source['id']=='axe' else {'id':source['id'],'count':qty}
+        destination=storage['slots']
+        if inv_weight(destination)+item_weight(moving)>CHEST_MAX_WEIGHT+1e-8 or not inv_can_add_storage(destination,moving):return False
+        # Both sides validated. Destination can hold the whole quantity.
+        if not inv_add_storage(destination,moving):return False
+        if qty==(1 if source['id']=='axe' else source['count']):player_inv[slot]=None
+        else:source['count']-=qty
+        if source['id']=='log':player['wood']-=qty
+        return True
+    if direction=='withdraw':
+        destination=player_inv
+        if not 0<=slot<CHEST_SLOTS:return False
+        source=storage['slots'][slot]
+        if not source or qty>(1 if source['id']=='axe' else source['count']):return False
+        moving=source.copy() if source['id']=='axe' else {'id':source['id'],'count':qty}
+        if not inv_add(destination,moving):return False
+        if qty==(1 if source['id']=='axe' else source['count']):storage['slots'][slot]=None
+        else:source['count']-=qty
+        if source['id']=='log':player['wood']+=qty
+        return True
+    return False
+
+def inv_can_add_storage(slots,item):
+    if not valid_item(item):return False
+    if item['id'] in ('axe','bench'):return None in slots
+    limit=ITEM_LIMITS[item['id']]
+    return sum(limit-s['count'] if s and s['id']==item['id'] else limit if s is None else 0 for s in slots)>=item['count']
+
+def inv_add_storage(slots,item):
+    if not inv_can_add_storage(slots,item):return False
+    kind=item['id'];left=1 if kind=='axe' else item['count']
+    if kind not in ('axe','bench'):
+        for slot in slots:
+            if slot and slot['id']==kind and left:
+                n=min(left,ITEM_LIMITS[kind]-slot['count']);slot['count']+=n;left-=n
+    for i,slot in enumerate(slots):
+        if slot is None and left:
+            if kind=='axe':slots[i]=item.copy();left=0
+            else:
+                n=min(left,ITEM_LIMITS[kind]);slots[i]={'id':kind,'count':n};left-=n
+    return left==0
+
 # Seeded resource positions are shared by every player. Only respawn deadlines
 # for COLLECTED IDs live in the world save.
 RESOURCE_ZONE_SIZE=10
@@ -402,7 +486,7 @@ class World:
 
     def __init__(self,path,bot_token=""):
         self.path=Path(path);self.clients={};self.next_id=1;self.seed=random.randrange(1,999999)
-        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.boxes={};self.next_box=1;self.resource_cooldowns={};self.community_cuts=0;self.chat=[];self.chat_seq=0
+        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.storages={};self.next_storage=1;self.boxes={};self.next_box=1;self.resource_cooldowns={};self.community_cuts=0;self.chat=[];self.chat_seq=0
         self.day_epoch=time.time()
         self.world_created_at=self.day_epoch
         self.last_day_sync=time.monotonic()
@@ -437,6 +521,11 @@ class World:
                     type(v.get('orientation')) is not int or v['orientation'] not in (0,1,2,3)
                     for v in furniture.values()):
                     raise ValueError('Invalid furniture save')
+                raw_storages=data.get('storages',{})
+                if not isinstance(raw_storages,dict) or len(raw_storages)>120:raise ValueError('Invalid storages')
+                storages={int(k):v for k,v in raw_storages.items()}
+                if any(not valid_storage({'id':k,**v}) or v.get('id',k)!=k for k,v in storages.items()):
+                    raise ValueError('Invalid storage save')
                 boxes_raw=data.get('boxes',{})
                 if not isinstance(boxes_raw,dict) or len(boxes_raw)>500:raise ValueError('Invalid boxes')
                 boxes={}
@@ -471,12 +560,12 @@ class World:
                     raise ValueError('Invalid world creation date')
                 self.day_epoch=epoch
                 self.world_created_at=created
-                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.community_cuts=community_cuts;self.resource_cooldowns=cooldowns
+                self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.storages=storages;self.next_storage=max(storages,default=0)+1;self.community_cuts=community_cuts;self.resource_cooldowns=cooldowns
                 self.next_log=max(logs,default=0)+1
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
-        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts,'day_epoch':self.day_epoch,'world_created_at':self.world_created_at}
+        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'storages':self.storages,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts,'day_epoch':self.day_epoch,'world_created_at':self.world_created_at}
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,self.path)
     async def prune_boxes(self,now=None):
         now=time.time() if now is None else now
@@ -628,7 +717,7 @@ class World:
         player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':height_at(self.seed,0,0),'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'quick_refs':[0,1,2,3],'quick_ids':['axe',None,None,None],'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'last_hunger_at':time.monotonic(),'stamina':float(MAX_VITALS),'last_stamina_at':time.monotonic(),'stamina_sprint_locked':False,'sprinting':False,'last_stamina_sent':0,'last_jump':-10000,'jump_authorized_until':0}
         self.clients[ws]=player
         await self.prune_boxes()
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -656,6 +745,44 @@ class World:
                     self.save()
                     await self.broadcast({'type':'resource_remove','id':ident})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                elif kind=='storage_place':
+                    typ=data.get('kind')
+                    if typ not in STORAGE_COST or len(self.storages)>=120:continue
+                    x,z=data.get('x'),data.get('z')
+                    if type(x) not in (int,float) or type(z) not in (int,float) or not math.isfinite(x) or not math.isfinite(z):continue
+                    if abs(x)>240000 or abs(z)>240000 or math.hypot(x-player['x'],z-player['z'])>5:continue
+                    if pond_depth_at(self.seed,x,z)>.12 or any(math.hypot(x-st['x'],z-st['z'])<2.4 for st in self.storages.values()):continue
+                    cost=STORAGE_COST[typ]
+                    if not all(inv_count(player['inventory'],ingredient)>=amount for ingredient,amount in cost.items()):continue
+                    for ingredient,amount in cost.items():
+                        inv_take(player['inventory'],ingredient,amount)
+                        if ingredient=='log':player['wood']-=amount
+                    storage=new_storage(typ,self.next_storage,x,z)
+                    self.next_storage+=1;self.storages[storage['id']]=storage
+                    await self.broadcast({'type':'storage_update','storage':storage})
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                    self.save()
+                elif kind=='storage_transfer':
+                    ident=data.get('id')
+                    if type(ident) is not int or ident not in self.storages:continue
+                    storage=self.storages[ident]
+                    if math.hypot(storage['x']-player['x'],storage['z']-player['z'])>3.2:continue
+                    if not storage_transfer(player,storage,data.get('direction'),data.get('slot'),data.get('qty',1)):
+                        await self.send(ws,{'type':'action_denied','reason':'Недостаточно места, веса или предметов'});continue
+                    refresh_equipment(player)
+                    await self.broadcast({'type':'storage_update','storage':storage})
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                    self.save()
+                elif kind=='storage_rename':
+                    ident,name=data.get('id'),data.get('name')
+                    if type(ident) is not int or ident not in self.storages or not isinstance(name,str):continue
+                    storage=self.storages[ident]
+                    if storage['kind']!='chest' or math.hypot(storage['x']-player['x'],storage['z']-player['z'])>3.2:continue
+                    name=name.strip()[:40]
+                    if not name:continue
+                    storage['name']=name
+                    await self.broadcast({'type':'storage_update','storage':storage})
+                    self.save()
                 elif kind=='drop_item':
                     slot=data.get('slot')
                     if type(slot) is not int or not 0<=slot<len(player['inventory']) or len(self.boxes)>=500:continue

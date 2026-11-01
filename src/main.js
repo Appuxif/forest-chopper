@@ -39,6 +39,7 @@ import {createOfflineSave} from './offline-save.js?v=20261101-main-menu2';
 import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261031-stability1';
+import {createStorages} from './storages.js';
 import {createVitalsUI} from './vitals-ui.js?v=20261031-stability1';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261101-pickup-reticle1';
@@ -211,7 +212,7 @@ if(menuLaunch.mode==='new'){
 }
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null,inventory=null,vitals=null,forestResources=null,groundBoxes=null;
-let pickupInteraction=null;
+let pickupInteraction=null,storages=null;
 let worldStartupGate=null;
 
 let distantForest, replaceTreeModels, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
@@ -226,6 +227,7 @@ const ctx={
  get playerList(){return playerList;},
  get crafting(){return crafting;},
  get inventory(){return inventory;},
+ get storages(){return storages;},
  get vitals(){return vitals;},
  get forestResources(){return forestResources;},
  get groundBoxes(){return groundBoxes;},
@@ -525,6 +527,7 @@ ownAvatar=createLumberjack();if(ownAvatar){
 }
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));
 inventory=createInventory(ctx);
+storages=createStorages(ctx);
 vitals=createVitalsUI(ctx);
 forestResources=createForestResources(ctx);
 groundBoxes=createGroundBoxes(ctx);

@@ -153,7 +153,7 @@ export function createInventory(ctx,doc=document){
    }
    if(entry?.craftable){
      const button=doc.createElement('button');button.type='button';button.dataset.action='book-craft';button.dataset.recipe=entry.id;
-     button.textContent='Создать '+entry.icon;
+     button.textContent=(entry.placement?'Поставить ':'Создать ')+entry.icon;
      button.disabled=!recipeAvailable(entry,state) || !canCraftAfterWeight(entry);
      right.append(button);
    }else{
@@ -310,7 +310,7 @@ export function createInventory(ctx,doc=document){
    if(action==='book'){book.hidden=!book.hidden;renderBook();}
    if(action==='previous'){bookPage=Math.max(0,bookPage-1);renderBook();}
    if(action==='next'){bookPage=Math.min(pageItems().length-1,bookPage+1);renderBook();}
-   if(action==='book-craft'){if(event.target.dataset.recipe==='bench')craftBench();else if(event.target.dataset.recipe==='axe')craftAxe();}
+   if(action==='book-craft'){const id=event.target.dataset.recipe;if(id==='bench')craftBench();else if(id==='axe')craftAxe();else if(['chest','rack'].includes(id)){const ok=ctx.storages?.place(id);if(!ok)ctx.notify?.('Не хватает ресурсов или место занято','warning');render();}}
    const tab=event.target?.dataset?.tab;
    if(tab&&RECIPE_TABS.some(t=>t.id===tab)){bookTab=tab;bookPage=0;renderBook();}
    if(action==='split')splitStack();

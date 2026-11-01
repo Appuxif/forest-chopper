@@ -3,6 +3,7 @@ import {baseTerrainHeight} from './terrain-noise.js';
 import {pondHeightBeforeLakes} from './ponds.js';
 import {validBench,MAX_BENCHES} from './crafting.js';
 import {validItem} from './inventory.js';
+import {validStorage} from './storage-model.js';
 import {RESOURCE_RESPAWN_SECONDS} from './resource-zones.js';
 import {MAX_VITALS,HUNGER_INTERVAL_SECONDS} from './vitals.js';
 // Offline-only world snapshots. Server saves are independent and authoritative.
@@ -26,6 +27,7 @@ export function parseOfflineSave(raw) {
         || !data.damage || typeof data.damage !== 'object' || Array.isArray(data.damage)
         || !Array.isArray(data.logs) || data.logs.length > MAX_LOGS
         || !Array.isArray(data.furniture ?? []) || (data.furniture ?? []).length > MAX_BENCHES
+        || !Array.isArray(data.storages??[]) || data.storages?.length>120
         || (data.dayPhase!==undefined&&
            (typeof data.dayPhase!=='number'||!Number.isFinite(data.dayPhase)||
             data.dayPhase<0||data.dayPhase>=1))
@@ -74,8 +76,10 @@ export function parseOfflineSave(raw) {
         ||vitals.hungerProgress>=HUNGER_INTERVAL_SECONDS))return null;
     const furniture=[];
     for(const item of data.furniture ?? []){if(!validBench(item))return null;furniture.push({kind:'bench',x:item.x,z:item.z,orientation:item.orientation});}
+    const storages=data.storages??[];
+    if(storages.some(item=>!validStorage(item)))return null;
     return {
-      terrainVersion:[1,2,3].includes(data.terrainVersion)?data.terrainVersion:0,
+      storages,terrainVersion:[1,2,3].includes(data.terrainVersion)?data.terrainVersion:0,
       dayPhase:data.dayPhase??0,
       furniture,boxes,resource_cooldowns:cooldowns,vitals,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
@@ -104,6 +108,7 @@ export function createOfflineSave(ctx, {
       felled: [...ctx.felled], damage: Object.fromEntries(ctx.treeDamage),
       logs: ctx.placed.map(({x,z,level,orientation}) => ({x,z,level,orientation})),
       furniture: ctx.crafting?.snapshot() ?? [],
+      storages:ctx.storages?.snapshot?.()??[],
       inventory:ctx.inventory?.serialize?.()??undefined,
       vitals:ctx.vitals?.serialize?.()??undefined,
       boxes:ctx.groundBoxes?.snapshot?.()??[],
@@ -163,6 +168,7 @@ export function createOfflineSave(ctx, {
       ctx.placed.push({...log, y, mesh});
     }
     for(const furniture of state.furniture){ctx.crafting?.add({...furniture,id:-(ctx.crafting.items.size+1)});}
+    ctx.storages?.set?.(state.storages);
     ctx.groundBoxes?.set?.(state.boxes);
     ctx.$('wood').textContent = ctx.wood;
     ctx.$('cut').textContent = ctx.cuts;

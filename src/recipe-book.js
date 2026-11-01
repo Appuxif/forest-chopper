@@ -8,6 +8,8 @@ export const RECIPE_TABS=[
 export const RECIPE_PAGES=[
  {id:'axe',tab:'tools',name:'Базовый топор',icon:'🪓',description:'Нужен для рубки деревьев и разборки построек.',ingredients:{branch:3,stone:2},craftable:true,effects:['Урон: 1','Скорость: 1×']},
  {id:'bench',tab:'structures',name:'Скамейка',icon:'🪑',description:'Деревянная скамейка для обустройства лагеря.',ingredients:{log:3},craftable:true,effects:['Можно установить и разобрать']},
+ {id:'chest',tab:'structures',name:'Сундук',icon:'📦',description:'Стационарный инвентарь на 24 слота и 300 кг. Поставить перед персонажем.',ingredients:{log:2,branch:4},craftable:true,placement:true},
+ {id:'rack',tab:'structures',name:'Склад брёвен',icon:'🪵',description:'Уложить до 48 брёвен в штабеля. Поставить перед персонажем.',ingredients:{log:2},craftable:true,placement:true},
  {id:'campfire',tab:'structures',name:'Костёр',icon:'🔥',description:'Очаг для освещения лагеря. Рецепт появится при введении управляемого костра.',planned:true,effects:['Зажечь / погасить · в разработке']},
  {id:'signpost',tab:'structures',name:'Указатель',icon:'🪧',description:'Деревянный знак с надписью для тропы или лагеря.',planned:true,effects:['Надпись · в разработке']},
  {id:'column',tab:'free',name:'Столб из брёвен',icon:'🪵',description:'Выбери бревно в хотбаре, поворачивай постройку и укладывай брёвна друг на друга. Подсказка показывает доступную высоту.',guide:true},

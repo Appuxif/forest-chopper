@@ -62,7 +62,7 @@ function animate(now){
  ctx.waterSplashes?.tick(dt);
  ctx.microGrass?.tick();
  ctx.worldStreamer?.tick();
- ctx.groundBoxes?.tick(now);
+ ctx.groundBoxes?.tick(now);ctx.storages?.tick();
  ctx.plantInteraction?.tick(dt);
  if(ctx.ownAvatar)ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
  if(ctx.thirdPerson){const limit=ctx.settings.cameraPitchLimit*Math.PI/180;ctx.pitch=Math.max(-limit,Math.min(limit,ctx.pitch));}
