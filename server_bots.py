@@ -298,7 +298,9 @@ class BotManager:
                                         await self.world.hit_tree(bot,key,now)
                                     task['next_hit']=now+1.35
                                     if key in self.world.felled:
-                                        if kind=='harvest':task.pop('treeId',None)
+                                        if kind=='harvest':
+                                            await self.world.collect_bot_fallen_logs(bot,key)
+                                            task.pop('treeId',None)
                                         else:self.finish(bot,'felled')
             # Headless actors walk on the deterministic heightfield.
             bot['y']=height_at(self.world.seed,bot['x'],bot['z'])

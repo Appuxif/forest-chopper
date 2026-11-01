@@ -82,3 +82,94 @@ test('GPU model prefers unmasked WebGL adapter, handles ANGLE and browser restri
   assert.equal(getGpuRendererName({}), 'недоступно');
   assert.equal(getGpuRendererName({getContext(){throw Error('blocked')}}),'скрыто браузером');
 });
+
+test('render FPS and physics rAF FPS are sampled independently',()=>{
+  const elements=new Map(),appended=[];
+  function node(selector){
+    if(!elements.has(selector))elements.set(selector,{
+      value:'',checked:false,hidden:false,textContent:'',style:{},
+      setAttribute(){},querySelector:node,
+    });
+    return elements.get(selector);
+  }
+  const doc={
+    createElement:tag=>({tag,hidden:false,className:'',textContent:'',style:{},
+      setAttribute(){},querySelector:node}),
+    head:{append(){}},
+    body:{append(...nodes){appended.push(...nodes);}},
+  };
+  const writes=[];
+  const settings=createSettings(doc,{
+    getItem(){return JSON.stringify({showFps:true,maxFps:60});},
+    setItem(k,v){writes.push([k,v]);},
+  });
+  const fps=appended.find(item=>item.className==='fc-fps');
+  const ctx={
+    renderer:{info:{render:{calls:4,triangles:900},memory:{geometries:2,textures:1}}},
+    px:0,pz:0,feetY:0,chunks:new Map(),trees:new Map(),particles:[],
+  };
+  settings.tick(1000,ctx);
+  settings.tickPhysics(1000);
+  // A 120Hz display with a render-only cap of 60 FPS.
+  for(let frame=1;frame<=120;frame++){
+    const now=1000+frame*1000/120;
+    settings.tickPhysics(now);
+    if(frame%2===0)settings.tick(now,ctx);
+  }
+  assert.match(fps.textContent,/Render FPS 60 · Physics FPS 120/);
+  assert.match(fps.textContent,/Draws 4/);
+  assert.equal(writes.length,0,'FPS sampling never persists game metrics');
+  // Physics counter keeps running even if the render branch is skipped.
+  for(let frame=121;frame<=240;frame++)
+    settings.tickPhysics(1000+frame*1000/120);
+  assert.match(fps.textContent,/Physics FPS 120/);
+  assert.match(fps.textContent,/Render FPS 60/);
+  const toggle=elements.get('#fc-show-fps');
+  toggle.checked=false;toggle.onchange();
+  assert.equal(fps.hidden,true);
+  toggle.checked=true;toggle.onchange();
+  assert.match(fps.textContent,/Render FPS — · Physics FPS —/,
+    're-enabling telemetry starts clean instead of showing stale rates');
+  settings.tickPhysics(NaN);
+  assert.match(fps.textContent,/Physics FPS —/,'invalid timestamps are ignored');
+});
+
+test('CPU Frame Time counts every rAF callback, GPU Frame Time reads asynchronous samples',()=>{
+  const appended=[],nodes=new Map();
+  const node=selector=>{
+    if(!nodes.has(selector))nodes.set(selector,{
+      value:'',checked:false,textContent:'',style:{},setAttribute(){},querySelector:node,
+    });
+    return nodes.get(selector);
+  };
+  const doc={
+    createElement:tag=>({tag,className:'',hidden:false,style:{},setAttribute(){},querySelector:node}),
+    head:{append(){}},body:{append(...elements){appended.push(...elements);}},
+  };
+  const writes=[];
+  const settings=createSettings(doc,{
+    getItem(){return JSON.stringify({showFps:true});},
+    setItem(key,value){writes.push([key,value]);},
+  });
+  const fps=appended.find(element=>element.className==='fc-fps');
+  assert.match(fps.textContent,/CPU Frame Time — · GPU Frame Time —/);
+  // Average includes cheap physics-only callbacks and heavier rendered frames.
+  for(let i=0;i<=100;i++)
+    settings.recordCpuFrame(i%2===0?8:2,1000+i*10);
+  assert.match(fps.textContent,/CPU Frame Time 5\.0\d ms/);
+  settings.setGpuFrameTime(8.9876,true);
+  assert.match(fps.textContent,/GPU Frame Time 8.99 ms/);
+  settings.setGpuFrameTime(null,true);
+  assert.match(fps.textContent,/GPU Frame Time —/,'disjoint queries clear stale samples');
+  settings.setGpuFrameTime(null,false);
+  assert.match(fps.textContent,/GPU Frame Time н\/д/,'unsupported WebGL timers are identified');
+  assert.equal(writes.length,0,'timings are diagnostic only');
+  const toggle=nodes.get('#fc-show-fps');
+  toggle.checked=false;toggle.onchange();
+  toggle.checked=true;toggle.onchange();
+  assert.match(fps.textContent,/CPU Frame Time — · GPU Frame Time —/,
+    'turning diagnostics on restarts timing windows');
+  settings.recordCpuFrame(NaN,2500);
+  settings.recordCpuFrame(-2,2500);
+  assert.match(fps.textContent,/CPU Frame Time —/);
+});

@@ -1,4 +1,14 @@
 #game[hidden],#mainmenu[hidden]{display:none!important}
+/* Keep the loading screen as the ONLY visible UI until the startup gate opens.
+   The game HUD lives under #game, while inventory/vitals/settings/progress and
+   other panels are appended directly to <body>. Hide both sets without stopping
+   WebGL or workers; opacity also prevents descendants overriding visibility. */
+body.fc-world-loading #game > :not(#load),
+body.fc-world-loading > :not(#game):not(#mainmenu):not(script):not(style){
+  opacity:0!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
 #mainmenu{position:fixed;inset:0;z-index:15;overflow:auto;display:grid;place-items:center;
   background:radial-gradient(ellipse 90% 65% at 50% 84%,#254c36 0%,#13281f 57%,transparent 100%),
     linear-gradient(153deg,#07120e,#0d221a 52%,#06110d);

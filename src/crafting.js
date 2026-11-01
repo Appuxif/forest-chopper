@@ -17,38 +17,52 @@ export function createCrafting(ctx,doc=document) {
   const legMat=new THREE.MeshLambertMaterial({color:0x705038});
   const metalMat=new THREE.MeshLambertMaterial({color:0x3e4542});
   const ghostMat=new THREE.MeshLambertMaterial({color:0x83efb5,transparent:true,opacity:.48,depthWrite:false});
+  // Shorter legs, with the existing seat/back/arm proportions unchanged.
+  // Moving all upper parts together keeps them connected to the new leg tops.
+  const legHeight=.75*.5,seatDrop=.75-legHeight;
+  const upperY=y=>y-seatDrop;
   let offlineId=0;
   function mesh(item,preview=false){
     const g=new THREE.Group();
+    // Collider primitives follow the actual procedural mesh: no duplicated
+    // dimensions or manual offsets in the physics module.
+    const collisionBoxes=[];
     const make=(name,x,y,z,w,h,d,material,rotX=0,rotZ=0)=>{
       const m=new THREE.Mesh(beamGeo,preview?ghostMat:material);
       m.name=name;m.position.set(x,y,z);m.scale.set(w,h,d);
       m.rotation.x=rotX;m.rotation.z=rotZ;m.castShadow=true;g.add(m);
+      const cx=Math.abs(Math.cos(rotX)),sx=Math.abs(Math.sin(rotX));
+      const cz=Math.abs(Math.cos(rotZ)),sz=Math.abs(Math.sin(rotZ));
+      const rotatedHeight=cx*h+sx*d;
+      collisionBoxes.push({x,y,z,w:cz*w+sz*rotatedHeight,
+        h:cz*rotatedHeight+sz*w,d:cx*d+sx*h});
       return m;
     };
     // Four independently visible slightly rounded-looking slats (thin dark gaps).
     for(let i=0;i<4;i++)
-      make('Seat slat '+i,0,.90,-.315+i*.21,2.12,.105,.176,plankMat);
+      make('Seat slat '+i,0,upperY(.90),-.315+i*.21,2.12,.105,.176,plankMat);
     // Under-seat frame, cross rails and legs with a mild outward splay.
     for(const x of [-.88,.88]){
-      make('Seat support',x,.775,.02,.16,.18,.92,legMat);
+      make('Seat support',x,upperY(.775),.02,.16,.18,.92,legMat);
       for(const z of [-.27,.32])
-        make('Leg',x+(x<0?-.045:.045),.39,z,.145,.75,.17,legMat,0,x<0?-.055:.055);
-      make('Cross brace',x,.43,.02,.12,.13,.77,legMat);
-      make('Back upright',x,1.28,.41,.14,1.15,.15,legMat,-.13);
-      make('Armrest',x,1.22,-.09,.19,.10,.71,plankMat,-.08);
-      make('Arm post',x,1.04,-.34,.12,.34,.12,legMat);
+        make('Leg',x+(x<0?-.045:.045),legHeight/2+.015,z,.145,legHeight,.17,legMat,0,x<0?-.055:.055);
+      make('Cross brace',x,.43*.5,.02,.12,.13,.77,legMat);
+      make('Back upright',x,upperY(1.28),.41,.10,1.15,.10,legMat,-.13);
+      make('Armrest',x,upperY(1.22),-.09,.12,.065,.66,plankMat,-.08);
+      make('Arm post',x,upperY(1.04),-.34,.09,.34,.09,legMat);
     }
     // Three separate backrest planks, leaning at a comfortable angle.
     for(let i=0;i<3;i++)
-      make('Backrest slat '+i,0,1.24+i*.24,.44+i*.037,2.14,.15,.115,plankMat,-.15);
+      make('Backrest slat '+i,0,upperY(1.24+i*.24),.44+i*.037,2.14,.095,.075,plankMat,-.15);
     // Slim end-braces strengthen the silhouette without excessive geometry.
-    make('Lower crossrail',0,.27,.32,1.78,.12,.13,legMat);
+    make('Lower crossrail',0,.27*.5,.32,1.78,.12,.13,legMat);
     for(const x of [-.81,.81])for(const y of [1.28,1.72]){
       const rivet=new THREE.Mesh(boltGeo,preview?ghostMat:metalMat);
-      rivet.name='Metal fastener';rivet.position.set(x,y,.54+(y-1.28)*.155);
+      rivet.name='Metal fastener';rivet.position.set(x,upperY(y),.54+(y-1.28)*.155);
       rivet.rotation.x=Math.PI/2;rivet.castShadow=true;g.add(rivet);
     }
+    g.userData.collisionBoxes=collisionBoxes;
+    g.userData.collisionRadius=Math.max(1,...collisionBoxes.map(b=>Math.hypot(b.x,b.z)+Math.hypot(b.w,b.d)/2));
     g.position.set(item.x,ctx.terrain.heightAt(item.x,item.z),item.z);
     g.rotation.y=item.orientation*Math.PI/2;
     if(preview)g.userData.itemPreview='bench';

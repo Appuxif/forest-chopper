@@ -8,7 +8,7 @@ function setup(online=false){
   class Geometry{constructor(){created.geom++}}
   class Material{constructor(){created.mat++}}
   class Obj {
-    constructor(){this.children=[];this.rotation={x:0,y:0,z:0};this.scale={x:1,y:1,z:1,set(x,y,z){Object.assign(this,{x,y,z})}};this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};}
+    constructor(){this.children=[];this.userData={};this.rotation={x:0,y:0,z:0};this.scale={x:1,y:1,z:1,set(x,y,z){Object.assign(this,{x,y,z})}};this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};}
     add(obj){this.children.push(obj)}
   }
   class Mesh extends Obj{constructor(geometry,material){super();Object.assign(this,{geometry,material})}}
@@ -118,4 +118,31 @@ test('placing an already-crafted inventory bench requires zero additional logs',
   assert.equal(f.ctx.wood,0,'crafting already paid the three-log cost');
   assert.equal(removed,1,'the correct crafted item is consumed exactly once');
   assert.equal(rendered,1);
+});
+
+test('shortened bench legs halve seat height while keeping upper proportions',()=>{
+  const f=setup();
+  const preview=f.craft.createPreview();
+  const byName=name=>preview.children.filter(part=>part.name===name);
+  const legs=byName('Leg');
+  const seat=byName('Seat slat 0')[0];
+  const backrest=byName('Backrest slat 0')[0];
+  const armrest=byName('Armrest')[0];
+  assert.equal(legs.length,4);
+  for(const leg of legs){
+    assert.equal(leg.scale.y,.375,'leg geometry is exactly half as tall');
+    assert.ok(Math.abs((leg.position.y-leg.scale.y/2)-.015)<1e-9,
+      'feet stay on the ground rather than floating');
+  }
+  assert.equal(seat.position.y,.525,'seat follows the new leg height');
+  assert.ok(Math.abs((backrest.position.y-seat.position.y)-.34)<1e-9,
+    'backrest remains the same height relative to the seat');
+  assert.ok(Math.abs((armrest.position.y-seat.position.y)-.32)<1e-9,
+    'armrest keeps its original relation to the seat');
+  assert.equal(preview.position.y,0,'preview remains ground-anchored');
+  assert.equal(f.craft.createIconModel().children.find(p=>p.name==='Seat slat 0').position.y,
+    seat.position.y,'inventory icon uses the same shorter bench geometry');
+  assert.equal(f.craft.add({id:91,kind:'bench',x:0,z:0,orientation:0}),true);
+  assert.equal(f.craft.items.get(91).group.children.find(p=>p.name==='Leg').scale.y,.375,
+    'placed benches use the same shorter legs');
 });

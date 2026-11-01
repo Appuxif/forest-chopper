@@ -4,6 +4,8 @@ import {
   selectPickupTarget,nearestPickupTarget,pickupCandidates,createPickupInteraction,
 } from '../src/pickup-interaction.js';
 import {aimState,updateCrosshair} from '../src/aim-state.js';
+import {createGroundBoxes} from '../src/ground-boxes.js';
+import {createInventoryModel} from '../src/inventory.js';
 
 const resource=(id,x,dist,extra={})=>({
   type:'resource',id,x,y:0,z:0,distance:dist,maxDistance:2.4,label:'Ветка',...extra,
@@ -103,4 +105,77 @@ test('building reticle wins and touch button does not overlap construction contr
   assert.equal(aimState(true,null,'',pickup).kind,'build');
   assert.equal(aimState(true,null,'blocked',pickup).kind,'blocked');
   assert.equal(aimState(false,{userData:{hp:2,species:'birch'}},'',pickup).kind,'tree');
+});
+
+
+test('real dropped-box model is visible to the shared picker and E/touch collects it over dense grass',()=>{
+  const oldMatch=globalThis.matchMedia;
+  globalThis.matchMedia=()=>({matches:true});
+  try{
+    class Geometry{dispose(){}}
+    class Material{dispose(){}}
+    class Object3D{
+      constructor(){this.children=[];this.position={set(x,y,z){Object.assign(this,{x,y,z});}};}
+      add(...items){this.children.push(...items);}
+    }
+    class Mesh extends Object3D{}
+    class Vector3{
+      set(x,y,z){Object.assign(this,{x,y,z});return this;}
+      project(){this.x=this.z < -1 ? 0:.07;this.y=.01;this.z=.4;return this;}
+    }
+    const elements={};
+    const pickupButton={hidden:true,disabled:true,handlers:{},setAttribute(k,v){this[k]=v;},
+      addEventListener(k,fn){this.handlers[k]=fn;}};
+    const state=createInventoryModel();
+    const collectedResources=[];
+    assert.equal(state.addItem({id:'log',count:1}),true);
+    const world=new Set();
+    const ctx={
+      THREE:{BoxGeometry:Geometry,MeshLambertMaterial:Material,Group:Object3D,Mesh,Vector3},
+      scene:{add:obj=>world.add(obj),remove:obj=>world.delete(obj)},
+      terrain:{heightAt:()=>0,waterDepthAt:()=>0},px:0,pz:0,yaw:0,
+      inventory:{state,render(){}},offlineSave:{markDirty(){}},isOnline:()=>false,
+      forestResources:{
+        nodes:[{id:'grass',kind:'dry_grass',x:0,z:-.5}],
+        isVisible:()=>true,collect(id){collectedResources.push(id);return true;}
+      },
+      $:id=>id==='pickup'?pickupButton:null,
+      buildMode:false,camera:{},notify(){},
+    };
+    const doc={createElement(){return {className:'',style:{},remove(){}};},
+      body:{append(){}}};
+    ctx.groundBoxes=createGroundBoxes(ctx,doc);
+    const picker=createPickupInteraction(ctx);
+    assert.equal(ctx.groundBoxes.dropSlot(1),true,'drop an actual log stack');
+    assert.equal(state.count('log'),0);
+    assert.equal(ctx.groundBoxes.count,1);
+    const box=ctx.groundBoxes.snapshot()[0];
+    assert.equal([...ctx.groundBoxes.boxes].length,1,
+      'live box iterator must expose the just-dropped box without creating a snapshot');
+    assert.deepEqual(pickupCandidates(ctx).boxes.map(b=>b.id),[box.id]);
+    assert.equal(picker.update()?.id,box.id,'box wins when grass is nearer');
+    assert.equal(pickupButton.hidden,false,'mobile pickup is available');
+    assert.match(pickupButton.title,/Бревно/);
+    pickupButton.handlers.click({preventDefault(){},stopPropagation(){}});
+    assert.equal(ctx.groundBoxes.count,0,'box is removed from the world');
+    assert.equal(state.count('log'),1,'full dropped stack is recovered');
+    assert.equal([...ctx.groundBoxes.boxes].length,0,'live iterator reflects removal');
+    assert.deepEqual(collectedResources,[],'the box pickup never reaches the grass handler');
+    assert.equal(picker.pickup(),true,'the remaining grass resource can still be collected');
+    assert.deepEqual(collectedResources,['grass']);
+    ctx.groundBoxes.dispose();
+  }finally{
+    if(oldMatch===undefined)delete globalThis.matchMedia;
+    else globalThis.matchMedia=oldMatch;
+  }
+});
+
+test('dropped boxes win fallback pickup when grass has shorter world distance',()=>{
+  const resources=[resource('dry-grass',.3,.3)];
+  const boxes=[{type:'box',id:17,x:1.5,y:.28,z:0,distance:1.5,maxDistance:2.8,label:'Бревно'}];
+  // Intentional dropped items are prioritized over the ubiquitous grass tufts.
+  const focusedBox=selectPickupTarget(boxes,()=>({x:.01,y:.02,z:.4}));
+  assert.equal(focusedBox.id,17);
+  assert.equal(nearestPickupTarget([],boxes).id,17);
+  assert.equal(nearestPickupTarget(resources,[]).id,'dry-grass');
 });

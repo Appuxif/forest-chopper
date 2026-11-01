@@ -1,10 +1,13 @@
+import {tickFallingTrees} from './falling-trees.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js';
 import {createFrameLimiter} from './frame-limiter.js';
+import {createGpuFrameTimer} from './gpu-frame-timer.js';
 import {createOrbitCamera} from './orbit-camera.js?v=20261030-camera-up-arc1';
 export function createPlayer(ctx) {
 const limiter=createFrameLimiter();
+const gpuTimer=createGpuFrameTimer(ctx.renderer);
 const orbitCamera=createOrbitCamera(ctx);
 let lastWorldTick=-Infinity;
 function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
@@ -22,6 +25,17 @@ function animate(now){
  // Physics, Root Motion and animation mixers run on every display tick,
  // independently of the user-selected render FPS cap.
  if(!Number.isFinite(now))return;
+ const profiling=ctx.settings.showFps;
+ const cpuStart=profiling?performance.now():0;
+ if(profiling){
+   const sample=gpuTimer.poll(now);
+   if(sample?.status==='ready')ctx.settings.setGpuFrameTime(sample.ms,true);
+   else if(sample?.status==='invalid')ctx.settings.setGpuFrameTime(null,true);
+   else if(sample?.status==='unsupported')ctx.settings.setGpuFrameTime(null,false);
+ }else gpuTimer.reset();
+ // Count the uncapped requestAnimationFrame/simulation ticks separately
+ // from rendered frames (which can be limited to 30/60 FPS).
+ ctx.settings.tickPhysics(now);
  const dt=Math.max(0,Math.min(.05,(now-ctx.lastTime)/1000));
  ctx.lastTime=now;
  ctx.wind.tick(now);ctx.treeWindShader?.tick(now,ctx.px,ctx.pz,ctx.settings.windEnabled);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
@@ -71,7 +85,7 @@ function animate(now){
  // The real skinned meshes cast shadows on every rendered frame.
  // The shadow pass runs after both local and remote animation poses update.
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;
-for(let i=ctx.falling.length-1;i>=0;i--){const f=ctx.falling[i];f.elapsed+=dt;const a=Math.min(1,f.elapsed/1.8);const angle=a*a*(Math.PI/2);f.tree.rotation.z=Math.sin(f.direction)*angle;f.tree.rotation.x=Math.cos(f.direction)*angle;if(f.elapsed>2.5){ctx.scene.remove(f.tree);ctx.falling.splice(i,1)}}
+tickFallingTrees(ctx,dt);
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}
 ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx.offlineSave.tick(now);ctx.progress.trackPosition(ctx.px,ctx.pz,ctx.seed);ctx.discoveries.check(now);ctx.updateChunks();ctx.forestResources?.tick(now);ctx.updatePreview();const t=ctx.buildMode?null:ctx.aimed();const pickup=ctx.pickupInteraction?.update?.();ctx.highlight.update(t);if(t)ctx.tutorial.complete('tree-aimed');updateCrosshair(ctx.$('crosshair'),aimState(ctx.buildMode,t,ctx.buildMode?(ctx.inventory?.selected==='bench'?ctx.crafting?.placeError?.(ctx.placement):ctx.placeError(ctx.placement)):'',pickup));ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`${u.species==='birch'?'🌳 Берёза':'🌲 Дерево'} · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':
    pickup?pickup.label+' · '+(matchMedia('(pointer:coarse)').matches?'📥 Поднять':'E — подобрать'):''}if(ctx.isOnline()&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}for(const avatar of ctx.avatars.values()){
@@ -93,15 +107,25 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
   }
  }
  // Only GPU rendering and its shadow-map refresh are FPS-limited.
- // The diagnostics FPS counter measures actual rendered frames, not sim ticks.
- if(!limiter.allow(now,ctx.settings.maxFps))return;
+ // Rendering FPS is sampled here; physics FPS is sampled above the limiter.
+ if(!limiter.allow(now,ctx.settings.maxFps)){
+   if(profiling)ctx.settings.recordCpuFrame(performance.now()-cpuStart,now);
+   return;
+ }
  ctx.settings.tick(now,ctx);
- ctx.spruceDiagnostics?.tick();
- ctx.terrain?.tick(now);
- ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
- ctx.distantForest?.updateVisibility?.(ctx.yaw);
- ctx.renderer.render(ctx.scene,ctx.camera);
+ const gpuStarted=profiling&&gpuTimer.begin(now);
+ if(profiling&&gpuTimer.supported===false)ctx.settings.setGpuFrameTime(null,false);
+ try{
+   ctx.spruceDiagnostics?.tick();
+   ctx.terrain?.tick(now);
+   ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
+   ctx.distantForest?.updateVisibility?.(ctx.yaw);
+   ctx.renderer.render(ctx.scene,ctx.camera);
+ }finally{
+   if(gpuStarted)gpuTimer.end();
+ }
  ctx.worldStartupGate?.tick(now,ctx);
+ if(profiling)ctx.settings.recordCpuFrame(performance.now()-cpuStart,now);
 }
 
 return {toggleView, animate};

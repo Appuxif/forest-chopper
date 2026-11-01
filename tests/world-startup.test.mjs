@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {
   WORLD_STARTUP_MIN_MS,WORLD_STARTUP_MAX_MS,WORLD_STARTUP_SETTLE_MS,
   sampleWorldStartup,createWorldStartupGate,
@@ -25,10 +26,10 @@ function world(){
   };
   return {ctx,fill};
 }
-function gate(online=false){
+function gate(online=false,options={}){
   const node={removed:false,textContent:''};
   const loading={remove(){this.removed=true;},querySelector:()=>node};
-  return {node,loading,instance:createWorldStartupGate({loading,online})};
+  return {node,loading,instance:createWorldStartupGate({loading,online,...options})};
 }
 test('does not reveal the world before spawn terrain, trees, grass and distant forest arrive',()=>{
   const {ctx,fill}=world();
@@ -84,4 +85,50 @@ test('empty distant forest and empty grass tiles are handled as valid completed 
   ctx.distantForest={chunkCount:0,desiredChunkCount:0};
   assert.equal(sampleWorldStartup(ctx).ready,true,
     'a world without any distant-tree candidates should not get stuck');
+});
+
+
+test('loading completion unlocks the HUD exactly once on ready world',()=>{
+  const {ctx,fill}=world();
+  const reasons=[];
+  const {instance,loading}=gate(false,{onComplete:reason=>{
+    assert.equal(loading.removed,true,'loading overlay must be gone when HUD is revealed');
+    reasons.push(reason);
+  }});
+  assert.equal(instance.tick(0,ctx),false);
+  assert.deepEqual(reasons,[],'do not reveal before the world is ready');
+  fill();
+  assert.equal(instance.tick(500,ctx),false);
+  assert.deepEqual(reasons,[]);
+  assert.equal(instance.tick(3000,ctx),true);
+  assert.deepEqual(reasons,['ready']);
+  assert.equal(instance.tick(6000,ctx),true);
+  assert.deepEqual(reasons,['ready'],'never reveal more than once');
+});
+
+test('timeout also unlocks the HUD once instead of leaving it hidden forever',()=>{
+  const {ctx}=world();
+  const reasons=[];
+  const {instance}=gate(false,{onComplete:reason=>reasons.push(reason)});
+  assert.equal(instance.tick(0,ctx),false);
+  assert.deepEqual(reasons,[]);
+  assert.equal(instance.tick(WORLD_STARTUP_MAX_MS,ctx),true);
+  assert.equal(instance.tick(WORLD_STARTUP_MAX_MS+1000,ctx),true);
+  assert.deepEqual(reasons,['timeout']);
+});
+
+test('startup loading mask hides every HUD mount while allowing the loading screen',()=>{
+  const css=readFileSync(new URL('../src/main-menu.css',import.meta.url),'utf8');
+  const menu=readFileSync(new URL('../src/main-menu.js',import.meta.url),'utf8');
+  const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
+  assert.match(css,/body\.fc-world-loading #game > :not\(#load\)/,
+    'hide game-mounted HUD and canvas, but not the loading screen');
+  assert.match(css,/body\.fc-world-loading > :not\(#game\):not\(#mainmenu\)/,
+    'hide dynamically created body-mounted HUD');
+  assert.match(css,/opacity:0!important/);
+  assert.match(css,/pointer-events:none!important/);
+  assert.match(menu,/document\.body\.classList\.add\('fc-world-loading'\)/);
+  assert.match(menu,/document\.body\.classList\.remove\('fc-world-loading'\)/,
+    'startup failure must restore the main menu without a stale mask');
+  assert.match(main,/onComplete:\(\)=>document\.body\.classList\.remove\('fc-world-loading'\)/);
 });

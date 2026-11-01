@@ -44,7 +44,7 @@ export function sampleWorldStartup(ctx,{online=false}={}){
 }
 
 export function createWorldStartupGate({
-  loading,online=false,minMs=WORLD_STARTUP_MIN_MS,
+  loading,online=false,onComplete=()=>{},minMs=WORLD_STARTUP_MIN_MS,
   maxMs=WORLD_STARTUP_MAX_MS,settleMs=WORLD_STARTUP_SETTLE_MS,
 }={}){
   let startedAt=null,readySince=null,lastLabel='',complete=false,reason=null;
@@ -70,6 +70,8 @@ export function createWorldStartupGate({
         const network=ctx.$?.('network');
         if(network)network.style.display='block';
       }
+      // Reveal the entire HUD together with the world, exactly once.
+      onComplete(reason);
       return true;
     }
     const label=snapshot.stage;

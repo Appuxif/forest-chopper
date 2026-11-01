@@ -18,8 +18,12 @@ test('the game starts exactly one requestAnimationFrame chain',()=>{
     'main.js must schedule the first frame only once');
   assert.equal((player.match(/requestAnimationFrame\(animate\)/g)??[]).length,1,
     'animate itself must schedule precisely one successor');
-  assert.match(player,/if\(!limiter\.allow\(now,ctx\.settings\.maxFps\)\)return;/,
-    'limiter should gate renderer, not the preceding physics and animation');
+  assert.match(player,/if\(!limiter\.allow\(now,ctx\.settings\.maxFps\)\)\s*\{[^}]*return;\s*\}/,
+    'limiter should return only from the render branch');
+  assert.ok(player.indexOf('ctx.simulateVertical(dt)')<player.indexOf('if(!limiter.allow(')
+    && player.indexOf('ctx.tickActor(ctx.ownAvatar')<player.indexOf('if(!limiter.allow(')
+    && player.indexOf('ctx.renderer.render(')>player.indexOf('if(!limiter.allow('),
+    'physics and animation must run before the render FPS limiter');
 });
 
 test('render limiter supports 30/60/144 FPS without doubling simulation',()=>{

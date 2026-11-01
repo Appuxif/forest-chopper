@@ -1,3 +1,4 @@
+import {TREE_LOG_COUNT} from './ground-boxes.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 export function createChopping(ctx) {
 const ray=new ctx.THREE.Raycaster(),viewRay=new ctx.THREE.Raycaster();
@@ -63,7 +64,24 @@ const now=performance.now();const chopCooldown=(ctx.ownAvatar?.actions?.Chop2?.g
  if(ctx.isOnline()){ctx.sendNet({type:"hit",tree:u.id});return;}
  if(ctx.vitals&&!ctx.vitals.hit())return;
  u.hp-=(ctx.inventory?.axe?.damage??1);ctx.treeDamage.set(u.id,u.hp);ctx.offlineSave.markDirty();spawnChips(t);
-if(u.hp<=0){ctx.detachTreeForFall?.(t);ctx.trees.delete(u.id);ctx.felled.add(u.id);ctx.treeDamage.delete(u.id);ctx.falling.push({tree:t,elapsed:0,direction:Math.atan2(ctx.px-u.x,ctx.pz-u.z)+Math.PI,removed:false});const reward=Math.min(5,ctx.inventory?.state.freeLogs()??5);ctx.wood+=reward;ctx.cuts++;ctx.tutorial.complete('tree-fell');ctx.progress.record('tree-fell');ctx.$('wood').textContent=ctx.wood;ctx.$('cut').textContent=ctx.cuts;ctx.notify(reward?('+'+reward+' 🪵 Древесина'):'Сумка полна','success','tree-reward');ctx.$('target').textContent=reward?('+'+reward+' 🪵 Древесина'):'Сумка полна';setTimeout(()=>{if(ctx.$('target').textContent.includes('🪵')||ctx.$('target').textContent==='Сумка полна')ctx.$('target').textContent=''},900)}}
+if(u.hp<=0){
+  // Cutting never adds to the inventory. All three logs remain on the ground even
+  // if the backpack has no room; each E/touch pickup is checked separately.
+  const direction=Math.atan2(ctx.px-u.x,ctx.pz-u.z)+Math.PI;
+  if(!ctx.groundBoxes?.spawnFallenLogs(u.x,u.z,TREE_LOG_COUNT,
+    {direction,tree:u.id,pending:true})){
+    u.hp=1;ctx.treeDamage.set(u.id,1);
+    ctx.notify?.('Слишком много предметов на земле — подбери часть брёвен','warning','ground-full');
+    return;
+  }
+  ctx.detachTreeForFall?.(t);ctx.trees.delete(u.id);ctx.felled.add(u.id);ctx.treeDamage.delete(u.id);
+  ctx.falling.push({tree:t,elapsed:0,direction,removed:false});
+  ctx.cuts++;ctx.tutorial.complete('tree-fell');ctx.progress.record('tree-fell');
+  ctx.$('cut').textContent=ctx.cuts;
+  ctx.notify('🪵 '+TREE_LOG_COUNT+' бревна на земле — подбери их (E)','success','tree-reward');
+  ctx.$('target').textContent='🪵 '+TREE_LOG_COUNT+' бревна на земле';
+  setTimeout(()=>{if(ctx.$('target').textContent==='🪵 '+TREE_LOG_COUNT+' бревна на земле')ctx.$('target').textContent=''},1400);
+} }
 
 return {aimed, spawnChips, chop};
 }

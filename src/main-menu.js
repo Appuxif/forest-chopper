@@ -135,6 +135,8 @@ async function launch(options){
   // No Three.js or Worker initialization has occurred before this point.
   menuSettings?.destroy();
   menuSettings=null;
+  // Apply before revealing #game: no frame should show a partially built HUD.
+  document.body.classList.add('fc-world-loading');
   menu.hidden=true;game.hidden=false;
   try{
     await import('./main.js?v=20261101-pickup-reticle2');
@@ -142,6 +144,7 @@ async function launch(options){
     console.error('Forest Chopper startup failed',error);
     delete globalThis.__forestLaunch;
     try{launchStorage?.removeItem(MENU_LAUNCH_KEY);}catch{}
+    document.body.classList.remove('fc-world-loading');
     game.hidden=true;menu.hidden=false;
     if($('load'))$('load').textContent='Загрузка игры…';
     feedback('Не удалось запустить игру: '+error.message,'error');

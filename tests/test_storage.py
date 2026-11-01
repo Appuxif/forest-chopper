@@ -30,13 +30,13 @@ class StorageTests(unittest.TestCase):
         player=self.player()
         rack=new_storage('rack',1,0,0)
         from forest_server import inv_give_logs
-        self.assertEqual(inv_give_logs(player['inventory'],5),3)
-        player['wood']=3
+        self.assertEqual(inv_give_logs(player['inventory'],5),5)
+        player['wood']=5
         self.assertTrue(storage_transfer(player,rack,'deposit',0,2))
-        self.assertEqual(player['wood'],1)
+        self.assertEqual(player['wood'],3)
         self.assertEqual(rack['logs'],2)
         self.assertTrue(storage_transfer(player,rack,'withdraw',0,1))
-        self.assertEqual(player['wood'],2)
+        self.assertEqual(player['wood'],4)
         self.assertEqual(rack['logs'],1)
         rack['logs']=RACK_MAX_LOGS
         self.assertFalse(storage_transfer(player,rack,'deposit',0,1))

@@ -847,7 +847,13 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             self.world.damage[key] = 1
             await ws.send(json.dumps({'type': 'hit', 'tree': key}))
             fell = await self.receive(ws, 'tree_fell')
-            self.assertEqual(fell['wood'], 3)
+            self.assertEqual(fell['wood'], 0,'tree fall must not award inventory logs')
+            drop=await self.receive(ws,'box_add')
+            self.assertEqual(drop['box']['kind'],'fallen_logs')
+            self.assertEqual(drop['box']['item'],{'id':'log','count':3})
+            self.assertGreater(drop['box']['expires_at'],time.time()+BOX_TTL_SECONDS-5)
+            self.assertLessEqual(drop['box']['expires_at'],time.time()+BOX_TTL_SECONDS)
+            self.assertEqual(inv_logs(player['inventory']),0)
             await self.receive(ws,'vitals_state')
             self.assertIn(key, self.world.felled)
             self.world.damage['0,0:0'] = 3
@@ -866,10 +872,12 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             welcome=await self.receive(alice,'welcome')
             player=next(p for p in self.world.clients.values() if p['id']==welcome['id'])
             # Still free slots, but already exactly 100 kg.
-            player['inventory'][1]={'id':'log','count':3}
+            player['inventory'][1]={'id':'log','count':5}
             player['inventory'][2]={'id':'stone','count':10}
-            player['inventory'][3]={'id':'stone','count':1}
-            player['wood']=3
+            player['inventory'][3]={'id':'stone','count':10}
+            player['inventory'][4]={'id':'stone','count':3}
+            player['inventory'][5]={'id':'branch','count':2}
+            player['wood']=5
             self.assertEqual(inv_weight(player['inventory']),100)
             # Server cannot remove a box until the carry limit is satisfied.
             box_id=123456
@@ -893,22 +901,27 @@ class WeightInventoryTests(unittest.TestCase):
     def test_server_weight_matches_client_and_caps_additions(self):
         inv=[{'id':'axe','tier':0}]+[None]*11
         self.assertEqual(inv_weight(inv),3)
-        self.assertEqual(inv_give_logs(inv,5),3)
-        self.assertEqual(inv_weight(inv),78)
+        self.assertEqual(inv_give_logs(inv,10),9)
+        self.assertEqual(inv_weight(inv),93)
         self.assertEqual(inv_weight_space(inv,'log'),0)
+        self.assertTrue(inv_take_logs(inv,2))
+        self.assertEqual(inv_weight(inv),73)
         self.assertTrue(inv_add(inv,{'id':'stone','count':10}))
-        self.assertEqual(inv_weight(inv),98)
-        self.assertFalse(inv_add(inv,{'id':'stone','count':2}))
-        self.assertTrue(inv_add(inv,{'id':'stone','count':1}))
+        self.assertEqual(inv_weight(inv),93)
+        self.assertFalse(inv_add(inv,{'id':'stone','count':4}))
+        self.assertTrue(inv_add(inv,{'id':'stone','count':3}))
+        self.assertEqual(inv_weight(inv),99)
+        self.assertTrue(inv_add(inv,{'id':'branch','count':2}))
         self.assertEqual(inv_weight(inv),MAX_CARRY_WEIGHT)
         self.assertFalse(inv_can_add(inv,{'id':'branch','count':1}))
         self.assertEqual(inv_give_logs(inv,5),0)
 
     def test_existing_overweight_items_are_not_removed(self):
-        inv=[{'id':'axe','tier':0},{'id':'log','count':5}]+[None]*10
-        self.assertEqual(inv_weight(inv),128)
+        inv=[{'id':'axe','tier':0},{'id':'log','count':5},
+             {'id':'log','count':5}]+[None]*9
+        self.assertEqual(inv_weight(inv),103)
         self.assertFalse(inv_add(inv,{'id':'stone','count':1}))
-        self.assertEqual(inv_logs(inv),5)
+        self.assertEqual(inv_logs(inv),10)
         self.assertEqual(inv_weight_space(inv,'log'),0)
         self.assertTrue(inv_take_logs(inv,2))
-        self.assertEqual(inv_weight(inv),78)
+        self.assertEqual(inv_weight(inv),83)

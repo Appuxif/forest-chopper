@@ -5,7 +5,6 @@ import {MAX_CARRY_WEIGHT,ITEM_WEIGHT} from './inventory.js';
 export function createRecipeBook({ctx,state,craftAxe,craftBench,onOpen},doc=document){
  const style=doc.createElement('style');
  style.textContent=[
-  '.fc-book-toggle{position:fixed;z-index:9;left:min(calc(50% + 285px),calc(100vw - 130px));bottom:25px;padding:8px 12px;border:1px solid #c8a776;border-radius:10px;background:#604b35;color:#fff3d6;font:13px system-ui;cursor:pointer}',
   '.fc-book-backdrop{position:fixed;inset:0;z-index:39;background:#080e0bc2}',
   '.fc-book-window{position:fixed;z-index:40;top:50%;left:50%;transform:translate(-50%,-50%);width:min(740px,calc(100vw - 24px));max-height:88dvh;overflow:auto;background:#e9d9b5;color:#42321d;border:5px double #8e6944;border-radius:15px;padding:18px;box-sizing:border-box;box-shadow:0 24px 80px #000c,inset 0 0 25px #a0784838;font:14px system-ui}',
   '.fc-book-window[hidden],.fc-book-backdrop[hidden]{display:none}',
@@ -21,18 +20,15 @@ export function createRecipeBook({ctx,state,craftAxe,craftBench,onOpen},doc=docu
   '.fc-book-window .fc-book-nav{display:flex;align-items:center;justify-content:space-between;gap:8px}',
   '.fc-book-window .fc-book-cost{padding:4px 0;font-size:13px}.fc-book-window .fc-book-cost[data-missing=true]{color:#ad3425;font-weight:bold}.fc-book-window .fc-book-cost[data-missing=false]{color:#38633f}',
   '.fc-book-window [data-action="book-craft"]{margin-top:12px;background:#795b38;color:#fff6db;font-weight:bold}',
-  '@media(max-width:650px){.fc-book-toggle{left:calc(50% + 76px);bottom:227px;padding:7px 10px;font-size:12px}.fc-book-window{max-height:88dvh;padding:12px}.fc-book-window header{margin-bottom:9px}.fc-book-window h2{font-size:20px}.fc-book-window .fc-book-leaves{grid-template-columns:1fr;gap:8px;margin:8px 0}.fc-book-window .fc-book-leaf{min-height:0;padding:10px}.fc-book-window .fc-book-icon{font-size:28px}.fc-book-window .fc-book-tabs button{font-size:12px;padding:7px}}'
+  '@media(max-width:650px){.fc-book-window{max-height:88dvh;padding:12px}.fc-book-window header{margin-bottom:9px}.fc-book-window h2{font-size:20px}.fc-book-window .fc-book-leaves{grid-template-columns:1fr;gap:8px;margin:8px 0}.fc-book-window .fc-book-leaf{min-height:0;padding:10px}.fc-book-window .fc-book-icon{font-size:28px}.fc-book-window .fc-book-tabs button{font-size:12px;padding:7px}}'
  ].join('');
  doc.head.append(style);
- const toggle=doc.createElement('button');
- toggle.type='button';toggle.className='fc-book-toggle';toggle.textContent='📖 Рецепты (K)';
- toggle.setAttribute('aria-label','Открыть книгу рецептов (K)');
  const backdrop=doc.createElement('div');backdrop.className='fc-book-backdrop';backdrop.hidden=true;
  const book=doc.createElement('section');
  book.className='fc-book-window';book.hidden=true;book.setAttribute('role','dialog');
  book.setAttribute('aria-modal','true');book.setAttribute('aria-label','Книга рецептов');
  book.innerHTML='<header><h2>📖 Книга рецептов</h2><button type="button" data-action="close" aria-label="Закрыть книгу">✕</button></header><div class="fc-book-tabs" role="tablist"></div><div class="fc-book-leaves"></div><div class="fc-book-nav"><button type="button" data-action="previous">← Назад</button><span class="fc-book-position"></span><button type="button" data-action="next">Вперёд →</button></div>';
- doc.body.append(toggle,backdrop,book);
+ doc.body.append(backdrop,book);
  let bookTab='tools',bookPage=0;
  const pageItems=()=>RECIPE_PAGES.filter(entry=>entry.tab===bookTab);
  const names={log:'🪵 Бревно',branch:'🌿 Ветка',stone:'🪨 Камень',dry_grass:'🌾 Сухая трава'};
@@ -92,9 +88,8 @@ export function createRecipeBook({ctx,state,craftAxe,craftBench,onOpen},doc=docu
   render();
   book.querySelector('[data-action="close"]').focus();
  }
- function close(){if(book.hidden)return;book.hidden=true;backdrop.hidden=true;toggle.focus();}
+ function close(){if(book.hidden)return;book.hidden=true;backdrop.hidden=true;doc.querySelector('.fc-bag-toggle')?.focus();}
  function toggleBook(){book.hidden?open():close();}
- toggle.onclick=toggleBook;
  backdrop.onclick=close;
  book.addEventListener('click',event=>{
   const action=event.target?.dataset?.action,tab=event.target?.dataset?.tab;

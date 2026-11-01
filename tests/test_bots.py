@@ -78,8 +78,11 @@ class BotTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.sleep(.3)
                     status=await gateway.command('thread-b','brief')
                     self.assertIn(tree['id'],self.world.felled)
-                    self.assertEqual(status['wood'],5)
+                    self.assertEqual(status['wood'],0,
+                        'chopTree only fells; it leaves all three logs in a ground pile')
                     self.assertEqual(status['last_task']['phase'],'felled')
+                    pile=next(b for b in self.world.boxes.values() if b.get('kind')=='fallen_logs')
+                    self.assertEqual(pile['item']['count'],3)
                     human_data=next(iter(self.world.clients.values()))
                     human_data.update(x=tx+1.85,z=tz)
                     # Another intact tree: no teleport/phase through trunk allowed.

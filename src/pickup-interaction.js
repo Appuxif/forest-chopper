@@ -42,13 +42,13 @@ export function pickupCandidates(ctx){
     });
   }
   const boxes=[];
-  for(const node of ctx.groundBoxes?.boxes??[]){
+  for(const node of ctx.groundBoxes?.pickupNodes??ctx.groundBoxes?.boxes??[]){
     const distance=Math.hypot(node.x-ctx.px,node.z-ctx.pz);
     if(distance>2.8)continue;
     boxes.push({
-      type:'box',id:node.id,x:node.x,z:node.z,
+      type:'box',id:node.id,segment:node.segment,x:node.x,z:node.z,
       y:ctx.terrain.heightAt(node.x,node.z)+.28,maxDistance:2.8,distance,
-      label:ITEM_NAMES[node.item.id]??'Предмет',
+      label:node.kind==='fallen_logs'?('Бревно · осталось '+node.item.count):(ITEM_NAMES[node.item.id]??'Предмет'),
     });
   }
   return {resources,boxes};
@@ -66,8 +66,10 @@ export function createPickupInteraction(ctx){
     const {resources,boxes}=pickupCandidates(ctx);
     // Tree/craft placement reticles are independent; a reachable nearby item
     // remains available by E or the touch button even if not aimed at.
-    const focused=selectPickupTarget([...resources,...boxes],project);
-    return {focused,nearest:nearestPickupTarget(resources,boxes)};
+    // The user intentionally dropped boxes; prioritize them over dense grass
+    // and nearby forest loot so E and the mobile button pick the aimed box.
+    const focused=selectPickupTarget(boxes,project)??selectPickupTarget(resources,project);
+    return {focused,nearest:nearestPickupTarget([],boxes)??nearestPickupTarget(resources,[])};
   }
   function update(){
     const result=calculate();
@@ -87,7 +89,7 @@ export function createPickupInteraction(ctx){
     const item=focused??nearest;
     if(!item)return false;
     return item.type==='box'
-      ?(ctx.groundBoxes?.pickup(item.id)??false)
+      ?(ctx.groundBoxes?.pickup(item.id,item.segment)??false)
       :(ctx.forestResources?.collect(item.id)??false);
   }
   if(button)button.addEventListener('click',event=>{

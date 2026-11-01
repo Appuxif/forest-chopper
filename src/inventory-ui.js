@@ -28,6 +28,7 @@ export function createInventory(ctx,doc=document){
  '.fc-slot .fc-item-tag{position:absolute;bottom:4px;left:3px;max-width:66%;font:9px system-ui;color:#e2e8e1;text-shadow:0 1px 2px #000;overflow:hidden;white-space:nowrap}',
  '.fc-slot .fc-item-icon{display:block;width:72%;height:72%;object-fit:contain;pointer-events:none;filter:drop-shadow(0 2px 2px #0007)}',
  '.fc-bag .fc-weight{margin:10px 0 4px;font:13px system-ui;color:#dcebd6}.fc-bag .fc-weight-bar{height:9px;background:#34453b;border-radius:7px;overflow:hidden}.fc-bag .fc-weight-fill{height:100%;background:#80c78d;transition:width .15s}.fc-bag .fc-weight-fill[data-over=true]{background:#ef916c}',
+ '.fc-bag .fc-recipe-button{display:block;width:100%;margin:10px 0 5px;background:#604b35;border:1px solid #c8a776;color:#fff3d6;font-size:14px;font-weight:700}',
  '.fc-bag .fc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.fc-bag p,.fc-bag small{font-size:12px;line-height:1.5;color:#c7d7cd}',
  '@media(max-width:650px){.fc-hotbar{bottom:166px;padding:3px;gap:3px}.fc-hotbar .fc-slot{width:43px;height:43px;font-size:19px}.fc-bag-toggle{left:calc(50% + 101px);bottom:172px;padding:6px;font-size:11px}.fc-bag .fc-grid .fc-slot{height:52px}.fc-bag{padding:10px;width:calc(100vw - 14px);max-height:83dvh}.fc-bag h2{font-size:16px}.fc-bag p{font-size:11px!important}.fc-quick-assign .fc-slot{width:44px;height:44px}}'
  ].join('');
@@ -35,7 +36,7 @@ export function createInventory(ctx,doc=document){
  const bar=doc.createElement('div');bar.className='fc-hotbar';bar.setAttribute('aria-label','Быстрые слоты предметов');
  const toggle=doc.createElement('button');toggle.className='fc-bag-toggle';toggle.textContent='🎒 Сумка (I)';toggle.type='button';
  const bag=doc.createElement('section');bag.className='fc-bag';bag.hidden=true;bag.setAttribute('aria-label','Инвентарь');
- bag.innerHTML='<header><h2>🎒 Сумка</h2><button type="button" data-action="close" aria-label="Закрыть инвентарь">✕</button></header><p class="fc-bag-hint"></p><div class="fc-weight" role="status"></div><div class="fc-weight-bar" role="progressbar" aria-label="Вес рюкзака" aria-valuemin="0" aria-valuemax="100"><div class="fc-weight-fill"></div></div><div style="font-size:11px;opacity:.8;margin-top:8px">Быстрый доступ — перетащи предмет сюда:</div><div class="fc-quick-assign"></div><div class="fc-grid"></div><div class="fc-actions"><button type="button" data-action="split">✂ Разделить стак</button><button type="button" data-action="drop">📦 Выбросить выбранный стак</button></div><button type="button" class="fc-trash-slot fc-slot" data-action="trash" title="Удалить предмет без коробки">🗑️</button><p>Корзина: выбери предмет в сумке и нажми 🗑️, чтобы уничтожить его без коробки.</p><p>Перетаскивай предметы между слотами; Shift+перетаскивание — половина стака. На телефоне — кнопка «Разделить». Перетащи предмет на быстрый слот для ярлыка, за пределы сумки — выбросить. Двойной клик по еде — съесть. Быстрые слоты — 1–4. Не более 5 брёвен в стопке. Чтобы рубить — выбери топор.</p><small>Предусмотрены уровни сумки и улучшения топора.</small>';
+ bag.innerHTML='<header><h2>🎒 Сумка</h2><button type="button" data-action="close" aria-label="Закрыть инвентарь">✕</button></header><p class="fc-bag-hint"></p><div class="fc-weight" role="status"></div><div class="fc-weight-bar" role="progressbar" aria-label="Вес рюкзака" aria-valuemin="0" aria-valuemax="100"><div class="fc-weight-fill"></div></div><div style="font-size:11px;opacity:.8;margin-top:8px">Быстрый доступ — перетащи предмет сюда:</div><div class="fc-quick-assign"></div><div class="fc-grid"></div><button type="button" class="fc-recipe-button" data-action="recipes">📖 Рецепты</button><div class="fc-actions"><button type="button" data-action="split">✂ Разделить стак</button><button type="button" data-action="drop">📦 Выбросить выбранный стак</button></div><button type="button" class="fc-trash-slot fc-slot" data-action="trash" title="Удалить предмет без коробки">🗑️</button><p>Корзина: выбери предмет в сумке и нажми 🗑️, чтобы уничтожить его без коробки.</p><p>Перетаскивай предметы между слотами; Shift+перетаскивание — половина стака. На телефоне — кнопка «Разделить». Перетащи предмет на быстрый слот для ярлыка, за пределы сумки — выбросить. Двойной клик по еде — съесть. Быстрые слоты — 1–4. Не более 5 брёвен в стопке. Чтобы рубить — выбери топор.</p><small>Предусмотрены уровни сумки и улучшения топора.</small>';
  doc.body.append(bar,toggle,bag);
  let recipeBook=null;
  let moving=-1,lastSelected=null,lastFoodClick=-1,lastFoodTime=-Infinity,suppressClickUntil=0;
@@ -247,6 +248,7 @@ export function createInventory(ctx,doc=document){
  bag.addEventListener('click',event=>{
    const action=event.target?.dataset?.action;
    if(action==='close')bag.hidden=true;
+   if(action==='recipes')recipeBook?.open();
    if(action==='split')splitStack();
    if(action==='drop')dropStack();
    if(action==='trash')trashStack();

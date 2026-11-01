@@ -30,8 +30,8 @@ test('axis sliding blocks trunk on one axis without freezing other', () => {
   const {ctx, physics} = fixture();
   ctx.trees.set('tree', {position: {x: 1, z: 0}});
   physics.moveHorizontal(.6, .8);
-  assert.equal(ctx.px, 0);
-  assert.equal(ctx.pz, .8);
+  assert.ok(ctx.px>0&&ctx.px<.6,'moves up to the tree but never inside its collision radius');
+  assert.equal(ctx.pz, .8,'blocked axis still allows sliding along the other axis');
 });
 
 test('landing on log surface and head collision', () => {

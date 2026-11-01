@@ -234,3 +234,37 @@ test('multiplayer started from menu suspends writes without overwriting the solo
   assert.equal(next.save.save(),false);
   assert.equal(next.storage.getItem(OFFLINE_SAVE_KEY),bytes);
 });
+
+test('legacy permanent fallen logs migrate once to a saved one-hour TTL',()=>{
+  const original=fixture();
+  const legacy={id:22,x:3,z:6,kind:'fallen_logs',
+    direction:.3,mask:0b101,expires_at:0,item:{id:'log',count:2}};
+  original.ctx.groundBoxes={snapshot:()=>[legacy]};
+  assert.equal(original.save.save(),true);
+  const raw=original.storage.getItem(OFFLINE_SAVE_KEY);
+  const preview=parseOfflineSave(raw);
+  assert.equal(preview.migrateLegacyFallenLogs,true);
+  assert.ok(preview.boxes[0].expires_at>Date.now()/1000+3595);
+  const loaded=fixture(raw);
+  let items=[];
+  loaded.ctx.groundBoxes={
+    set(boxes){items=boxes},
+    snapshot(){return items},
+  };
+  assert.equal(loaded.save.restore(),true);
+  assert.equal(items.length,1);
+  assert.deepEqual(items[0].item,{id:'log',count:2});
+  assert.equal(items[0].mask,0b101);
+  const migratedRaw=loaded.storage.getItem(OFFLINE_SAVE_KEY);
+  assert.notEqual(migratedRaw,raw,'migration is committed immediately');
+  const deadline=items[0].expires_at;
+  assert.equal(parseOfflineSave(migratedRaw).migrateLegacyFallenLogs,false);
+  assert.equal(parseOfflineSave(migratedRaw).boxes[0].expires_at,deadline);
+  const reloaded=fixture(migratedRaw);
+  reloaded.ctx.groundBoxes={set(boxes){items=boxes;}};
+  assert.equal(reloaded.save.restore(),true);
+  assert.equal(items[0].expires_at,deadline,'reloading does not restart the countdown');
+  const expired=JSON.parse(migratedRaw);
+  expired.boxes[0].expires_at=Date.now()/1000-1;
+  assert.deepEqual(parseOfflineSave(JSON.stringify(expired)).boxes,[]);
+});

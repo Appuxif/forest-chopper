@@ -1,5 +1,6 @@
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {rockBlocksPlayer,highestRockSupport,standingOnRock} from './rock-collisions.js';
+import {structureBlocksPlayer,highestStructureSupport,standingOnStructure,structureCeiling} from './structure-collisions.js';
 export function createPhysics(ctx) {
 function logFootprint(p,x,z,extra=0){
  // Logs lie horizontally along X (orientation 0) or Z (orientation 1).
@@ -15,8 +16,10 @@ function blocksPlayerAt(x,z,feet){
    if(!logFootprint(p,x,z,ctx.PLAYER_RADIUS))continue;
    if(feet<logTop(p)-.045 && feet+ctx.PLAYER_HEIGHT>logBottom(p)+.045)return true;
  }
- return rockBlocksPlayer(ctx.rockColliders,ctx.chunkSize,x,z,feet,
-   ctx.PLAYER_RADIUS,ctx.PLAYER_HEIGHT);
+ return structureBlocksPlayer(ctx.crafting?.items?.values(),ctx.terrain,x,z,feet,
+   ctx.PLAYER_RADIUS,ctx.PLAYER_HEIGHT) ||
+   rockBlocksPlayer(ctx.rockColliders,ctx.chunkSize,x,z,feet,
+     ctx.PLAYER_RADIUS,ctx.PLAYER_HEIGHT);
 }
 function moveHorizontal(dx,dz){
  // Axis-by-axis movement, with a small step-up allowance for terrain slopes.
@@ -31,8 +34,22 @@ function moveHorizontal(dx,dz){
    for(const t of ctx.trees.values())if(Math.hypot(nx-t.position.x,nz-t.position.z)<.75)return false;
    return !blocksPlayerAt(nx,nz,Math.max(ctx.feetY,floor));
  }
- if(safe(ctx.px+dx,ctx.pz))ctx.px+=dx;
- if(safe(ctx.px,ctx.pz+dz))ctx.pz+=dz;
+ // Substep movement to avoid tunnelling through thin walls/armrests when
+ // sprinting or when a frame takes longer than usual.
+ const steps=Math.max(1,Math.ceil(Math.max(Math.abs(dx),Math.abs(dz))/
+   Math.max(.12,ctx.PLAYER_RADIUS*.5)));
+ const startX=ctx.px,startZ=ctx.pz;
+ let blockedX=false,blockedZ=false;
+ for(let i=1;i<=steps;i++){
+   if(!blockedX){
+     const nx=startX+dx*(i/steps);
+     if(safe(nx,ctx.pz))ctx.px=nx;else blockedX=true;
+   }
+   if(!blockedZ){
+     const nz=startZ+dz*(i/steps);
+     if(safe(ctx.px,nz))ctx.pz=nz;else blockedZ=true;
+   }
+ }
  if(walkingOnGround){
    const floor=ctx.terrain.heightAt(ctx.px,ctx.pz);
    if(Math.abs(floor-oldGround)<=.45){ctx.feetY=floor;ctx.verticalSpeed=0;}
@@ -52,6 +69,9 @@ function simulateVertical(dt){
      const bottom=logBottom(p);
      if(previous+ctx.PLAYER_HEIGHT<=bottom+.01&&next+ctx.PLAYER_HEIGHT>bottom){next=Math.min(next,bottom-ctx.PLAYER_HEIGHT-.012);ctx.verticalSpeed=0;break}
    }
+   const ceiling=structureCeiling(ctx.crafting?.items?.values(),ctx.terrain,
+     ctx.px,ctx.pz,previous,next,ctx.PLAYER_RADIUS,ctx.PLAYER_HEIGHT);
+   if(next>ceiling){next=ceiling;ctx.verticalSpeed=0;}
  }
  if(ctx.verticalSpeed<=0){
    let support=ground;
@@ -60,7 +80,9 @@ function simulateVertical(dt){
      if(previous>=top-.09&&next<=top+.02&&top>support)support=top;
    }
    support=Math.max(support,highestRockSupport(ctx.rockColliders,ctx.chunkSize,
-     ctx.px,ctx.pz,previous,next,ctx.PLAYER_RADIUS,-Infinity));
+     ctx.px,ctx.pz,previous,next,ctx.PLAYER_RADIUS,-Infinity),
+     highestStructureSupport(ctx.crafting?.items?.values(),ctx.terrain,
+       ctx.px,ctx.pz,previous,next,ctx.PLAYER_RADIUS,-Infinity));
    if(next<=support){next=support;ctx.verticalSpeed=0;ctx.onGround=true}
    else ctx.onGround=false;
  }
@@ -69,7 +91,9 @@ function simulateVertical(dt){
  if(ctx.onGround&&ctx.feetY>ground+.02){
    const hasSupport=ctx.placed.some(p=>logFootprint(p,ctx.px,ctx.pz,ctx.PLAYER_RADIUS*.65)&&Math.abs(logTop(p)-ctx.feetY)<.08)
      || standingOnRock(ctx.rockColliders,ctx.chunkSize,ctx.px,ctx.pz,
-       ctx.feetY,ctx.PLAYER_RADIUS);
+       ctx.feetY,ctx.PLAYER_RADIUS)
+     || standingOnStructure(ctx.crafting?.items?.values(),ctx.terrain,
+       ctx.px,ctx.pz,ctx.feetY,ctx.PLAYER_RADIUS);
    if(!hasSupport)ctx.onGround=false;
  }
 }

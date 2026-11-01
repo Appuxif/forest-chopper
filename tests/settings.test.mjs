@@ -286,3 +286,36 @@ test('preset selection applies all graphics properties; manual graphics changes 
   assert.equal(settings.shadowRefreshSeconds,0);
   assert.ok(updates.length>=3);
 });
+
+
+test('in-game settings leave the world sharp and undimmed; main-menu modal keeps its backdrop',()=>{
+  const appended=[],styleNodes=[],elements=new Map();
+  function element(id){
+    if(!elements.has(id))elements.set(id,{
+      value:'',checked:false,textContent:'',style:{},setAttribute(){},
+      querySelector:element,focus(){},
+    });
+    return elements.get(id);
+  }
+  const doc={
+    createElement:tag=>({tag,hidden:false,className:'',style:{},setAttribute(){},querySelector:element,remove(){}}),
+    head:{append(node){styleNodes.push(node)}},
+    body:{append(...nodes){appended.push(...nodes)}},
+  };
+  const settings=createSettings(doc,{getItem(){return null},setItem(){}});
+  const styles=styleNodes.map(x=>x.textContent).join('');
+  const backdrop=appended.find(x=>x.className==='fc-settings-backdrop');
+  assert.ok(backdrop);
+  assert.match(styles,/\.fc-settings-backdrop\{[^}]*background:transparent;backdrop-filter:none/);
+  assert.match(styles,/\.fc-settings-backdrop-menu\{[^}]*backdrop-filter:blur\(3px\)/);
+  assert.equal(backdrop.className,'fc-settings-backdrop');
+  settings.open();
+  assert.equal(backdrop.hidden,false);
+  settings.close();
+  assert.equal(backdrop.hidden,true);
+  settings.setMenuMode(true);
+  assert.equal(backdrop.className,'fc-settings-backdrop fc-settings-backdrop-menu');
+  settings.setMenuMode(false);
+  assert.equal(backdrop.className,'fc-settings-backdrop');
+  settings.destroy();
+});

@@ -550,7 +550,10 @@ progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}})
 ({toggleView, animate}=createPlayer(ctx));
 ({showMapPing,clearMapPings}=createMinimap(ctx));
 ({look}=createControls(ctx));
-worldStartupGate=createWorldStartupGate({loading,online:menuLaunch.mode==='online'});
+worldStartupGate=createWorldStartupGate({
+  loading,online:menuLaunch.mode==='online',
+  onComplete:()=>document.body.classList.remove('fc-world-loading'),
+});
 // Returning to the menu uses a page reload: every WebGL resource and listener
 // is torn down by the browser, avoiding a fragile half-destroyed scene.
 $('menu-backgame').onclick=()=>{

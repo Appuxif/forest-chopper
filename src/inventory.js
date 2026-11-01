@@ -4,7 +4,7 @@ export const LOG_STACK=5, QUICK_SLOTS=4, BASE_BAG_SLOTS=12, SLOTS_PER_UPGRADE=4;
 export const ITEM_STACK={log:5,branch:10,stone:10,bench:1,axe:1,...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,10]))};
 export const MAX_CARRY_WEIGHT=100;
 // kg per item. Counts, not stacks, determine weight; axe has no count field.
-export const ITEM_WEIGHT={log:25,branch:0.5,stone:2,bench:15,axe:3,
+export const ITEM_WEIGHT={log:10,branch:0.5,stone:2,bench:15,axe:3,
  ...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,0.1]))};
 export const itemWeight=item=>item?(ITEM_WEIGHT[item.id]??0)*(item.id==='axe'?1:item.count):0;
 export const RECIPES={bench:{log:3},axe:{branch:3,stone:2}};

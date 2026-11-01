@@ -7,21 +7,22 @@ test('default bag holds one axe, 12 slots and four quick slots',()=>{
  assert.deepEqual(x.slots[0],{id:'axe',tier:0});
  assert.equal(QUICK_SLOTS,4);assert.equal(LOG_STACK,5);
  assert.equal(x.equipped(),true);assert.equal(x.axe().damage,1);
- assert.equal(x.wood(),0);assert.equal(x.freeLogs(),3);
+ assert.equal(x.wood(),0);assert.equal(x.freeLogs(),9);
 });
 test('logs stack up to five; building consumption works regardless of selected slot',()=>{
- const x=createInventoryModel();assert.equal(x.addLogs(12),3);
- assert.deepEqual(x.slots[1],{id:'log',count:3});
+ const x=createInventoryModel();assert.equal(x.addLogs(12),9);
+ assert.deepEqual(x.slots[1],{id:'log',count:5});
+ assert.deepEqual(x.slots[2],{id:'log',count:4});
  x.select(2);assert.equal(x.equipped(),false);
  assert.equal(x.spendLogs(2),true);
- assert.equal(x.wood(),1);assert.equal(x.spendLogs(7),false);
- assert.equal(x.wood(),1);assert.ok(x.slots.every(s=>s?.id!=='log'||s.count<=5));
+ assert.equal(x.wood(),7);assert.equal(x.spendLogs(8),false);
+ assert.equal(x.wood(),7);assert.ok(x.slots.every(s=>s?.id!=='log'||s.count<=5));
 });
 test('bag capacity is bounded and upgrades add slots without deleting items',()=>{
  const x=createInventoryModel();
- assert.equal(x.addLogs(65),3);assert.equal(x.wood(),3);assert.equal(x.freeLogs(),0);
+ assert.equal(x.addLogs(65),9);assert.equal(x.wood(),9);assert.equal(x.freeLogs(),0);
  assert.equal(x.upgradeBag(1),true);assert.equal(x.capacity(),16);
- assert.equal(x.addLogs(20),0);assert.equal(x.wood(),3,'more slots do not increase weight limit');
+ assert.equal(x.addLogs(20),0);assert.equal(x.wood(),9,'more slots do not increase weight limit');
  assert.equal(x.upgradeBag(-1),false);
  assert.equal(x.upgradeBag(101),false);
  assert.equal(x.spendLogs(1),true);assert.equal(x.addLogs(1),1);
@@ -197,17 +198,20 @@ test('weight is additive across stacks; carrying 100kg is independent of slots',
  const bag=createInventoryModel();
  assert.equal(MAX_CARRY_WEIGHT,100);
  assert.equal(itemWeight({id:'axe',tier:0}),3);
- assert.equal(ITEM_WEIGHT.log,25);
+ assert.equal(ITEM_WEIGHT.log,10);
  assert.equal(bag.weight(),3);
- assert.equal(bag.addLogs(4),3);
- assert.equal(bag.weight(),78);
- assert.equal(bag.remainingWeight(),22);
+ assert.equal(bag.addLogs(7),7);
+ assert.equal(bag.weight(),73);
+ assert.equal(bag.remainingWeight(),27);
  assert.equal(bag.canAdd({id:'stone',count:10}),true);
  assert.equal(bag.addItem({id:'stone',count:10}),true);
- assert.equal(bag.weight(),98);
- assert.equal(bag.canAdd({id:'stone',count:2}),false);
- assert.equal(bag.canAdd({id:'stone',count:1}),true);
- assert.equal(bag.addItem({id:'stone',count:1}),true);
+ assert.equal(bag.weight(),93);
+ assert.equal(bag.canAdd({id:'stone',count:4}),false);
+ assert.equal(bag.canAdd({id:'stone',count:3}),true);
+ assert.equal(bag.addItem({id:'stone',count:3}),true);
+ assert.equal(bag.weight(),99);
+ assert.equal(bag.canAdd({id:'branch',count:2}),true);
+ assert.equal(bag.addItem({id:'branch',count:2}),true);
  assert.equal(bag.weight(),100);
  assert.equal(bag.freeLogs(),0);
  assert.equal(bag.canAdd({id:'branch',count:1}),false);
@@ -215,9 +219,9 @@ test('weight is additive across stacks; carrying 100kg is independent of slots',
  const snapshot=bag.serialize();
  assert.equal(bag.move(1,9),true);
  assert.equal(bag.weight(),100);
- assert.equal(bag.spend('stone',1),true);
- assert.equal(bag.weight(),98);
- assert.equal(bag.addItem({id:'branch',count:4}),true);
+ assert.equal(bag.spend('branch',2),true);
+ assert.equal(bag.weight(),99);
+ assert.equal(bag.addItem({id:'branch',count:2}),true);
  assert.equal(bag.weight(),100);
  assert.equal(bag.addItem({id:'branch',count:1}),false);
  assert.deepEqual(snapshot.slots[0],{id:'axe',tier:0});
@@ -226,21 +230,22 @@ test('weight is additive across stacks; carrying 100kg is independent of slots',
 test('craft uses net resulting weight, never consumes ingredients on failure',()=>{
  const x=createInventoryModel();
  assert.equal(x.addLogs(3),3);
- assert.equal(x.weight(),78);
+ assert.equal(x.weight(),33);
  assert.equal(x.craftBench(),true);
  assert.equal(x.weight(),18);
  const overloaded=createInventoryModel();
  const saved=overloaded.serialize();
  saved.slots[1]={id:'stone',count:10};
- saved.slots[2]={id:'log',count:3};
+ saved.slots[2]={id:'log',count:5};
  saved.slots[3]={id:'branch',count:3};
  saved.slots[4]={id:'stone',count:10};
- assert.equal(overloaded.restore(saved,3),true);
+ saved.slots[5]={id:'log',count:5};
+ assert.equal(overloaded.restore(saved,10),true);
  const before=overloaded.serialize();
  // A crafted axe would still leave excess weight, so it must roll back.
  assert.equal(overloaded.craft('axe'),false);
  assert.deepEqual(overloaded.serialize(),before);
- assert.equal(overloaded.spend('log',3),true);
+ assert.equal(overloaded.spend('log',5),true);
  assert.equal(overloaded.craft('axe'),true);
 });
 
@@ -248,7 +253,7 @@ test('old overweight saves migrate without item loss and cannot receive more ite
  const old=createInventoryModel();
  assert.equal(old.restore(null,120),true);
  assert.equal(old.wood(),120);
- assert.equal(old.weight(),3003);
+ assert.equal(old.weight(),1203);
  assert.equal(old.addLogs(1),0);
  assert.equal(old.addItem({id:'branch',count:1}),false);
  assert.equal(old.restoreSlot(old.slots.findIndex(x=>!x),{id:'branch',count:1}),false);

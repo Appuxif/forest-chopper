@@ -123,11 +123,14 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     storage = null;
   }
   const state = sanitizeSettings(persisted);
-  let connected = false, latency = null, lastRate = null, lastDiagnostics = '', lastPosition = '', lastGpu = null;
+  let connected = false, latency = null, lastRate = null, lastPhysicsRate = null, lastCpuMs = null, lastGpuMs = null, gpuTimingSupported = null, lastDiagnostics = '', lastPosition = '', lastGpu = null;
   const css = doc.createElement('style');
   css.textContent = `
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
-.fc-settings-backdrop{position:fixed;inset:0;z-index:28;background:#020f0bcc;backdrop-filter:blur(3px)}
+/* In-game graphics changes must remain visible through the backdrop. */
+.fc-settings-backdrop{position:fixed;inset:0;z-index:28;background:transparent;backdrop-filter:none}
+/* The main menu still benefits from its regular dimmed modal backdrop. */
+.fc-settings-backdrop-menu{background:#020f0bcc;backdrop-filter:blur(3px)}
 .fc-settings{position:fixed;z-index:29;left:50%;top:50%;transform:translate(-50%,-50%);width:min(700px,calc(100vw - 28px));max-height:min(680px,calc(100dvh - 28px));display:flex;flex-direction:column;overflow:hidden;background:#10251ff7;color:white;border:1px solid #ffffff55;border-radius:15px;padding:0;font:13px/1.45 system-ui,sans-serif;box-shadow:0 24px 70px #000b}
 .fc-settings[hidden],.fc-settings-backdrop[hidden],.fc-fps[hidden]{display:none}
 .fc-settings-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px 10px}
@@ -140,6 +143,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 .fc-settings-page[hidden]{display:none}
 .fc-settings-page{max-width:570px;margin:auto}
 .fc-settings-page[data-category=trees]{max-width:635px}
+.fc-settings-shortcuts{margin-top:18px;padding:12px 14px;border:1px solid #45624c;border-radius:9px;background:#152f24;color:#d8f0df;line-height:1.75}.fc-settings-shortcuts strong{display:block;font-size:14px;margin-bottom:5px}.fc-settings-shortcuts small{display:block;margin-top:7px;opacity:.8}
 .fc-tree-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .fc-tree-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
 .fc-tree-actions button{background:#214834;color:#e8fff0;border:1px solid #64836c}
@@ -271,7 +275,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <small>Прозрачные области хвои оптимизируются автоматически при старте. Плотность меняется без перегенерации леса.</small>
     <label>Угол обзора (FOV): <output id="fc-fov-value"></output>°
       <input id="fc-fov" type="range" min="65" max="95" step="5"></label>
-    <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS и диагностика рендера (локально)</label>
+    <label title="Панель появляется после завершения или пропуска обучения"><input id="fc-show-fps" type="checkbox"> FPS рендера и физики, диагностика (локально)</label>
     </section>
     <section class="fc-settings-page" data-category="trees" aria-label="Модели деревьев" hidden><div id="fc-tree-editor">${treeModelEditorMarkup()}</div></section>
     <section class="fc-settings-page" data-category="grass" aria-label="Трава" hidden>
@@ -308,6 +312,14 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <label>Чувствительность обзора: <output id="fc-sensitivity-value"></output>
       <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
     <label><input id="fc-auto-sprint" type="checkbox"> Автобег при движении</label>
+    <div class="fc-settings-shortcuts" aria-label="Клавиши и управление">
+      <strong>Клавиши управления</strong>
+      <div>WASD / стрелки — ходьба · Shift — бег · Space — прыжок</div>
+      <div>Мышь — обзор · ЛКМ — рубить · E — подобрать</div>
+      <div>I — инвентарь · K — книга рецептов · 1–4 — быстрые слоты</div>
+      <div>V — камера · R — повернуть постройку · Esc — закрыть окно</div>
+      <small>На сенсорном экране — джойстик, свайп и кнопки действий.</small>
+    </div>
     </section>
     <section class="fc-settings-page" data-category="camera" aria-label="Камера" hidden>
     <small>Камера от третьего лица · изменения применяются сразу.</small>
@@ -332,7 +344,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   fps.className = 'fc-fps';
   fps.setAttribute('aria-label', 'Частота кадров');
   fps.hidden = !state.showFps;
-  fps.textContent = 'FPS —';
+  fps.textContent = 'Render FPS — · Physics FPS —';
   doc.body.append(toggle,backdrop,panel,fps);
 
   const cameraControls = [
@@ -391,7 +403,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     grassTriangles:'grass-triangles',grassInteraction:'grass-interaction',
     antialias:'antialias',
   };
-  const renderFps = () => {fps.textContent = `FPS ${lastRate === null ? '—' : lastRate} · ${networkLabel()}${lastGpu ? '\nGPU: '+lastGpu : ''}${lastPosition ? '\n'+lastPosition : ''}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
+  const renderFps = () => {fps.textContent = `Render FPS ${lastRate === null ? '—' : lastRate} · Physics FPS ${lastPhysicsRate === null ? '—' : lastPhysicsRate} · ${networkLabel()}\nCPU Frame Time ${lastCpuMs === null ? '—' : lastCpuMs.toFixed(2)+' ms'} · GPU Frame Time ${gpuTimingSupported===false?'н/д':lastGpuMs === null?'—':lastGpuMs.toFixed(2)+' ms'}${lastGpu ? '\nGPU: '+lastGpu : ''}${lastPosition ? '\n'+lastPosition : ''}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
   function reflect() {
     for(const [key,id,digits] of cameraControls){
       panel.querySelector('#fc-'+id).value=String(state[key]);
@@ -534,7 +546,14 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     Object.assign(state, sanitizeSettings({...state, mouseSensitivity: Number(range.value)}));
     reflect();save();
   };
-  checkbox.onchange = () => {state.showFps = checkbox.checked;reflect();save();};
+  checkbox.onchange = () => {
+    state.showFps = checkbox.checked;
+    lastSample=null;frames=0;lastRate=null;
+    lastPhysicsSample=null;physicsFrames=0;lastPhysicsRate=null;
+    cpuSampleStart=null;cpuSamples=0;cpuTotalMs=0;lastCpuMs=null;
+    lastGpuMs=null;gpuTimingSupported=null;
+    reflect();save();
+  };
   windCheckbox.onchange = () => {state.windEnabled = windCheckbox.checked;reflect();save();};
   dayCheckbox.onchange = () => {state.dayCycleEnabled = dayCheckbox.checked;reflect();save();};
   sprintCheckbox.onchange = () => {state.autoSprint = sprintCheckbox.checked;reflect();save();};
@@ -646,6 +665,48 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   onQualityChange?.(state.quality);
 
   let lastSample = null, frames = 0;
+  let lastPhysicsSample = null, physicsFrames = 0;
+  let cpuSampleStart = null, cpuSamples = 0, cpuTotalMs = 0;
+  // CPU: wall-clock JavaScript time per rAF callback, including render submit
+  // on rendered frames. GPU: asynchronous elapsed GPU time of the render path.
+  function recordCpuFrame(durationMs,now){
+    if(!state.showFps||!Number.isFinite(now)||!Number.isFinite(durationMs)||
+      durationMs<0)return;
+    if(cpuSampleStart===null)cpuSampleStart=now;
+    cpuTotalMs+=durationMs;
+    cpuSamples++;
+    if(now-cpuSampleStart>=950){
+      lastCpuMs=cpuTotalMs/cpuSamples;
+      cpuSampleStart=now;cpuTotalMs=0;cpuSamples=0;
+      renderFps();
+    }
+  }
+  function setGpuFrameTime(ms,supported){
+    if(!state.showFps)return;
+    const nextSupported=!!supported;
+    const nextMs=nextSupported&&Number.isFinite(ms)&&ms>=0?ms:null;
+    if(gpuTimingSupported===nextSupported&&lastGpuMs===nextMs)return;
+    gpuTimingSupported=nextSupported;
+    lastGpuMs=nextMs;
+    renderFps();
+  }
+  // Called on EVERY rAF callback, independent of the render-only FPS limiter.
+  // This measures variable-timestep simulation frequency, not fixed steps.
+  function tickPhysics(now) {
+    if(!state.showFps){
+      lastPhysicsSample=null;physicsFrames=0;lastPhysicsRate=null;
+      return;
+    }
+    if(!Number.isFinite(now))return;
+    if(lastPhysicsSample===null){lastPhysicsSample=now;physicsFrames=0;return;}
+    physicsFrames++;
+    if(now-lastPhysicsSample>=950){
+      lastPhysicsRate=Math.max(0,Math.round(physicsFrames*1000/(now-lastPhysicsSample)));
+      lastPhysicsSample=now;
+      physicsFrames=0;
+      renderFps();
+    }
+  }
   function setConnected(online) {
     connected = !!online;
     latency = null;
@@ -659,7 +720,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     renderFps();
   }
   function tick(now, gameCtx = null) {
-    if (!state.showFps) {lastSample = null;frames = 0;lastDiagnostics='';return;}
+    if (!state.showFps) {lastSample = null;frames = 0;lastRate=null;lastDiagnostics='';return;}
     if (lastGpu===null && gameCtx?.renderer)
       lastGpu=getGpuRendererName(gameCtx.renderer);
     if (lastSample === null) {lastSample = now;frames = 0;renderFps();return;}
@@ -723,10 +784,11 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get grassWidth(){return state.grassWidth;},
     get grassTurnMin(){return state.grassTurnMin;},
     get grassTurnMax(){return state.grassTurnMax;},
-    tick, close, setConnected, setLatency,
+    tick, tickPhysics, recordCpuFrame, setGpuFrameTime, close, setConnected, setLatency,
   open:()=>toggle.onclick(),
   setMenuMode(enabled){
     toggle.hidden=!!enabled;
+    backdrop.className=enabled?'fc-settings-backdrop fc-settings-backdrop-menu':'fc-settings-backdrop';
     fps.hidden=!!enabled||!state.showFps;
   },
   destroy(){close();toggle.remove?.();backdrop.remove?.();panel.remove?.();fps.remove?.();css.remove?.();},

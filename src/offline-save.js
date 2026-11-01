@@ -3,6 +3,8 @@ import {baseTerrainHeight} from './terrain-noise.js';
 import {pondHeightBeforeLakes} from './ponds.js';
 import {validBench,MAX_BENCHES} from './crafting.js';
 import {validItem} from './inventory.js';
+import {segmentMask} from './fallen-log-layout.js';
+import {BOX_LIFETIME_SECONDS} from './ground-boxes.js';
 import {validStorage} from './storage-model.js';
 import {RESOURCE_RESPAWN_SECONDS} from './resource-zones.js';
 import {MAX_VITALS,HUNGER_INTERVAL_SECONDS} from './vitals.js';
@@ -50,13 +52,32 @@ export function parseOfflineSave(raw) {
       logs.push({x: log.x, z: log.z, level: log.level, orientation: log.orientation});
     }
     const boxes=[];
-    if(!Array.isArray(data.boxes??[])||data.boxes?.length>500)return null;
+    let migrateLegacyFallenLogs=false;
+    if(!Array.isArray(data.boxes??[])||data.boxes?.length>3000)return null;
     for(const box of data.boxes??[]){
       if(!box||!Number.isSafeInteger(box.id)||box.id<0||box.id>2147483647
         ||!coordinate(box.x)||!coordinate(box.z)
         ||!Number.isFinite(box.expires_at)||box.expires_at<0
         ||!validItem(box.item))return null;
-      if(box.expires_at>Date.now()/1000)boxes.push({id:box.id,x:box.x,z:box.z,expires_at:box.expires_at,item:box.item});
+      if(box.kind==='fallen_logs'){
+        const mask=segmentMask(box);
+        if(box.item.id!=='log'||
+          !Number.isFinite(box.direction??0)||Math.abs(box.direction??0)>100||
+          !Number.isInteger(mask)||mask<1||mask>31||
+          mask.toString(2).replaceAll('0','').length!==box.item.count||
+          (box.tree!==undefined&&box.tree!==null&&typeof box.tree!=='string'))return null;
+        const expiresAt=box.expires_at===0
+          ?Date.now()/1000+BOX_LIFETIME_SECONDS:box.expires_at;
+        if(box.expires_at===0)migrateLegacyFallenLogs=true;
+        if(expiresAt>Date.now()/1000)boxes.push({
+          id:box.id,x:box.x,z:box.z,kind:'fallen_logs',
+          direction:box.direction??0,mask,tree:box.tree??null,
+          expires_at:expiresAt,item:box.item,
+        });
+      }else{
+        if(box.kind!==undefined)return null;
+        if(box.expires_at>Date.now()/1000)boxes.push({id:box.id,x:box.x,z:box.z,expires_at:box.expires_at,item:box.item});
+      }
     }
     const cooldowns={};
     const rawCooldowns=data.resource_cooldowns??{};
@@ -81,7 +102,7 @@ export function parseOfflineSave(raw) {
     return {
       storages,terrainVersion:[1,2,3].includes(data.terrainVersion)?data.terrainVersion:0,
       dayPhase:data.dayPhase??0,
-      furniture,boxes,resource_cooldowns:cooldowns,vitals,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
+      furniture,boxes,migrateLegacyFallenLogs,resource_cooldowns:cooldowns,vitals,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
     };
   } catch {
@@ -172,6 +193,9 @@ export function createOfflineSave(ctx, {
     ctx.groundBoxes?.set?.(state.boxes);
     ctx.$('wood').textContent = ctx.wood;
     ctx.$('cut').textContent = ctx.cuts;
+    // Commit legacy TTL immediately; otherwise repeatedly reloading the page
+    // could restart the one-hour countdown from zero.
+    if(state.migrateLegacyFallenLogs)save();
     return true;
   }
   function markDirty() {

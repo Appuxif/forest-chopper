@@ -17,16 +17,56 @@ from terrain_height import height_at, base_height
 from ponds import pond_depth_at, pond_height_before_lakes
 
 MAX_MESSAGE = 2048
-# Initial 3 kg axe leaves capacity for three 25 kg logs, regardless of bag slots.
+# Initial 3 kg axe leaves room for nine 10 kg logs, regardless of bag slots.
 DEFAULT_WOOD_CAPACITY = 3
 BOX_TTL_SECONDS=3600
+MAX_GROUND_DROPS=3000
+TREE_LOG_COUNT=3
+FALLEN_LOG_LENGTH=3.6
+FALLEN_LOG_GAP=.08
+FALL_DURATION=2.5
+
+def fallen_log_mask(box):
+    return box.get('mask',(1<<box['item']['count'])-1)
+
+def fallen_log_segments(box):
+    mask=fallen_log_mask(box)
+    angle=box.get('direction',0)
+    dx,dz=-math.sin(angle),math.cos(angle)
+    return [(i,box['x']+dx*(i+.5)*(FALLEN_LOG_LENGTH+FALLEN_LOG_GAP),
+             box['z']+dz*(i+.5)*(FALLEN_LOG_LENGTH+FALLEN_LOG_GAP))
+            for i in range(5) if mask&(1<<i)]
+
+def valid_fallen_log_layout(box):
+    if not is_fallen_logs(box):return False
+    angle=box.get('direction',0)
+    mask=fallen_log_mask(box)
+    return (box['item']['id']=='log' and box['expires_at']>=0
+            and type(angle) in (int,float) and math.isfinite(angle) and abs(angle)<=100
+            and type(mask) is int and 1<=mask<=31
+            and mask.bit_count()==box['item']['count']
+            and (box.get('tree') is None or isinstance(box['tree'],str))
+            and (box.get('ready_at') is None or
+                 (type(box['ready_at']) in (int,float) and math.isfinite(box['ready_at']))))
+
+def is_fallen_logs(box):
+    return isinstance(box,dict) and box.get('kind')=='fallen_logs'
+
+def fallen_logs_box(x,z,count=TREE_LOG_COUNT,direction=0,tree=None,ready_at=None):
+    box={'x':x,'z':z,'kind':'fallen_logs','direction':direction,
+         'mask':(1<<count)-1,'expires_at':time.time()+BOX_TTL_SECONDS,
+         'item':{'id':'log','count':count}}
+    if tree is not None:box['tree']=tree
+    if ready_at is not None:box['ready_at']=ready_at
+    return box
+
 MUSHROOM_SPECIES=('fly_agaric','boletus','death_cap','milkcap')
 FLOWER_SPECIES=('daisy','buttercup','pink_wildflower','blue_wildflower')
 DECOR_ITEM_IDS=tuple('mushroom:'+name for name in MUSHROOM_SPECIES)+tuple('flower:'+name for name in FLOWER_SPECIES)+('dry_grass',)
 ITEM_LIMITS={"log":5,"branch":10,"stone":10,"bench":1,"axe":1,
              **{name:10 for name in DECOR_ITEM_IDS}}
 MAX_CARRY_WEIGHT=100
-ITEM_WEIGHT={"log":25,"branch":0.5,"stone":2,"bench":15,"axe":3,
+ITEM_WEIGHT={"log":10,"branch":0.5,"stone":2,"bench":15,"axe":3,
              **{name:0.1 for name in DECOR_ITEM_IDS}}
 
 def item_weight(item):
@@ -528,14 +568,26 @@ class World:
                 if any(not valid_storage({'id':k,**v}) or v.get('id',k)!=k for k,v in storages.items()):
                     raise ValueError('Invalid storage save')
                 boxes_raw=data.get('boxes',{})
-                if not isinstance(boxes_raw,dict) or len(boxes_raw)>500:raise ValueError('Invalid boxes')
+                if not isinstance(boxes_raw,dict) or len(boxes_raw)>MAX_GROUND_DROPS:raise ValueError('Invalid boxes')
                 boxes={}
+                migrated_legacy_logs=False
                 for raw_id,box in boxes_raw.items():
                     ident=int(raw_id)
                     if not 0<ident<2147483647 or not isinstance(box,dict) or not valid_item(box.get('item')):raise ValueError('Invalid box')
                     if any(type(box.get(key)) not in (int,float) or not math.isfinite(box[key]) or abs(box[key])>240000
                            for key in ('x','z')):raise ValueError('Invalid box position')
                     if type(box.get('expires_at')) not in (int,float) or not math.isfinite(box['expires_at']):raise ValueError('Invalid expiry')
+                    if is_fallen_logs(box):
+                        if not valid_fallen_log_layout(box):
+                            raise ValueError('Invalid fallen log pile')
+                        if box['expires_at']==0:
+                            # Legacy piles were permanent. Begin a one-hour
+                            # window once and persist it to avoid resetting TTL
+                            # on each server restart.
+                            box={**box,'expires_at':time.time()+BOX_TTL_SECONDS}
+                            migrated_legacy_logs=True
+                    elif box.get('kind') is not None:
+                        raise ValueError('Invalid box kind')
                     if box['expires_at']>time.time():boxes[ident]=box
                 self.boxes=boxes;self.next_box=max((int(k) for k in boxes_raw),default=0)+1
                 cooldown_raw=data.get('resource_cooldowns',{})
@@ -563,6 +615,7 @@ class World:
                 self.world_created_at=created
                 self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.storages=storages;self.next_storage=max(storages,default=0)+1;self.community_cuts=community_cuts;self.resource_cooldowns=cooldowns
                 self.next_log=max(logs,default=0)+1
+                if migrated_legacy_logs:self.save()
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
@@ -684,20 +737,49 @@ class World:
             return False
         hp=self.damage.get(key,info[2])-damage
         if hp<=0:
+            # Persist the loot before reporting the tree felled. A full backpack
+            # cannot discard any resources; pickup is a separate transaction.
+            if len(self.boxes)>=MAX_GROUND_DROPS:
+                self.damage[key]=1
+                await self.broadcast({'type':'tree_hit','tree':key,'hp':1})
+                for ws,client in self.clients.items():
+                    if client is player:
+                        await self.send(ws,{'type':'action_denied',
+                                            'reason':'На земле слишком много предметов — сначала подбери часть'})
+                self.save()
+                return False
+            ident=self.next_box;self.next_box+=1
+            direction=math.atan2(player['x']-info[0],player['z']-info[1])+math.pi
+            box=fallen_logs_box(info[0],info[1],direction=direction,
+                                tree=key,ready_at=time.time()+FALL_DURATION)
+            self.boxes[ident]=box
             self.felled.add(key);self.damage.pop(key,None)
-            reward=(inv_give_logs(player['inventory'],5) if 'inventory' in player
-                    else 5)
-            player['wood']+=reward;player['cuts']+=1;self.community_cuts+=1
+            player['cuts']+=1;self.community_cuts+=1
             await self.broadcast({'type':'tree_fell','tree':key,'by':player['id'],
-                                  'wood':player['wood'],'cuts':player['cuts'],'community_cuts':self.community_cuts})
+                                  'wood':player['wood'],'cuts':player['cuts'],'community_cuts':self.community_cuts,'direction':direction})
+            await self.broadcast({'type':'box_add','box':{'id':ident,**box}})
         else:
             self.damage[key]=hp
             await self.broadcast({'type':'tree_hit','tree':key,'hp':hp})
-        if 'inventory' in player and hp<=0:
-            for ws,client in self.clients.items():
-                if client is player:await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']});break
         self.save()
         return True
+
+    async def collect_bot_fallen_logs(self,bot,key):
+        # An autonomous harvesting bot physically gathers the new pile after
+        # felling. Ordinary chopTree tasks leave all three logs for players.
+        info=tree_info(key,self.seed)
+        if not info:return 0
+        for ident,box in self.boxes.items():
+            if not is_fallen_logs(box) or box['expires_at']<=time.time() or math.hypot(box['x']-info[0],box['z']-info[1])>.01:
+                continue
+            if math.hypot(bot['x']-box['x'],bot['z']-box['z'])>2.8:return 0
+            count=box['item']['count']
+            bot['wood']+=count
+            del self.boxes[ident]
+            await self.broadcast({'type':'box_remove','id':ident})
+            self.save()
+            return count
+        return 0
 
     def server_status(self):
         return {'type':'server_status','name':'Forest Chopper Server',
@@ -786,7 +868,7 @@ class World:
                     self.save()
                 elif kind=='drop_item':
                     slot=data.get('slot')
-                    if type(slot) is not int or not 0<=slot<len(player['inventory']) or len(self.boxes)>=500:continue
+                    if type(slot) is not int or not 0<=slot<len(player['inventory']) or len(self.boxes)>=MAX_GROUND_DROPS:continue
                     item=player['inventory'][slot]
                     if not valid_item(item):continue
                     x=round(player['x']-math.sin(player['yaw'])*1.5,2)
@@ -804,12 +886,33 @@ class World:
                     ident=data.get('id')
                     if type(ident) is not int:continue
                     box=self.boxes.get(ident)
-                    if not box or box['expires_at']<=time.time() or math.hypot(player['x']-box['x'],player['z']-box['z'])>2.8:continue
-                    if not inv_add(player['inventory'],box['item']):
-                        await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],box['item'])});continue
-                    if box['item']['id']=='log':player['wood']+=box['item']['count']
-                    del self.boxes[ident]
-                    await self.broadcast({'type':'box_remove','id':ident})
+                    if not box or box['expires_at']<=time.time():continue
+                    segment=None
+                    if is_fallen_logs(box):
+                        if box.get('ready_at',0)>time.time():continue
+                        parts=fallen_log_segments(box)
+                        selected=data.get('segment')
+                        if selected is not None:
+                            if type(selected) is not int:continue
+                            part=next((p for p in parts if p[0]==selected),None)
+                        else:
+                            part=min(parts,key=lambda p:math.hypot(player['x']-p[1],player['z']-p[2]),default=None)
+                        if part is None or math.hypot(player['x']-part[1],player['z']-part[2])>2.8:continue
+                        segment=part[0]
+                    elif math.hypot(player['x']-box['x'],player['z']-box['z'])>2.8:continue
+                    # Pick exactly one fixed segment: atomic, authoritative and
+                    # independent of the other remaining segments.
+                    received={'id':'log','count':1} if is_fallen_logs(box) else box['item']
+                    if not inv_add(player['inventory'],received):
+                        await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],received)});continue
+                    if received['id']=='log':player['wood']+=received['count']
+                    if is_fallen_logs(box) and box['item']['count']>1:
+                        box['mask']=fallen_log_mask(box)&~(1<<segment)
+                        box['item']['count']-=1
+                        await self.broadcast({'type':'box_add','box':{'id':ident,**box}})
+                    else:
+                        del self.boxes[ident]
+                        await self.broadcast({'type':'box_remove','id':ident})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                     self.save()
                 elif kind=='trash_item':
