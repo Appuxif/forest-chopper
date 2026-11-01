@@ -429,3 +429,33 @@ For authoring a new chop animation, use
 `animation/male_chop_workbench_final.blend`: it contains all 53 corrected Male
 joints, the 5-part axe bound to `hand_r`, and the `FC_Male_Chop` Action. Older
 `male_chop_workbench*.blend` copies were left untouched to preserve any work.
+
+## Shared hand pose for Male animations (2026-11-01)
+
+All 12 shipped Male clips (`idle`, `walk`, `run`, `strafe_*`, etc.) now keep
+**only the 30 finger joints** in the position of frame 1 of the user-authored
+`FC_Male_Chop`. The right fingers wrap around the tool handle and the left
+fingers remain relaxed. The wrist (`hand_r`, `hand_l`), arms, body, locomotion,
+and Root Motion tracks are unchanged. This modification is only for Male;
+Female clips keep their independent original finger poses.
+
+The versioned pose snapshot lives in `animation/male_chop_finger_pose.json`.
+`build_lite.py` automatically bakes those values into all Male animation
+Actions, before exporting any of the three `lite/body_male*.glb` variants.
+No axe mesh is baked into any GLB; its saved grip transform is reference-only
+and the prop in the Blender workbench stays bone-parented to `hand_r`.
+
+To update this default pose after changing frame 1 of Chop:
+
+```shell
+blender -b characters/humanoid/animation/male_chop_workbench_final.blend \\
+  --python characters/humanoid/tools/extract_male_finger_pose.py
+blender -b characters/humanoid/animation/male_chop_workbench_final.blend \\
+  --python characters/humanoid/tools/build_male_animations_preview.py
+python3 characters/humanoid/build_all_lite.py --jobs 4 --force
+```
+
+`animation/male_animations_with_axe_preview.blend` is an optional Blender
+inspection scene with all 12 baked animation Actions and the axe grip attached
+to the hand. The original Chop source is left untouched. In the preview,
+switch Actions in the Action Editor; NLA preview tracks start muted.

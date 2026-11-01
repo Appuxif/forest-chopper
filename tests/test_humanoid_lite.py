@@ -18,6 +18,29 @@ def doc(file):
     if kind!=0x4e4f534a:raise ValueError(file)
     return json.loads(buf[20:20+size])
 
+def glb_animation_samples(buf, model, animation, bone, channel):
+    """Read a float animation sampler from the binary GLB chunk."""
+    json_size=struct.unpack_from('<I',buf,12)[0]
+    binary_start=20+json_size
+    binary_size,tag=struct.unpack_from('<II',buf,binary_start)
+    assert tag==0x004e4942
+    binary=buf[binary_start+8:binary_start+8+binary_size]
+    for track in animation['channels']:
+        target=track['target']
+        if model['nodes'][target['node']].get('name')!=bone or target['path']!=channel:
+            continue
+        accessor_id=animation['samplers'][track['sampler']]['output']
+        accessor=model['accessors'][accessor_id]
+        view=model['bufferViews'][accessor['bufferView']]
+        components={'VEC3':3,'VEC4':4}[accessor['type']]
+        assert accessor['componentType']==5126
+        stride=view.get('byteStride',4*components)
+        offset=view.get('byteOffset',0)+accessor.get('byteOffset',0)
+        return [struct.unpack_from('<'+components*'f',binary,offset+i*stride)
+                for i in range(accessor['count'])]
+    raise AssertionError(f'No animation channel {animation["name"]}:{bone}:{channel}')
+
+
 def triangles(gltf):
     return sum(gltf['accessors'][p['indices']]['count']//3
                for m in gltf['meshes'] for p in m['primitives'])
@@ -139,6 +162,38 @@ class HumanoidLiteTest(unittest.TestCase):
                     for channel in a['channels']:
                         node=model['nodes'][channel['target']['node']]
                         self.assertIn(node['name'],joints(model))
+
+    def test_male_animations_keep_chop_finger_pose(self):
+        """All 12 animations reuse both hands' finger-only pose from Chop."""
+        male_pose=json.loads((ROOT/'animation/male_chop_finger_pose.json').read_text())
+        names=set(male_pose['finger_bones'])
+        self.assertEqual(len(names),30)
+        self.assertNotIn('hand_r',names)
+        self.assertNotIn('hand_l',names)
+        self.assertEqual(male_pose['frame'],1)
+        self.assertEqual(male_pose['axe_reference_only']['parent_bone'],'hand_r')
+        for face in ('default','angular','soft'):
+            suffix='' if face=='default' else '_'+face
+            path=LITE/f'body_male{suffix}.glb'
+            gltf=doc(path)
+            payload=path.read_bytes()
+            reference={}
+            for clip in gltf['animations']:
+                for name in names:
+                    for channel in ('translation','rotation'):
+                        samples=glb_animation_samples(payload,gltf,clip,name,channel)
+                        first=samples[0]
+                        for sample in (samples[len(samples)//2],samples[-1]):
+                            for a,b in zip(first,sample):
+                                self.assertAlmostEqual(a,b,delta=0.0001,
+                                    msg=f'{face}:{clip["name"]}:{name}:{channel}')
+                        key=(name,channel)
+                        if key not in reference:reference[key]=first
+                        else:
+                            for a,b in zip(reference[key],first):
+                                self.assertAlmostEqual(a,b,delta=0.0001,
+                                    msg=f'{face}:{clip["name"]}:{name}:{channel}')
+            self.assertEqual(len(reference),60)
 
     def test_every_clothing_and_hair_variant(self):
         for gender in self.body:
