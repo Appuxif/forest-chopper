@@ -136,12 +136,13 @@ const trees=new Map(),chunks=new Map(),rockColliders=new Map(),felled=new Set(),
 
 scene.add(camera);const axe=new THREE.Group();camera.add(axe);const handle=new THREE.Mesh(new THREE.CylinderGeometry(.045,.065,1.3,8),new THREE.MeshLambertMaterial({color:0x99623b}));handle.rotation.z=-.2;axe.add(handle);const metal=new THREE.MeshStandardMaterial({color:0xc2cbd0,metalness:.65,roughness:.35});const head=new THREE.Mesh(new THREE.BoxGeometry(.48,.32,.15),metal);head.position.set(-.18,.58,0);axe.add(head);const blade=new THREE.Mesh(new THREE.CylinderGeometry(.26,.26,.15,3),metal);blade.rotation.x=Math.PI/2;blade.rotation.z=Math.PI/2;blade.position.set(-.44,.58,0);axe.add(blade);axe.position.set(.72,-.7,-1.1);axe.rotation.z=-.25;
 
-// Each placed log costs one wood unit. Snap to half-meter grid; automatic vertical stacking.
-const placed=[],logRadius=.29,logLength=3.6;
+// All logs (placed and fallen) are 3 m and snap to a 0.5 m 3D construction grid.
+const placed=[],logRadius=.29,logLength=3;
 const logGeo=new THREE.CylinderGeometry(logRadius,logRadius,logLength,10);
+const fallenLogGeo=logGeo;
 const logMat=new THREE.MeshLambertMaterial({color:0x92613a});
 const endMat=new THREE.MeshLambertMaterial({color:0xd6ac72});
-let buildMode=false,orientation=0,preview=null,placement=null;
+let buildMode=false,orientation=0,preview=null,placement=null,buildOffset={x:0,z:0,height:0};
 // Feet-based, lightweight collision physics for the shared log construction.
 let feetY=0,verticalSpeed=0,onGround=true,jumpRequested=false;
 const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
@@ -219,7 +220,7 @@ let offlineSave=null,progress=null,inventory=null,vitals=null,forestResources=nu
 let pickupInteraction=null,storages=null,campStructures=null;
 let worldStartupGate=null;
 
-let distantForest, replaceTreeModels, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
+let distantForest, replaceTreeModels, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, nudgeLog, rotateLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
  get $(){return $;},
  get chatHistory(){return chatHistory;},
@@ -306,6 +307,8 @@ const ctx={
  get logFootprint(){return logFootprint;},
  get logGeo(){return logGeo;},
  get logLength(){return logLength;},
+ get fallenLogGeo(){return fallenLogGeo;},
+ get buildOffset(){return buildOffset;},
  get logMat(){return logMat;},
  get logRadius(){return logRadius;},
  get logTop(){return logTop;},
@@ -329,6 +332,8 @@ const ctx={
  get particles(){return particles;},
  get pitch(){return pitch;}, set pitch(value){pitch=value;},
  get placeLog(){return placeLog;},
+ get nudgeLog(){return nudgeLog;},
+ get rotateLog(){return rotateLog;},
  get placed(){return placed;},
  get progress(){return progress;},
  get placement(){return placement;},
@@ -520,7 +525,7 @@ refreshPerformance=()=>{
   }
 };
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
-({makeLog, overlaps, candidate, placeError, updatePreview, placeLog, removeLog, setMode, disposePreview}=createBuilding(ctx));
+({makeLog, overlaps, candidate, placeError, updatePreview, placeLog, removeLog, setMode, disposePreview,nudge:nudgeLog,rotate:rotateLog}=createBuilding(ctx));
 ({aimed, spawnChips, chop}=createChopping(ctx));
 ownAvatar=createLumberjack();if(ownAvatar){
  // Layer 3 is local-only (hidden in first person); layer 1 remains enabled

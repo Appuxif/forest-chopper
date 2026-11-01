@@ -5,7 +5,7 @@ import {createPhysics} from '../src/physics.js';
 
 const fixture = () => {
   const ctx = {terrain:flatTerrain(),
-    logLength: 3.6, logRadius: .29, PLAYER_RADIUS: .31, PLAYER_HEIGHT: 1.7,
+    logLength: 3, logRadius: .29, PLAYER_RADIUS: .31, PLAYER_HEIGHT: 1.7,
     GRAVITY: 19, JUMP_SPEED: 7.5, trees: new Map(), placed: [],
     px: 0, pz: 0, feetY: 0, verticalSpeed: 0,
     onGround: true, jumpRequested: false,
@@ -17,13 +17,13 @@ test('oriented log footprints and collision', () => {
   const {ctx, physics} = fixture();
   const p = {x: 0, z: 0, y: .29, orientation: 0};
   ctx.placed.push(p);
-  assert.equal(physics.logFootprint(p, 1.6, 0), true);
+  assert.equal(physics.logFootprint(p, .9, 0), true);
   assert.equal(physics.logFootprint(p, 0, 1), false);
   assert.equal(physics.blocksPlayerAt(0, 0, 0), true);
   assert.equal(physics.blocksPlayerAt(0, 0, 1.2), false);
   p.orientation = 1;
-  assert.equal(physics.logFootprint(p, 1.6, 0), false);
-  assert.equal(physics.logFootprint(p, 0, 1.6), true);
+  assert.equal(physics.logFootprint(p, .9, 0), false);
+  assert.equal(physics.logFootprint(p, 0, .9), true);
 });
 
 test('axis sliding blocks trunk on one axis without freezing other', () => {

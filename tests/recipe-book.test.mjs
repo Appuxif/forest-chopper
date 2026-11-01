@@ -17,3 +17,20 @@ test('recipes react to player material quantities; unavailable entries never cra
  inv.addLogs(3);
  assert.equal(recipeAvailable(recipeById('bench'),inv),true);
 });
+
+test('potions reward crafting and stamina recipe uses blue plus pink flowers',()=>{
+ const health=recipeById('potion:health');
+ assert.deepEqual(health.ingredients,{'flower:daisy':2,'mushroom:boletus':1});
+ assert.match(health.description,/3 жизни/);
+ assert.match(health.description,/1 единицу голода/);
+ const stamina=recipeById('potion:stamina');
+ assert.deepEqual(stamina.ingredients,{'flower:blue_wildflower':2,'flower:pink_wildflower':2});
+ assert.match(stamina.description,/30 секунд/);
+ assert.match(stamina.effects.join(' '),/×2/);
+ const inventory=createInventoryModel();
+ assert.equal(inventory.addItem({id:'flower:blue_wildflower',count:2}),true);
+ assert.equal(inventory.addItem({id:'dry_grass',count:2}),true);
+ assert.equal(recipeAvailable(stamina,inventory),false,'dry grass is not a reagent');
+ assert.equal(inventory.addItem({id:'flower:pink_wildflower',count:2}),true);
+ assert.equal(recipeAvailable(stamina,inventory),true,'two blue and two pink flowers craft a potion');
+});

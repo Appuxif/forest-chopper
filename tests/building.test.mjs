@@ -25,7 +25,7 @@ function setup(online = false) {
     THREE: {Mesh, MeshLambertMaterial: Material},
     logGeo: {}, logMat: {}, endMat: {},
     scene: {add: mesh => added.push(mesh), remove: mesh => removed.push(mesh)},
-    $, px: 0, pz: 0, yaw: 0, orientation: 0, wood: 0, logRadius: .29,
+    $, px: 0, pz: 0, yaw: 0, orientation: 0, wood: 0, logRadius: .29, buildOffset:{x:0,z:0,height:0},
     buildMode: false, preview: null, placement: null, placed: [],
     isOnline: () => online,
     sendNet: data => sent.push(data),
@@ -61,12 +61,13 @@ for (const online of [false, true]) {
 
     ctx.wood = 10;
     ctx.placed = Array.from({length: 16}, (_, level) =>
-      ({x: 0, z: -3.5, orientation: 0, level, mesh: {}}));
+      ({x: 0, z: -3.5, orientation: 0, height:level, y:.29+.5*level, mesh: {}}));
+    ctx.buildOffset.height=16; // Only malformed/out-of-range state can exceed UI clamp.
     building.updatePreview();
-    assert.equal(ctx.placement.level, 16);
+    assert.equal(ctx.placement.height,16);
     assert.equal(ctx.preview.material.color.hex, 0xff6666);
     assert.equal(building.placeLog(), false);
-    assert.match($('buildhint').textContent, /16 уровней/);
+    assert.match($('buildhint').textContent,/Высота вне строительной сетки/);
     assert.equal(sent.length, 0);
     assert.equal(ctx.placed.length, 16);
     assert.equal(ctx.wood, 10);
@@ -80,7 +81,7 @@ for (const online of [false, true]) {
     ctx.px = 7; // moving before next preview frame must affect placement
     assert.equal(building.placeLog(), true);
     if (online) {
-      assert.deepEqual(sent, [{type: 'place', x: 7, z: -3.5, orientation: 0}]);
+      assert.deepEqual(sent, [{type: 'place', x: 7, z: -3.5, orientation: 0, height:0}]);
       assert.equal(ctx.wood, 3, 'online resources change only on server ack');
       assert.equal(ctx.placed.length, 0);
       assert.deepEqual(notifications, [], 'no success toast before server acknowledgement');
@@ -101,7 +102,7 @@ for (const online of [false, true]) {
     building.setMode(true);
     assert.equal(building.removeLog(), false);
     assert.match($('buildhint').textContent, /Нет брёвен/);
-    const near = {id: 9, x: 0, z: -3.5, level: 0, orientation: 0, mesh: {}};
+    const near = {id: 9, x: 0, z: -3.5, height: 0, orientation: 0, y:.29,mesh: {}};
     ctx.placed.push(near);
     assert.equal(building.removeLog(), true);
     if (online) {
@@ -130,11 +131,11 @@ test('preview turns green when placement becomes valid and is released on exit',
   assert.equal(material.disposed, true);
 });
 
-test('log orientation stays on its existing two-axis grid even after multiple bench rotations',()=>{
+test('log orientation cycles over three axes independently from bench rotation',()=>{
  const {ctx,building}=setup(true);
  building.setMode(true);
  ctx.wood=3;
- for(const [angle,expected] of [[0,0],[1,1],[2,0],[3,1]]){
+ for(const [angle,expected] of [[0,0],[1,1],[2,2],[3,0]]){
    ctx.orientation=angle;
    const item=building.candidate();
    assert.equal(item.orientation,expected);

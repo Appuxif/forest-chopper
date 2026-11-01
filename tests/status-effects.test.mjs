@@ -7,7 +7,7 @@ test('status effects refresh instead of stacking and expire by real-world time',
  const list=[];
  assert.equal(applyTimedEffect(list,'stamina_regen',100),true);
  assert.deepEqual(list,[{id:'stamina_regen',expires_at:130}]);
- assert.equal(staminaRegenMultiplier(list,105),1.7);
+ assert.equal(staminaRegenMultiplier(list,105),2);
  applyTimedEffect(list,'stamina_regen',110);
  assert.deepEqual(list,[{id:'stamina_regen',expires_at:140}]);
  assert.equal(staminaRegenMultiplier(list,141),1);
@@ -19,19 +19,21 @@ test('status effects refresh instead of stacking and expire by real-world time',
 test('health and stamina potions are bounded and timed regen survives offline restore',()=>{
  let time=0,epoch=100;
  const vitals=createVitals({now:()=>time,epoch:()=>epoch});
- vitals.restore({health:1,hunger:5,stamina:0,staminaLocked:true,hungerProgress:0});
+ vitals.restore({health:1,hunger:2,stamina:0,staminaLocked:true,hungerProgress:0});
  assert.equal(vitals.eat('potion:health'),true);
- assert.equal(vitals.health,3);
+ assert.equal(vitals.health,4);
+ assert.equal(vitals.hunger,3);
  assert.equal(vitals.eat('potion:stamina'),true);
- assert.equal(vitals.stamina,2);
+ assert.equal(vitals.stamina,0,'stamina potion never fills the bar immediately');
+ assert.equal(vitals.canSprint(),false,'potion does not unlock sprint on an empty bar');
  const snap=vitals.snapshot();
  assert.deepEqual(snap.effects,[{id:'stamina_regen',expires_at:130}]);
  time=1;epoch=101;vitals.tick();
- assert.ok(vitals.stamina>3,'regen boosted at first second');
+ assert.ok(Math.abs(vitals.stamina-1.3)<1e-7,'regen is doubled for first second');
  const restored=createVitals({now:()=>time,epoch:()=>epoch});
  assert.equal(restored.restore(vitals.snapshot()),true);
  time=2;restored.tick();
- assert.ok(restored.stamina>4);
+ assert.ok(Math.abs(restored.stamina-2.6)<1e-7,'boost persists after restoring saved state');
  epoch=140;
  const expired=createVitals({now:()=>time,epoch:()=>epoch});
  assert.equal(expired.restore(snap),true);

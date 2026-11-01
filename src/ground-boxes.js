@@ -1,5 +1,5 @@
 import {fallenLogSegments,segmentMask,FALLEN_LOG_LENGTH} from './fallen-log-layout.js';
-import {DECOR_ITEM_NAMES} from './collectible-decor.js';
+import {ITEM_DISPLAY_NAMES} from './item-display.js';
 // Ordinary dropped stacks and fallen-tree segments share a 3600s TTL.
 // Fallen segments are independently pickable within one compact pile record.
 import {validItem} from './inventory.js';
@@ -7,7 +7,7 @@ export const BOX_LIFETIME_SECONDS=3600;
 export const MAX_GROUND_DROPS=3000;
 export const TREE_LOG_COUNT=3;
 export const isFallenLogs=box=>box?.kind==='fallen_logs';
-export const ITEM_NAMES={log:'Бревно',branch:'Ветка',stone:'Камень',bench:'Скамейка',axe:'Топор',...DECOR_ITEM_NAMES};
+export const ITEM_NAMES=ITEM_DISPLAY_NAMES;
 export function createGroundBoxes(ctx,doc=document){
  const {THREE,scene}=ctx,boxes=new Map();
  const geo=new THREE.BoxGeometry(.43,.32,.43);
@@ -40,8 +40,8 @@ export function createGroundBoxes(ctx,doc=document){
   if(isFallenLogs(box)){
     // Stable centers: every instance uses its ORIGINAL segment index, even
     // when another segment was already collected.
-    const segments=fallenLogSegments(box,ctx.logLength??FALLEN_LOG_LENGTH);
-    const lumber=new THREE.InstancedMesh(ctx.logGeo,
+    const segments=fallenLogSegments(box,FALLEN_LOG_LENGTH);
+    const lumber=new THREE.InstancedMesh(ctx.fallenLogGeo??ctx.logGeo,
       [ctx.logMat,ctx.endMat,ctx.endMat],segments.length);
     const dummy=new THREE.Object3D();
     for(let i=0;i<segments.length;i++){
@@ -85,7 +85,7 @@ export function createGroundBoxes(ctx,doc=document){
   for(const box of boxes.values()){
     if(box.pending||box.expires_at<=Date.now()/1000)continue;
     if(isFallenLogs(box))
-      for(const segment of fallenLogSegments(box,ctx.logLength??FALLEN_LOG_LENGTH))
+      for(const segment of fallenLogSegments(box,FALLEN_LOG_LENGTH))
         yield {id:box.id,segment:segment.index,x:segment.x,z:segment.z,
           item:box.item,kind:box.kind};
     else yield box;
@@ -128,6 +128,9 @@ export function createGroundBoxes(ctx,doc=document){
     }
     b.mesh.visible=!b.pending&&Math.hypot(b.x-ctx.px,b.z-ctx.pz)<85;
   }
+  // The global interaction reticle owns all prompts when available.
+  // Avoid a second independent E hint competing with chest/camp actions.
+  if(ctx.pickupInteraction){hud.style.display='none';return;}
   const target=focused();
   if(target){
     const amount=target.item.id==='axe'?1:target.item.count;
@@ -159,7 +162,7 @@ export function createGroundBoxes(ctx,doc=document){
     if(!ctx.isOnline?.())ctx.offlineSave?.markDirty?.();
     return false;
   }
-  const pieces=isFallenLogs(b)?fallenLogSegments(b,ctx.logLength??FALLEN_LOG_LENGTH):[b];
+  const pieces=isFallenLogs(b)?fallenLogSegments(b,FALLEN_LOG_LENGTH):[b];
   let part=pieces.find(p=>p.index===(segment??selected.segment));
   // Old callers passing only the pile id pick the nearest reachable segment.
   if(!part&&segment==null&&selected.segment==null)

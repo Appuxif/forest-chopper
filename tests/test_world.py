@@ -39,7 +39,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
         self.path.write_text(json.dumps({
             'seed': 9999, 'felled': ['0,0:0'],
             'damage': {'0,0:1': 'not-a-number'},
-            'logs': {'2': {'x': 1, 'z': 2, 'y': .29, 'level': 0, 'orientation': 0}},
+            'logs': {'2': {'x': 1, 'z': 2, 'y': .29, 'height': 0, 'orientation': 0}},
         }))
         with patch('forest_server.random.randrange', return_value=123456):
             loaded = World(self.path)
@@ -201,31 +201,33 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse((await self.receive(bob,'equipment'))['axe_equipped'])
                 await self.receive(alice,'inventory_state')
                 # Equipped log spends one from all bag stacks.
-                await alice.send(json.dumps({'type':'place_item','x':2,'z':0,'orientation':0}))
+                await alice.send(json.dumps({'type':'place_item','x':2,'z':0,'orientation':0,'height':0}))
                 placed=await self.receive(bob,'log_add')
-                self.assertEqual(placed['log']['level'],0)
+                self.assertEqual(placed['log']['height'],0)
                 self.assertEqual(placed['wood'],2)
                 lid=placed['log']['id']
                 self.assertEqual((await self.receive(alice,'log_add'))['log']['id'],lid)
                 await self.receive(alice,'inventory_state')
-                for payload in ({'x':1.3,'z':0,'orientation':0},
-                                {'x':2,'z':0,'orientation':7},
-                                {'x':200,'z':0,'orientation':0},
-                                {'x':float('nan'),'z':0,'orientation':0}):
+                for payload in ({'x':1.3,'z':0,'orientation':0,'height':0},
+                                {'x':2,'z':0,'orientation':7,'height':0},
+                                {'x':200,'z':0,'orientation':0,'height':0},
+                                {'x':float('nan'),'z':0,'orientation':0,'height':0},
+                                {'x':2,'z':0,'orientation':0},
+                                {'x':2,'z':0,'orientation':2,'height':16}):
                     owner['last_build']=0
                     await alice.send(json.dumps({'type':'place_item',**payload}))
                     with self.assertRaises(asyncio.TimeoutError):
                         await asyncio.wait_for(bob.recv(),.035)
                 self.assertEqual(len(self.world.logs),1)
-                self.world.logs[lid]['level']=15
+                self.world.logs[lid]['height']=15
                 owner['last_build']=0
-                await alice.send(json.dumps({'type':'place_item','x':2,'z':0,'orientation':0}))
+                await alice.send(json.dumps({'type':'place_item','x':2,'z':0,'orientation':0,'height':15}))
                 with self.assertRaises(asyncio.TimeoutError):
                     await asyncio.wait_for(bob.recv(),.055)
                 self.assertEqual(owner['wood'],2)
-                self.world.logs[lid]['level']=0
+                self.world.logs[lid]['height']=0
                 self.world.save()
-                self.assertEqual(World(self.path).logs[lid]['level'],0)
+                self.assertEqual(World(self.path).logs[lid]['height'],0)
                 # An axe must be selected before a structure can be dismantled.
                 owner['last_build']=0
                 await alice.send(json.dumps({'type':'hit_structure','kind':'log','id':lid}))
@@ -305,7 +307,9 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(World(self.path).furniture),1)
                 for payload in ({'x':999,'z':0,'orientation':0},
                                 {'x':4,'z':0,'orientation':9},
-                                {'x':float('nan'),'z':0,'orientation':0}):
+                                {'x':float('nan'),'z':0,'orientation':0,'height':0},
+                                {'x':2,'z':0,'orientation':0},
+                                {'x':2,'z':0,'orientation':2,'height':16}):
                     owner['last_build']=0
                     await alice.send(json.dumps({'type':'place_item',**payload}))
                     with self.assertRaises(asyncio.TimeoutError):
@@ -857,7 +861,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             await self.receive(ws,'vitals_state')
             self.assertIn(key, self.world.felled)
             self.world.damage['0,0:0'] = 3
-            self.world.logs[99] = {'x': 5, 'y': .29, 'z': 7, 'level': 0, 'orientation': 0}
+            self.world.logs[99] = {'x': 5, 'y': .29, 'z': 7, 'height': 0, 'orientation': 0}
             self.world.save()
         restored = World(self.path)
         self.assertEqual(restored.seed, self.world.seed)

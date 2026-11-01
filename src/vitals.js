@@ -18,7 +18,7 @@ export const FOOD_EFFECTS=Object.freeze({
   'flower:buttercup': {health:0,hunger:0},
   'flower:pink_wildflower': {health:0,hunger:0},
   'flower:blue_wildflower': {health:0,hunger:0},
-  'potion:health':{health:2,hunger:0},
+  'potion:health':{health:3,hunger:1},
   'potion:stamina':{health:0,hunger:0},
 });
 const clamp=n=>Math.max(0,Math.min(MAX_VITALS,n));
@@ -93,7 +93,7 @@ export function createVitals({now=()=>performance.now()/1000,epoch=()=>Date.now(
     const result=eatEffect(health,hunger,id);
     if(!result)return false;
     health=result.health;hunger=result.hunger;
-    if(id==='potion:stamina'){stamina=clamp(stamina+2);applyTimedEffect(effects,'stamina_regen',epoch());sprintLocked=false;}
+    if(id==='potion:stamina')applyTimedEffect(effects,'stamina_regen',epoch());
     return true;
   }
   return {tick,eat,hit,jump,chopWarning,canSprint,reset,restore,snapshot,

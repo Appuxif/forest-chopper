@@ -1,3 +1,4 @@
+import {logCenterY,applyLogRotation,validBuildLog} from './log-grid.js';
 import {isDecorResourceId} from './collectible-decor.js';
 import {baseTerrainHeight} from './terrain-noise.js';
 import {pondHeightBeforeLakes} from './ponds.js';
@@ -44,14 +45,13 @@ export function parseOfflineSave(raw) {
     const damage = Object.entries(data.damage);
     if (damage.length > MAX_TREES || damage.some(([id,hp]) =>
       !validId(id) || !Number.isInteger(hp) || hp < 1 || hp > 12)) return null;
-    const logs = [];
-    for (const log of data.logs) {
-      if (!log || !coordinate(log.x) || !coordinate(log.z)
-          || Math.abs(log.x * 2 - Math.round(log.x * 2)) > 1e-4
-          || Math.abs(log.z * 2 - Math.round(log.z * 2)) > 1e-4
-          || !Number.isInteger(log.level) || log.level < 0 || log.level >= 16
-          || (log.orientation !== 0 && log.orientation !== 1)) return null;
-      logs.push({x: log.x, z: log.z, level: log.level, orientation: log.orientation});
+    // Invalidate obsolete 3.6 m building logs without resetting the rest
+    // of the player's world, collected resources or inventory.
+    const logs=[];
+    for(const log of data.logs){
+      if(log?.height===undefined)continue;
+      if(!validBuildLog(log))return null;
+      logs.push({x:log.x,z:log.z,height:log.height,orientation:log.orientation});
     }
     const boxes=[];
     let migrateLegacyFallenLogs=false;
@@ -131,7 +131,7 @@ export function createOfflineSave(ctx, {
       dayPhase:ctx.dayCycle?.offlinePhase??0,
       position: {x: ctx.px, y: ctx.feetY, z: ctx.pz, yaw: ctx.yaw, pitch: ctx.pitch},
       felled: [...ctx.felled], damage: Object.fromEntries(ctx.treeDamage),
-      logs: ctx.placed.map(({x,z,level,orientation}) => ({x,z,level,orientation})),
+      logs: ctx.placed.map(({x,z,height,orientation}) => ({x,z,height,orientation})),
       furniture: ctx.crafting?.snapshot() ?? [],
       storages:ctx.storages?.snapshot?.()??[],
       inventory:ctx.inventory?.serialize?.()??undefined,
@@ -187,9 +187,9 @@ export function createOfflineSave(ctx, {
     ctx.treeDamage.clear();for (const [id,hp] of state.damage)ctx.treeDamage.set(id,hp);
     for (const log of state.logs) {
       const mesh = ctx.makeLog();
-      const y = ctx.terrain.heightAt(log.x,log.z)+ctx.logRadius + log.level * ctx.logRadius * 1.8;
-      mesh.position.set(log.x, y, log.z);
-      if (log.orientation === 1) mesh.rotation.y = Math.PI / 2;
+      const y = logCenterY(log,ctx.terrain.heightAt(log.x,log.z),ctx.logRadius);
+      mesh.position.set(log.x,y,log.z);
+      applyLogRotation(mesh,log.orientation);
       ctx.scene.add(mesh);
       ctx.placed.push({...log, y, mesh});
     }

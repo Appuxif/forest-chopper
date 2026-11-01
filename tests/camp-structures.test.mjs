@@ -17,21 +17,21 @@ function fixture(online=false){
  }
  class Mesh extends Obj{constructor(geo,mat){super();this.geometry=geo;this.material=mat;}}
  class Light extends Obj{constructor(color,intensity,distance){super();Object.assign(this,{color,intensity,distance});}}
- class Geometry{}
- class Mat{}
+ class Geometry{constructor(...args){this.args=args;}}
+ class Mat{constructor(options={}){this.options=options;}}
  const added=[],removed=[],sent=[],saved=[];
  const inventory=createInventoryModel();
  const ctx={
   THREE:{Mesh,Group:Obj,PointLight:Light,BoxGeometry:Geometry,DodecahedronGeometry:Geometry,
-    ConeGeometry:Geometry,MeshLambertMaterial:Mat,MeshBasicMaterial:Mat},
+    ConeGeometry:Geometry,CylinderGeometry:Geometry,MeshLambertMaterial:Mat,MeshBasicMaterial:Mat},
   scene:{add:x=>added.push(x),remove:x=>removed.push(x)},
   terrain:flatTerrain(),
-  inventory:{state:inventory,render(){}},
+  inventory:{state:inventory,render(){},get selected(){return inventory.selected();},get equipped(){return inventory.equipped();}},
   offlineSave:{markDirty(){saved.push(1)}},
   isOnline:()=>online,sendNet:x=>sent.push(x),
   storages:{structures:new Map()},
   px:0,pz:0,yaw:0,orientation:1,wood:0,
-  trees:new Map(),placed:[],rockColliders:new Map(),chunkSize:24,logLength:3.6,
+  trees:new Map(),placed:[],rockColliders:new Map(),chunkSize:24,logLength:3,
   logRadius:.29,PLAYER_RADIUS:.31,PLAYER_HEIGHT:1.7,GRAVITY:19,JUMP_SPEED:7.5,
   feetY:0,verticalSpeed:0,onGround:true,jumpRequested:false,
  };
@@ -53,12 +53,29 @@ test('campfire lighting and interaction are persistent, toggle does not spend fu
  assert.equal(camp.add(item(-1,'campfire')),true);
  const fire=camp.items.get(-1),flame=fire.group.userData.flame;
  assert.equal(flame.visible,false);
+ const visible=fire.group.children[0].children;
+ const logs=visible.slice(9,18);
+ const step=Math.PI*2/9;
+ assert.ok(logs.every((log,i)=>
+   Math.abs(log.rotation.y-((i+.5)*step-Math.PI/2))<1e-8
+   && Math.abs(log.rotation.z+.45)<1e-8),
+   'crafted fire has nine sloping logs, one for each gap between nine stones');
+ assert.ok(logs.every(log=>log.scale.y===.1008&&log.scale.z===.1008),
+   'all crafted fire logs keep their thinner profile');
+ assert.equal(visible.length,24,'dark fire has no separate glowing coal meshes');
+
+ assert.equal(fire.group.userData.innerFlame.visible,false);
+ assert.ok(fire.group.userData.sparks.every(spark=>spark.visible===false));
  assert.equal(physics.blocksPlayerAt(0,0,0),true,'campfire ring blocks walking');
  assert.equal(camp.toggle(-1),true);
  camp.tick(500);
+ const sparkY=fire.group.userData.sparks.map(spark=>spark.position.y);
+ camp.tick(550);
+ assert.notDeepEqual(fire.group.userData.sparks.map(spark=>spark.position.y),sparkY,
+   'all crafted sparks are animated even between 200ms light updates');
  assert.equal(flame.visible,true);
  assert.equal(fire.group.userData.light.visible,true);
- assert.equal(button.style.display,'block');
+ assert.equal(button.style.display,undefined,'no separate fire interaction button');
  assert.equal(ctx.inventory.state.count('log'),0,'toggling never burns materials');
  const saved=camp.snapshot();
  assert.deepEqual(saved,[item(-1,'campfire',0,0,0,true)]);
@@ -81,24 +98,105 @@ test('only three nearest lit fires use point lights; rotation and construction g
  assert.ok(collision.length>=5);
  assert.ok(camp.items.get(1).group.userData.flame);
 });
-test('placement consumes the correct ingredients offline; online waits for server',()=>{
+test('torch reuses three campfire stones and adds black cloth-wrapped cylinder',()=>{
+ const {camp}=fixture();
+ assert.equal(camp.add(item(3,'torch')),true);
+ const visual=camp.items.get(3).group;
+ const stones=visual.children.filter(node=>node.geometry?.args?.[0]===.24);
+ assert.equal(stones.length,3,'three dodecahedron stones around torch base');
+ for(const stone of stones){
+  assert.ok(Math.hypot(stone.position.x,stone.position.z)>.2);
+  assert.ok(stone.position.y<.2);
+ }
+ const head=visual.children.find(node=>node.geometry?.args?.[0]===.145);
+ assert.ok(head,'replace square head with cloth-wrapped cylinder');
+ assert.equal(head.geometry.args[2],.31);
+ assert.equal(head.position.y,1.66);
+ const folds=visual.children.filter(node=>node.geometry?.args?.[0]>=.148
+   &&node.geometry?.args?.[0]<.16);
+ assert.equal(folds.length,3,'three raised fabric folds');
+ assert.ok(folds.every(node=>node.material.options.color===0x1c1c1e));
+ assert.ok(visual.userData.flame.position.y>head.position.y+.15);
+ const icon=camp.createIconModel('torch');
+ assert.ok(icon.children.some(node=>node.geometry?.args?.[0]===.145),'thumbnail uses same 3D torch');
+});
+
+test('campfire and torch share yellow dual-cone flames and three animated sparks',()=>{
+ const {camp}=fixture();
+ assert.equal(camp.add(item(21,'campfire')),true);
+ assert.equal(camp.add(item(22,'torch')),true);
+ const campGroup=camp.items.get(21).group;
+ const torchGroup=camp.items.get(22).group;
+ const {flame:campOuter,innerFlame:campInner,sparks:campSparks}=campGroup.userData;
+ const {flame:torchOuter,innerFlame:torchInner,sparks:torchSparks}=torchGroup.userData;
+ assert.equal(campOuter.material,torchOuter.material,'shared transparent-yellow material');
+ assert.equal(campInner.material,torchInner.material,'shared opaque-yellow material');
+ assert.equal(campOuter.material.options.transparent,true);
+ assert.equal(campOuter.material.options.opacity,.95);
+ assert.equal(campOuter.material.options.depthWrite,false);
+ assert.equal(campInner.material.options.transparent,undefined,'inner flame is opaque');
+ assert.equal(campInner.material.options.opacity,undefined);
+ assert.equal(campOuter.material.options.color,0xffd54a);
+ assert.equal(campInner.material.options.color,0xffee77);
+ assert.ok(campInner.position.x!==campOuter.position.x);
+ assert.ok(torchInner.position.x!==torchOuter.position.x);
+ assert.equal(campOuter.geometry.args[0],.435);
+ assert.equal(campInner.geometry.args[0],.225);
+ assert.equal(torchOuter.geometry.args[0],.20);
+ assert.equal(torchInner.geometry.args[0],.11);
+ assert.equal(torchOuter.position.y,2.08,'torch fire is lowered 10 cm');
+ assert.equal(torchInner.position.y,1.98,'inner cone follows the lowered fire');
+ assert.equal(torchGroup.userData.light.position.y,2.23,'torch light follows the flames downwards');
+ assert.deepEqual(torchSparks.map(s=>Number(s.position.y.toFixed(2))),[2.30,2.40,2.50],
+   'all three sparks move up with the torch flames');
+ assert.equal(campOuter.position.y,.73,'campfire outer flame is raised 10 cm');
+ assert.equal(campInner.position.y,.59,'campfire inner flame follows the outer cone');
+ assert.equal(campGroup.userData.light.position.y,1.5,'campfire light is raised with flames');
+ assert.deepEqual(campSparks.map(s=>Number(s.position.y.toFixed(2))),[1.05,1.18,1.31],
+   'campfire sparks all rise 10 cm');
+ assert.equal(campSparks.length,3);
+ assert.equal(torchSparks.length,3);
+ assert.ok(torchSparks.every(spark=>spark.visible===false),'torch starts unlit');
+ assert.ok(campSparks.every(spark=>spark.visible===false),'campfire starts unlit');
+ assert.equal(camp.toggle(21),true);
+ assert.equal(camp.toggle(22),true);
+ camp.tick(500);
+ const before=torchSparks.map(spark=>spark.position.y);
+ const coreX=torchInner.position.x;
+ camp.tick(552);
+ assert.notDeepEqual(torchSparks.map(spark=>spark.position.y),before,'torch sparks float independently of light throttle');
+ assert.notEqual(torchInner.position.x,coreX,'torch inner flame wobbles off centre');
+ assert.ok(torchSparks.every(spark=>spark.visible===true));
+ assert.ok(campSparks.every(spark=>spark.visible===true));
+ assert.equal(camp.toggle(22),true);
+ assert.ok(torchSparks.every(spark=>spark.visible===false),'torch sparks vanish with flame');
+ assert.equal(torchOuter.visible,false);
+ assert.equal(torchInner.visible,false);
+});
+
+test('craft first, then place selected torch; online waits for server confirmation',()=>{
  const offline=fixture();
  assert.equal(offline.camp.place('torch'),false);
  offline.inventory.addItem({id:'branch',count:1});
  offline.inventory.addItem({id:'stone',count:3});
  offline.inventory.addItem({id:'dry_grass',count:1});
- assert.equal(offline.camp.place('torch'),true);
+ assert.equal(offline.inventory.craftStructure('torch'),true);
  assert.equal(offline.inventory.count('branch'),0);
  assert.equal(offline.inventory.count('stone'),0);
  assert.equal(offline.inventory.count('dry_grass'),0);
+ const slot=offline.inventory.slots.findIndex(x=>x?.id==='torch');
+ offline.inventory.assignQuick(1,slot);
+ offline.inventory.select(1);
+ assert.equal(offline.camp.place('torch'),true);
+ assert.equal(offline.inventory.count('torch'),0);
  assert.equal(offline.camp.items.size,1);
  assert.ok(offline.saved.length>0);
  const online=fixture(true);
- online.inventory.addItem({id:'branch',count:1});
- online.inventory.addItem({id:'stone',count:3});
- online.inventory.addItem({id:'dry_grass',count:1});
+ online.inventory.addItem({id:'torch',count:1});
+ const oslot=online.inventory.slots.findIndex(x=>x?.id==='torch');
+ online.inventory.assignQuick(1,oslot);online.inventory.select(1);
  assert.equal(online.camp.place('torch'),true);
- assert.equal(online.inventory.count('stone'),3,'authoritative server must confirm spending');
+ assert.equal(online.inventory.count('torch'),1,'server confirms inventory consumption');
  assert.equal(online.camp.items.size,0);
  assert.deepEqual(online.sent[0],{type:'camp_place',kind:'torch',x:0,z:-3,orientation:1});
  online.camp.add(item(44,'torch'));

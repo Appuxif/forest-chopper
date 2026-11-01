@@ -22,7 +22,7 @@ DEFAULT_WOOD_CAPACITY = 3
 BOX_TTL_SECONDS=3600
 MAX_GROUND_DROPS=3000
 TREE_LOG_COUNT=3
-FALLEN_LOG_LENGTH=3.6
+FALLEN_LOG_LENGTH=3.0
 FALLEN_LOG_GAP=.08
 FALL_DURATION=2.5
 
@@ -63,10 +63,12 @@ def fallen_logs_box(x,z,count=TREE_LOG_COUNT,direction=0,tree=None,ready_at=None
 MUSHROOM_SPECIES=('fly_agaric','boletus','death_cap','milkcap')
 FLOWER_SPECIES=('daisy','buttercup','pink_wildflower','blue_wildflower')
 DECOR_ITEM_IDS=tuple('mushroom:'+name for name in MUSHROOM_SPECIES)+tuple('flower:'+name for name in FLOWER_SPECIES)+('dry_grass',)
-ITEM_LIMITS={"log":5,"branch":10,"stone":10,"bench":1,"axe":1,"potion:health":10,"potion:stamina":10,
+STRUCTURE_KINDS=("campfire","torch","table","fence","workbench","chest","rack")
+STRUCTURE_WEIGHTS={"campfire":18,"torch":4,"table":18,"fence":12,"workbench":25,"chest":15,"rack":16}
+ITEM_LIMITS={**{name:1 for name in STRUCTURE_KINDS},"log":5,"branch":10,"stone":10,"bench":1,"axe":1,"potion:health":10,"potion:stamina":10,
              **{name:10 for name in DECOR_ITEM_IDS}}
 MAX_CARRY_WEIGHT=100
-ITEM_WEIGHT={"log":10,"branch":0.5,"stone":2,"bench":15,"axe":3,"potion:health":0.5,"potion:stamina":0.5,
+ITEM_WEIGHT={**STRUCTURE_WEIGHTS,"log":10,"branch":0.5,"stone":2,"bench":15,"axe":3,"potion:health":0.5,"potion:stamina":0.5,
              **{name:0.1 for name in DECOR_ITEM_IDS}}
 
 def item_weight(item):
@@ -141,15 +143,15 @@ FOOD_EFFECTS={
     'flower:buttercup':(0,0),
     'flower:pink_wildflower':(0,0),
     'flower:blue_wildflower':(0,0),
-    'potion:health':(2,0),
+    'potion:health':(3,1),
     'potion:stamina':(0,0),
 }
 POTION_RECIPES={
     'potion:health':{'flower:daisy':2,'mushroom:boletus':1},
-    'potion:stamina':{'flower:blue_wildflower':2,'dry_grass':2},
+    'potion:stamina':{'flower:blue_wildflower':2,'flower:pink_wildflower':2},
 }
 STATUS_DURATION=30
-STATUS_REGEN_MULTIPLIER=1.7
+STATUS_REGEN_MULTIPLIER=2
 
 def vitals_view(player):
     view={'health':player['health'],'hunger':player['hunger'],
@@ -219,9 +221,9 @@ def apply_food(player,kind):
     player['health']=max(0,min(MAX_VITALS,player['health']+effect[0]))
     player['hunger']=max(0,min(MAX_VITALS,player['hunger']+effect[1]))
     if kind=='potion:stamina':
-        player['stamina']=min(MAX_VITALS,player.get('stamina',MAX_VITALS)+2)
+        # The potion boosts natural recovery only; it does not refill stamina
+        # immediately or bypass the exhaustion sprint lock.
         player['stamina_boost_until']=time.time()+STATUS_DURATION
-        player['stamina_sprint_locked']=False
     return True
 
 def new_inventory():
@@ -282,14 +284,14 @@ def inv_capacity_reason(inv,item):
 
 def inv_can_add(inv,item):
     if not valid_item(item) or inv_weight(inv)+item_weight(item)>MAX_CARRY_WEIGHT+1e-8:return False
-    if item['id'] in ('axe','bench'):return None in inv
+    if item['id'] in ('axe','bench',*STRUCTURE_KINDS):return None in inv
     limit=ITEM_LIMITS[item['id']]
     return sum(limit-it['count'] if it and it['id']==item['id'] else limit if it is None else 0 for it in inv)>=item['count']
 
 def inv_add(inv,item):
     if not inv_can_add(inv,item):return False
     kind=item['id'];left=1 if kind=='axe' else item['count']
-    if kind not in ('axe','bench'):
+    if kind not in ('axe','bench',*STRUCTURE_KINDS):
         for it in inv:
             if it and it['id']==kind and left:
                 n=min(left,ITEM_LIMITS[kind]-it['count']);it['count']+=n;left-=n
@@ -337,6 +339,7 @@ CHEST_SLOTS=24
 CHEST_MAX_WEIGHT=300
 RACK_MAX_LOGS=48
 STORAGE_COST={'chest':{'log':2,'branch':4},'rack':{'log':2}}
+STRUCTURE_RECIPES={**CAMP_RECIPES,**STORAGE_COST}
 
 def valid_storage(storage):
     if not isinstance(storage,dict) or type(storage.get('id')) is not int or not 0<storage['id']<2147483647:
@@ -396,6 +399,50 @@ def storage_transfer(player,storage,direction,slot,qty):
         return True
     return False
 
+def storage_move_slot(player,storage,from_area,from_slot,to_area,to_slot,half=False):
+    # Slot-exact, atomic drag/drop. Same validation as the JS offline model.
+    if (storage['kind']!='chest' or from_area not in ('chest','bag')
+        or to_area not in ('chest','bag') or type(from_slot) is not int
+        or type(to_slot) is not int or type(half) is not bool):
+        return False
+    bag=[it.copy() if it else None for it in player['inventory']]
+    chest=[it.copy() if it else None for it in storage['slots']]
+    source=chest if from_area=='chest' else bag
+    target=chest if to_area=='chest' else bag
+    if (not 0<=from_slot<len(source) or not 0<=to_slot<len(target)
+        or (from_area==to_area and from_slot==to_slot) or source[from_slot] is None):
+        return False
+    item=source[from_slot]
+    destination=target[to_slot]
+    count=1 if item['id']=='axe' else item['count']
+    partial=half and count>1
+    qty=count//2 if partial else count
+    if partial and destination and destination['id']!=item['id']:return False
+    if (destination and destination['id']==item['id'] and
+        item['id'] not in ('axe','bench',*STRUCTURE_KINDS)):
+        n=min(qty,ITEM_LIMITS[item['id']]-destination['count'])
+        if n<=0:return False
+        destination['count']+=n;item['count']-=n
+        if item['count']==0:source[from_slot]=None
+    elif destination is None:
+        if partial:
+            item['count']-=qty
+            target[to_slot]={'id':item['id'],'count':qty}
+        else:
+            target[to_slot]=item
+            source[from_slot]=None
+    elif not partial:
+        target[to_slot]=item
+        source[from_slot]=destination
+    else:return False
+    if (any(x is not None and not valid_item(x) for x in bag+chest)
+        or inv_weight(bag)>MAX_CARRY_WEIGHT+1e-8
+        or inv_weight(chest)>CHEST_MAX_WEIGHT+1e-8):return False
+    player['inventory'][:]=bag
+    storage['slots'][:]=chest
+    player['wood']=inv_count(bag,'log')
+    return True
+
 def inv_can_add_storage(slots,item):
     if not valid_item(item):return False
     if item['id'] in ('axe','bench'):return None in slots
@@ -405,7 +452,7 @@ def inv_can_add_storage(slots,item):
 def inv_add_storage(slots,item):
     if not inv_can_add_storage(slots,item):return False
     kind=item['id'];left=1 if kind=='axe' else item['count']
-    if kind not in ('axe','bench'):
+    if kind not in ('axe','bench',*STRUCTURE_KINDS):
         for slot in slots:
             if slot and slot['id']==kind and left:
                 n=min(left,ITEM_LIMITS[kind]-slot['count']);slot['count']+=n;left-=n
@@ -577,7 +624,24 @@ class World:
                 seed=int(data['seed'])
                 felled=set(data.get('felled',[]))
                 damage={str(k):int(v) for k,v in data.get('damage',{}).items()}
-                logs={int(k):v for k,v in data.get('logs',{}).items()}
+                # Old length-3.6 m logs had 'level' instead of 'height'.
+                # Discard them, preserve the rest of the world.
+                saved_logs={int(k):v for k,v in data.get('logs',{}).items()}
+                logs={k:v for k,v in saved_logs.items() if isinstance(v,dict)
+                      and 'height' in v}
+                outdated_logs=len(saved_logs)!=len(logs)
+                for lid,log in logs.items():
+                    if (not 0<lid<2147483647
+                        or type(log.get('height')) is not int
+                        or not 0<=log['height']<16
+                        or type(log.get('orientation')) is not int
+                        or log['orientation'] not in (0,1,2)
+                        or any(type(log.get(axis)) not in (int,float)
+                            or not math.isfinite(log[axis])
+                            or abs(log[axis])>240000
+                            or abs(log[axis]*2-round(log[axis]*2))>1e-4
+                            for axis in ('x','z'))):
+                        raise ValueError('Invalid building log')
                 terrain_version=int(data.get('terrain_version',0))
                 if terrain_version<3:
                     # Preserve existing structures across added water features.
@@ -654,8 +718,8 @@ class World:
                 self.day_epoch=epoch
                 self.world_created_at=created
                 self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.storages=storages;self.next_storage=max(storages,default=0)+1;self.camp_structures=camp;self.next_camp=max(camp,default=0)+1;self.community_cuts=community_cuts;self.resource_cooldowns=cooldowns
-                self.next_log=max(logs,default=0)+1
-                if migrated_legacy_logs:self.save()
+                self.next_log=max(saved_logs,default=0)+1
+                if migrated_legacy_logs or outdated_logs:self.save()
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
@@ -868,6 +932,20 @@ class World:
                     self.save()
                     await self.broadcast({'type':'resource_remove','id':ident})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                elif kind=='craft_structure':
+                    typ=data.get('recipe')
+                    cost=STRUCTURE_RECIPES.get(typ) if isinstance(typ,str) else None
+                    if cost is None:continue
+                    inv=player['inventory']
+                    if not all(inv_count(inv,k)>=n for k,n in cost.items()):continue
+                    before=[it.copy() if it else None for it in inv]
+                    for ingredient,n in cost.items():inv_take(inv,ingredient,n)
+                    if not inv_add(inv,{'id':typ,'count':1}):
+                        player['inventory']=before
+                        await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(before,{'id':typ,'count':1})});continue
+                    player['wood']=inv_count(inv,'log')
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                    self.save()
                 elif kind=='camp_place':
                     typ=data.get('kind')
                     if typ not in CAMP_RECIPES or len(self.camp_structures)>=MAX_CAMP_STRUCTURES:continue
@@ -878,11 +956,10 @@ class World:
                     if pond_depth_at(self.seed,x,z)>.12 or any(
                         math.hypot(x-st['x'],z-st['z'])<2.4
                         for st in list(self.storages.values())+list(self.camp_structures.values())):continue
-                    cost=CAMP_RECIPES[typ]
-                    if not all(inv_count(player['inventory'],i)>=n for i,n in cost.items()):continue
-                    for i,n in cost.items():
-                        inv_take(player['inventory'],i,n)
-                        if i=='log':player['wood']-=n
+                    slot=selected_slot(player)
+                    equipped=player['inventory'][slot] if slot is not None else None
+                    if not equipped or equipped['id']!=typ:continue
+                    if not inv_take(player['inventory'],typ,1):continue
                     ident=self.next_camp;self.next_camp+=1
                     placed={'id':ident,'kind':typ,'x':x,'z':z,'orientation':orientation,'lit':False}
                     self.camp_structures[ident]={k:v for k,v in placed.items() if k!='id'}
@@ -904,11 +981,10 @@ class World:
                     if type(x) not in (int,float) or type(z) not in (int,float) or not math.isfinite(x) or not math.isfinite(z):continue
                     if abs(x)>240000 or abs(z)>240000 or math.hypot(x-player['x'],z-player['z'])>5:continue
                     if pond_depth_at(self.seed,x,z)>.12 or any(math.hypot(x-st['x'],z-st['z'])<2.4 for st in list(self.storages.values())+list(self.camp_structures.values())):continue
-                    cost=STORAGE_COST[typ]
-                    if not all(inv_count(player['inventory'],ingredient)>=amount for ingredient,amount in cost.items()):continue
-                    for ingredient,amount in cost.items():
-                        inv_take(player['inventory'],ingredient,amount)
-                        if ingredient=='log':player['wood']-=amount
+                    slot=selected_slot(player)
+                    equipped=player['inventory'][slot] if slot is not None else None
+                    if not equipped or equipped['id']!=typ:continue
+                    if not inv_take(player['inventory'],typ,1):continue
                     storage=new_storage(typ,self.next_storage,x,z)
                     self.next_storage+=1;self.storages[storage['id']]=storage
                     await self.broadcast({'type':'storage_update','storage':storage})
@@ -921,6 +997,19 @@ class World:
                     if math.hypot(storage['x']-player['x'],storage['z']-player['z'])>3.2:continue
                     if not storage_transfer(player,storage,data.get('direction'),data.get('slot'),data.get('qty',1)):
                         await self.send(ws,{'type':'action_denied','reason':'Недостаточно места, веса или предметов'});continue
+                    refresh_equipment(player)
+                    await self.broadcast({'type':'storage_update','storage':storage})
+                    await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                    self.save()
+                elif kind=='storage_move':
+                    ident=data.get('id')
+                    if type(ident) is not int or ident not in self.storages:continue
+                    storage=self.storages[ident]
+                    if math.hypot(storage['x']-player['x'],storage['z']-player['z'])>3.2:continue
+                    if not storage_move_slot(player,storage,data.get('fromArea'),data.get('from'),
+                                             data.get('toArea'),data.get('to'),data.get('half',False)):
+                        await self.send(ws,{'type':'action_denied','reason':'Невозможно перенести: слот, вес или лимит'})
+                        continue
                     refresh_equipment(player)
                     await self.broadcast({'type':'storage_update','storage':storage})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
@@ -1183,15 +1272,16 @@ class World:
                     if item is None or item['id'] not in ('log','bench'):continue
                     try:x=float(data['x']);z=float(data['z']);orientation=int(data['orientation'])
                     except (ValueError,KeyError,TypeError,OverflowError):continue
-                    if not math.isfinite(x) or not math.isfinite(z) or orientation not in ((0,1) if item['id']=='log' else (0,1,2,3)) or math.hypot(x-player['x'],z-player['z'])>6:continue
+                    if not math.isfinite(x) or not math.isfinite(z) or orientation not in ((0,1,2) if item['id']=='log' else (0,1,2,3)) or math.hypot(x-player['x'],z-player['z'])>6:continue
                     if abs(x)>240000 or abs(z)>240000 or abs(x*2-round(x*2))>1e-4 or abs(z*2-round(z*2))>1e-4:continue
                     if pond_depth_at(self.seed,x,z)>.2:continue
                     if item['id']=='log':
-                        p={'x':x,'z':z,'orientation':orientation}
-                        def overlaps(a,b):return abs(a['x']-b['x'])<(3.2 if a['orientation']==b['orientation']==0 else 1.65) and abs(a['z']-b['z'])<(3.2 if a['orientation']==b['orientation']==1 else 1.65)
-                        p['level']=max((v['level']+1 for v in self.logs.values() if overlaps(p,v)),default=0)
-                        if p['level']>=16:continue
-                        p['y']=height_at(self.seed,x,z)+.29+p['level']*.29*1.8
+                        height=data.get('height')
+                        if type(height) is not int or not 0<=height<16:continue
+                        p={'x':x,'z':z,'orientation':orientation,'height':height,
+                           'y':height_at(self.seed,x,z)+(.29 if orientation!=2 else 1.5)+height*.5}
+                        if any(v['x']==x and v['z']==z and v['height']==height
+                               and v['orientation']==orientation for v in self.logs.values()):continue
                         if not inv_take_logs(player['inventory'],1):continue
                         player['wood']-=1
                         lid=self.next_log;self.next_log+=1;self.logs[lid]=p
@@ -1218,6 +1308,24 @@ class World:
                             await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],{'id':'bench','count':1})});continue
                         del self.furniture[ident]
                         await self.broadcast({'type':'furniture_remove','id':ident,'by':uid,'wood':player['wood']})
+                    elif typ=='camp':
+                        old=self.camp_structures.get(ident)
+                        if old is None or math.hypot(old['x']-player['x'],old['z']-player['z'])>6:continue
+                        reward={'id':old['kind'],'count':1}
+                        if not inv_add(player['inventory'],reward):
+                            await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],reward)});continue
+                        del self.camp_structures[ident]
+                        await self.broadcast({'type':'camp_remove','id':ident})
+                    elif typ=='storage':
+                        old=self.storages.get(ident)
+                        if old is None or math.hypot(old['x']-player['x'],old['z']-player['z'])>6:continue
+                        if (old['kind']=='chest' and any(old['slots'])) or (old['kind']=='rack' and old['logs']):
+                            await self.send(ws,{'type':'action_denied','reason':'Сначала освободи хранилище'});continue
+                        reward={'id':old['kind'],'count':1}
+                        if not inv_add(player['inventory'],reward):
+                            await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],reward)});continue
+                        del self.storages[ident]
+                        await self.broadcast({'type':'storage_remove','id':ident})
                     elif typ=='log':
                         old=self.logs.get(ident)
                         if old is None or math.hypot(old['x']-player['x'],old['z']-player['z'])>6:continue

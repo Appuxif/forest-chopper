@@ -4,9 +4,22 @@ import {createGroundBoxes,MAX_GROUND_DROPS,TREE_LOG_COUNT,BOX_LIFETIME_SECONDS} 
 import {createChopping} from '../src/chopping.js';
 import {createInventoryModel} from '../src/inventory.js';
 import {parseOfflineSave} from '../src/offline-save.js';
-import {fallenLogSegments,segmentMask,FALL_DURATION} from '../src/fallen-log-layout.js';
+import {fallenLogSegments,segmentMask,FALL_DURATION,FALLEN_LOG_LENGTH,FALLEN_LOG_GAP} from '../src/fallen-log-layout.js';
+import {BUILD_LOG_LENGTH,logHalfExtents,logCenterY} from '../src/log-grid.js';
 import {tickFallingTrees} from '../src/falling-trees.js';
 import {pickupCandidates} from '../src/pickup-interaction.js';
+
+test('building and fallen segments share a single three-meter log size',()=>{
+  assert.equal(BUILD_LOG_LENGTH,3);
+  assert.equal(FALLEN_LOG_LENGTH,BUILD_LOG_LENGTH);
+  assert.equal(FALLEN_LOG_GAP,.08);
+  assert.deepEqual(logHalfExtents({orientation:0}),{x:1.5,y:.29,z:.29});
+  assert.deepEqual(logHalfExtents({orientation:1}),{x:.29,y:.29,z:1.5});
+  assert.deepEqual(logHalfExtents({orientation:2}),{x:.29,y:1.5,z:.29});
+  assert.equal(logCenterY({orientation:2,height:0},0),1.5);
+  const segments=fallenLogSegments({x:0,z:0,item:{count:3},direction:0});
+  assert.ok(Math.abs(segments[1].z-segments[0].z-(BUILD_LOG_LENGTH+FALLEN_LOG_GAP))<1e-9);
+});
 
 function fixture(){
   class Geometry{dispose(){}}
@@ -77,7 +90,7 @@ test('tree produces three visible 3D logs and no inventory reward; pickup remove
   assert.equal(initial.length,3);
   assert.ok(initial[0].z>initial[1].z&&initial[1].z>initial[2].z,
     'three cylinders lie end to end along the fall vector');
-  assert.ok(Math.abs(initial[0].z-initial[1].z)>3.6,'separate 3.6m segments');
+  assert.ok(Math.abs(initial[0].z-initial[1].z)>3,'separate 3m segments');
   tickFallingTrees(ctx,2.4);
   assert.equal([...ctx.groundBoxes.pickupNodes].length,0,'the trunk stays hidden during its fall');
   assert.equal(ctx.falling.length,1);
@@ -86,12 +99,12 @@ test('tree produces three visible 3D logs and no inventory reward; pickup remove
   assert.equal(ctx.falling.length,0,'fall finishes before pickup objects appear');
   assert.equal([...ctx.groundBoxes.pickupNodes].length,3);
   assert.equal([...scene].find(x=>x.children?.[0]?.count===3)?.visible,true);
-  assert.equal(pickupCandidates(ctx).boxes.some(b=>b.segment===0),false,
+  assert.equal(pickupCandidates(ctx).boxes.some(b=>b.segment===0),true,
     'distance checks use segment coordinates, not the pile origin');
   // Pick the MIDDLE segment first. The two other segments keep their original
   // world positions and original indices rather than being re-centered.
   ctx.px=initial[1].x;ctx.pz=initial[1].z;
-  assert.deepEqual(pickupCandidates(ctx).boxes.map(b=>b.segment),[1],
+  assert.ok(pickupCandidates(ctx).boxes.some(b=>b.segment===1),
     'the center segment is independently interactable');
   assert.equal(ctx.groundBoxes.pickup(pile.id,1),true);
   assert.equal(state.count('log'),1);

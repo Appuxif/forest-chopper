@@ -261,3 +261,38 @@ test('old overweight saves migrate without item loss and cannot receive more ite
  assert.equal(copy.restore(old.serialize(),120),true);
  assert.equal(copy.weight(),old.weight());
 });
+
+test('crafted structures are carried individually and survive saves',()=>{
+ const inv=createInventoryModel();
+ assert.equal(inv.craftStructure('campfire'),false);
+ assert.equal(inv.addLogs(2),2);
+ assert.equal(inv.addItem({id:'stone',count:3}),true);
+ assert.equal(inv.canCraftStructure('campfire'),true);
+ assert.equal(inv.craftStructure('campfire'),true);
+ assert.equal(inv.count('log'),0);
+ assert.equal(inv.count('stone'),0);
+ assert.equal(inv.count('campfire'),1);
+ const snapshot=inv.serialize(),other=createInventoryModel();
+ assert.equal(other.restore(snapshot,0),true);
+ assert.equal(other.count('campfire'),1);
+ assert.equal(other.addItem({id:'campfire',count:1}),true);
+ assert.equal(other.count('campfire'),2);
+ assert.equal(other.slots.filter(x=>x?.id==='campfire').length,2);
+ assert.equal(other.spend('campfire',1),true);
+ assert.equal(other.count('campfire'),1);
+});
+
+test('failed campfire craft is transactional when bag is full',()=>{
+ const inv=createInventoryModel();
+ assert.equal(inv.addLogs(3),3);
+ assert.equal(inv.addItem({id:'stone',count:4}),true);
+ for(const kind of ['branch','dry_grass','flower:daisy','flower:buttercup',
+     'flower:pink_wildflower','flower:blue_wildflower',
+     'mushroom:boletus','mushroom:fly_agaric','mushroom:milkcap'])
+   assert.equal(inv.addItem({id:kind,count:1}),true);
+ assert.equal(inv.slots.every(Boolean),true);
+ const before=inv.serialize();
+ assert.equal(inv.canCraftStructure('campfire'),false);
+ assert.equal(inv.craftStructure('campfire'),false);
+ assert.deepEqual(inv.serialize(),before,'ingredients must not disappear on failed craft');
+});

@@ -1,7 +1,7 @@
 // Shared status semantics: wall-clock expiry survives offline saves and refresh.
 // A repeat dose refreshes duration (no unbounded stacking).
 export const STATUS_DEFINITIONS=Object.freeze({
-  stamina_regen:{duration:30,multiplier:1.7},
+  stamina_regen:{duration:30,multiplier:2},
 });
 export function sanitizeEffects(raw,now=Date.now()/1000){
   if(raw===undefined)return [];

@@ -75,6 +75,32 @@ function logIcon(ctx){
   return group;
 }
 
+function potionIcon(ctx,kind){
+ const THREE=ctx.THREE,g=new THREE.Group();
+ const bottle=new THREE.Mesh(
+   new THREE.CylinderGeometry(.26,.30,.72,10),
+   new THREE.MeshStandardMaterial({color:kind==='potion:health'?0xb93749:0x36a8c4,
+     roughness:.22,metalness:.05,transparent:true,opacity:.86}));
+ bottle.position.y=.48;g.add(bottle);
+ const shoulder=new THREE.Mesh(new THREE.CylinderGeometry(.13,.23,.19,10),
+   new THREE.MeshStandardMaterial({color:0xdceef2,transparent:true,opacity:.8}));
+ shoulder.position.y=.93;g.add(shoulder);
+ const neck=new THREE.Mesh(new THREE.CylinderGeometry(.13,.13,.19,10),
+   new THREE.MeshStandardMaterial({color:0x9fb9bc,roughness:.22}));
+ neck.position.y=1.12;g.add(neck);
+ const cork=new THREE.Mesh(new THREE.CylinderGeometry(.15,.12,.17,10),
+   new THREE.MeshLambertMaterial({color:0xab7d49}));
+ cork.position.y=1.27;g.add(cork);
+ return g;
+}
+
+// Only the dedicated thumbnail object is rotated: placement geometry remains unchanged.
+export function benchIconModel(ctx){
+  const model=ctx.crafting?.createIconModel();
+  if(model)model.rotation.y+=Math.PI;
+  return model;
+}
+
 function collectModels(ctx){
   const models=[];
   const add=(key,make)=>models.push([key,make]);
@@ -84,7 +110,13 @@ function collectModels(ctx){
   add('log',()=>logIcon(ctx));
   add('branch',()=>ctx.forestResources?.createIconModel('branch'));
   add('stone',()=>ctx.forestResources?.createIconModel('stone'));
-  add('bench',()=>ctx.crafting?.createIconModel());
+  add('bench',()=>benchIconModel(ctx));
+  for(const kind of ['campfire','torch','table','fence','workbench'])
+    add(kind,()=>ctx.campStructures?.createIconModel?.(kind));
+  for(const kind of ['chest','rack'])
+    add(kind,()=>ctx.storages?.createIconModel?.(kind));
+  for(const kind of ['potion:health','potion:stamina'])
+    add(kind,()=>potionIcon(ctx,kind));
   for(let tier=0;tier<4;tier++)add('axe:'+tier,()=>axeIcon(ctx,tier));
   return models;
 }

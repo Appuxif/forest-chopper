@@ -1,3 +1,4 @@
+import {logHalfExtents} from './log-grid.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {rockBlocksPlayer,highestRockSupport,standingOnRock} from './rock-collisions.js';
 import {structureBlocksPlayer,highestStructureSupport,standingOnStructure,structureCeiling} from './structure-collisions.js';
@@ -7,14 +8,15 @@ function* allStructures(){
  yield* ctx.campStructures?.items?.values()??[];
 }
 function logFootprint(p,x,z,extra=0){
- // Logs lie horizontally along X (orientation 0) or Z (orientation 1).
  const along=p.orientation===0?x-p.x:z-p.z;
  const across=p.orientation===0?z-p.z:x-p.x;
- const half=ctx.logLength/2,dx=Math.max(0,Math.abs(along)-half);
+ if(p.orientation===2)return Math.hypot(x-p.x,z-p.z)<ctx.logRadius+extra;
+ const half=logHalfExtents(p,ctx.logRadius)[p.orientation===0?'x':'z'];
+ const dx=Math.max(0,Math.abs(along)-half);
  return Math.hypot(dx,across)<ctx.logRadius+extra;
 }
-function logTop(p){return p.y+ctx.logRadius}
-function logBottom(p){return p.y-ctx.logRadius}
+function logTop(p){return p.y+logHalfExtents(p,ctx.logRadius).y}
+function logBottom(p){return p.y-logHalfExtents(p,ctx.logRadius).y}
 function blocksPlayerAt(x,z,feet){
  for(const p of ctx.placed){
    if(!logFootprint(p,x,z,ctx.PLAYER_RADIUS))continue;

@@ -17,7 +17,7 @@ function fixture(existing = null) {
   const ctx={terrain:flatTerrain(),
     seed:678,wood:7,cuts:3,px:10,pz:-12,feetY:.58,verticalSpeed:0,onGround:true,yaw:.5,pitch:-.25,
     felled:new Set(['0,0:1']),treeDamage:new Map([['0,0:3',4]]),
-    placed:[{x:2,z:3,level:0,orientation:1,mesh:{}}],
+    placed:[{x:2,z:3,height:0,orientation:1,mesh:{}}],
     dayCycle:{offlinePhase:.375,
       setOfflinePhase(value){this.offlinePhase=value;},
       resetOffline(){this.offlinePhase=0;}},
@@ -25,7 +25,7 @@ function fixture(existing = null) {
     logRadius:.29,scene:{add:mesh=>added.push(mesh)},
     makeLog:()=>({
       position:{set(x,y,z){Object.assign(this,{x,y,z});}},
-      rotation:{y:0,z:Math.PI/2},
+      rotation:{y:0,z:Math.PI/2,set(x,y,z){Object.assign(this,{x,y,z});}},
     }),$,
   };
   const save=createOfflineSave(ctx,{storage,now:()=>1000,setTimer:()=>1,clearTimer:()=>{}});
@@ -64,14 +64,14 @@ test('invalid or large saves do not mutate the current world',()=>{
   assert.equal(base.save.restore(),false);
   const valid=JSON.parse(JSON.stringify({
     version:1,seed:678,wood:7,cuts:3,felled:['0,0:1'],damage:{'0,0:3':4},
-    logs:[{x:2,z:3,level:0,orientation:1}],
+    logs:[{x:2,z:3,height:0,orientation:1}],
     position:{x:10,z:12,yaw:0,pitch:0},
   }));
   assert.ok(parseOfflineSave(JSON.stringify(valid)));
   assert.equal(parseOfflineSave('broken json'),null);
   assert.equal(parseOfflineSave(' '.repeat(1_500_001)),null);
   assert.equal(parseOfflineSave(JSON.stringify({...valid,version:2})),null);
-  assert.equal(parseOfflineSave(JSON.stringify({...valid,logs:[{x:NaN,z:3,level:0,orientation:1}]})),null);
+  assert.equal(parseOfflineSave(JSON.stringify({...valid,logs:[{x:NaN,z:3,height:0,orientation:1}]})),null);
   assert.equal(parseOfflineSave(JSON.stringify({...valid,felled:['../sensitive']})),null);
   assert.equal(parseOfflineSave(JSON.stringify({...valid,position:{x:Infinity,z:0,yaw:0,pitch:0}})),null);
   assert.ok(parseOfflineSave(JSON.stringify({...valid,position:{x:0,y:25,z:0,yaw:0,pitch:0}})),
@@ -293,4 +293,21 @@ test('camp structures persist and older v1 offline saves default to no camp',()=
     [{...list[0],orientation:5}],
     Array.from({length:101},()=>list[0]),
   ])assert.equal(parseOfflineSave(JSON.stringify({...legacy,camp_structures:bad})),null);
+});
+
+test('legacy placed logs are invalidated without losing other saved world data',()=>{
+ const source=fixture();
+ source.save.save();
+ const payload=JSON.parse(source.storage.getItem(OFFLINE_SAVE_KEY));
+ payload.logs=[{x:1,z:2,level:2,orientation:0},{x:2,z:3,height:0,orientation:1}];
+ const parsed=parseOfflineSave(JSON.stringify(payload));
+ assert.equal(parsed.logs.length,1);
+ assert.deepEqual(parsed.logs[0],{x:2,z:3,height:0,orientation:1});
+ assert.equal(parsed.wood,source.ctx.wood);
+ assert.deepEqual(parsed.felled,['0,0:1']);
+ const target=fixture(JSON.stringify(payload));
+ target.ctx.placed=[];
+ assert.equal(target.save.restore(),true);
+ assert.equal(target.ctx.placed.length,1);
+ assert.equal(target.ctx.placed[0].height,0);
 });

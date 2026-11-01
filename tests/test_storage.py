@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from forest_server import (new_storage, valid_storage, storage_transfer, new_inventory,
+from forest_server import (new_storage, valid_storage, storage_transfer, storage_move_slot, new_inventory,
                            inv_add, inv_count, inv_weight, World, CHEST_MAX_WEIGHT,
                            RACK_MAX_LOGS)
 
@@ -25,6 +25,42 @@ class StorageTests(unittest.TestCase):
             self.assertTrue(inv_add_storage_safe(chest,{'id':'stone','count':10}))
         self.assertFalse(valid_storage(chest) and inv_weight(chest['slots'])>CHEST_MAX_WEIGHT)
         self.assertFalse(storage_transfer(player,chest,'deposit',1,100))
+
+    def test_chest_move_exact_slots_and_half_split(self):
+        player=self.player()
+        chest=new_storage('chest',1,0,0)
+        self.assertTrue(inv_add(player['inventory'],{'id':'stone','count':8}))
+        self.assertTrue(storage_move_slot(player,chest,'bag',1,'chest',7))
+        self.assertIsNone(player['inventory'][1])
+        self.assertEqual(chest['slots'][7]['count'],8)
+        self.assertTrue(storage_move_slot(player,chest,'chest',7,'chest',3,True))
+        self.assertEqual(chest['slots'][3]['count'],4)
+        self.assertEqual(chest['slots'][7]['count'],4)
+        self.assertTrue(storage_move_slot(player,chest,'chest',3,'chest',7))
+        self.assertIsNone(chest['slots'][3])
+        self.assertEqual(chest['slots'][7]['count'],8)
+        self.assertTrue(storage_move_slot(player,chest,'chest',7,'bag',4))
+        self.assertEqual(player['inventory'][4]['count'],8)
+        self.assertIsNone(chest['slots'][7])
+        self.assertFalse(storage_move_slot(player,chest,'bag',4,'chest',24))
+        self.assertEqual(player['inventory'][4]['count'],8)
+
+    def test_chest_move_swap_and_rejected_overweight_stay_atomic(self):
+        player=self.player()
+        chest=new_storage('chest',1,0,0)
+        self.assertTrue(inv_add(player['inventory'],{'id':'stone','count':10}))
+        self.assertTrue(storage_move_slot(player,chest,'bag',1,'chest',6))
+        self.assertTrue(storage_move_slot(player,chest,'chest',6,'bag',0))
+        self.assertEqual(player['inventory'][0]['id'],'stone')
+        self.assertEqual(chest['slots'][6]['id'],'axe')
+        for i in range(7,12):chest['slots'][i]={'id':'log','count':5}
+        chest['slots'][12]={'id':'stone','count':10}
+        chest['slots'][13]={'id':'stone','count':10}
+        self.assertAlmostEqual(inv_weight(chest['slots']),293)
+        before=[x.copy() if x else None for x in player['inventory']]
+        self.assertFalse(storage_move_slot(player,chest,'bag',0,'chest',14))
+        self.assertEqual(player['inventory'],before)
+        self.assertEqual(chest['slots'][14],None)
 
     def test_rack_bound_and_wood_accounting(self):
         player=self.player()
@@ -84,6 +120,13 @@ class StorageNetworkTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(inv_give_logs(owner['inventory'],3),3)
                     self.assertTrue(inv_add(owner['inventory'],{'id':'branch','count':4}))
                     owner['wood']=3
+                    await alice.send(json.dumps({'type':'craft_structure','recipe':'chest'}))
+                    await receive(alice,'inventory_state')
+                    self.assertEqual(inv_count(owner['inventory'],'chest'),1)
+                    slot=next(i for i,it in enumerate(owner['inventory']) if it and it['id']=='chest')
+                    owner['quick_refs'][2]=slot
+                    owner['quick_ids'][2]='chest'
+                    owner['selected']=2
                     await alice.send(json.dumps({'type':'storage_place','kind':'chest','x':1,'z':0}))
                     update=await receive(bob,'storage_update')
                     storage_id=update['storage']['id']
@@ -96,13 +139,23 @@ class StorageNetworkTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(deposited['storage']['slots'][0],{'id':'log','count':1})
                     await receive(alice,'storage_update')
                     await receive(alice,'inventory_state')
+                    # Slot-specific DnD is server authoritative and broadcasts to others.
+                    await alice.send(json.dumps({
+                        'type':'storage_move','id':storage_id,
+                        'fromArea':'chest','from':0,'toArea':'chest','to':4,'half':False}))
+                    shifted=await receive(bob,'storage_update')
+                    self.assertIsNone(shifted['storage']['slots'][0])
+                    self.assertEqual(shifted['storage']['slots'][4],{'id':'log','count':1})
+                    await receive(alice,'storage_update')
+                    await receive(alice,'inventory_state')
+                    self.assertEqual(World(world.path).storages[storage_id]['slots'][4]['count'],1)
                     # Bob is too far away to withdraw from this storage.
                     owner2=next(p for p in world.clients.values() if p['id']==bw['id'])
                     owner2['x']=100
-                    await bob.send(json.dumps({'type':'storage_transfer','id':storage_id,'direction':'withdraw','slot':0,'qty':1}))
+                    await bob.send(json.dumps({'type':'storage_transfer','id':storage_id,'direction':'withdraw','slot':4,'qty':1}))
                     with self.assertRaises(asyncio.TimeoutError):
                         await asyncio.wait_for(bob.recv(),.06)
-                    self.assertEqual(world.storages[storage_id]['slots'][0]['count'],1)
+                    self.assertEqual(world.storages[storage_id]['slots'][4]['count'],1)
                     await alice.send(json.dumps({'type':'storage_rename','id':storage_id,'name':'Лесной запас'}))
                     renamed=await receive(bob,'storage_update')
                     self.assertEqual(renamed['storage']['name'],'Лесной запас')

@@ -1,4 +1,5 @@
 import {TREE_LOG_COUNT} from './ground-boxes.js';
+import {isStructureItem} from './structure-items.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 export function createChopping(ctx) {
 const ray=new ctx.THREE.Raycaster(),viewRay=new ctx.THREE.Raycaster();
@@ -24,6 +25,12 @@ function chop(){
  }
  if(ctx.inventory?.selected==='log'){ctx.placeLog();return;}
  if(ctx.inventory?.selected==='bench'){ctx.crafting?.placeItem();return;}
+ if(isStructureItem(ctx.inventory?.selected)){
+   const kind=ctx.inventory.selected;
+   if(['chest','rack'].includes(kind))ctx.storages?.place(kind);
+   else ctx.campStructures?.place(kind);
+   return;
+ }
  if(ctx.buildMode&&!ctx.inventory){ctx.placeLog();return;}
 if(ctx.inventory&&!ctx.inventory.equipped){ctx.notify?.('Выбери топор в быстром слоте (1–4)','warning','no-axe');return;}
 if(ctx.vitals&&!ctx.vitals.canChop&&aimed()){
@@ -38,17 +45,28 @@ const now=performance.now();const chopCooldown=(ctx.ownAvatar?.actions?.Chop2?.g
    for(const entry of ctx.crafting?.items?.values()??[]){
      const d=hit(entry.x,entry.z);if(d<(best?.d??Infinity))best={kind:'bench',id:entry.id,d};
    }
+   for(const entry of ctx.campStructures?.items?.values()??[]){
+     const d=hit(entry.x,entry.z);
+     if(d<(best?.d??Infinity))best={kind:'camp',id:entry.id,d};
+   }
+   for(const entry of ctx.storages?.structures?.values()??[]){
+     const d=hit(entry.x,entry.z);
+     if(d<(best?.d??Infinity))best={kind:'storage',id:entry.id,d};
+   }
    for(const entry of ctx.placed??[]){
      const d=hit(entry.x,entry.z);if(d<(best?.d??Infinity))best={kind:'log',id:entry.id,d,entry};
    }
    if(best){
      if(best.kind==='bench'){ctx.crafting?.dismantle(best.id);return;}
+     if(best.kind==='camp'){ctx.campStructures?.dismantle(best.id);return;}
+     if(best.kind==='storage'){ctx.storages?.dismantle(best.id);return;}
      if(ctx.inventory.state.freeLogs()<1){ctx.notify('Сумка заполнена или превышен лимит 100 кг','warning');return;}
      if(ctx.isOnline()){
        if(best.id!=null)ctx.sendNet({type:'hit_structure',kind:'log',id:best.id});
      }else{
-       const index=ctx.placed.indexOf(best.entry);if(index>=0){
-         ctx.scene.remove(best.entry.mesh);ctx.placed.splice(index,1);ctx.wood+=1;
+       const index=ctx.placed.indexOf(best.entry);if(index>=0&&ctx.inventory.state.addLogs(1)===1){
+         ctx.scene.remove(best.entry.mesh);ctx.placed.splice(index,1);ctx.wood=ctx.inventory.state.wood();
+         ctx.inventory.render();
          ctx.atmosphere?.invalidateStaticShadows?.();
          ctx.offlineSave.markDirty();ctx.notify('🪵 Бревно возвращено в сумку','success');
        }

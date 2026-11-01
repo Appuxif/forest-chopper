@@ -90,7 +90,7 @@ export function createVitalsUI(ctx,doc=document){
   state.eat(item.id);
   ctx.inventory.render();render();ctx.offlineSave?.markDirty?.();
   const {health,hunger}=FOOD_EFFECTS[item.id];
-  const message=item.id==='potion:stamina'?'Выносливость восстановлена · регенерация усилена':health<0?'Отравление: −1 жизнь':health>0?'Восстановлена жизнь':hunger>0?'Сытость +1':'Предмет съеден';
+  const message=item.id==='potion:stamina'?'Регенерация выносливости ×2 на 30 секунд':health<0?'Отравление: −1 жизнь':item.id==='potion:health'?'Зелье здоровья: +3 жизни, +1 сытость':health>0?'Восстановлена жизнь':hunger>0?'Сытость +1':'Предмет съеден';
   ctx.notify?.(message,health<0?'warning':'success','food-consumed');
   return true;
  }

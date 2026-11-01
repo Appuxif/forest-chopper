@@ -160,3 +160,15 @@ test('short action warnings select exact reason by priority',()=>{
  x.restore({health:5,hunger:5,stamina:1,hungerProgress:0});
  assert.equal(x.chopWarning(),'Нет сил');
 });
+
+test('health potion outperforms its ingredients, keeps the boletus hunger bonus and clamps',()=>{
+ assert.deepEqual(eatEffect(1,1,'potion:health'),{health:4,hunger:2});
+ assert.deepEqual(eatEffect(4,4,'potion:health'),{health:5,hunger:5});
+ let separate=eatEffect(1,1,'flower:daisy');
+ separate=eatEffect(separate.health,separate.hunger,'flower:daisy');
+ separate=eatEffect(separate.health,separate.hunger,'mushroom:boletus');
+ assert.deepEqual(separate,{health:3,hunger:2});
+ const combined=eatEffect(1,1,'potion:health');
+ assert.equal(combined.health,separate.health+1);
+ assert.equal(combined.hunger,separate.hunger);
+});

@@ -1,7 +1,8 @@
 import {renderItemIcons,itemIconKey} from './item-icons.js?v=20261031-icon-zoom1';
-import {DECOR_ITEM_NAMES} from './collectible-decor.js';
+import {itemDisplayName,itemDisplayIcon} from './item-display.js';
 import {isFood} from './vitals.js';
 import {createRecipeBook} from './recipe-book-ui.js';
+import {isStructureItem} from './structure-items.js';
 import {createInventoryModel,AXE_STATS,QUICK_SLOTS,MAX_CARRY_WEIGHT,itemWeight} from './inventory.js';
 export function createInventory(ctx,doc=document){
  const state=createInventoryModel();
@@ -44,12 +45,12 @@ export function createInventory(ctx,doc=document){
    'mushroom:fly_agaric':'Мух.','mushroom:boletus':'Боров.','mushroom:death_cap':'Пог.','mushroom:milkcap':'Груздь',
    'flower:daisy':'Ром.','flower:buttercup':'Лют.','flower:pink_wildflower':'Роз.','flower:blue_wildflower':'Син.',
  };
- const itemLabel=item=>!item?'':({
-   'mushroom:death_cap':'🍄','mushroom:fly_agaric':'🍄','mushroom:boletus':'🍄','mushroom:milkcap':'🍄',
-   'flower:daisy':'🌼','flower:buttercup':'🌻','flower:pink_wildflower':'🌸','flower:blue_wildflower':'🪻',
-   axe:'🪓',bench:'🪑','potion:health':'❤️','potion:stamina':'🧪',log:'🪵',branch:'🌿',stone:'🪨',dry_grass:'🌾',
- }[item.id]??'?');
- const itemTitle=item=>!item?'Пустой слот':(item.id==='axe'?AXE_STATS[item.tier].name:item.id==='bench'?'Скамейка':({log:'Бревно',branch:'Ветки',stone:'Камни',dry_grass:'Сухая трава'}[item.id]??DECOR_ITEM_NAMES[item.id]??item.id)+' ×'+item.count)+' · '+itemWeight(item).toLocaleString('ru-RU',{maximumFractionDigits:2})+' кг';
+ const itemLabel=item=>item?itemDisplayIcon(item.id):'';
+ const itemTitle=item=>!item?'Пустой слот':(item.id==='axe'
+   ?AXE_STATS[item.tier].name
+   :itemDisplayName(item.id)+' ×'+item.count)
+   +' · '+itemWeight(item).toLocaleString('ru-RU',{maximumFractionDigits:2})+' кг';
+
  function slot(i,hot=false){
    const item=hot?state.quickItem(i):state.slots[i],b=doc.createElement('button');b.type='button';b.className='fc-slot';
    b.dataset.slot=String(i);b.dataset.kind=hot?'quick':'bag';b.title=hot&&item?itemTitle(item)+' · Всего: '+state.count(item.id):itemTitle(item);
@@ -86,7 +87,7 @@ export function createInventory(ctx,doc=document){
    const selection=state.selected();
    if(lastSelected!==selection){
      lastSelected=selection;
-     ctx.buildMode=selection==='log'||selection==='bench';
+     ctx.buildMode=selection==='log'||selection==='bench'||isStructureItem(selection);
      ctx.disposePreview?.();
    }
    bar.replaceChildren(...Array.from({length:QUICK_SLOTS},(_,i)=>slot(i,true)));
@@ -115,7 +116,7 @@ export function createInventory(ctx,doc=document){
    render();if(!ctx.isOnline?.())ctx.offlineSave?.markDirty?.();
    if(equip&&ctx.isOnline?.())ctx.sendNet?.({type:'select_slot',slot:state.selectedQuick});
  }
- function select(i){if(!state.select(i))return false;moving=-1;changed();ctx.buildMode=state.selected()==='log'||state.selected()==='bench';ctx.disposePreview?.();ctx.updatePreview?.();return true;}
+ function select(i){if(!state.select(i))return false;moving=-1;changed();ctx.buildMode=state.selected()==='log'||state.selected()==='bench'||isStructureItem(state.selected());ctx.disposePreview?.();ctx.updatePreview?.();return true;}
  function syncWood(n,{migrate=false}={}){
    if(!state.setWood(n,{migrate})){ctx.notify?.('Сумка заполнена','warning','bag-full');return false;}
    render();return true;
@@ -151,6 +152,13 @@ export function createInventory(ctx,doc=document){
    if(!state.craft('axe')){ctx.notify?.('Нет места или превышен лимит 100 кг для топора','warning','axe-craft-full');return false;}
    changed();ctx.notify?.('🪓 Топор скрафчен','success','axe-craft');return true;
  }
+ function craftStructure(kind){
+   if(!state.canCraftStructure(kind))return false;
+   if(ctx.isOnline?.()){ctx.sendNet?.({type:'craft_structure',recipe:kind});return true;}
+   if(!state.craftStructure(kind)){ctx.notify?.('Сумка заполнена или превышен вес','warning');return false;}
+   ctx.wood=state.wood();changed();
+   ctx.notify?.('Предмет создан — выбери его в быстром слоте','success');return true;
+ }
  function craftBench(){
    if(state.wood()<3)return false;
    if(ctx.isOnline?.()){
@@ -163,7 +171,7 @@ export function createInventory(ctx,doc=document){
  }
  function restore(snapshot,wood=0){
    if(!state.restore(snapshot,wood))return false;
-   moving=-1;changed({equip:false});ctx.buildMode=state.selected()==='log'||state.selected()==='bench';return true;
+   moving=-1;changed({equip:false});ctx.buildMode=state.selected()==='log'||state.selected()==='bench'||isStructureItem(state.selected());return true;
  }
  // One Pointer Events implementation for desktop mouse and touch devices.
  // Dragging onto quick access assigns a reference, not an inventory copy.
@@ -264,17 +272,19 @@ export function createInventory(ctx,doc=document){
    const generated=renderItemIcons(ctx,doc);
    for(const [id,url] of generated)icons.set(id,url);
    render();
+   ctx.storages?.refresh?.();
  });
  function acceptServer(snapshot,wood){
    if(!state.restore(snapshot,wood))return false;
    moving=-1;render();
-   ctx.buildMode=state.selected()==='log'||state.selected()==='bench';
+   ctx.storages?.refresh?.(); // Network inventory arrives after storage_update.
+   ctx.buildMode=state.selected()==='log'||state.selected()==='bench'||isStructureItem(state.selected());
    ctx.disposePreview?.();return true;
  }
- return {state,render,select,syncWood,dropStack,trashStack,splitStack,restore,acceptServer,craftBench,craftAxe,
+ return {state,render,select,syncWood,dropStack,trashStack,splitStack,restore,acceptServer,craftBench,craftAxe,craftStructure,
    get isOpen(){return !bag.hidden;},get isBookOpen(){return recipeBook?.isOpen??false;},
    toggle(){toggle.click();},toggleBook(){recipeBook?.toggle();},closeBook(){recipeBook?.close();},
    close(){bag.hidden=true;recipeBook?.close();},
    serialize:()=>state.serialize(),get equipped(){return state.equipped();},
-   get axe(){return state.axe();},get selected(){return state.selected();}};
+   get axe(){return state.axe();},get selected(){return state.selected();},getIcon(id){return icons.get(id);}};
 }

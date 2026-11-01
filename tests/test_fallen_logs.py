@@ -80,7 +80,7 @@ class FallenLogTests(unittest.IsolatedAsyncioTestCase):
             first, middle, last=fallen_log_segments(box)
             self.assertEqual([v[0] for v in (first,middle,last)],[0,1,2])
             # A complete tree gives a continuous row of three equal segments.
-            self.assertAlmostEqual(math.dist(first[1:],middle[1:]),3.68,places=5)
+            self.assertAlmostEqual(math.dist(first[1:],middle[1:]),3.08,places=5)
             owner.update(x=first[1],z=first[2])
             await alice.send(json.dumps({'type':'pickup_box','id':ident,'segment':0}))
             denied=await self.receive(alice,'action_denied')

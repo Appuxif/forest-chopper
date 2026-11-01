@@ -1,6 +1,6 @@
 // A single authoritative pile record represents fixed, independently collectable
 // segments. Removing a bit does not recenter any of the remaining segments.
-export const FALLEN_LOG_LENGTH=3.6;
+export const FALLEN_LOG_LENGTH=3;
 export const FALLEN_LOG_GAP=.08;
 export const FALL_DURATION=2.5;
 export const segmentMask=box=>

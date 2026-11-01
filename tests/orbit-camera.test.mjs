@@ -18,7 +18,7 @@ function fixture(){
   const settings={cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80};
   const camera={position:new Vector3(),rotation:{set(x,y,z){Object.assign(this,{x,y,z});}}};
   const ctx={THREE:{Vector3},px:0,pz:0,feetY:0,yaw:0,pitch:0,settings,camera,
-    trees:new Map(),rockColliders:new Map(),chunkSize:24,placed:[],logLength:3.6,logRadius:.29};
+    trees:new Map(),rockColliders:new Map(),chunkSize:24,placed:[],logLength:3,logRadius:.29};
   return {ctx,camera,rig:createOrbitCamera(ctx)};
 }
 
