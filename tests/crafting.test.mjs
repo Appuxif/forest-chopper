@@ -8,7 +8,7 @@ function setup(online=false){
   class Geometry{constructor(){created.geom++}}
   class Material{constructor(){created.mat++}}
   class Obj {
-    constructor(){this.children=[];this.rotation={x:0,y:0,z:0};this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};}
+    constructor(){this.children=[];this.rotation={x:0,y:0,z:0};this.scale={x:1,y:1,z:1,set(x,y,z){Object.assign(this,{x,y,z})}};this.position={x:0,y:0,z:0,set(x,y,z){Object.assign(this,{x,y,z})}};}
     add(obj){this.children.push(obj)}
   }
   class Mesh extends Obj{constructor(geometry,material){super();Object.assign(this,{geometry,material})}}
@@ -16,7 +16,7 @@ function setup(online=false){
   const elements={buildbar:{append(...x){buttons.push(...x)}},wood:{textContent:0}};
   const doc={createElement(){return {style:{},type:'',textContent:'',onclick:null}}};
   const sent=[],notifications=[],marks=[];
-  const ctx={terrain:flatTerrain(),THREE:{BoxGeometry:Geometry,MeshLambertMaterial:Material,Mesh,Group:Obj},
+  const ctx={terrain:flatTerrain(),THREE:{BoxGeometry:Geometry,CylinderGeometry:Geometry,MeshLambertMaterial:Material,Mesh,Group:Obj},
     scene,$:id=>elements[id],yaw:0,px:0,pz:0,orientation:0,wood:8,buildMode:true,
     isOnline:()=>online,sendNet:d=>sent.push(d),notify:(...a)=>notifications.push(a),
     offlineSave:{markDirty:()=>marks.push(1)},trees:new Map(),blocksPlayerAt:()=>false};
@@ -36,7 +36,10 @@ test('bench validates geometry, recipe and costs exactly three wood',()=>{
   assert.equal(f.craft.place(),true);
   assert.equal(f.ctx.wood,5);
   assert.equal(f.scene.children.length,1);
-  assert.equal(f.scene.children[0].children.length,6);
+  assert.ok(f.scene.children[0].children.length>=23,'detailed slats, legs, arms and fasteners');
+  assert.equal(f.scene.children[0].children.filter(x=>x.name?.startsWith('Seat slat')).length,4);
+  assert.equal(f.scene.children[0].children.filter(x=>x.name?.startsWith('Backrest slat')).length,3);
+  assert.equal(f.scene.children[0].children.filter(x=>x.name==='Metal fastener').length,4);
   assert.ok(f.scene.children[0].children.every(part=>part.castShadow),
     'all wooden parts of a bench cast actual shadow geometry');
   assert.equal(invalidations,1,'placing a bench refreshes the cached tree shadow map');
@@ -47,7 +50,7 @@ test('bench validates geometry, recipe and costs exactly three wood',()=>{
   assert.equal(f.craft.items.size,0);
   assert.equal(invalidations,2,'removing a bench invalidates the static shadow map');
   assert.equal(f.created.geom,2);
-  assert.equal(f.created.mat,3); // Includes shared green ghost material for new inventory placement
+  assert.equal(f.created.mat,4); // Shared wood, frame, metal, and ghost materials
   assert.equal(f.marks.length,2,'persist each confirmed local change');
 });
 test('online crafting only sends commands and never optimistically debits wood',()=>{

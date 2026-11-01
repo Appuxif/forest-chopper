@@ -10,24 +10,45 @@ export const validBench = item => item?.kind==='bench' && [0,1,2,3].includes(ite
 
 export function createCrafting(ctx,doc=document) {
   const THREE=ctx.THREE,items=new Map();
-  const plankGeo=new THREE.BoxGeometry(2,.22,.7);
-  const legGeo=new THREE.BoxGeometry(.18,.8,.18);
-  const plankMat=new THREE.MeshLambertMaterial({color:0xa57849});
+  // Shared unit geometries, not unique meshes/textures for each placed bench.
+  const beamGeo=new THREE.BoxGeometry(1,1,1);
+  const boltGeo=new THREE.CylinderGeometry(.035,.035,.018,6);
+  const plankMat=new THREE.MeshLambertMaterial({color:0xb68a54});
+  const legMat=new THREE.MeshLambertMaterial({color:0x705038});
+  const metalMat=new THREE.MeshLambertMaterial({color:0x3e4542});
   const ghostMat=new THREE.MeshLambertMaterial({color:0x83efb5,transparent:true,opacity:.48,depthWrite:false});
-  const legMat=new THREE.MeshLambertMaterial({color:0x6c492d});
   let offlineId=0;
   function mesh(item,preview=false){
     const g=new THREE.Group();
-    const seat=new THREE.Mesh(plankGeo,preview?ghostMat:plankMat);
-    seat.position.set(0,.87,0);g.add(seat);
-    for(const x of [-.75,.75])for(const z of [-.24,.24]){
-      const leg=new THREE.Mesh(legGeo,preview?ghostMat:legMat);leg.position.set(x,.4,z);g.add(leg);
+    const make=(name,x,y,z,w,h,d,material,rotX=0,rotZ=0)=>{
+      const m=new THREE.Mesh(beamGeo,preview?ghostMat:material);
+      m.name=name;m.position.set(x,y,z);m.scale.set(w,h,d);
+      m.rotation.x=rotX;m.rotation.z=rotZ;m.castShadow=true;g.add(m);
+      return m;
+    };
+    // Four independently visible slightly rounded-looking slats (thin dark gaps).
+    for(let i=0;i<4;i++)
+      make('Seat slat '+i,0,.90,-.315+i*.21,2.12,.105,.176,plankMat);
+    // Under-seat frame, cross rails and legs with a mild outward splay.
+    for(const x of [-.88,.88]){
+      make('Seat support',x,.775,.02,.16,.18,.92,legMat);
+      for(const z of [-.27,.32])
+        make('Leg',x+(x<0?-.045:.045),.39,z,.145,.75,.17,legMat,0,x<0?-.055:.055);
+      make('Cross brace',x,.43,.02,.12,.13,.77,legMat);
+      make('Back upright',x,1.28,.41,.14,1.15,.15,legMat,-.13);
+      make('Armrest',x,1.22,-.09,.19,.10,.71,plankMat,-.08);
+      make('Arm post',x,1.04,-.34,.12,.34,.12,legMat);
     }
-    const back=new THREE.Mesh(plankGeo,preview?ghostMat:plankMat);
-    back.position.set(0,1.28,.31);back.rotation.x=-.17;g.add(back);
-    g.traverse?.(node=>{if(node.isMesh)node.castShadow=true;});
-    // Test doubles and new craftable types can use plain children as well.
-    for(const part of g.children)if(part.geometry)part.castShadow=true;
+    // Three separate backrest planks, leaning at a comfortable angle.
+    for(let i=0;i<3;i++)
+      make('Backrest slat '+i,0,1.24+i*.24,.44+i*.037,2.14,.15,.115,plankMat,-.15);
+    // Slim end-braces strengthen the silhouette without excessive geometry.
+    make('Lower crossrail',0,.27,.32,1.78,.12,.13,legMat);
+    for(const x of [-.81,.81])for(const y of [1.28,1.72]){
+      const rivet=new THREE.Mesh(boltGeo,preview?ghostMat:metalMat);
+      rivet.name='Metal fastener';rivet.position.set(x,y,.54+(y-1.28)*.155);
+      rivet.rotation.x=Math.PI/2;rivet.castShadow=true;g.add(rivet);
+    }
     g.position.set(item.x,ctx.terrain.heightAt(item.x,item.z),item.z);
     g.rotation.y=item.orientation*Math.PI/2;
     if(preview)g.userData.itemPreview='bench';
