@@ -163,18 +163,25 @@ class HumanoidLiteTest(unittest.TestCase):
                         node=model['nodes'][channel['target']['node']]
                         self.assertIn(node['name'],joints(model))
 
-    def test_male_animations_keep_chop_finger_pose(self):
-        """All 12 animations reuse both hands' finger-only pose from Chop."""
-        male_pose=json.loads((ROOT/'animation/male_chop_finger_pose.json').read_text())
-        names=set(male_pose['finger_bones'])
+    def test_single_animation_authoring_workbench(self):
+        animation=ROOT/'animation'
+        self.assertEqual([p.name for p in animation.glob('*.blend')],
+                         ['humanoid_animation_workbench.blend'])
+        self.assertEqual(list(animation.glob('*.blend1')),[])
+
+    def test_all_humanoid_animations_keep_chop_finger_pose(self):
+        """All 12 clips of both body types reuse finger-only pose from Chop."""
+        shared_pose=json.loads((ROOT/'animation/chop_finger_pose.json').read_text())
+        names=set(shared_pose['finger_bones'])
         self.assertEqual(len(names),30)
         self.assertNotIn('hand_r',names)
         self.assertNotIn('hand_l',names)
-        self.assertEqual(male_pose['frame'],1)
-        self.assertEqual(male_pose['axe_reference_only']['parent_bone'],'hand_r')
-        for face in ('default','angular','soft'):
+        self.assertEqual(shared_pose['frame'],1)
+        self.assertEqual(shared_pose['axe_reference_only']['parent_bone'],'hand_r')
+        for gender in ('male','female'):
+          for face in ('default','angular','soft'):
             suffix='' if face=='default' else '_'+face
-            path=LITE/f'body_male{suffix}.glb'
+            path=LITE/f'body_{gender}{suffix}.glb'
             gltf=doc(path)
             payload=path.read_bytes()
             reference={}
@@ -186,13 +193,13 @@ class HumanoidLiteTest(unittest.TestCase):
                         for sample in (samples[len(samples)//2],samples[-1]):
                             for a,b in zip(first,sample):
                                 self.assertAlmostEqual(a,b,delta=0.0001,
-                                    msg=f'{face}:{clip["name"]}:{name}:{channel}')
+                                    msg=f'{gender}:{face}:{clip["name"]}:{name}:{channel}')
                         key=(name,channel)
                         if key not in reference:reference[key]=first
                         else:
                             for a,b in zip(reference[key],first):
                                 self.assertAlmostEqual(a,b,delta=0.0001,
-                                    msg=f'{face}:{clip["name"]}:{name}:{channel}')
+                                    msg=f'{gender}:{face}:{clip["name"]}:{name}:{channel}')
             self.assertEqual(len(reference),60)
 
     def test_every_clothing_and_hair_variant(self):

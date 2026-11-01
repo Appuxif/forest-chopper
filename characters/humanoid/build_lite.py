@@ -133,15 +133,16 @@ for name,base_xyz in joints['bones'].items():
 bpy.ops.object.mode_set(mode='OBJECT')
 print('MORPH_ALIGNED_RIG',args.gender,'bones',len(joints['bones']),flush=True)
 
-# This is deliberately Male-only: the gripping hand belongs to the Chop
-# authoring pose; Female defaults keep their independent relaxed finger pose.
-if args.kind=='body' and args.gender=='male':
+# The action library is shared between male and female meshes: both use
+# exactly the same 53 named bones and local finger poses. Bake the Chop frame-1
+# pose into all clips for both body types; do not touch wrists/arms/locomotion.
+if args.kind=='body':
  sys.path.insert(0,str(P))
- from tools.apply_male_finger_pose import load_finger_pose,apply_finger_pose_to_actions
- finger_pose=load_finger_pose(P/'animation/male_chop_finger_pose.json')
+ from tools.apply_chop_finger_pose import load_finger_pose,apply_finger_pose_to_actions
+ finger_pose=load_finger_pose(P/'animation/chop_finger_pose.json')
  channels=apply_finger_pose_to_actions(rig,finger_pose)
  assert channels==12*30*7,channels
- print('BAKED_CHOP_FINGER_POSE',len(finger_pose['finger_bones']),'bones across 12 clips',flush=True)
+ print('BAKED_SHARED_CHOP_FINGER_POSE',args.gender,len(finger_pose['finger_bones']),'bones across 12 clips',flush=True)
 
 # Protect immutable source and select only skinned meshes + one skeleton.
 bpy.ops.object.select_all(action='DESELECT')

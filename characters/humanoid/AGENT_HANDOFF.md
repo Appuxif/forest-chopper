@@ -362,5 +362,9 @@ The 50 GLBs in `lite/` now contain male/female-specific rest joints for all
 the same `0.8` gender morph weight as mesh geometry. Do not restore the old
 unisex bind positions. No separate preview GLB library remains. Run the two
 rig-specific tests in `tests/test_humanoid_lite.py` after any changes to the
-skeleton or garment exports. The latest animation authoring scene is
-`animation/male_chop_workbench_final.blend` (preserve its `FC_Male_Chop` Action).
+skeleton or garment exports. The **single** animation authoring scene is
+`animation/humanoid_animation_workbench.blend` (13 shared Actions, including
+`Chop`, and the 5-part temporary axe on `hand_r`). Do not generate another
+animation `.blend`; version the same file in Git. Male/Female reuse matching
+53-bone Actions, with their own baked mesh rest-pose skeletons. The 30 finger
+poses from Chop frame 1 are baked into all 12 standard clips in both genders.

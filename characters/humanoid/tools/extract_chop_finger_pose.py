@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Snapshot Male finger pose from frame 1 of the user-authored Chop file.
+"""Snapshot the shared humanoid finger pose from frame 1 of the user-authored Chop file.
 
 Usage:
-    blender -b characters/humanoid/animation/male_chop_workbench_final.blend \\
-      --python characters/humanoid/tools/extract_male_finger_pose.py
+    blender -b characters/humanoid/animation/humanoid_animation_workbench.blend \\
+      --python characters/humanoid/tools/extract_chop_finger_pose.py
 
 This reads the final .blend but never saves or modifies it.
 """
@@ -12,8 +12,8 @@ import json
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
-SOURCE_NAME = 'FC_Male_Chop'
-RIG_NAME = 'Male_Rig53'
+SOURCE_NAME = 'Chop'
+RIG_NAME = 'Humanoid_Rig53'
 FINGERS = ('thumb', 'index', 'middle', 'ring', 'pinky')
 BONES = [
     f'{finger}_{segment:02d}_{side}'
@@ -40,7 +40,7 @@ for name in BONES:
 grip = next(o for o in bpy.data.objects if o.name.startswith('AXE_GRIP'))
 assert grip.parent == rig and grip.parent_bone == 'hand_r'
 data = {
-    'source': 'animation/male_chop_workbench_final.blend',
+    'source': 'animation/humanoid_animation_workbench.blend',
     'action': SOURCE_NAME,
     'frame': 1,
     'finger_bones': pose,
@@ -51,6 +51,6 @@ data = {
         'scale': [round(float(x), 9) for x in grip.scale],
     },
 }
-out = HERE / 'animation/male_chop_finger_pose.json'
+out = HERE / 'animation/chop_finger_pose.json'
 out.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n')
 print('EXTRACTED_POSE', out, 'finger bones:', len(pose), 'axe grip parent:', grip.parent_bone)

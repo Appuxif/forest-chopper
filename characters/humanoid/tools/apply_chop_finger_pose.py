@@ -1,4 +1,4 @@
-"""Give all Male animation clips the same finger-only pose as frame 1 of Chop.
+"""Give all shared humanoid animation clips the same finger-only pose as frame 1 of Chop.
 
 The wrist/hand, forearm, upper arm, pelvis, and locomotion tracks are unchanged.
 The preview axe stays an external prop parented to hand_r, never embedded in GLB.
@@ -19,7 +19,7 @@ FINGER_BONES = tuple(
 
 def load_finger_pose(path):
     data = json.loads(Path(path).read_text())
-    assert data['frame'] == 1 and data['action'] == 'FC_Male_Chop'
+    assert data['frame'] == 1 and data['action'] == 'Chop'
     assert set(data['finger_bones']) == set(FINGER_BONES), 'Expected exactly 30 finger bones'
     assert data['axe_reference_only']['parent_bone'] == 'hand_r'
     for bone in data['finger_bones'].values():

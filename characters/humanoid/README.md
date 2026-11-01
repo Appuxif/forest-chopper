@@ -425,37 +425,44 @@ Rebuild with `python3 characters/humanoid/build_all_lite.py --force --jobs 4`.
 The test `test_humanoid_lite.py` verifies every gender-specific joint against
 `source/base_body.joints.json` and the garment-to-body bind compatibility.
 
-For authoring a new chop animation, use
-`animation/male_chop_workbench_final.blend`: it contains all 53 corrected Male
-joints, the 5-part axe bound to `hand_r`, and the `FC_Male_Chop` Action. Older
-`male_chop_workbench*.blend` copies were left untouched to preserve any work.
+For authoring **all humanoid animation Actions**, use the only animation
+source file: `animation/humanoid_animation_workbench.blend`.
 
-## Shared hand pose for Male animations (2026-11-01)
+## Shared, gender-neutral animation workbench (2026-11-01)
 
-All 12 shipped Male clips (`idle`, `walk`, `run`, `strafe_*`, etc.) now keep
-**only the 30 finger joints** in the position of frame 1 of the user-authored
-`FC_Male_Chop`. The right fingers wrap around the tool handle and the left
-fingers remain relaxed. The wrist (`hand_r`, `hand_l`), arms, body, locomotion,
-and Root Motion tracks are unchanged. This modification is only for Male;
-Female clips keep their independent original finger poses.
+**Single editable animation scene:** `animation/humanoid_animation_workbench.blend`.
+The rig is `Humanoid_Rig53` (53 named joints). It contains 13 Actions:
+`Chop` (the user's complete, 2120-key action) plus the 12 existing `idle`,
+`walk`, `run`, `jump`, etc. actions. Change the current Action through Blender's
+**Dope Sheet → Action Editor**. The NLA strips are muted, to prevent blending
+other clips while editing. Change Scene frame start/end to the chosen clip's
+range when previewing (Chop uses frames 1–48).
 
-The versioned pose snapshot lives in `animation/male_chop_finger_pose.json`.
-`build_lite.py` automatically bakes those values into all Male animation
-Actions, before exporting any of the three `lite/body_male*.glb` variants.
-No axe mesh is baked into any GLB; its saved grip transform is reference-only
-and the prop in the Blender workbench stays bone-parented to `hand_r`.
+**Male and Female reuse the exact same bone Actions**, with separate gender-
+specific mesh rest poses and bind matrices. Future differences, if needed,
+should be implemented only when they are artistically warranted. The model-
+creation `.blend` files at the humanoid root are distinct model-source files,
+not alternative animation workbenches.
 
-To update this default pose after changing frame 1 of Chop:
+The `AXE_GRIP` remains bone-parented to `hand_r` in the single workbench.
+It is *only* an animation reference prop and is not exported with body GLBs.
+The asset pipeline produces gender-specific body, clothing and hair GLBs,
+but does not produce more workbench `.blend` copies. Save this **same** scene
+and commit changes through Git; older animation scenes were deleted.
+
+The same 30 finger-bone poses from frame 1 of `Chop` are applied to all 12
+standard animation clips in **both** `body_male*.glb` and `body_female*.glb`,
+without editing wrist, arm, or locomotion channels. The versioned snapshot is
+`animation/chop_finger_pose.json`. Whenever the first Chop frame changes,
+refresh the snapshot and rebuild exported models:
 
 ```shell
-blender -b characters/humanoid/animation/male_chop_workbench_final.blend \\
-  --python characters/humanoid/tools/extract_male_finger_pose.py
-blender -b characters/humanoid/animation/male_chop_workbench_final.blend \\
-  --python characters/humanoid/tools/build_male_animations_preview.py
+blender -b characters/humanoid/animation/humanoid_animation_workbench.blend \
+  --python characters/humanoid/tools/extract_chop_finger_pose.py
 python3 characters/humanoid/build_all_lite.py --jobs 4 --force
 ```
 
-`animation/male_animations_with_axe_preview.blend` is an optional Blender
-inspection scene with all 12 baked animation Actions and the axe grip attached
-to the hand. The original Chop source is left untouched. In the preview,
-switch Actions in the Action Editor; NLA preview tracks start muted.
+The 12 standard clips are currently exported in each body GLB; the hand-
+authored `Chop` is preserved as an Action in the canonical `.blend` and will
+be exported into the game during character integration. This avoids mutating
+non-animation model assets before that export is ready.

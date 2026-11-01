@@ -1,6 +1,6 @@
 {
-  "source": "animation/male_chop_workbench_final.blend",
-  "action": "FC_Male_Chop",
+  "source": "animation/humanoid_animation_workbench.blend",
+  "action": "Chop",
   "frame": 1,
   "finger_bones": {
     "thumb_01_l": {

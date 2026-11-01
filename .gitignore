@@ -10,3 +10,6 @@ tools/*
 characters/lumberjack/lumberjack.blend1
 
 .codex/
+
+# Blender autosave versions (Git is the animation revision history)
+*.blend[0-9]*
