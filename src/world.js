@@ -99,7 +99,7 @@ for(let i=0;i<25;i++){
  if(ctx.terrain.waterDepthAt(x,z)>.12)continue;
  const isRock=rand(cx,cz,300+i)>.86;
  // Only swap a few existing grass meshes, with separate deterministic indices.
- const type=isRock?'rock':rand(cx,cz,800+i)>.94?'mushroom':rand(cx,cz,900+i)>.79?'flower':'grass';
+ const type=isRock?'rock':rand(cx,cz,800+i)>.94?'mushroom':rand(cx,cz,900+i)>.79?'flower':rand(cx,cz,17000+i)>.78?'dry_grass':'grass';
  if(type==='grass'&&rand(cx,cz,16000+i)*100>=(ctx.settings?.decorDensity??100))continue;
  // Spare random channels select art only; existing seeded slots never move.
  const mushroomSpecies=Math.floor(rand(cx,cz,1000+i)*4);
@@ -111,10 +111,10 @@ for(let i=0;i<25;i++){
  const palette=rand(cx,cz,1400+i)<.82?basePalette:Math.floor(rand(cx,cz,1500+i)*3);
  const obj=type==='mushroom'?ctx.mushrooms.create(mushroomSpecies):
    type==='flower'?ctx.flowers.create(flowerSpecies):
-   type==='grass'?ctx.grasses.create(grassShape,palette):new ctx.THREE.Mesh(ctx.rockGeo,ctx.rockMat);
+   type==='grass'||type==='dry_grass'?ctx.grasses.create(grassShape,type==='dry_grass'?2:palette):new ctx.THREE.Mesh(ctx.rockGeo,ctx.rockMat);
  const height=type==='rock'?.19:0;
  const baseScale=type==='rock'?.35+rand(cx,cz,i)*.5:
-   type==='grass'?.7+rand(cx,cz,i)*.9:.8+rand(cx,cz,i)*.65;
+   (type==='grass'||type==='dry_grass')?.7+rand(cx,cz,i)*.9:.8+rand(cx,cz,i)*.65;
  // Half-size mushrooms on all axes; flower roots sit at ground level.
  const scale=type==='mushroom'?baseScale*.5:
    type==='flower'?baseScale*.65:baseScale;
@@ -122,13 +122,13 @@ for(let i=0;i<25;i++){
  obj.position.set(x,groundY+height,z);obj.scale.setScalar(scale);
  obj.rotation.y=rand(cx,cz,i+500)*6.28;
  obj.userData.decorType=type;
- if(type==='mushroom'||type==='flower'){
+ if(type==='mushroom'||type==='flower'||type==='dry_grass'){
   obj.userData.collectibleId=decorResourceId(cx,cz,i);
   decor.userData.collectibles.push(obj);
  }
  enableDecorShadow(obj);
  decor.userData.shadowDecor.push(obj);
- if(type==='grass'||type==='flower')decor.userData.reactivePlants.push(obj);
+ if(type==='grass'||type==='flower'||type==='dry_grass')decor.userData.reactivePlants.push(obj);
  if(type==='rock'){
   obj.receiveShadow=true;
   // Convex faceted boulder approximated by a circular footprint and flat

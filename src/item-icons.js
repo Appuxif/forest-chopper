@@ -80,6 +80,7 @@ function collectModels(ctx){
   const add=(key,make)=>models.push([key,make]);
   MUSHROOM_SPECIES.forEach((name,i)=>add('mushroom:'+name,()=>ctx.mushrooms.create(i)));
   FLOWER_SPECIES.forEach((name,i)=>add('flower:'+name,()=>ctx.flowers.create(i)));
+  add('dry_grass',()=>ctx.grasses?.create(0,2));
   add('log',()=>logIcon(ctx));
   add('branch',()=>ctx.forestResources?.createIconModel('branch'));
   add('stone',()=>ctx.forestResources?.createIconModel('stone'));

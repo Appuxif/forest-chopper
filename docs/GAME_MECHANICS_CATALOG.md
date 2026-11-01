@@ -46,6 +46,7 @@
 | RES-01 | LIVE | Рубка | Топор обязателен, удары расходуют stamina; hp дерева, щепки, падение и выдача брёвен; в online результат подтверждает сервер | `chopping.js`, `vitals.js`, `forest_server.py` |
 | RES-02 | LIVE | Ветки/камни | По 2 ресурса на зону 10×10 м; отображаются соседние 3×3 зоны, респавн через 600 с | `resource-zones.js`, `forest-resources.js` |
 | RES-03 | LIVE | Цветы и грибы | 4 + 4 вида, часть декоративных объектов можно собрать; ID связаны с seed, cooldown 600 с | `collectible-decor.js`, `forest-resources.js` |
+| RES-06 | LIVE | Сухая трава | Часть процедурной травы собирается как dry_grass, стаки по 10, вес 0.1 кг, детерминированный респавн 600 с offline/online | `world.js`, `collectible-decor.js`, `forest_server.py` |
 | RES-04 | LIVE | Подбор лесных ресурсов | `E` или touch-кнопка; в приоритете достижимая цель под прицелом, иначе ближайшая; online подтверждает сервер. **Нюанс:** текущий общий picker не перечисляет коробки (см. раздел 6) | `pickup-interaction.js`, `forest-resources.js`, `ground-boxes.js` |
 | RES-05 | PARTIAL | Выпавшие коробки | Выбросить стак, срок жизни 3600 с, `ground-boxes.pickup(id)` поддерживает подбор; но общий обработчик `pickup-interaction.js` читает неэкспортируемый `groundBoxes.boxes`, поэтому интерактивность коробок требует регрессионной проверки/исправления | `ground-boxes.js`, `pickup-interaction.js` |
 | INV-01 | LIVE | Сумка | Базово 12 слотов, 4 quick slots; брёвна ×5, ветки/камни/цветы/грибы ×10, топор/скамейка поштучно | `inventory.js`, `inventory-ui.js` |

@@ -426,7 +426,8 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_existing_decor_species_follow_exact_world_seed_and_inventory_stacks(self):
         flowers=nearby_decor(12345,0,0,{},now=0)
-        self.assertEqual(len(flowers),41)
+        self.assertEqual(len(flowers),71)
+        self.assertEqual(sum(item['kind']=='dry_grass' for item in flowers),30)
         sample=decor_resource(12345,-1,-1,5)
         self.assertEqual(sample['kind'],'flower:pink_wildflower')
         self.assertAlmostEqual(sample['x'],-13.965131644072244)
@@ -437,6 +438,24 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
         for species in DECOR_ITEM_IDS:
             self.assertEqual(inv_count([{'id':species,'count':4}],species),4)
             self.assertTrue(inv_add([None]*3,{'id':species,'count':1}))
+
+    async def test_dry_grass_collection_is_server_authoritative_and_respawns(self):
+        async with connect(self.url) as alice:
+            welcome=await self.receive(alice,'welcome')
+            dry=next((r for r in welcome['resources'] if r['kind']=='dry_grass'),None)
+            self.assertIsNotNone(dry)
+            player=next(p for p in self.world.clients.values() if p['id']==welcome['id'])
+            player['x']=dry['x'];player['z']=dry['z']
+            await alice.send(json.dumps({'type':'collect_resource','id':dry['id']}))
+            removed=await self.receive(alice,'resource_remove')
+            self.assertEqual(removed['id'],dry['id'])
+            state=await self.receive(alice,'inventory_state')
+            self.assertEqual(sum(x['count'] for x in state['inventory']['slots'] if x and x['id']=='dry_grass'),1)
+            self.assertIn(dry['id'],self.world.resource_cooldowns)
+            await alice.send(json.dumps({'type':'collect_resource','id':dry['id']}))
+            with self.assertRaises(asyncio.TimeoutError):
+                await asyncio.wait_for(alice.recv(),.06)
+            self.assertEqual(inv_count(player['inventory'],'dry_grass'),1)
 
     async def test_mushrooms_and_flowers_share_server_respawn_and_cross_player_pickup(self):
         async with connect(self.url) as alice:

@@ -22,7 +22,7 @@ DEFAULT_WOOD_CAPACITY = 3
 BOX_TTL_SECONDS=3600
 MUSHROOM_SPECIES=('fly_agaric','boletus','death_cap','milkcap')
 FLOWER_SPECIES=('daisy','buttercup','pink_wildflower','blue_wildflower')
-DECOR_ITEM_IDS=tuple('mushroom:'+name for name in MUSHROOM_SPECIES)+tuple('flower:'+name for name in FLOWER_SPECIES)
+DECOR_ITEM_IDS=tuple('mushroom:'+name for name in MUSHROOM_SPECIES)+tuple('flower:'+name for name in FLOWER_SPECIES)+('dry_grass',)
 ITEM_LIMITS={"log":5,"branch":10,"stone":10,"bench":1,"axe":1,
              **{name:10 for name in DECOR_ITEM_IDS}}
 MAX_CARRY_WEIGHT=100
@@ -371,6 +371,8 @@ def decor_resource(seed,cx,cz,i):
         kind='mushroom:'+MUSHROOM_SPECIES[int(decor_rand(seed,cx,cz,1000+i)*4)]
     elif decor_rand(seed,cx,cz,900+i)>.79:
         kind='flower:'+FLOWER_SPECIES[int(decor_rand(seed,cx,cz,1100+i)*4)]
+    elif decor_rand(seed,cx,cz,17000+i)>.78:
+        kind='dry_grass'
     else:return None
     x=cx*DECOR_CHUNK_SIZE+decor_rand(seed,cx,cz,100+i*2)*DECOR_CHUNK_SIZE
     z=cz*DECOR_CHUNK_SIZE+decor_rand(seed,cx,cz,101+i*2)*DECOR_CHUNK_SIZE

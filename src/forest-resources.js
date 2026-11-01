@@ -108,7 +108,7 @@ export function createForestResources(ctx){
   spawner.collect(near.id);nodes.delete(near.id);refresh();
   ctx.inventory.render();ctx.offlineSave?.markDirty?.();
   const title=DECOR_ITEM_NAMES[near.kind]??(near.kind==='branch'?'Ветка':'Камень');
-  ctx.notify?.((near.kind.startsWith('mushroom:')?'🍄 ':near.kind.startsWith('flower:')?'🌸 ':'')+title+' собран','success','resource-collected');
+  ctx.notify?.((near.kind.startsWith('mushroom:')?'🍄 ':near.kind.startsWith('flower:')?'🌸 ':near.kind==='dry_grass'?'🌾 ':'')+title+' собран','success','resource-collected');
   return true;
  }
  function restoreCooldowns(data){

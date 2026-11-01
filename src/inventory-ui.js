@@ -55,9 +55,9 @@ export function createInventory(ctx,doc=document){
  const itemLabel=item=>!item?'':({
    'mushroom:death_cap':'🍄','mushroom:fly_agaric':'🍄','mushroom:boletus':'🍄','mushroom:milkcap':'🍄',
    'flower:daisy':'🌼','flower:buttercup':'🌻','flower:pink_wildflower':'🌸','flower:blue_wildflower':'🪻',
-   axe:'🪓',bench:'🪑',log:'🪵',branch:'🌿',stone:'🪨',
+   axe:'🪓',bench:'🪑',log:'🪵',branch:'🌿',stone:'🪨',dry_grass:'🌾',
  }[item.id]??'?');
- const itemTitle=item=>!item?'Пустой слот':(item.id==='axe'?AXE_STATS[item.tier].name:item.id==='bench'?'Скамейка':({log:'Бревно',branch:'Ветки',stone:'Камни'}[item.id]??DECOR_ITEM_NAMES[item.id]??item.id)+' ×'+item.count)+' · '+itemWeight(item).toLocaleString('ru-RU',{maximumFractionDigits:2})+' кг';
+ const itemTitle=item=>!item?'Пустой слот':(item.id==='axe'?AXE_STATS[item.tier].name:item.id==='bench'?'Скамейка':({log:'Бревно',branch:'Ветки',stone:'Камни',dry_grass:'Сухая трава'}[item.id]??DECOR_ITEM_NAMES[item.id]??item.id)+' ×'+item.count)+' · '+itemWeight(item).toLocaleString('ru-RU',{maximumFractionDigits:2})+' кг';
  function slot(i,hot=false){
    const item=hot?state.quickItem(i):state.slots[i],b=doc.createElement('button');b.type='button';b.className='fc-slot';
    b.dataset.slot=String(i);b.dataset.kind=hot?'quick':'bag';b.title=hot&&item?itemTitle(item)+' · Всего: '+state.count(item.id):itemTitle(item);

@@ -7,6 +7,7 @@ export const FLOWER_IDS=['daisy','buttercup','pink_wildflower','blue_wildflower'
 export const DECOR_ITEM_IDS=[
   ...MUSHROOM_IDS.map(id=>'mushroom:'+id),
   ...FLOWER_IDS.map(id=>'flower:'+id),
+  'dry_grass',
 ];
 export const DECOR_ITEM_NAMES={
   'mushroom:fly_agaric':'Мухомор',
@@ -17,6 +18,7 @@ export const DECOR_ITEM_NAMES={
   'flower:buttercup':'Лютик',
   'flower:pink_wildflower':'Розовый полевой цветок',
   'flower:blue_wildflower':'Синий полевой цветок',
+  dry_grass:'Сухая трава',
 };
 export const decorResourceId=(cx,cz,i)=>'d:'+cx+','+cz+':'+i;
 export function decorRand(seed,cx,cz,channel){
@@ -32,7 +34,9 @@ export function decorResource(seed,cx,cz,i){
     kind='mushroom:'+MUSHROOM_IDS[Math.floor(decorRand(seed,cx,cz,1000+i)*4)];
   else if(decorRand(seed,cx,cz,900+i)>.79)
     kind='flower:'+FLOWER_IDS[Math.floor(decorRand(seed,cx,cz,1100+i)*4)];
-  else return null; // Ordinary grass.
+  else if(decorRand(seed,cx,cz,17000+i)>.78)
+    kind='dry_grass';
+  else return null; // Ordinary decorative grass.
   return {
     id:decorResourceId(cx,cz,i),
     kind,
