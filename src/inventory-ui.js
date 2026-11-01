@@ -1,6 +1,7 @@
 import {renderItemIcons,itemIconKey} from './item-icons.js?v=20261031-icon-zoom1';
 import {DECOR_ITEM_NAMES} from './collectible-decor.js';
 import {isFood} from './vitals.js';
+import {RECIPE_TABS,RECIPE_PAGES,recipeAvailable} from './recipe-book.js';
 import {createInventoryModel,AXE_STATS,QUICK_SLOTS,MAX_CARRY_WEIGHT,itemWeight} from './inventory.js';
 export function createInventory(ctx,doc=document){
  const state=createInventoryModel();
@@ -27,6 +28,15 @@ export function createInventory(ctx,doc=document){
  '.fc-slot .fc-item-tag{position:absolute;bottom:4px;left:3px;max-width:66%;font:9px system-ui;color:#e2e8e1;text-shadow:0 1px 2px #000;overflow:hidden;white-space:nowrap}',
  '.fc-slot .fc-item-icon{display:block;width:72%;height:72%;object-fit:contain;pointer-events:none;filter:drop-shadow(0 2px 2px #0007)}',
  '.fc-bag .fc-weight{margin:10px 0 4px;font:13px system-ui;color:#dcebd6}.fc-bag .fc-weight-bar{height:9px;background:#34453b;border-radius:7px;overflow:hidden}.fc-bag .fc-weight-fill{height:100%;background:#80c78d;transition:width .15s}.fc-bag .fc-weight-fill[data-over=true]{background:#ef916c}',
+ '.fc-bag .fc-recipe-toggle{width:100%;margin:8px 0;background:#63503c;color:#fff3d1;border:1px solid #caa979;font-size:14px;font-weight:bold}',
+ '.fc-book{background:#e9d9b5;color:#42321d;border:4px double #8e6944;border-radius:12px;padding:10px;margin:10px 0;box-shadow:inset 0 0 20px #a0784838}',
+ '.fc-book[hidden]{display:none}.fc-book button{color:#3a3020;background:#f5e8cd;border:1px solid #aa8b5d}',
+ '.fc-book .fc-book-tabs{display:flex;gap:4px;flex-wrap:wrap}.fc-book .fc-book-tabs button[aria-selected=true]{background:#c99b5a;font-weight:bold}',
+ '.fc-book .fc-book-leaves{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}',
+ '.fc-book .fc-book-leaf{padding:10px;background:#f6e9c9;min-height:145px;border:1px solid #d1b887;box-shadow:inset 0 0 15px #bf99542c}',
+ '.fc-book .fc-book-leaf p{color:#59492d;font-size:12px}.fc-book h3{font-size:17px;margin:4px 0}.fc-book .fc-book-icon{font-size:36px}',
+ '.fc-book .fc-book-nav{display:flex;justify-content:space-between;gap:8px}.fc-book .fc-book-cost{padding:4px 0;font-size:12px}',
+ '.fc-book .fc-book-cost[data-missing=true]{color:#ad3425;font-weight:bold}.fc-book .fc-book-cost[data-missing=false]{color:#38633f}',
  '.fc-bag .fc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.fc-bag p,.fc-bag small{font-size:12px;line-height:1.5;color:#c7d7cd}',
  '@media(max-width:650px){.fc-hotbar{bottom:166px;padding:3px;gap:3px}.fc-hotbar .fc-slot{width:43px;height:43px;font-size:19px}.fc-bag-toggle{left:calc(50% + 101px);bottom:172px;padding:6px;font-size:11px}.fc-bag .fc-grid .fc-slot{height:52px}.fc-bag{padding:10px;width:calc(100vw - 14px);max-height:83dvh}.fc-bag h2{font-size:16px}.fc-bag p{font-size:11px!important}.fc-quick-assign .fc-slot{width:44px;height:44px}}'
  ].join('');
@@ -34,8 +44,9 @@ export function createInventory(ctx,doc=document){
  const bar=doc.createElement('div');bar.className='fc-hotbar';bar.setAttribute('aria-label','Быстрые слоты предметов');
  const toggle=doc.createElement('button');toggle.className='fc-bag-toggle';toggle.textContent='🎒 Сумка (I)';toggle.type='button';
  const bag=doc.createElement('section');bag.className='fc-bag';bag.hidden=true;bag.setAttribute('aria-label','Инвентарь');
- bag.innerHTML='<header><h2>🎒 Сумка</h2><button type="button" data-action="close" aria-label="Закрыть инвентарь">✕</button></header><p class="fc-bag-hint"></p><div class="fc-weight" role="status"></div><div class="fc-weight-bar" role="progressbar" aria-label="Вес рюкзака" aria-valuemin="0" aria-valuemax="100"><div class="fc-weight-fill"></div></div><div style="font-size:11px;opacity:.8;margin-top:8px">Быстрый доступ — перетащи предмет сюда:</div><div class="fc-quick-assign"></div><div class="fc-grid"></div><div class="fc-actions"><button type="button" data-action="craft">🔨 Скамейка: 3 🪵</button><button type="button" data-action="craft-axe">🪓 Топор: 3 🌿 + 2 🪨</button><button type="button" data-action="split">✂ Разделить стак</button><button type="button" data-action="drop">📦 Выбросить выбранный стак</button></div><button type="button" class="fc-trash-slot fc-slot" data-action="trash" title="Удалить предмет без коробки">🗑️</button><p>Корзина: выбери предмет в сумке и нажми 🗑️, чтобы уничтожить его без коробки.</p><p>Перетаскивай предметы между слотами; Shift+перетаскивание — половина стака. На телефоне — кнопка «Разделить». Перетащи предмет на быстрый слот для ярлыка, за пределы сумки — выбросить. Двойной клик по еде — съесть. Быстрые слоты — 1–4. Не более 5 брёвен в стопке. Чтобы рубить — выбери топор.</p><small>Предусмотрены уровни сумки и улучшения топора.</small>';
+ bag.innerHTML='<header><h2>🎒 Сумка</h2><button type="button" data-action="close" aria-label="Закрыть инвентарь">✕</button></header><p class="fc-bag-hint"></p><div class="fc-weight" role="status"></div><div class="fc-weight-bar" role="progressbar" aria-label="Вес рюкзака" aria-valuemin="0" aria-valuemax="100"><div class="fc-weight-fill"></div></div><div style="font-size:11px;opacity:.8;margin-top:8px">Быстрый доступ — перетащи предмет сюда:</div><div class="fc-quick-assign"></div><div class="fc-grid"></div><button class="fc-recipe-toggle" type="button" data-action="book">📖 Книга рецептов</button><section class="fc-book" hidden aria-label="Книга крафта"><div class="fc-book-tabs" role="tablist"></div><div class="fc-book-leaves"></div><div class="fc-book-nav"><button type="button" data-action="previous">← Назад</button><span class="fc-book-position"></span><button type="button" data-action="next">Вперёд →</button></div></section><div class="fc-actions"><button type="button" data-action="split">✂ Разделить стак</button><button type="button" data-action="drop">📦 Выбросить выбранный стак</button></div><button type="button" class="fc-trash-slot fc-slot" data-action="trash" title="Удалить предмет без коробки">🗑️</button><p>Корзина: выбери предмет в сумке и нажми 🗑️, чтобы уничтожить его без коробки.</p><p>Перетаскивай предметы между слотами; Shift+перетаскивание — половина стака. На телефоне — кнопка «Разделить». Перетащи предмет на быстрый слот для ярлыка, за пределы сумки — выбросить. Двойной клик по еде — съесть. Быстрые слоты — 1–4. Не более 5 брёвен в стопке. Чтобы рубить — выбери топор.</p><small>Предусмотрены уровни сумки и улучшения топора.</small>';
  doc.body.append(bar,toggle,bag);
+ let bookTab='tools',bookPage=0;
  let moving=-1,lastSelected=null,lastFoodClick=-1,lastFoodTime=-Infinity,suppressClickUntil=0;
  const speciesTag={
    'mushroom:fly_agaric':'Мух.','mushroom:boletus':'Боров.','mushroom:death_cap':'Пог.','mushroom:milkcap':'Груздь',
@@ -99,10 +110,7 @@ export function createInventory(ctx,doc=document){
    const fill=progress.querySelector('.fc-weight-fill');
    fill.style.width=(Math.min(mass/MAX_CARRY_WEIGHT,1)*100)+'%';
    fill.dataset.over=String(mass>MAX_CARRY_WEIGHT);
-   bag.querySelector('[data-action="craft"]').disabled=state.wood()<3||!state.hasSpace()||
-     mass-3*25+15>MAX_CARRY_WEIGHT;
-   bag.querySelector('[data-action="craft-axe"]').disabled=state.count('branch')<3||state.count('stone')<2||
-     mass-3*.5-2*2+3>MAX_CARRY_WEIGHT;
+   renderBook();
    bag.querySelector('[data-action="drop"]').disabled=!state.slots[moving<0?state.selectedSlot():moving];
    bag.querySelector('[data-action="trash"]').disabled=!state.slots[moving<0?state.selectedSlot():moving];
    const splitting=state.slots[usedSlot()];
@@ -110,6 +118,57 @@ export function createInventory(ctx,doc=document){
    ctx.axe.visible=!ctx.thirdPerson&&state.equipped();
    ctx.ownAvatar?.visual?.traverse?.(node=>{if(/^Axe (blade|handle)$/.test(node.name))node.visible=state.equipped();});
    if(ctx.$('wood'))ctx.$('wood').textContent=state.wood();
+ }
+ const book=bag.querySelector('.fc-book');
+ const pageItems=()=>RECIPE_PAGES.filter(entry=>entry.tab===bookTab);
+ const names={log:'🪵 Бревно',branch:'🌿 Ветка',stone:'🪨 Камень',dry_grass:'🌾 Сухая трава'};
+ function renderBook(){
+   if(book.hidden)return;
+   const tabs=book.querySelector('.fc-book-tabs');
+   tabs.replaceChildren(...RECIPE_TABS.map(t=>{
+     const button=doc.createElement('button');button.type='button';button.dataset.tab=t.id;
+     button.textContent=t.icon+' '+t.name;button.setAttribute('role','tab');
+     button.setAttribute('aria-selected',String(bookTab===t.id));
+     return button;
+   }));
+   const entries=pageItems();
+   bookPage=Math.min(bookPage,Math.max(0,entries.length-1));
+   const entry=entries[bookPage],leaves=book.querySelector('.fc-book-leaves');
+   const left=doc.createElement('article');left.className='fc-book-leaf';
+   const icon=doc.createElement('div');icon.className='fc-book-icon';icon.textContent=entry?.icon??'📖';
+   const heading=doc.createElement('h3');heading.textContent=entry?.name??'Пустая страница';
+   const description=doc.createElement('p');description.textContent=entry?.description??'';
+   left.append(icon,heading,description);
+   const right=doc.createElement('article');right.className='fc-book-leaf';
+   if(entry?.ingredients){
+     const h=doc.createElement('h3');h.textContent='Материалы';right.append(h);
+     for(const [id,n] of Object.entries(entry.ingredients)){
+       const row=doc.createElement('div');row.className='fc-book-cost';
+       row.dataset.missing=String(state.count(id)<n);
+       row.textContent=(names[id]??id)+': '+state.count(id)+' / '+n;right.append(row);
+     }
+   }
+   for(const effect of entry?.effects??[]){
+     const row=doc.createElement('p');row.textContent='✦ '+effect;right.append(row);
+   }
+   if(entry?.craftable){
+     const button=doc.createElement('button');button.type='button';button.dataset.action='book-craft';button.dataset.recipe=entry.id;
+     button.textContent='Создать '+entry.icon;
+     button.disabled=!recipeAvailable(entry,state) || !canCraftAfterWeight(entry);
+     right.append(button);
+   }else{
+     const note=doc.createElement('p');
+     note.textContent=entry?.planned?'🔒 Рецепт появится в следующем обновлении':'📜 Схема: укладывай брёвна вручную';
+     right.append(note);
+   }
+   leaves.replaceChildren(left,right);
+   book.querySelector('.fc-book-position').textContent=(bookPage+1)+' / '+entries.length;
+   book.querySelector('[data-action="previous"]').disabled=bookPage===0;
+   book.querySelector('[data-action="next"]').disabled=bookPage>=entries.length-1;
+ }
+ function canCraftAfterWeight(entry){
+   const spent=Object.entries(entry.ingredients??{}).reduce((n,[id,count])=>n+count*({log:25,stone:2,branch:.5}[id]??0),0);
+   return state.weight()-spent+(entry.id==='axe'?3:entry.id==='bench'?15:0)<=MAX_CARRY_WEIGHT;
  }
  function changed({equip=true}={}){
    render();if(!ctx.isOnline?.())ctx.offlineSave?.markDirty?.();
@@ -248,8 +307,12 @@ export function createInventory(ctx,doc=document){
  bag.addEventListener('click',event=>{
    const action=event.target?.dataset?.action;
    if(action==='close')bag.hidden=true;
-   if(action==='craft')craftBench();
-   if(action==='craft-axe')craftAxe();
+   if(action==='book'){book.hidden=!book.hidden;renderBook();}
+   if(action==='previous'){bookPage=Math.max(0,bookPage-1);renderBook();}
+   if(action==='next'){bookPage=Math.min(pageItems().length-1,bookPage+1);renderBook();}
+   if(action==='book-craft'){if(event.target.dataset.recipe==='bench')craftBench();else if(event.target.dataset.recipe==='axe')craftAxe();}
+   const tab=event.target?.dataset?.tab;
+   if(tab&&RECIPE_TABS.some(t=>t.id===tab)){bookTab=tab;bookPage=0;renderBook();}
    if(action==='split')splitStack();
    if(action==='drop')dropStack();
    if(action==='trash')trashStack();
