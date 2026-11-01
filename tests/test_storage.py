@@ -109,3 +109,30 @@ class StorageNetworkTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(World(world.path).storages[storage_id]['name'],'Лесной запас')
             finally:
                 server.close();await server.wait_closed()
+
+class BotRackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_bot_delivery_and_collection_are_bounded_and_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            world=World(Path(tmp)/'world.json')
+            rack=new_storage('rack',1,0,0)
+            world.storages[1]=rack
+            bot=await world.bots.create('Лесоруб')
+            bot['wood']=7
+            task=world.bots.start(bot,'depositLogs',{'storageId':1,'amount':5})
+            self.assertEqual(task['type'],'depositLogs')
+            await world.bots.tick(.05)
+            self.assertEqual(rack['logs'],5)
+            self.assertEqual(bot['wood'],2)
+            self.assertEqual(bot['last_task']['phase'],'transferred')
+            bot['wood']=0
+            world.bots.start(bot,'withdrawLogs',{'storageId':1,'amount':4})
+            await world.bots.tick(.05)
+            self.assertEqual(rack['logs'],2)
+            self.assertEqual(bot['wood'],3, 'bot carry weight caps at three logs')
+            world.bots.start(bot,'depositLogs',{'storageId':1,'amount':48})
+            await world.bots.tick(.05)
+            self.assertEqual(rack['logs'],5)
+            self.assertEqual(World(world.path).storages[1]['logs'],5)
+            with self.assertRaisesRegex(ValueError,'storageId'):
+                world.bots.start(bot,'depositLogs',{'storageId':999,'amount':1})
+            await world.bots.remove(bot['id'])

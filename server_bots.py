@@ -103,14 +103,25 @@ class BotManager:
         players=sorted((desc(p['id'],p['x'],p['z'],name=p['name'])
             for p in people if p['id']!=bot['id'] and math.hypot(p['x']-bot['x'],p['z']-bot['z'])<=radius),
             key=lambda a:a['distance'])
-        return {'self':self.brief(bot),'trees':trees,'players':players}
+        storages=sorted((desc(item['id'],item['x'],item['z'],kind=item['kind'],
+            logs=item.get('logs'),capacity=48 if item['kind']=='rack' else None)
+            for item in self.world.storages.values()
+            if math.hypot(item['x']-bot['x'],item['z']-bot['z'])<=radius),
+            key=lambda item:item['distance'])[:limit]
+        return {'self':self.brief(bot),'trees':trees,'players':players,'storages':storages}
 
     def start(self, bot, kind, params):
         if bot['task'] and bot['task']['status']=='running':
             return {'status':'busy','task':self.task_view(bot)}
-        if kind not in ('navigate','followPlayer','chopTree','harvest','move'):
+        if kind not in ('navigate','followPlayer','chopTree','harvest','move','depositLogs','withdrawLogs'):
             raise ValueError('Unsupported task')
         if not isinstance(params,dict):raise ValueError('params must be an object')
+        if kind in ('depositLogs','withdrawLogs'):
+            storage_id=params.get('storageId')
+            if type(storage_id) is not int or storage_id not in self.world.storages or self.world.storages[storage_id]['kind']!='rack':
+                raise ValueError('Valid log rack storageId required')
+            amount=params.get('amount',1)
+            if type(amount) is not int or not 1<=amount<=48:raise ValueError('amount must be 1..48')
         if kind=='navigate':
             for k in ('x','z'):
                 if k not in params or not math.isfinite(float(params[k])):
@@ -212,6 +223,11 @@ class BotManager:
             # Approach 1.85m from trunk, as the browser debug agent does.
             scale=1.85 / (dist or 1)
             return x+dx*scale,z+dz*scale,.20
+        if kind in ('depositLogs','withdrawLogs'):
+            rack=self.world.storages.get(params['storageId'])
+            if not rack or rack['kind']!='rack':
+                self.finish(bot,'storage_not_found');return None
+            return rack['x'],rack['z'],2.1
         return None
 
     async def tick(self, dt):
@@ -253,7 +269,23 @@ class BotManager:
                                 task['phase']='blocked';bot['blocked_for']=0
                             else:self.finish(bot,'blocked')
                         elif arrived:
-                            if kind=='navigate':self.finish(bot,'arrived')
+                            if kind in ('depositLogs','withdrawLogs'):
+                                rack=self.world.storages.get(params['storageId'])
+                                if rack and rack['kind']=='rack':
+                                    requested=params['amount']
+                                    if kind=='depositLogs':
+                                        count=min(requested,bot['wood'],48-rack['logs'])
+                                        rack['logs']+=count;bot['wood']-=count
+                                    else:
+                                        count=min(requested,rack['logs'],max(0,3-bot['wood']))
+                                        rack['logs']-=count;bot['wood']+=count
+                                    if count:
+                                        await self.world.broadcast({'type':'storage_update','storage':rack})
+                                        self.world.save()
+                                    task['moved']=count
+                                    self.finish(bot,'transferred' if count else 'no_capacity')
+                                else:self.finish(bot,'storage_not_found')
+                            elif kind=='navigate':self.finish(bot,'arrived')
                             elif kind in ('chopTree','harvest'):
                                 key=task.get('treeId',params.get('treeId'))
                                 task['phase']='chopping'
