@@ -283,7 +283,7 @@ export function createInventory(ctx,doc=document){
  }
  return {state,render,select,syncWood,dropStack,trashStack,splitStack,restore,acceptServer,craftBench,craftAxe,craftStructure,
    get isOpen(){return !bag.hidden;},get isBookOpen(){return recipeBook?.isOpen??false;},
-   toggle(){toggle.click();},toggleBook(){recipeBook?.toggle();},closeBook(){recipeBook?.close();},
+   toggle(){toggle.click();},toggleBook(){recipeBook?.toggle();},closeBook(){recipeBook?.close();},tickBook(){recipeBook?.tick();},
    close(){bag.hidden=true;recipeBook?.close();},
    serialize:()=>state.serialize(),get equipped(){return state.equipped();},
    get axe(){return state.axe();},get selected(){return state.selected();},getIcon(id){return icons.get(id);}};

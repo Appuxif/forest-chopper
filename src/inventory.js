@@ -2,10 +2,10 @@ import {STRUCTURE_KINDS,STRUCTURE_RECIPES,STRUCTURE_WEIGHT,isStructureItem} from
 import {DECOR_ITEM_IDS} from './collectible-decor.js';
 // Server and offline inventory share the same item limits and recipes.
 export const LOG_STACK=5, QUICK_SLOTS=4, BASE_BAG_SLOTS=12, SLOTS_PER_UPGRADE=4;
-export const ITEM_STACK={...Object.fromEntries(STRUCTURE_KINDS.map(id=>[id,1])),log:5,branch:10,stone:10,bench:1,axe:1,'potion:health':10,'potion:stamina':10,...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,10]))};
+export const ITEM_STACK={...Object.fromEntries(STRUCTURE_KINDS.map(id=>[id,1])),log:5,branch:10,stone:10,bench:1,axe:1,'potion:health':10,'potion:stamina':10,'potion:lumberjack':10,'potion:light_feet':10,'potion:night_vision':10,'food:mushroom_stew':10,'food:herbal_mushroom_stew':10,...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,10]))};
 export const MAX_CARRY_WEIGHT=100;
 // kg per item. Counts, not stacks, determine weight; axe has no count field.
-export const ITEM_WEIGHT={...STRUCTURE_WEIGHT,log:10,branch:0.5,stone:2,bench:15,axe:3,'potion:health':0.5,'potion:stamina':0.5,
+export const ITEM_WEIGHT={...STRUCTURE_WEIGHT,log:10,branch:0.5,stone:2,bench:15,axe:3,'potion:health':0.5,'potion:stamina':0.5,'potion:lumberjack':0.5,'potion:light_feet':0.5,'potion:night_vision':0.5,'food:mushroom_stew':0.6,'food:herbal_mushroom_stew':0.7,
  ...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,0.1]))};
 export const itemWeight=item=>item?(ITEM_WEIGHT[item.id]??0)*(item.id==='axe'?1:item.count):0;
 export const RECIPES={bench:{log:3},axe:{branch:3,stone:2}};

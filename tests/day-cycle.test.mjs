@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDayCycle,dayPhaseValues,DAY_CYCLE_MS,
-  normalizeDayPhase,extrapolateDayPhase} from '../src/day-cycle.js';
+  normalizeDayPhase,extrapolateDayPhase,nightVisionLighting} from '../src/day-cycle.js';
 
 class Color {
   constructor(hex=0){
@@ -20,12 +20,12 @@ class Color {
   rgb(){return [this.r,this.g,this.b]}
 }
 
-function fixture(){
+function fixture(vitals=null){
   const scene={background:new Color(0xa4c8be),fog:{color:new Color(0xa4c8be)}};
   const hemisphere={intensity:2.1},sun={intensity:2.3,color:new Color(0xffe4a6)};
   const settings={dayCycleEnabled:false};
   const motionQuery={matches:false};
-  const ctx={THREE:{Color},scene,hemisphere,sun,settings};
+  const ctx={THREE:{Color},scene,hemisphere,sun,settings,vitals};
   return {...ctx,motionQuery,cycle:createDayCycle(ctx,{motionQuery})};
 }
 function snapshot(f){
@@ -233,4 +233,28 @@ test('closing a failed connection does not reset an active offline clock',()=>{
   assert.equal(f.cycle.online,false);
   assert.ok(Math.abs(f.cycle.offlinePhase-.3)<1e-9);
   assert.deepEqual(snapshot(f),before);
+});
+
+test('night vision brightens darkness without changing daytime lighting or the sky',()=>{
+ assert.deepEqual(nightVisionLighting(2.1,2.3,true),{ambient:2.1,sun:2.3});
+ const night=nightVisionLighting(.49,.3,true);
+ assert.ok(night.ambient>1.4);
+ assert.ok(night.sun>.3);
+ assert.deepEqual(nightVisionLighting(.49,.3,false),{ambient:.49,sun:.3});
+ const state={hasNightVision:false};
+ const f=fixture(state);
+ f.settings.dayCycleEnabled=true;
+ f.cycle.applyPhase(.5);
+ const original=snapshot(f);
+ state.hasNightVision=true;
+ f.cycle.applyPhase(.5);
+ const boosted=snapshot(f);
+ assert.ok(boosted.ambient>original.ambient,'real local ambient brightness changes');
+ assert.ok(boosted.sun>original.sun,'moonlight becomes more useful');
+ assert.deepEqual(boosted.sky,original.sky,'sky stays night-dark');
+ assert.deepEqual(boosted.fog,original.fog,'world fog keeps night colour');
+ state.hasNightVision=false;
+ f.cycle.applyPhase(.5);
+ assert.equal(f.hemisphere.intensity,original.ambient,'night vision ends without leaking brightness');
+ f.cycle.restore();
 });

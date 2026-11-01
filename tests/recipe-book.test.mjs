@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {RECIPE_TABS,RECIPE_PAGES,recipeAvailable,recipeById} from '../src/recipe-book.js';
 import {createInventoryModel} from '../src/inventory.js';
 test('recipe book has category tabs, two executable recipes and future construction plans',()=>{
- assert.deepEqual(RECIPE_TABS.map(t=>t.id),['tools','alchemy','structures','free']);
- assert.deepEqual(RECIPE_PAGES.filter(r=>r.craftable).map(r=>r.id),['axe','bench','chest','rack','potion:health','potion:stamina','campfire','torch','table','fence','workbench']);
- assert.equal(RECIPE_PAGES.filter(r=>r.tab==='structures').length,9);
+ assert.deepEqual(RECIPE_TABS.map(t=>t.id),['tools','alchemy','food','structures','free']);
+ assert.deepEqual(RECIPE_PAGES.filter(r=>r.craftable).map(r=>r.id),['axe','bench','chest','rack','potion:health','potion:stamina','potion:lumberjack','potion:light_feet','potion:night_vision','food:mushroom_stew','food:herbal_mushroom_stew','alchemy_table','campfire','torch','table','fence','workbench']);
+ assert.equal(RECIPE_PAGES.filter(r=>r.tab==='structures').length,10);
  assert.equal(RECIPE_PAGES.filter(r=>r.guide).length,5);
  assert.ok(RECIPE_PAGES.every(r=>r.name&&r.description&&r.icon));
  assert.equal(recipeById('missing'),null);
@@ -33,4 +33,19 @@ test('potions reward crafting and stamina recipe uses blue plus pink flowers',()
  assert.equal(recipeAvailable(stamina,inventory),false,'dry grass is not a reagent');
  assert.equal(inventory.addItem({id:'flower:pink_wildflower',count:2}),true);
  assert.equal(recipeAvailable(stamina,inventory),true,'two blue and two pink flowers craft a potion');
+});
+
+test('three experimental potions have required reagents and are locked to alchemy',()=>{
+ const specs=[
+ ['potion:lumberjack',{'mushroom:fly_agaric':1,'flower:pink_wildflower':2,'flower:daisy':1}],
+ ['potion:light_feet',{'flower:blue_wildflower':2,'flower:pink_wildflower':1,'flower:buttercup':1}],
+ ['potion:night_vision',{'mushroom:fly_agaric':1,'flower:blue_wildflower':1,'flower:buttercup':1}],
+ ];
+ for(const [id,reagents] of specs){
+  const recipe=recipeById(id);
+  assert.equal(recipe.tab,'alchemy');
+  assert.equal(recipe.craftable,true);
+  assert.deepEqual(recipe.ingredients,reagents);
+  assert.ok(recipe.effects.length===2);
+ }
 });

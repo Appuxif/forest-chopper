@@ -3,6 +3,7 @@
 export const RECIPE_TABS=[
  {id:'tools',name:'Инструменты',icon:'🪓'},
  {id:'alchemy',name:'Алхимия',icon:'🧪'},
+ {id:'food',name:'Еда',icon:'🍲'},
  {id:'structures',name:'Постройки',icon:'🏕️'},
  {id:'free',name:'Свободное строительство',icon:'🪵'},
 ];
@@ -13,6 +14,12 @@ export const RECIPE_PAGES=[
  {id:'rack',tab:'structures',name:'Склад брёвен',icon:'🪵',description:'Уложить до 48 брёвен в штабеля. Поставить перед персонажем.',ingredients:{log:2},craftable:true,placement:true},
  {id:'potion:health',tab:'alchemy',name:'Зелье здоровья',icon:'❤️',description:'Восстанавливает 3 жизни и 1 единицу голода — усиливает действие двух ромашек и сохраняет питательность боровика.',ingredients:{'flower:daisy':2,'mushroom:boletus':1},craftable:true,effects:['Лечение +3','Сытость +1']},
  {id:'potion:stamina',tab:'alchemy',name:'Зелье выносливости',icon:'🧪',description:'Удваивает восстановление выносливости на 30 секунд. Не восполняет её мгновенно.',ingredients:{'flower:blue_wildflower':2,'flower:pink_wildflower':2},craftable:true,effects:['Регенерация ×2 на 30 секунд','Без мгновенного восстановления']},
+ {id:'potion:lumberjack',tab:'alchemy',name:'Эликсир дровосека',icon:'🪓',description:'На 45 секунд удваивает урон по деревьям ценой одной жизни.',ingredients:{'mushroom:fly_agaric':1,'flower:pink_wildflower':2,'flower:daisy':1},craftable:true,effects:['Урон по деревьям ×2 на 45 секунд','−1 здоровье при употреблении']},
+ {id:'potion:light_feet',tab:'alchemy',name:'Зелье лёгких ног',icon:'🪽',description:'На 45 секунд уменьшает расход выносливости при беге вдвое, но вызывает голод.',ingredients:{'flower:blue_wildflower':2,'flower:pink_wildflower':1,'flower:buttercup':1},craftable:true,effects:['Расход выносливости при беге −50% на 45 секунд','−1 голод при употреблении']},
+ {id:'potion:night_vision',tab:'alchemy',name:'Сумеречное зрение',icon:'🌙',description:'Улучшает видимость ночью на 5 минут. При употреблении отнимает одну жизнь.',ingredients:{'mushroom:fly_agaric':1,'flower:blue_wildflower':1,'flower:buttercup':1},craftable:true,effects:['Ночное зрение на 5 минут','−1 здоровье при употреблении']},
+ {id:'food:mushroom_stew',tab:'food',name:'Грибное рагу',icon:'🍲',description:'Сытное рагу из двух съедобных грибов. Готовится возле костра, восстанавливает 3 единицы голода.',ingredients:{'mushroom:boletus':1,'mushroom:milkcap':1},craftable:true,effects:['Сытость +3']},
+ {id:'food:herbal_mushroom_stew',tab:'food',name:'Грибное рагу с травами',icon:'🍲',description:'Рагу из боровика и груздя с синим полевым цветком. Готовится возле костра, восстанавливает 3 голода и 1 здоровье.',ingredients:{'mushroom:boletus':1,'mushroom:milkcap':1,'flower:blue_wildflower':1},craftable:true,effects:['Сытость +3','Лечение +1']},
+ {id:'alchemy_table',tab:'structures',name:'Алхимический стол',icon:'⚗️',description:'Рабочее место с ретортой, перегонным кубом и колбами. Необходимо для приготовления всех зелий в радиусе 10 м.',ingredients:{log:3,stone:5,branch:5,'flower:daisy':3,'flower:pink_wildflower':2,'flower:blue_wildflower':3,'mushroom:fly_agaric':1},craftable:true,placement:true,effects:['Алхимия в радиусе 10 м']},
  {id:'campfire',tab:'structures',name:'Костёр',icon:'🔥',description:'Освещает лагерь. Подойди и нажми E, чтобы зажечь или погасить.',ingredients:{log:2,stone:3},craftable:true,placement:true,effects:['Не требует топлива']},
  {id:'torch',tab:'structures',name:'Стационарный факел',icon:'🕯️',description:'Постоянный факел для освещения дорожек. E включает и выключает.',ingredients:{branch:1,stone:3,dry_grass:1},craftable:true,placement:true},
  {id:'table',tab:'structures',name:'Стол',icon:'🪑',description:'Деревянная площадка с коллизией — можно запрыгнуть.',ingredients:{log:3},craftable:true,placement:true},

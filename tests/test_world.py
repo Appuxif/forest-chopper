@@ -621,7 +621,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
     async def test_vitals_are_bounded_and_server_hunger_is_time_based(self):
         self.assertEqual(HUNGER_INTERVAL_SECONDS,300)
         self.assertEqual(LOW_VITALS_THRESHOLD,1)
-        self.assertEqual(len(FOOD_EFFECTS),10)
+        self.assertEqual(len(FOOD_EFFECTS),15)
         player={'health':5,'hunger':5,'hunger_progress':0,
                 'last_hunger_at':100.0}
         self.assertFalse(advance_hunger(player,399))
@@ -828,6 +828,26 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             await self.receive(ws,'tree_hit')
             changed=await self.receive(ws,'vitals_state')
             self.assertAlmostEqual(changed['vitals']['stamina'],2.0,places=1)
+
+    async def test_lumberjack_damage_is_calculated_by_server_not_client(self):
+        async with connect(self.url) as ws:
+            await self.receive(ws,'welcome')
+            player=next(iter(self.world.clients.values()))
+            key=next(k for k in (f'{x},{z}:{i}' for x in range(-2,3)
+                        for z in range(-2,3) for i in range(8))
+                     if tree_info(k,self.world.seed) and tree_info(k,self.world.seed)[2]>4)
+            tx,tz,hp=tree_info(key,self.world.seed)
+            player.update(x=tx+1.5,z=tz,health=4,stamina=5,last_hit=0)
+            player['lumberjack_until']=time.time()+45
+            await ws.send(json.dumps({'type':'hit','tree':key,'damage':99999}))
+            hit=await self.receive(ws,'tree_hit')
+            self.assertEqual(hit['hp'],hp-2,'server doubles axe damage, ignores client damage claim')
+            await self.receive(ws,'vitals_state')
+            player['lumberjack_until']=time.time()-1
+            player['last_hit']=0
+            await ws.send(json.dumps({'type':'hit','tree':key,'damage':99999}))
+            hit=await self.receive(ws,'tree_hit')
+            self.assertEqual(hit['hp'],hp-3,'expired buff gives default damage, not double')
 
     async def test_hits_save_and_restore_world(self):
         async with connect(self.url) as ws:

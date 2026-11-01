@@ -63,12 +63,12 @@ def fallen_logs_box(x,z,count=TREE_LOG_COUNT,direction=0,tree=None,ready_at=None
 MUSHROOM_SPECIES=('fly_agaric','boletus','death_cap','milkcap')
 FLOWER_SPECIES=('daisy','buttercup','pink_wildflower','blue_wildflower')
 DECOR_ITEM_IDS=tuple('mushroom:'+name for name in MUSHROOM_SPECIES)+tuple('flower:'+name for name in FLOWER_SPECIES)+('dry_grass',)
-STRUCTURE_KINDS=("campfire","torch","table","fence","workbench","chest","rack")
-STRUCTURE_WEIGHTS={"campfire":18,"torch":4,"table":18,"fence":12,"workbench":25,"chest":15,"rack":16}
-ITEM_LIMITS={**{name:1 for name in STRUCTURE_KINDS},"log":5,"branch":10,"stone":10,"bench":1,"axe":1,"potion:health":10,"potion:stamina":10,
+STRUCTURE_KINDS=("campfire","torch","table","fence","workbench","alchemy_table","chest","rack")
+STRUCTURE_WEIGHTS={"campfire":18,"torch":4,"table":18,"fence":12,"workbench":25,"alchemy_table":35,"chest":15,"rack":16}
+ITEM_LIMITS={**{name:1 for name in STRUCTURE_KINDS},"log":5,"branch":10,"stone":10,"bench":1,"axe":1,"potion:health":10,"potion:stamina":10,"potion:lumberjack":10,"potion:light_feet":10,"potion:night_vision":10,"food:mushroom_stew":10,"food:herbal_mushroom_stew":10,
              **{name:10 for name in DECOR_ITEM_IDS}}
 MAX_CARRY_WEIGHT=100
-ITEM_WEIGHT={**STRUCTURE_WEIGHTS,"log":10,"branch":0.5,"stone":2,"bench":15,"axe":3,"potion:health":0.5,"potion:stamina":0.5,
+ITEM_WEIGHT={**STRUCTURE_WEIGHTS,"log":10,"branch":0.5,"stone":2,"bench":15,"axe":3,"potion:health":0.5,"potion:stamina":0.5,"potion:lumberjack":0.5,"potion:light_feet":0.5,"potion:night_vision":0.5,"food:mushroom_stew":0.6,"food:herbal_mushroom_stew":0.7,
              **{name:0.1 for name in DECOR_ITEM_IDS}}
 
 def item_weight(item):
@@ -145,21 +145,68 @@ FOOD_EFFECTS={
     'flower:blue_wildflower':(0,0),
     'potion:health':(3,1),
     'potion:stamina':(0,0),
+    'potion:lumberjack':(-1,0),
+    'potion:light_feet':(0,-1),
+    'potion:night_vision':(-1,0),
+    'food:mushroom_stew':(0,3),
+    'food:herbal_mushroom_stew':(1,3),
+}
+FOOD_RECIPES={
+    'food:mushroom_stew':{'mushroom:boletus':1,'mushroom:milkcap':1},
+    'food:herbal_mushroom_stew':{'mushroom:boletus':1,'mushroom:milkcap':1,'flower:blue_wildflower':1},
 }
 POTION_RECIPES={
     'potion:health':{'flower:daisy':2,'mushroom:boletus':1},
     'potion:stamina':{'flower:blue_wildflower':2,'flower:pink_wildflower':2},
+    'potion:lumberjack':{'mushroom:fly_agaric':1,'flower:pink_wildflower':2,'flower:daisy':1},
+    'potion:light_feet':{'flower:blue_wildflower':2,'flower:pink_wildflower':1,'flower:buttercup':1},
+    'potion:night_vision':{'mushroom:fly_agaric':1,'flower:blue_wildflower':1,'flower:buttercup':1},
 }
 STATUS_DURATION=30
 STATUS_REGEN_MULTIPLIER=2
+STATUS_EFFECT_DURATIONS={
+    'stamina_regen':30,'lumberjack':45,'light_feet':45,'night_vision':300,
+}
+POTION_STATUS={
+    'potion:stamina':'stamina_regen',
+    'potion:lumberjack':'lumberjack',
+    'potion:light_feet':'light_feet',
+    'potion:night_vision':'night_vision',
+}
+STATUS_PLAYER_KEYS={
+    'stamina_regen':'stamina_boost_until',
+    'lumberjack':'lumberjack_until',
+    'light_feet':'light_feet_until',
+    'night_vision':'night_vision_until',
+}
+def status_active(player,status,now=None):
+    return player.get(STATUS_PLAYER_KEYS[status],0)>(time.time() if now is None else now)
+def active_status_ids(player,now=None):
+    now=time.time() if now is None else now
+    return frozenset(status for status,key in STATUS_PLAYER_KEYS.items()
+                     if player.get(key,0)>now)
+def chop_damage_multiplier(player,now=None):
+    return 2 if status_active(player,'lumberjack',now) else 1
+def sprint_drain_multiplier(player,now=None):
+    return .5 if status_active(player,'light_feet',now) else 1
+
+
+CRAFT_STATION_RADIUS=10
+def has_crafting_station(camp,kind,x,z):
+    return any(item['kind']==kind and math.hypot(item['x']-x,item['z']-z)<=CRAFT_STATION_RADIUS
+               for item in camp.values())
+
 
 def vitals_view(player):
     view={'health':player['health'],'hunger':player['hunger'],
           'stamina':round(player.get('stamina',MAX_VITALS),3),
           'staminaLocked':player.get('stamina_sprint_locked',False),
           'hungerProgress':player['hunger_progress']}
-    if player.get('stamina_boost_until',0)>time.time():
-        view['effects']=[{'id':'stamina_regen','expires_at':player['stamina_boost_until']}]
+    now=time.time()
+    effects=[{'id':status,'expires_at':player[key]}
+             for status,key in STATUS_PLAYER_KEYS.items()
+             if player.get(key,0)>now]
+    if effects:view['effects']=effects
     return view
 
 def advance_hunger(player,now):
@@ -181,7 +228,7 @@ def advance_stamina(player,now):
     player['last_stamina_at']=now
     before=player.get('stamina',float(MAX_VITALS))
     if player.get('sprinting',False) and not player.get('stamina_sprint_locked',False):
-        value=max(0,before-STAMINA_SPRINT_DRAIN*elapsed)
+        value=max(0,before-STAMINA_SPRINT_DRAIN*sprint_drain_multiplier(player)*elapsed)
         if value<=0:
             player['stamina_sprint_locked']=True
             player['sprinting']=False
@@ -220,10 +267,11 @@ def apply_food(player,kind):
     if effect is None:return False
     player['health']=max(0,min(MAX_VITALS,player['health']+effect[0]))
     player['hunger']=max(0,min(MAX_VITALS,player['hunger']+effect[1]))
-    if kind=='potion:stamina':
-        # The potion boosts natural recovery only; it does not refill stamina
-        # immediately or bypass the exhaustion sprint lock.
-        player['stamina_boost_until']=time.time()+STATUS_DURATION
+    status=POTION_STATUS.get(kind)
+    if status:
+        # Every fresh dose refreshes its own timer, never stacks multipliers.
+        # Damage to health / hunger is immediate, including when already low.
+        player[STATUS_PLAYER_KEYS[status]]=time.time()+STATUS_EFFECT_DURATIONS[status]
     return True
 
 def new_inventory():
@@ -323,6 +371,7 @@ CAMP_RECIPES={
     'table':{'log':3},
     'fence':{'log':2,'branch':2},
     'workbench':{'log':4,'stone':2},
+    'alchemy_table':{'log':3,'stone':5,'branch':5,'flower:daisy':3,'flower:pink_wildflower':2,'flower:blue_wildflower':3,'mushroom:fly_agaric':1},
 }
 MAX_CAMP_STRUCTURES=100
 def valid_camp_structure(item):
@@ -771,7 +820,12 @@ class World:
                 if current-player['last_pos']>.35:player['sprinting']=False
                 stamina_changed=advance_stamina(player,current)
                 hunger_changed=advance_hunger(player,current)
-                if hunger_changed or (stamina_changed and
+                # Status expiry is authoritative too: notify even idle players
+                # whose health/hunger/stamina remain unchanged at full bars.
+                current_statuses=active_status_ids(player)
+                status_changed=current_statuses!=player.get('last_effect_ids',frozenset())
+                if status_changed:player['last_effect_ids']=current_statuses
+                if status_changed or hunger_changed or (stamina_changed and
                     current-player.get('last_stamina_sent',0)>=.6):
                     player['last_stamina_sent']=current
                     await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
@@ -1085,8 +1139,14 @@ class World:
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='craft_potion':
                     name=data.get('recipe')
-                    if name not in POTION_RECIPES:continue
-                    cost=POTION_RECIPES[name]
+                    if name in POTION_RECIPES:
+                        cost=POTION_RECIPES[name];station='alchemy_table'
+                    elif name in FOOD_RECIPES:
+                        cost=FOOD_RECIPES[name];station='campfire'
+                    else:continue
+                    if not has_crafting_station(self.camp_structures,station,player['x'],player['z']):
+                        await self.send(ws,{'type':'action_denied','reason':'Нужна станция крафта в пределах 10 м'})
+                        continue
                     inv=player['inventory']
                     if not all(inv_count(inv,ingredient)>=amount for ingredient,amount in cost.items()):continue
                     snapshot=[entry.copy() if entry else None for entry in inv]
@@ -1104,6 +1164,7 @@ class World:
                     player['inventory'][slot]['count']-=1
                     if player['inventory'][slot]['count']==0:player['inventory'][slot]=None
                     apply_food(player,item['id'])
+                    player['last_effect_ids']=active_status_ids(player)
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                     await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
                 elif kind=='craft_axe':
@@ -1350,7 +1411,7 @@ class World:
                     damage,speed=AXE_LEVELS[tier]
                     if now-player['last_hit']<.28/speed:continue
                     player['last_hit']=now
-                    if await self.hit_tree(player,data.get('tree',''),now,damage=damage):
+                    if await self.hit_tree(player,data.get('tree',''),now,damage=damage*chop_damage_multiplier(player)):
                         spend_hit_stamina(player)
                         player['last_stamina_sent']=now
                         await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})

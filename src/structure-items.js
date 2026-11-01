@@ -4,5 +4,5 @@ export const STRUCTURE_RECIPES=Object.freeze({...CAMP_RECIPES,...STORAGE_RECIPES
 export const STRUCTURE_KINDS=Object.freeze(Object.keys(STRUCTURE_RECIPES));
 export const isStructureItem=id=>Object.hasOwn(STRUCTURE_RECIPES,id);
 export const STRUCTURE_WEIGHT=Object.freeze({
- campfire:18,torch:4,table:18,fence:12,workbench:25,chest:15,rack:16,
+ campfire:18,torch:4,table:18,fence:12,workbench:25,alchemy_table:35,chest:15,rack:16,
 });

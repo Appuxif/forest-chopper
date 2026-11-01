@@ -1,5 +1,6 @@
 import {createVitals,MAX_VITALS,isFood,FOOD_EFFECTS} from './vitals.js';
 import {recipeById} from './recipe-book.js';
+import {canCraftAtStation} from './crafting-stations.js';
 
 export function createVitalsUI(ctx,doc=document){
  const state=createVitals();
@@ -70,9 +71,10 @@ export function createVitalsUI(ctx,doc=document){
   if(!ctx.isOnline?.())ctx.offlineSave?.markDirty?.();
   return true;
  }
- function craftPotion(id){
-  const cost=recipeById(id)?.ingredients,inventory=ctx.inventory?.state;
-  if(!cost||!id.startsWith('potion:')||!inventory||
+ function craftConsumable(id){
+  const entry=recipeById(id),cost=entry?.ingredients,inventory=ctx.inventory?.state;
+  if(!cost||!['alchemy','food'].includes(entry.tab)||!inventory||!canCraftAtStation(ctx,entry)||
+
     !Object.entries(cost).every(([kind,amount])=>inventory.count(kind)>=amount))return false;
   if(ctx.isOnline?.()){ctx.sendNet?.({type:'craft_potion',recipe:id});return true;}
   const snapshot=inventory.serialize();
@@ -90,7 +92,12 @@ export function createVitalsUI(ctx,doc=document){
   state.eat(item.id);
   ctx.inventory.render();render();ctx.offlineSave?.markDirty?.();
   const {health,hunger}=FOOD_EFFECTS[item.id];
-  const message=item.id==='potion:stamina'?'Регенерация выносливости ×2 на 30 секунд':health<0?'Отравление: −1 жизнь':item.id==='potion:health'?'Зелье здоровья: +3 жизни, +1 сытость':health>0?'Восстановлена жизнь':hunger>0?'Сытость +1':'Предмет съеден';
+  const timedMessages={
+    'potion:lumberjack':'Урон деревьям ×2 на 45 секунд · −1 жизнь',
+    'potion:light_feet':'Расход сил при беге −50% на 45 секунд · −1 голод',
+    'potion:night_vision':'Ночное зрение на 5 минут · −1 жизнь',
+  };
+  const message=timedMessages[item.id]??(item.id==='potion:stamina'?'Регенерация выносливости ×2 на 30 секунд':health<0?'Отравление: −1 жизнь':item.id==='potion:health'?'Зелье здоровья: +3 жизни, +1 сытость':health>0?'Восстановлена жизнь':hunger>0?'Сытость +'+hunger:'Предмет съеден');
   ctx.notify?.(message,health<0?'warning':'success','food-consumed');
   return true;
  }
@@ -104,7 +111,9 @@ export function createVitalsUI(ctx,doc=document){
   lastVisualStamina=state.stamina;lastVisualHunger=state.hunger;render();return true;
  }
  render();
- return {state,tick,consume,craftPotion,hit,jump,chopWarning:()=>state.chopWarning(),canSprint,restore,acceptServer,render,serialize:()=>state.snapshot(),
+ return {state,tick,consume,craftConsumable,craftPotion:craftConsumable,hit,jump,chopWarning:()=>state.chopWarning(),canSprint,restore,acceptServer,render,serialize:()=>state.snapshot(),
   get health(){return state.health},get hunger(){return state.hunger},get stamina(){return state.stamina},
-  get canChop(){return state.canChop}};
+  get canChop(){return state.canChop},
+  get hasNightVision(){return state.hasNightVision},
+  get damageMultiplier(){return state.damageMultiplier}};
 }

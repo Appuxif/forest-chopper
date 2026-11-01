@@ -7,6 +7,11 @@ export function createCampStructures(ctx,doc=document){
   let lastId=0,lastLighting=0;
   const wood=new THREE.MeshLambertMaterial({color:0x805437});
   const stone=new THREE.MeshLambertMaterial({color:0x797c75});
+  const metal=new THREE.MeshStandardMaterial({color:0xb27a43,metalness:.67,roughness:.32});
+  const darkMetal=new THREE.MeshStandardMaterial({color:0x474c4c,metalness:.55,roughness:.4});
+  const glass=new THREE.MeshStandardMaterial({color:0xb8e1ed,transparent:true,opacity:.38,roughness:.13,metalness:.1,depthWrite:false,side:THREE.DoubleSide});
+  const emerald=new THREE.MeshStandardMaterial({color:0x52b88b,transparent:true,opacity:.75,roughness:.25});
+  const violet=new THREE.MeshStandardMaterial({color:0x8059ab,transparent:true,opacity:.8,roughness:.25});
   const woodGeo=new THREE.BoxGeometry(1,1,1);
   const rockGeo=new THREE.DodecahedronGeometry(.24,0);
 
@@ -97,6 +102,37 @@ export function createCampStructures(ctx,doc=document){
       if(item.kind==='workbench'){
         beam(0,h+.13,.38,1.65,.16,.18,stone);
         beam(0,.34,0,1.6,.12,.7,wood);
+      }
+    }else if(item.kind==='alchemy_table'){
+      // A heavy wooden laboratory workbench with a stone-covered top.
+      beam(0,.94,0,2.25,.17,1.20,wood);
+      beam(0,1.055,0,2.12,.085,1.08,stone);
+      for(const x of [-.96,.96])for(const z of [-.42,.42])
+        beam(x,.45,z,.16,.85,.16,wood);
+      beam(0,.36,-.38,1.9,.12,.12,wood);
+      beam(0,.38,.38,1.9,.12,.12,wood);
+      // The still / copper distillation cube with an angled neck and spout.
+      function prop(geometry,material,x,y,z){
+        const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);
+        m.castShadow=true;g.add(m);return m;
+      }
+      prop(new THREE.CylinderGeometry(.27,.31,.36,12),metal,-.58,1.29,-.12);
+      prop(new THREE.CylinderGeometry(.13,.20,.12,12),darkMetal,-.58,1.51,-.12);
+      prop(new THREE.CylinderGeometry(.064,.065,.34,10),metal,-.58,1.69,-.12);
+      const pipe=prop(new THREE.CylinderGeometry(.045,.045,.70,9),metal,-.30,1.77,-.12);
+      pipe.rotation.z=Math.PI/2-.20;
+      prop(new THREE.CylinderGeometry(.055,.05,.30,9),metal,.06,1.62,-.12);
+      // Retort: a round glass flask and a long tilted outlet.
+      prop(new THREE.SphereGeometry(.19,12,9),glass,.42,1.38,-.28);
+      prop(new THREE.SphereGeometry(.155,12,9),emerald,.42,1.35,-.28);
+      const retort=prop(new THREE.CylinderGeometry(.045,.06,.45,10),glass,.56,1.57,-.28);
+      retort.rotation.z=-.57;
+      // Three laboratory flasks, partially filled with coloured solutions.
+      for(const [x,z,fill] of [[-.22,.32,violet],[.26,.32,emerald],[.70,.29,violet]]){
+        prop(new THREE.SphereGeometry(.14,12,9),glass,x,1.28,z);
+        prop(new THREE.SphereGeometry(.105,12,9),fill,x,1.255,z);
+        prop(new THREE.CylinderGeometry(.045,.07,.22,10),glass,x,1.47,z);
+        prop(new THREE.CylinderGeometry(.08,.08,.055,10),darkMetal,x,1.59,z);
       }
     }else if(item.kind==='fence'){
       for(const x of [-1,1])beam(x,.65,0,.15,1.3,.17,wood);

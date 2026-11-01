@@ -2,6 +2,7 @@ import {isStructureItem} from './structure-items.js';
 import {RECIPE_TABS,RECIPE_PAGES,recipeAvailable} from './recipe-book.js';
 import {MAX_CARRY_WEIGHT,ITEM_WEIGHT} from './inventory.js';
 import {itemDisplayName,itemDisplayIcon} from './item-display.js';
+import {recipeStationKind,canCraftAtStation} from './crafting-stations.js';
 
 export const RECIPES_PER_SPREAD=5;
 export const recipeSpread=(entries,pageIndex)=>
@@ -41,6 +42,7 @@ export function createRecipeBook({ctx,state,craftAxe,craftBench,onOpen},doc=docu
   '.fc-book-window .fc-book-cost{padding:3px 0;font-size:12px;display:flex;align-items:center;gap:3px}.fc-book-material-icon{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;font-size:16px;flex:none}',
   '.fc-book-window .fc-book-cost[data-missing=true]{color:#ad3425;font-weight:700}',
   '.fc-book-window .fc-book-cost[data-missing=false]{color:#38633f}',
+  '.fc-book-window .fc-book-station{font-size:12px;font-weight:700;margin:8px 0;padding:6px 8px;border-radius:7px;border:1px solid currentColor}.fc-book-window .fc-book-station[data-near=true]{color:#266d35;background:#e2f2dc}.fc-book-window .fc-book-station[data-near=false]{color:#ad3325;background:#f9e1d5}',
   '.fc-book-window .fc-book-effects{display:flex;flex-wrap:wrap;gap:4px;margin:9px 0}',
   '.fc-book-window .fc-book-effect{font-size:11px;padding:3px 6px;border:1px solid #ddc396;border-radius:5px;color:#59492d;background:#f9eccd}',
   '.fc-book-window [data-action="book-craft"]{margin-top:10px;background:#795b38;color:#fff6db;font-weight:700;min-width:120px}',
@@ -64,10 +66,12 @@ export function createRecipeBook({ctx,state,craftAxe,craftBench,onOpen},doc=docu
   const output=entry.id==='axe'?ITEM_WEIGHT.axe:entry.id==='bench'?ITEM_WEIGHT.bench:ITEM_WEIGHT[entry.id]??0;
   return state.weight()-spent+output<=MAX_CARRY_WEIGHT;
  }
- const canCraft=entry=>recipeAvailable(entry,state)&&(isStructureItem(entry.id)?state.canCraftStructure(entry.id):canCraftAfterWeight(entry));
+ const canCraft=entry=>recipeAvailable(entry,state)&&canCraftAtStation(ctx,entry)&&
+   (isStructureItem(entry.id)?state.canCraftStructure(entry.id):canCraftAfterWeight(entry));
  function recipeStatus(entry){
   if(entry.planned)return 'Скоро';
   if(entry.guide)return 'Схема';
+  if(!canCraftAtStation(ctx,entry))return recipeStationKind(entry)==='campfire'?'Нужен костёр (10 м)':'Нужен алхимический стол (10 м)';
   if(!recipeAvailable(entry,state))return 'Не хватает материалов';
   if(!canCraft(entry))return 'Нет места или превышен вес';
   return 'Можно создать';
@@ -118,6 +122,15 @@ export function createRecipeBook({ctx,state,craftAxe,craftBench,onOpen},doc=docu
    head.append(icon,heading);right.append(head);
    const description=doc.createElement('p');description.className='fc-book-description';description.textContent=entry.description;
    right.append(description);
+   const station=recipeStationKind(entry);
+   if(station){
+    const near=canCraftAtStation(ctx,entry);
+    const requirement=doc.createElement('div');requirement.className='fc-book-station';
+    requirement.dataset.near=String(near);
+    requirement.textContent=(near?'✓ ':'✕ ')+(station==='campfire'?'Костёр':'Алхимический стол')+
+      (near?' рядом (до 10 м)':' далеко — подойди на 10 м');
+    right.append(requirement);
+   }
    if(entry.ingredients){
     const h=doc.createElement('h3');h.textContent='Материалы';right.append(h);
     for(const [id,n] of Object.entries(entry.ingredients)){
@@ -185,10 +198,18 @@ export function createRecipeBook({ctx,state,craftAxe,craftBench,onOpen},doc=docu
    if(!entry||entry.id!==selectedRecipeId||!canCraft(entry))return;
    if(id==='bench')craftBench();
    else if(id==='axe')craftAxe();
-   else if(id==='potion:health'||id==='potion:stamina')ctx.vitals?.craftPotion?.(id);
+   else if(entry.tab==='alchemy'||entry.tab==='food')ctx.vitals?.craftConsumable?.(id);
    else if(isStructureItem(id))ctx.inventory?.craftStructure?.(id);
    render();
   }
  });
- return {render,open,close,toggle:toggleBook,get isOpen(){return !book.hidden;}};
+ let previousStation=null;
+ function tick(){
+  if(book.hidden)return;
+  const entry=RECIPE_PAGES.find(e=>e.id===selectedRecipeId);
+  if(!recipeStationKind(entry)){previousStation=null;return;}
+  const near=canCraftAtStation(ctx,entry);
+  if(previousStation!==near){previousStation=near;render();}
+ }
+ return {render,open,close,toggle:toggleBook,tick,get isOpen(){return !book.hidden;}};
 }

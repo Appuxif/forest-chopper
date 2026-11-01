@@ -79,7 +79,13 @@ function potionIcon(ctx,kind){
  const THREE=ctx.THREE,g=new THREE.Group();
  const bottle=new THREE.Mesh(
    new THREE.CylinderGeometry(.26,.30,.72,10),
-   new THREE.MeshStandardMaterial({color:kind==='potion:health'?0xb93749:0x36a8c4,
+   new THREE.MeshStandardMaterial({color:({
+      'potion:health':0xb93749,
+      'potion:stamina':0x36a8c4,
+      'potion:lumberjack':0xaa302d,
+      'potion:light_feet':0x86d4a8,
+      'potion:night_vision':0x6549b9,
+    }[kind]??0x36a8c4),
      roughness:.22,metalness:.05,transparent:true,opacity:.86}));
  bottle.position.y=.48;g.add(bottle);
  const shoulder=new THREE.Mesh(new THREE.CylinderGeometry(.13,.23,.19,10),
@@ -91,6 +97,29 @@ function potionIcon(ctx,kind){
  const cork=new THREE.Mesh(new THREE.CylinderGeometry(.15,.12,.17,10),
    new THREE.MeshLambertMaterial({color:0xab7d49}));
  cork.position.y=1.27;g.add(cork);
+ return g;
+}
+
+function stewIcon(ctx,withHerbs=false){
+ const {THREE}=ctx,g=new THREE.Group();
+ const iron=new THREE.MeshStandardMaterial({color:0x48494c,metalness:.46,roughness:.52});
+ const broth=new THREE.MeshLambertMaterial({color:0x9b6b38});
+ const mushroom=new THREE.MeshLambertMaterial({color:0xc3a276});
+ const bowl=new THREE.Mesh(new THREE.CylinderGeometry(.36,.26,.22,16),iron);
+ bowl.position.y=.26;g.add(bowl);
+ const contents=new THREE.Mesh(new THREE.CylinderGeometry(.33,.33,.015,16),broth);
+ contents.position.y=.377;g.add(contents);
+ for(const [x,z] of [[-.13,0],[.09,.12],[.13,-.11]]){
+  const chunk=new THREE.Mesh(new THREE.SphereGeometry(.075,8,6),mushroom);
+  chunk.position.set(x,.397,z);chunk.scale.set(1,.42,.8);g.add(chunk);
+ }
+ if(withHerbs){
+  const herbs=new THREE.MeshLambertMaterial({color:0x3d9969});
+  for(const [x,z] of [[-.09,.10],[.03,-.08],[.14,.055],[-.16,-.10]]){
+   const leaf=new THREE.Mesh(new THREE.SphereGeometry(.042,7,5),herbs);
+   leaf.position.set(x,.41,z);leaf.scale.set(.65,.3,1.3);g.add(leaf);
+  }
+ }
  return g;
 }
 
@@ -111,11 +140,13 @@ function collectModels(ctx){
   add('branch',()=>ctx.forestResources?.createIconModel('branch'));
   add('stone',()=>ctx.forestResources?.createIconModel('stone'));
   add('bench',()=>benchIconModel(ctx));
-  for(const kind of ['campfire','torch','table','fence','workbench'])
+  for(const kind of ['campfire','torch','table','fence','workbench','alchemy_table'])
     add(kind,()=>ctx.campStructures?.createIconModel?.(kind));
   for(const kind of ['chest','rack'])
     add(kind,()=>ctx.storages?.createIconModel?.(kind));
-  for(const kind of ['potion:health','potion:stamina'])
+  add('food:mushroom_stew',()=>stewIcon(ctx));
+  add('food:herbal_mushroom_stew',()=>stewIcon(ctx,true));
+  for(const kind of ['potion:health','potion:stamina','potion:lumberjack','potion:light_feet','potion:night_vision'])
     add(kind,()=>potionIcon(ctx,kind));
   for(let tier=0;tier<4;tier++)add('axe:'+tier,()=>axeIcon(ctx,tier));
   return models;

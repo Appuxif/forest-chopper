@@ -1,4 +1,4 @@
-import {sanitizeEffects,applyTimedEffect,staminaRegenMultiplier} from './status-effects.js';
+import {sanitizeEffects,applyTimedEffect,staminaRegenMultiplier,hasStatusEffect,lumberjackDamageMultiplier,sprintDrainMultiplier} from './status-effects.js';
 // Pure player survival state. No death/respawn until a later game feature.
 export const MAX_VITALS=5;
 export const LOW_VITALS_THRESHOLD=1;
@@ -20,6 +20,11 @@ export const FOOD_EFFECTS=Object.freeze({
   'flower:blue_wildflower': {health:0,hunger:0},
   'potion:health':{health:3,hunger:1},
   'potion:stamina':{health:0,hunger:0},
+  'potion:lumberjack':{health:-1,hunger:0},
+  'potion:light_feet':{health:0,hunger:-1},
+  'potion:night_vision':{health:-1,hunger:0},
+  'food:mushroom_stew':{health:0,hunger:3},
+  'food:herbal_mushroom_stew':{health:1,hunger:3},
 });
 const clamp=n=>Math.max(0,Math.min(MAX_VITALS,n));
 export const isFood=id=>Object.hasOwn(FOOD_EFFECTS,id);
@@ -59,7 +64,7 @@ export function createVitals({now=()=>performance.now()/1000,epoch=()=>Date.now(
     const beforeStamina=stamina;
     effects=effects.filter(e=>e.expires_at>epoch());
     if(sprinting&&canSprint()){
-      stamina=clamp(stamina-STAMINA_SPRINT_DRAIN*delta);
+      stamina=clamp(stamina-STAMINA_SPRINT_DRAIN*sprintDrainMultiplier(effects,epoch())*delta);
       if(stamina<=0)sprintLocked=true;
     }else{
       stamina=clamp(stamina+STAMINA_REGEN*staminaRegenMultiplier(effects,epoch())*delta);
@@ -93,10 +98,19 @@ export function createVitals({now=()=>performance.now()/1000,epoch=()=>Date.now(
     const result=eatEffect(health,hunger,id);
     if(!result)return false;
     health=result.health;hunger=result.hunger;
-    if(id==='potion:stamina')applyTimedEffect(effects,'stamina_regen',epoch());
+    const status={
+      'potion:stamina':'stamina_regen',
+      'potion:lumberjack':'lumberjack',
+      'potion:light_feet':'light_feet',
+      'potion:night_vision':'night_vision',
+    }[id];
+    if(status)applyTimedEffect(effects,status,epoch());
     return true;
   }
   return {tick,eat,hit,jump,chopWarning,canSprint,reset,restore,snapshot,
     get health(){return health},get hunger(){return hunger},get stamina(){return stamina},
+    get hasNightVision(){return hasStatusEffect(effects,'night_vision',epoch())},
+    get damageMultiplier(){return lumberjackDamageMultiplier(effects,epoch())},
+    get sprintDrainMultiplier(){return sprintDrainMultiplier(effects,epoch())},
     get canChop(){return canChop({health,hunger,stamina})}};
 }

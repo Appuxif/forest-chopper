@@ -81,7 +81,7 @@ const now=performance.now();const chopCooldown=(ctx.ownAvatar?.actions?.Chop2?.g
  const u=t.userData;
  if(ctx.isOnline()){ctx.sendNet({type:"hit",tree:u.id});return;}
  if(ctx.vitals&&!ctx.vitals.hit())return;
- u.hp-=(ctx.inventory?.axe?.damage??1);ctx.treeDamage.set(u.id,u.hp);ctx.offlineSave.markDirty();spawnChips(t);
+ u.hp-=(ctx.inventory?.axe?.damage??1)*(ctx.vitals?.damageMultiplier??1);ctx.treeDamage.set(u.id,u.hp);ctx.offlineSave.markDirty();spawnChips(t);
 if(u.hp<=0){
   // Cutting never adds to the inventory. All three logs remain on the ground even
   // if the backpack has no room; each E/touch pickup is checked separately.

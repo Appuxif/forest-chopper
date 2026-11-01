@@ -48,7 +48,7 @@ test('daisy heals, other flowers are edible with no status effect',()=>{
   assert.deepEqual(eatEffect(4,3,id),{health:4,hunger:3});
  }
  assert.equal(x.eat('log'),false);assert.equal(isFood('mushroom:unknown'),false);
- assert.equal(Object.keys(FOOD_EFFECTS).length,10);
+ assert.equal(Object.keys(FOOD_EFFECTS).length,15);
 });
 test('consumption always decrements the exact selected stack and does not touch neighbours',()=>{
  const inventory=createInventoryModel();

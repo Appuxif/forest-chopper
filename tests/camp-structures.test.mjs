@@ -23,7 +23,7 @@ function fixture(online=false){
  const inventory=createInventoryModel();
  const ctx={
   THREE:{Mesh,Group:Obj,PointLight:Light,BoxGeometry:Geometry,DodecahedronGeometry:Geometry,
-    ConeGeometry:Geometry,CylinderGeometry:Geometry,MeshLambertMaterial:Mat,MeshBasicMaterial:Mat},
+    ConeGeometry:Geometry,CylinderGeometry:Geometry,SphereGeometry:Geometry,MeshLambertMaterial:Mat,MeshStandardMaterial:Mat,MeshBasicMaterial:Mat},
   scene:{add:x=>added.push(x),remove:x=>removed.push(x)},
   terrain:flatTerrain(),
   inventory:{state:inventory,render(){},get selected(){return inventory.selected();},get equipped(){return inventory.equipped();}},
@@ -202,4 +202,21 @@ test('craft first, then place selected torch; online waits for server confirmati
  online.camp.add(item(44,'torch'));
  assert.equal(online.camp.toggle(44),true);
  assert.deepEqual(online.sent[1],{type:'camp_toggle',id:44});
+});
+
+test('alchemy bench has a stone surface, glass vessels and a distillation unit',()=>{
+ const {camp,ctx,physics}=fixture();
+ assert.equal(camp.add(item(41,'alchemy_table',1,0)),true);
+ const work=camp.items.get(41);
+ assert.ok(work.group.children.length>=20,'the bench includes retort, distillation cube and flasks');
+ const geometries=work.group.children.map(node=>node.geometry?.args);
+ assert.ok(geometries.some(args=>args?.[0]===.27),'copper distillation boiler');
+ assert.ok(geometries.some(args=>args?.[0]===.19),'glass retort flask');
+ assert.equal(geometries.filter(args=>args?.[0]===.14).length,3,'three reagent flasks');
+ assert.ok(work.group.userData.collisionBoxes.length>=7);
+ assert.equal(physics.blocksPlayerAt(1,0,0),true,'stone-top workstation blocks walking');
+ const icon=camp.createIconModel('alchemy_table');
+ assert.ok(icon.children.length>=20,'inventory icon is the same procedural model');
+ assert.equal(camp.snapshot()[0].kind,'alchemy_table');
+ assert.equal(camp.items.get(41).group.userData.flame,undefined,'station is not a fire');
 });

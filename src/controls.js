@@ -16,7 +16,7 @@ const isTypingTarget=el=>el instanceof Element&&!!el.closest('input, textarea, s
    if(ctx.inventory?.selected==='log'&&ctx.buildMode){ctx.placeLog();e.preventDefault();return}
    if(ctx.inventory?.selected==='bench'&&ctx.buildMode){ctx.crafting?.placeItem?.();e.preventDefault();return}
    if(ctx.campStructures?.place&&ctx.campStructures?.items&&
-      ['campfire','torch','table','fence','workbench'].includes(ctx.inventory?.selected)){
+      ['campfire','torch','table','fence','workbench','alchemy_table'].includes(ctx.inventory?.selected)){
      ctx.campStructures.place(ctx.inventory.selected);e.preventDefault();return;
    }
    if(['chest','rack'].includes(ctx.inventory?.selected)){
