@@ -3,6 +3,8 @@
 // movement driver; the replacement is visual-only and never changes world data.
 const LABELS={legacy:'Старый',male:'Male · 53 кости',female:'Female · 53 кости'};
 const MOTIONS={Idle:'idle',Walk:'walk',Run:'run',StrafeLeft:'strafe_left',StrafeRight:'strafe_right',Jump:'jump',Fall:'fall'};
+// The animator authored Chop at normal speed; legacy Chop2 has a different duration.
+const CHOP_PLAYBACK_SPEED=1;
 const LOWER_BONES=new Set(['Root','pelvis','thigh_l','thigh_r','shin_l','shin_r','foot_l','foot_r','ball_l','ball_r']);
 function classifyTrack(name){
   const dot=name.lastIndexOf('.');
@@ -13,7 +15,7 @@ export function createHumanoidGamePreview({THREE,avatar,game,renderer}){
   const originalVisual=avatar?.visual;
   const originalShadows=avatar?.shadowMeshes?.slice()||[];
   const cache=new Map();
-  let selected='legacy',active=null,requestId=0,lastChopEnd=-1;
+  let selected='legacy',active=null,requestId=0,lastChopEnd=-1,pendingChops=0;
   let lowState='',upState='';
   const panel=document.createElement('div');
   panel.id='humanoid-game-preview';
@@ -132,7 +134,7 @@ export function createHumanoidGamePreview({THREE,avatar,game,renderer}){
       active=target;selected=gender;active.root.visible=true;
       originalVisual.visible=false;
       avatar.shadowMeshes.splice(0,avatar.shadowMeshes.length,...active.meshes);
-      lowState='';upState='';lastChopEnd=-1;
+      lowState='';upState='';lastChopEnd=-1;pendingChops=0;
       metrics.textContent=LABELS[gender]+' · '+active.stats.triangles.toLocaleString('ru')+
         ' трис, '+active.stats.skinnedMeshes+' skinned meshes\nОжидаем одинаковые мир и управление.';
     }catch(error){
@@ -163,15 +165,26 @@ export function createHumanoidGamePreview({THREE,avatar,game,renderer}){
     if(!active)return;
     const name=MOTIONS[motion]||'idle';
     switchLayer(name,'lower',rate<0?-Math.abs(rate):Math.abs(rate));
-    const inChop=gameActor.upperState==='Chop2'&&performance.now()<gameActor.chopEnd;
-    if(inChop){
-      if(gameActor.chopEnd!==lastChopEnd){
-        lastChopEnd=gameActor.chopEnd;
-        // Retrigger even when already in Chop after repeated clicks.
-        upState='';
-      }
-      switchLayer('Chop','upper',1.6);
-    }else switchLayer(name,'upper',Math.abs(rate));
+    // The legacy actor still handles hit detection and cooldown, but its
+    // Chop2 duration must never cut off the independently-authored Chop.
+    // If another hit arrives mid-swing, queue one visual replay instead of
+    // resetting the arm halfway through its current animation.
+    if(gameActor.upperState==='Chop2'&&gameActor.chopEnd>performance.now()&&
+       gameActor.chopEnd!==lastChopEnd){
+      lastChopEnd=gameActor.chopEnd;
+      pendingChops=Math.min(2,pendingChops+1);
+    }
+    const chop=active.layers.Chop?.upper;
+    const playingChop=upState==='Chop'&&chop&&
+      chop.time<chop.getClip().duration-1e-5;
+    if(!playingChop&&pendingChops>0){
+      pendingChops--;
+      // Reset a completed LoopOnce action before starting the next swing.
+      if(upState==='Chop'){chop.stop();upState='';}
+      switchLayer('Chop','upper',CHOP_PLAYBACK_SPEED);
+    }else if(!playingChop){
+      switchLayer(name,'upper',Math.abs(rate));
+    }
     active.actor.update(dt);
   }
   return {tick,renderTick,choose,get selected(){return selected},get active(){return active},panel};
