@@ -466,3 +466,28 @@ The 12 standard clips are currently exported in each body GLB; the hand-
 authored `Chop` is preserved as an Action in the canonical `.blend` and will
 be exported into the game during character integration. This avoids mutating
 non-animation model assets before that export is ready.
+
+### Match Chop rest/end frames across idle, jump and land
+
+`animation/humanoid_animation_workbench.blend` is still the **only** authoring
+`.blend`. The **complete 53-bone pose** from frame 1 of `Chop` is copied to:
+
+- first and last keys of `idle`, `idle_breathe`, `idle_fidget`, `idle_look`, `jump`
+- last key only of `land` (its first key is unchanged)
+
+All interior keys and all other Actions remain unchanged. The pose snapshot
+`animation/chop_pose_endpoints.json` contains all 530 animation channels.
+To refresh after modifying Chop in Blender, save the single workbench and run:
+
+```shell
+blender -b characters/humanoid/animation/humanoid_animation_workbench.blend \
+  --python characters/humanoid/tools/align_chop_endpoint_poses.py
+python3 characters/humanoid/build_all_lite.py --jobs 4 --force
+```
+
+The body GLB exporter applies the same boundaries to all six Male/Female
+body-and-face variants, while preserving each other channel's interior.
+Some upstream glTF clips omit static bone channels, so the builder adds
+only the necessary boundary overrides. For `land`, which ends on a fractional
+frame in the upstream action, the last integer export sample is explicitly
+pinned as well; the canonical Blender Action's frame range remains untouched.

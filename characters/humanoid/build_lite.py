@@ -143,6 +143,17 @@ if args.kind=='body':
  channels=apply_finger_pose_to_actions(rig,finger_pose)
  assert channels==12*30*7,channels
  print('BAKED_SHARED_CHOP_FINGER_POSE',args.gender,len(finger_pose['finger_bones']),'bones across 12 clips',flush=True)
+ # Keep idle/jump loop endpoints and land's exit pose consistent with the
+ # animator's first Chop key. The snapshot comes from the single workbench.
+ from tools.align_chop_endpoint_poses import apply_endpoints
+ endpoints=json.loads((P/'animation/chop_pose_endpoints.json').read_text())
+ target_actions={strip.action.name:strip.action
+                 for track in rig.animation_data.nla_tracks for strip in track.strips}
+ updated=apply_endpoints(list(target_actions.values()),endpoints,rig)
+ from tools.align_chop_endpoint_poses import pin_fractional_land_export_frame
+ pin_fractional_land_export_frame(list(target_actions.values()),endpoints)
+ assert len(updated)==6,updated
+ print('BAKED_SHARED_CHOP_ENDPOINTS',args.gender,updated,flush=True)
 
 # Protect immutable source and select only skinned meshes + one skeleton.
 bpy.ops.object.select_all(action='DESELECT')

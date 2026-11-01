@@ -202,6 +202,42 @@ class HumanoidLiteTest(unittest.TestCase):
                                     msg=f'{gender}:{face}:{clip["name"]}:{name}:{channel}')
             self.assertEqual(len(reference),60)
 
+    def test_chop_pose_alignment_at_requested_clip_endpoints(self):
+        """All 53 bones match the shared Chop pose at specified clip boundaries."""
+        snapshot=json.loads((ROOT/'animation/chop_pose_endpoints.json').read_text())
+        self.assertEqual(snapshot['action'],'Chop')
+        self.assertEqual(snapshot['frame'],1)
+        self.assertEqual(len(snapshot['channels']),530)
+        requested={'idle':('first','last'),
+                   'idle_breathe':('first','last'),
+                   'idle_fidget':('first','last'),
+                   'idle_look':('first','last'),
+                   'jump':('first','last'),
+                   'land':('last',)}
+        for gender in ('male','female'):
+            for face in ('default','angular','soft'):
+                suffix='' if face=='default' else '_'+face
+                path=LITE/f'body_{gender}{suffix}.glb'
+                model=doc(path)
+                data=path.read_bytes()
+                animations={a['name']:a for a in model['animations']}
+                idle=animations['idle']
+                channels={
+                    (model['nodes'][c['target']['node']]['name'],c['target']['path'])
+                    for c in idle['channels']
+                }
+                self.assertEqual(len(channels),159)
+                for bone,prop in channels:
+                    reference=glb_animation_samples(data,model,idle,bone,prop)[0]
+                    for clip,ends in requested.items():
+                        samples=glb_animation_samples(data,model,animations[clip],bone,prop)
+                        for endpoint in ends:
+                            actual=samples[0] if endpoint=='first' else samples[-1]
+                            self.assertEqual(len(reference),len(actual))
+                            for i,(expected,value) in enumerate(zip(reference,actual)):
+                                self.assertAlmostEqual(value,expected,delta=0.0002,
+                                    msg=f'{gender}:{face}:{clip}:{endpoint}:{bone}.{prop}[{i}]')
+
     def test_every_clothing_and_hair_variant(self):
         for gender in self.body:
             for item in self.clothing+self.hair:
