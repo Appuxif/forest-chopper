@@ -1,14 +1,21 @@
 # World streaming (Forest Chopper)
 
+> Актуальная реализация, 2026-11-01. Общий жизненный цикл —
+> [ARCHITECTURE.md](ARCHITECTURE.md); список механик —
+> [GAME_MECHANICS_CATALOG.md](GAME_MECHANICS_CATALOG.md).
+> Значения параметров могут меняться с пресетами в
+> `src/performance-presets.js`; не считать эти числа неизменным геймдизайном.
+
 Modules: src/world-task-scheduler.js, src/world-stream-worker.js,
 src/world-stream-data.js, src/terrain.js, src/distant-forest.js,
-src/micro-grass.js, src/world.js.
+src/micro-grass.js, src/world.js, src/world-startup.js.
 
 ## Architecture
 
 - Two module Web Workers prepare immutable terrain height grids, seeded
-  distant-tree records and grass records. Worker output is packed in typed arrays
-  transferred without copying. Workers never import or mutate THREE objects.
+  distant-tree records and grass records. Worker output is packed in typed
+  arrays transferred without copying; дальний лес использует точные
+  `Float64Array`-координаты для совпадения с seed-детерминированными ID. Workers never import or mutate THREE objects.
 - WorldTaskScheduler: fixed priorities collision, near, visible, background,
   prefetch; bounded worker concurrency; per-key revisions; generation
   invalidation; cancellation; apply up to 2 results / 2ms per render tick.
@@ -31,6 +38,25 @@ src/micro-grass.js, src/world.js.
   jobs prioritize chunks ahead of the player.
 - No change to world seed, placement algorithms, multiplayer IDs, tree HP,
   inventory or save formats.
+
+## Initial world readiness (main-menu transition)
+
+- Пока открыто главное меню, **нет** Three.js/WebGL и активных world-workers.
+- После `main-menu.js` → `import(main.js)` игра начинает рендерить под
+  экраном `#load`. `controls.js` не удаляет его сразу.
+- `src/world-startup.js` отслеживает ближайший рельеф (3×3), подробные
+  чанки деревьев (обычно 5×5), завершение стартовой травы и первую
+  партию (до 24) чанков дальнего леса. На Low подробный радиус меньше.
+- `createWorldStartupGate` открывает сцену **не раньше 3 секунд**,
+  после устойчивой готовности (350 мс); **не позже 5 секунд** от
+  начала рендеринга, даже если отдельный worker не успел.
+- Онлайн дополнительно ожидает `welcome` / `isOnline`; по тайм-ауту
+  показываются доступные средства переподключения.
+- Дальние чанки могут продолжить догружаться после перехода; это
+  допустимая экономия времени старта, не блокировка всей карты.
+
+Ключевые регрессионные тесты: `tests/world-startup.test.mjs`,
+`tests/distant-forest.test.mjs`, `tests/world-streaming.test.mjs`.
 
 ## Manual acceptance scenarios (remaining)
 

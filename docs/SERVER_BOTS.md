@@ -1,5 +1,12 @@
 # Headless AI bots — быстрый MVP
 
+> Отдельная подсистема Python-ботов; не смешивать с меню игрока.
+> Актуальная карта модулей и путей WebSocket —
+> [ARCHITECTURE.md](ARCHITECTURE.md). Игроки подключаются к обычному
+> WebSocket-серверу, боты — через `/bots`; запрос `/status`
+> отвечает информацией о сервере и не создаёт игрока.
+
+
 **Инструкция для LLM-агента:** [AI_PLAYER.md](AI_PLAYER.md). **Браузерный дебаг:** [AI_PLAYER_DEBUG.md](AI_PLAYER_DEBUG.md).
 
 В браузере и `index_debug.html` **ничего менять не нужно**: люди и AI через Chrome DevTools продолжают играть как раньше. Серверные боты — ещё один тип игрока: живут внутри `forest_server.py`, без вкладок/Three.js и управляются отдельным MCP/CLI по `/bots` на том же WebSocket-порту.

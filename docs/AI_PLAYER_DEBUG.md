@@ -17,10 +17,37 @@
 ## 2. Подключение
 
 1. Найди свою вкладку через `chrome_devtools_list_pages`. Если её нет, открой отдельную через `chrome_devtools_new_page` с адресом `http://localhost:63342/forest-chopper/index_debug.html` (пример локального JetBrains-сервера; фактический URL узнай у пользователя/по существующим вкладкам). Можно открыть в фоне.
-2. Проверь загрузку: `() => ({ready: !!window.__gameDebug, online: document.querySelector('#online')?.textContent})`. Если `ready=false`, исследуй ошибки загрузки.
-3. Определи режим и адрес комнаты/сервера. Удобно прочитать `#netmode`, `#peerroom`, `#neturl` у вкладки хоста **только для выяснения параметров**, не изменяя её.
-4. В своей вкладке установи имя `#netname`, режим `#netmode` и при необходимости ID комнаты `#peerroom` и нажми `#connect`.
-5. Проверь `#netstatus`, `#online` и доступность `ai.chat()`/`ai.observe()`; начни общение с приветствия в чате.
+2. У новой вкладки **сначала открывается главное меню**, поэтому `window.__gameDebug` в этот момент **не существует**. Это норма. Проверь `#mainmenu`, `#game[hidden]` и отсутствие ошибок в консоли.
+3. В **своей** вкладке выбери нужный режим через меню: для локального теста `#menu-new` → `#menu-seed` → `#menu-create` (это перезаписывает локальное сохранение **текущего origin (все вкладки одного origin могут делить localStorage)**; используй отдельный браузерный контекст); для online `#menu-online` → `#menu-connection-mode` → `#menu-server` и `#menu-player-name` → `#menu-join`. Проверку сервера запускает `#menu-check-server`, она не создаёт игрока.
+4. Дождись завершения динамического импорта и экрана загрузки (обычно 3–5 с); затем проверь `window.__gameDebug`, canvas и ошибки консоли. Сразу после нажатия «Играть» `ready=false` некоторое время допустимо.
+5. Проверь `#netstatus`, `#online` и доступность `ai.chat()`/`ai.observe()`; при необходимости общайся через имеющийся WS-клиент. Параметры хоста можно прочитать в его вкладке **только для выяснения адреса и комнаты**, не изменяя её.
+
+### Пример запуска в тестовом мире
+
+После открытия `index_debug.html`:
+
+```javascript
+async () => {
+  document.querySelector('#menu-new').click();
+  document.querySelector('#menu-seed').value = '13579';
+  document.querySelector('#menu-create').click();
+  // Не делай длительный busy wait в одном вызове MCP; проверь позже.
+  return {menuHidden: document.querySelector('#mainmenu').hidden};
+}
+```
+
+Отдельным вызовом после инициализации:
+
+```javascript
+() => ({
+  ready: !!window.__gameDebug,
+  loading: !!document.querySelector('#load'),
+  gameVisible: !document.querySelector('#game').hidden
+})
+```
+
+**Важно:** тестовый seed и команда «Новая игра» очищают локальный игровой слот.
+Не запускать этот пример в пользовательском браузерном профиле без согласия.
 
 ### Пример подключения по PeerJS
 
@@ -28,21 +55,26 @@
 
 ```javascript
 async () => {
-  document.querySelector('#netname').value = 'AI Lumberjack';
-  const mode = document.querySelector('#netmode');
+  document.querySelector('#menu-online').click();
+  document.querySelector('#menu-player-name').value = 'AI Lumberjack';
+  const mode = document.querySelector('#menu-connection-mode');
   mode.value = 'guest';
   mode.dispatchEvent(new Event('change'));
-  document.querySelector('#peerroom').value = 'ROOM_ID_FROM_HOST';
-  document.querySelector('#connect').click();
-  await new Promise(r => setTimeout(r, 2000));
-  return {
-    status: document.querySelector('#netstatus').textContent,
-    online: document.querySelector('#online').textContent
-  };
+  document.querySelector('#menu-peer-room').value = 'ROOM_ID_FROM_HOST';
+  document.querySelector('#menu-peer-proxy').value = 'ws://localhost:8765';
+  document.querySelector('#menu-join').click();
+  return {started: document.querySelector('#mainmenu').hidden};
 }
 ```
 
-Для прямого подключения выбери `mode.value = 'direct'`, задай `#neturl` (например, `ws://localhost:8765`) и нажми `#connect`. Если хост использует собственный PeerServer, гостю необходимо выставить совпадающие `#peercustom`, `#peerhost`, `#peerport`, `#peerpath`, `#peersecure`.
+Для прямого подключения выбери `#menu-connection-mode = direct`,
+задай `#menu-server` (например, `ws://localhost:8765`) и нажми
+`#menu-join`. Для собственного PeerServer должны совпадать настройки
+`#menu-peer-custom`, `#menu-peer-host`, `#menu-peer-port`,
+`#menu-peer-path`, `#menu-peer-secure` у хоста и гостя.
+Старые поля `#netmode`/`#neturl`/`#connect` появляются уже после
+входа в игровой движок и остаются полезны для переподключения в игре.
+**Соединение** и **готовность мира** проверяй отдельно.
 
 **Важно:** соединение с PeerServer (`0.peerjs.com` или своим) обеспечивает сигнализацию WebRTC, а не хранение игрового мира. Если сервер Python ещё не поддерживает чат, нужно перезапустить его после обновления кода.
 

@@ -12,7 +12,11 @@
 
 ### Куда идти за подробностями
 
-- [docs/AUTONOMOUS_OVERNIGHT_GAME_IMPROVEMENTS.md](docs/AUTONOMOUS_OVERNIGHT_GAME_IMPROVEMENTS.md) — **большой roadmap и handoff автономной миссии по улучшению обычной игры**: P0–P3, конкретные задачи, этапы, приёмка, тесты, ограничения, отчёт. **Исполняй его как задание только если пользователь/раннер поручил эту миссию**, не при любой работе в репозитории.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — **актуальная** архитектура клиента/сервера, жизненный цикл «меню → движок → мир», стриминг, персистентность и сетевые контракты.
+- [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) — цели игры, core loop и границы текущей версии; отдельный раздел с *идеями*, не готовыми функциями.
+- [docs/GAME_MECHANICS_CATALOG.md](docs/GAME_MECHANICS_CATALOG.md) — реестр реализованных/частичных/планируемых механик, параметры и их исходные файлы.
+- [docs/world-streaming.md](docs/world-streaming.md) — worker-очередь, GPU-сектора, кеши, readiness gate и профиль приёмки.
+- [docs/AUTONOMOUS_WORK_REPORT.md](docs/AUTONOMOUS_WORK_REPORT.md) — **исторический отчёт** прежней автономной миссии, не инструкция по текущим задачам.
 - [.agents/skills/forest-chopper-character-artist/SKILL.md](.agents/skills/forest-chopper-character-artist/SKILL.md) — специализированный скилл Blender character artist: персонажи, скульпт, rig/skin, анимации, GLB и проверки под текущий движок.
 - [docs/AI_PLAYER.md](docs/AI_PLAYER.md) — инструкция **игровому LLM-персонажу**, управляющему headless-ботом через MCP.
 - [docs/AI_PLAYER_DEBUG.md](docs/AI_PLAYER_DEBUG.md) — инструкция **игровому LLM-персонажу** при отладке через Chrome DevTools и `index_debug.html`.
@@ -33,10 +37,16 @@ Forest Chopper — экспериментальная 3D browser sandbox/co-op �
 | --- | --- |
 | `index.html` | Обычная игра для людей |
 | `index_debug.html` | Клиент для отладки; только здесь доступен `window.__gameDebug` |
-| `src/main.js` | Создание общего `ctx`, связывание модулей и игровой цикл |
-| `src/world.js` | Детерминированная генерация леса по seed и чанкам |
+| `src/main-menu.js`, `src/main-menu-state.js`, `src/main-menu.css` | Стартовое меню без WebGL; выбор seed, save, серверов и настроек |
+| `src/main.js` | Динамический вход в игру, создание общего `ctx`, связывание модулей |
+| `src/world-startup.js` | Экран загрузки до готовности ближайшего мира (3–5 секунд) |
+| `src/world.js` | Детерминированный ближайший лес по seed и чанкам |
+| `src/terrain.js`, `src/distant-forest.js`, `src/micro-grass.js` | Рельеф, дальний лес, GPU-трава |
+| `src/world-task-scheduler.js`, `src/world-stream-worker.js` | Планировщик, приоритеты, фоновые данные |
 | `src/physics.js`, `src/player.js`, `src/animations.js` | Движение, коллизии, персонаж и анимации |
-| `src/chopping.js`, `src/building.js` | Рубка, ресурсы, брёвна и строительство |
+| `src/chopping.js`, `src/building.js`, `src/crafting.js` | Рубка, брёвна, мебель и крафт |
+| `src/inventory.js`, `src/vitals.js`, `src/pickup-interaction.js` | Предметы, выживание, контекстный подбор |
+| `src/offline-save.js`, `src/day-cycle.js`, `src/progress.js` | Сохранение offline, часы суток, достижения |
 | `src/controls.js`, `src/minimap.js` | Клавиатура/мышь/touch и миникарта |
 | `src/multiplayer.js`, `src/peer-bridge.js` | WebSocket-мультиплеер и PeerJS |
 | `src/debug.js` | Browser debug API, фоновые задачи, `getBrief` |
@@ -53,7 +63,10 @@ Forest Chopper — экспериментальная 3D browser sandbox/co-op �
 - Для Three.js соблюдай жизненный цикл `Geometry`, `Material`, `Texture` и event listeners: освобождай только принадлежащие объекту ресурсы, **не dispose общие**, которыми ещё пользуются другие mesh.
 - Игровая производительность важна: никаких растущих без лимита массивов частиц/объектов и лишних тяжёлых операций в каждом кадре.
 - Новый UI должен работать на **desktop и touch/mobile**, не закрывать основные кнопки и учитывать reduced motion там, где есть анимационные эффекты.
+- **Точка входа — главное меню:** `main-menu.js` не должен загружать Three.js/воркеры до выбора режима; `main.js` импортируется динамически. WebGL-опции должны применяться до создания renderer. Debug API доступен лишь после входа в игру.
 - Для изменений в обычной игре учитывай **оба HTML entrypoint**; `debug.js` не должен утекать в обычный `index.html`.
+- **Контракты:** сохраняй совместимость с `forest-chopper:offline-world:v1`, серверным `forest_world.json`, авторитетными WS-пакетами, seed/ID деревьев; multiplayer не должен затирать offline-save.
+- **Документация в том же коммите:** обновляй `GAME_MECHANICS_CATALOG.md` при добавлении/изменении механики, `ARCHITECTURE.md` при изменении модулей/сетевого протокола/сохранений и `GAME_DESIGN.md` при изменении целевого игрового опыта. `README.md` должен соответствовать актуальным кнопкам и способу запуска.
 - Не трогай headless AI/MCP/Jev ради косметического улучшения клиента. При необходимости менять протокол — сначала объясни причину тестами и минимизируй область правки.
 
 ## 4. Проверки и безопасная тестовая среда
@@ -62,6 +75,7 @@ Forest Chopper — экспериментальная 3D browser sandbox/co-op �
 
 ```bash
 git status --short --branch
+node --test tests/*.test.mjs
 python3 -m unittest discover -s tests -v
 python3 -m py_compile forest_server.py server_bots.py bot_gateway.py bot_mcp.py bot_cli.py
 for f in src/*.js; do node --check "$f" || exit 1; done
@@ -72,6 +86,7 @@ git diff --check
 
 Для браузерной проверки:
 - Запускай **свой** локальный HTTP-сервер на свободном порту (например, `python3 -m http.server 18000 --bind 127.0.0.1`) и открывай отдельную тестовую вкладку через Chrome DevTools MCP.
+- Сначала открой главное меню, выбери «Продолжить», «Новая игра» или online; `window.__gameDebug` появляется **только после** инициализации мира в `index_debug.html`. Само отсутствие debug API в меню — не ошибка.
 - Проверяй состояние DOM, ошибки консоли и screenshots desktop/mobile. При необходимости используй `index_debug.html` и `window.__gameDebug` **только в своей вкладке**.
 - Не управляй пользовательскими/чужими вкладками и не закрывай их.
 - Для multiplayer-тестов запускай **отдельный сервер и временный save**, например:
@@ -92,7 +107,7 @@ python3 forest_server.py --host 127.0.0.1 --port 18765 --save /tmp/forest-choppe
 - **Не выполняй `git push`, force-push, `git reset --hard`, `git clean -fd`**, не переписывай чужую историю.
 - Коммиты: если пользователь прямо попросил коммит или автономная миссия прямо предусматривает локальные коммиты — делай **небольшие тематические коммиты после проверок**. Иначе оставь изменения незакоммиченными.
 - Используй избирательное `git add -- <пути>`; не добавляй секреты, сохранения, временные артефакты и служебные папки.
-- Обновляй только документацию реально изменённого поведения. При длительной автономной миссии веди `docs/AUTONOMOUS_WORK_REPORT.md` с исполненными задачами, SHA, тестами, результатами browser-проверок и ограничениями.
+- При изменении механики обнови соответствующий пункт каталога и краткий пользовательский README. Старый overnight-план удалён, отчёт `docs/AUTONOMOUS_WORK_REPORT.md` — только исторический архив; не превращай его в актуальный backlog без нового задания.
 
 ## 6. Критерий «готово»
 
