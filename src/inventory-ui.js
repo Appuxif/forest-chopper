@@ -1,7 +1,7 @@
 import {renderItemIcons,itemIconKey} from './item-icons.js?v=20261031-icon-zoom1';
 import {DECOR_ITEM_NAMES} from './collectible-decor.js';
 import {isFood} from './vitals.js';
-import {createInventoryModel,AXE_STATS,QUICK_SLOTS} from './inventory.js';
+import {createInventoryModel,AXE_STATS,QUICK_SLOTS,MAX_CARRY_WEIGHT,itemWeight} from './inventory.js';
 export function createInventory(ctx,doc=document){
  const state=createInventoryModel();
  const icons=new Map();
@@ -26,6 +26,7 @@ export function createInventory(ctx,doc=document){
  '.fc-bag .fc-trash-slot{margin:8px 0;width:65px;height:55px;background:#532c2c;border:1px dashed #e5a3a3;font-size:24px}',
  '.fc-slot .fc-item-tag{position:absolute;bottom:4px;left:3px;max-width:66%;font:9px system-ui;color:#e2e8e1;text-shadow:0 1px 2px #000;overflow:hidden;white-space:nowrap}',
  '.fc-slot .fc-item-icon{display:block;width:72%;height:72%;object-fit:contain;pointer-events:none;filter:drop-shadow(0 2px 2px #0007)}',
+ '.fc-bag .fc-weight{margin:10px 0 4px;font:13px system-ui;color:#dcebd6}.fc-bag .fc-weight-bar{height:9px;background:#34453b;border-radius:7px;overflow:hidden}.fc-bag .fc-weight-fill{height:100%;background:#80c78d;transition:width .15s}.fc-bag .fc-weight-fill[data-over=true]{background:#ef916c}',
  '.fc-bag .fc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.fc-bag p,.fc-bag small{font-size:12px;line-height:1.5;color:#c7d7cd}',
  '@media(max-width:650px){.fc-hotbar{bottom:166px;padding:3px;gap:3px}.fc-hotbar .fc-slot{width:43px;height:43px;font-size:19px}.fc-bag-toggle{left:calc(50% + 101px);bottom:172px;padding:6px;font-size:11px}.fc-bag .fc-grid .fc-slot{height:52px}.fc-bag{padding:10px;width:calc(100vw - 14px);max-height:83dvh}.fc-bag h2{font-size:16px}.fc-bag p{font-size:11px!important}.fc-quick-assign .fc-slot{width:44px;height:44px}}'
  ].join('');
@@ -33,7 +34,7 @@ export function createInventory(ctx,doc=document){
  const bar=doc.createElement('div');bar.className='fc-hotbar';bar.setAttribute('aria-label','Быстрые слоты предметов');
  const toggle=doc.createElement('button');toggle.className='fc-bag-toggle';toggle.textContent='🎒 Сумка (I)';toggle.type='button';
  const bag=doc.createElement('section');bag.className='fc-bag';bag.hidden=true;bag.setAttribute('aria-label','Инвентарь');
- bag.innerHTML='<header><h2>🎒 Сумка</h2><button type="button" data-action="close" aria-label="Закрыть инвентарь">✕</button></header><p class="fc-bag-hint"></p><div style="font-size:11px;opacity:.8;margin-top:8px">Быстрый доступ — перетащи предмет сюда:</div><div class="fc-quick-assign"></div><div class="fc-grid"></div><div class="fc-actions"><button type="button" data-action="craft">🔨 Скамейка: 3 🪵</button><button type="button" data-action="craft-axe">🪓 Топор: 3 🌿 + 2 🪨</button><button type="button" data-action="split">✂ Разделить стак</button><button type="button" data-action="drop">📦 Выбросить выбранный стак</button></div><button type="button" class="fc-trash-slot fc-slot" data-action="trash" title="Удалить предмет без коробки">🗑️</button><p>Корзина: выбери предмет в сумке и нажми 🗑️, чтобы уничтожить его без коробки.</p><p>Перетаскивай предметы между слотами; Shift+перетаскивание — половина стака. На телефоне — кнопка «Разделить». Перетащи предмет на быстрый слот для ярлыка, за пределы сумки — выбросить. Двойной клик по еде — съесть. Быстрые слоты — 1–4. Не более 5 брёвен в стопке. Чтобы рубить — выбери топор.</p><small>Предусмотрены уровни сумки и улучшения топора.</small>';
+ bag.innerHTML='<header><h2>🎒 Сумка</h2><button type="button" data-action="close" aria-label="Закрыть инвентарь">✕</button></header><p class="fc-bag-hint"></p><div class="fc-weight" role="status"></div><div class="fc-weight-bar" role="progressbar" aria-label="Вес рюкзака" aria-valuemin="0" aria-valuemax="100"><div class="fc-weight-fill"></div></div><div style="font-size:11px;opacity:.8;margin-top:8px">Быстрый доступ — перетащи предмет сюда:</div><div class="fc-quick-assign"></div><div class="fc-grid"></div><div class="fc-actions"><button type="button" data-action="craft">🔨 Скамейка: 3 🪵</button><button type="button" data-action="craft-axe">🪓 Топор: 3 🌿 + 2 🪨</button><button type="button" data-action="split">✂ Разделить стак</button><button type="button" data-action="drop">📦 Выбросить выбранный стак</button></div><button type="button" class="fc-trash-slot fc-slot" data-action="trash" title="Удалить предмет без коробки">🗑️</button><p>Корзина: выбери предмет в сумке и нажми 🗑️, чтобы уничтожить его без коробки.</p><p>Перетаскивай предметы между слотами; Shift+перетаскивание — половина стака. На телефоне — кнопка «Разделить». Перетащи предмет на быстрый слот для ярлыка, за пределы сумки — выбросить. Двойной клик по еде — съесть. Быстрые слоты — 1–4. Не более 5 брёвен в стопке. Чтобы рубить — выбери топор.</p><small>Предусмотрены уровни сумки и улучшения топора.</small>';
  doc.body.append(bar,toggle,bag);
  let moving=-1,lastSelected=null,lastFoodClick=-1,lastFoodTime=-Infinity,suppressClickUntil=0;
  const speciesTag={
@@ -45,7 +46,7 @@ export function createInventory(ctx,doc=document){
    'flower:daisy':'🌼','flower:buttercup':'🌻','flower:pink_wildflower':'🌸','flower:blue_wildflower':'🪻',
    axe:'🪓',bench:'🪑',log:'🪵',branch:'🌿',stone:'🪨',
  }[item.id]??'?');
- const itemTitle=item=>!item?'Пустой слот':item.id==='axe'?AXE_STATS[item.tier].name:item.id==='bench'?'Скамейка':({log:'Бревно',branch:'Ветки',stone:'Камни'}[item.id]??DECOR_ITEM_NAMES[item.id]??item.id)+' ×'+item.count;
+ const itemTitle=item=>!item?'Пустой слот':(item.id==='axe'?AXE_STATS[item.tier].name:item.id==='bench'?'Скамейка':({log:'Бревно',branch:'Ветки',stone:'Камни'}[item.id]??DECOR_ITEM_NAMES[item.id]??item.id)+' ×'+item.count)+' · '+itemWeight(item).toLocaleString('ru-RU',{maximumFractionDigits:2})+' кг';
  function slot(i,hot=false){
    const item=hot?state.quickItem(i):state.slots[i],b=doc.createElement('button');b.type='button';b.className='fc-slot';
    b.dataset.slot=String(i);b.dataset.kind=hot?'quick':'bag';b.title=hot&&item?itemTitle(item)+' · Всего: '+state.count(item.id):itemTitle(item);
@@ -90,8 +91,18 @@ export function createInventory(ctx,doc=document){
    bag.querySelector('.fc-grid').replaceChildren(...state.slots.map((_,i)=>slot(i)));
    bag.querySelector('.fc-bag-hint').textContent=state.slots.filter(Boolean).length+'/'+state.capacity()+
      ' слотов занято · '+state.wood()+' 🪵 · сумка '+state.bagTier+' ур. · '+(state.equipped()?state.axe().name:'Руки свободны');
-   bag.querySelector('[data-action="craft"]').disabled=state.wood()<3||!state.hasSpace();
-   bag.querySelector('[data-action="craft-axe"]').disabled=state.count('branch')<3||state.count('stone')<2;
+   const mass=state.weight();
+   const label=mass.toLocaleString('ru-RU',{maximumFractionDigits:2})+' / '+MAX_CARRY_WEIGHT+' кг';
+   bag.querySelector('.fc-weight').textContent='⚖ Вес: '+label+(mass>MAX_CARRY_WEIGHT?' · перегруз!':'');
+   const progress=bag.querySelector('.fc-weight-bar');
+   progress.setAttribute('aria-valuenow',String(Math.min(MAX_CARRY_WEIGHT,mass)));
+   const fill=progress.querySelector('.fc-weight-fill');
+   fill.style.width=(Math.min(mass/MAX_CARRY_WEIGHT,1)*100)+'%';
+   fill.dataset.over=String(mass>MAX_CARRY_WEIGHT);
+   bag.querySelector('[data-action="craft"]').disabled=state.wood()<3||!state.hasSpace()||
+     mass-3*25+15>MAX_CARRY_WEIGHT;
+   bag.querySelector('[data-action="craft-axe"]').disabled=state.count('branch')<3||state.count('stone')<2||
+     mass-3*.5-2*2+3>MAX_CARRY_WEIGHT;
    bag.querySelector('[data-action="drop"]').disabled=!state.slots[moving<0?state.selectedSlot():moving];
    bag.querySelector('[data-action="trash"]').disabled=!state.slots[moving<0?state.selectedSlot():moving];
    const splitting=state.slots[usedSlot()];
@@ -137,7 +148,7 @@ export function createInventory(ctx,doc=document){
  function craftAxe(){
    if(state.count('branch')<3||state.count('stone')<2)return false;
    if(ctx.isOnline?.()){ctx.sendNet?.({type:'craft_axe'});return true;}
-   if(!state.craft('axe')){ctx.notify?.('Нет места для топора','warning','axe-craft-full');return false;}
+   if(!state.craft('axe')){ctx.notify?.('Нет места или превышен лимит 100 кг для топора','warning','axe-craft-full');return false;}
    changed();ctx.notify?.('🪓 Топор скрафчен','success','axe-craft');return true;
  }
  function craftBench(){
@@ -145,7 +156,7 @@ export function createInventory(ctx,doc=document){
    if(ctx.isOnline?.()){
      ctx.sendNet?.({type:'craft_item',recipe:'bench'});return true;
    }
-   if(!state.craftBench()){ctx.notify?.('Нет места для скамейки','warning','bench-full');return false;}
+   if(!state.craftBench()){ctx.notify?.('Нет места или превышен лимит 100 кг для скамейки','warning','bench-full');return false;}
    ctx.wood=state.wood();changed();
    ctx.notify?.('🪑 Скамейка скрафчена — выбери её в быстром слоте','success','bench-craft');
    return true;

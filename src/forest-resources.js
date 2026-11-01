@@ -103,7 +103,7 @@ export function createForestResources(ctx){
     ctx.terrain.waterDepthAt(near.x,near.z)>.12)return false;
   if(ctx.isOnline?.()){ctx.sendNet?.({type:'collect_resource',id:near.id});return true;}
   if(!ctx.inventory?.state.addItem({id:near.kind,count:1})){
-   ctx.notify?.('Сумка заполнена','warning','resource-full');return false;
+   ctx.notify?.('Недостаточно места или превышен лимит 100 кг','warning','resource-full');return false;
   }
   spawner.collect(near.id);nodes.delete(near.id);refresh();
   ctx.inventory.render();ctx.offlineSave?.markDirty?.();

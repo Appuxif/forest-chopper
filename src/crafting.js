@@ -105,7 +105,7 @@ export function createCrafting(ctx,doc=document) {
   function dismantle(id){
     const item=items.get(id);if(!item||!ctx.inventory?.equipped)return false;
     if(Math.hypot(item.x-ctx.px,item.z-ctx.pz)>6)return false;
-    if(!ctx.inventory.state.hasSpace()){ctx.notify('Сумка заполнена','warning');return false;}
+    if(!ctx.inventory.state.hasSpace()){ctx.notify('Сумка заполнена или превышен лимит 100 кг','warning');return false;}
     if(ctx.isOnline()){ctx.sendNet({type:'hit_structure',kind:'bench',id});return true;}
     if(!ctx.inventory.state.addBench())return false;
     remove(id);ctx.inventory.render();ctx.offlineSave.markDirty();

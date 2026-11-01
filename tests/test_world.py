@@ -10,7 +10,7 @@ from pathlib import Path
 
 from websockets.asyncio.server import serve
 from websockets.asyncio.client import connect
-from forest_server import DAY_CYCLE_SECONDS, DAY_SYNC_SECONDS, World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, decor_resource, nearby_decor, DECOR_ITEM_IDS, inv_count, inv_add, vitals_view,advance_hunger,apply_food,FOOD_EFFECTS,LOW_VITALS_THRESHOLD,HUNGER_INTERVAL_SECONDS,advance_stamina,server_can_sprint,server_can_hit,spend_hit_stamina,STAMINA_SPRINT_DRAIN,STAMINA_REGEN,BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
+from forest_server import DAY_CYCLE_SECONDS, DAY_SYNC_SECONDS, World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, decor_resource, nearby_decor, DECOR_ITEM_IDS, inv_count, inv_add, inv_weight, inv_weight_space, inv_can_add, inv_take_logs, MAX_CARRY_WEIGHT, vitals_view,advance_hunger,apply_food,FOOD_EFFECTS,LOW_VITALS_THRESHOLD,HUNGER_INTERVAL_SECONDS,advance_stamina,server_can_sprint,server_can_hit,spend_hit_stamina,STAMINA_SPRINT_DRAIN,STAMINA_REGEN,BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
 
 
 class WorldTests(unittest.IsolatedAsyncioTestCase):
@@ -192,8 +192,8 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 await alice.send(json.dumps({'type':'place','x':2,'z':0,'orientation':0}))
                 with self.assertRaises(asyncio.TimeoutError):
                     await asyncio.wait_for(bob.recv(),.06)
-                inv_give_logs(owner['inventory'],4)
-                owner['wood']=4
+                inv_give_logs(owner['inventory'],3)
+                owner['wood']=3
                 await alice.send(json.dumps({'type':'assign_quick','quick':1,'source':1}))
                 self.assertTrue((await self.receive(bob,'equipment'))['axe_equipped'])
                 await self.receive(alice,'inventory_state')
@@ -204,7 +204,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 await alice.send(json.dumps({'type':'place_item','x':2,'z':0,'orientation':0}))
                 placed=await self.receive(bob,'log_add')
                 self.assertEqual(placed['log']['level'],0)
-                self.assertEqual(placed['wood'],3)
+                self.assertEqual(placed['wood'],2)
                 lid=placed['log']['id']
                 self.assertEqual((await self.receive(alice,'log_add'))['log']['id'],lid)
                 await self.receive(alice,'inventory_state')
@@ -222,7 +222,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 await alice.send(json.dumps({'type':'place_item','x':2,'z':0,'orientation':0}))
                 with self.assertRaises(asyncio.TimeoutError):
                     await asyncio.wait_for(bob.recv(),.055)
-                self.assertEqual(owner['wood'],3)
+                self.assertEqual(owner['wood'],2)
                 self.world.logs[lid]['level']=0
                 self.world.save()
                 self.assertEqual(World(self.path).logs[lid]['level'],0)
@@ -240,8 +240,8 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 owner['last_build']=0
                 await alice.send(json.dumps({'type':'hit_structure','kind':'log','id':lid}))
                 removed=await self.receive(bob,'log_remove')
-                self.assertEqual(removed['wood'],4)
-                self.assertEqual(inv_logs(owner['inventory']),4)
+                self.assertEqual(removed['wood'],3)
+                self.assertEqual(inv_logs(owner['inventory']),3)
                 self.assertFalse(self.world.logs)
                 self.assertFalse(World(self.path).logs)
 
@@ -279,11 +279,11 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 await alice.send(json.dumps({'type':'craft_item','recipe':'bench'}))
                 with self.assertRaises(asyncio.TimeoutError):
                     await asyncio.wait_for(bob.recv(),.05)
-                inv_give_logs(owner['inventory'],10);owner['wood']=10
+                inv_give_logs(owner['inventory'],3);owner['wood']=3
                 await alice.send(json.dumps({'type':'craft_item','recipe':'bench'}))
                 updated=await self.receive(alice,'inventory_state')
-                self.assertEqual(updated['wood'],7)
-                self.assertEqual(inv_logs(owner['inventory']),7)
+                self.assertEqual(updated['wood'],0)
+                self.assertEqual(inv_logs(owner['inventory']),0)
                 bench_slot=next(i for i,x in enumerate(owner['inventory']) if x and x['id']=='bench')
                 self.assertEqual(owner['inventory'][bench_slot],{'id':'bench','count':1})
                 self.assertFalse(self.world.furniture)
@@ -296,7 +296,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 await self.receive(alice,'inventory_state')
                 await alice.send(json.dumps({'type':'place_item','x':4,'z':0,'orientation':0}))
                 add=await self.receive(bob,'furniture_add')
-                self.assertEqual(add['wood'],7)
+                self.assertEqual(add['wood'],0)
                 fid=add['item']['id']
                 self.assertEqual(add['item']['kind'],'bench')
                 self.assertEqual(self.world.furniture[fid]['x'],4)
@@ -320,7 +320,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 owner['last_build']=0
                 await alice.send(json.dumps({'type':'hit_structure','kind':'bench','id':fid}))
                 removed=await self.receive(bob,'furniture_remove')
-                self.assertEqual(removed['wood'],7)
+                self.assertEqual(removed['wood'],0)
                 self.assertFalse(self.world.furniture)
                 updated=await self.receive(alice,'inventory_state')
                 self.assertEqual(sum(x is not None and x['id']=='bench' for x in updated['inventory']['slots']),1)
@@ -344,7 +344,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             self.world.furniture[100]={'kind':'bench','x':1,'z':0,'orientation':0}
             await alice.send(json.dumps({'type':'hit_structure','kind':'bench','id':100}))
             denied=await self.receive(alice,'action_denied')
-            self.assertIn('Сумка',denied['reason'])
+            self.assertIn('100 кг',denied['reason'])
             self.assertIn(100,self.world.furniture)
             self.assertEqual(sum(item is not None and item['id']=='bench' for item in owner['inventory']),0)
             # Logs must also respect capacity at the source.
@@ -826,7 +826,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             self.world.damage[key] = 1
             await ws.send(json.dumps({'type': 'hit', 'tree': key}))
             fell = await self.receive(ws, 'tree_fell')
-            self.assertEqual(fell['wood'], 5)
+            self.assertEqual(fell['wood'], 3)
             await self.receive(ws,'vitals_state')
             self.assertIn(key, self.world.felled)
             self.world.damage['0,0:0'] = 3
@@ -838,3 +838,56 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored.damage, self.world.damage)
         self.assertEqual(restored.logs, self.world.logs)
         self.assertEqual(restored.next_log, 100)
+
+
+    async def test_weight_prevents_pickup_and_resource_collection_without_consuming_world_items(self):
+        async with connect(self.url) as alice:
+            welcome=await self.receive(alice,'welcome')
+            player=next(p for p in self.world.clients.values() if p['id']==welcome['id'])
+            # Still free slots, but already exactly 100 kg.
+            player['inventory'][1]={'id':'log','count':3}
+            player['inventory'][2]={'id':'stone','count':10}
+            player['inventory'][3]={'id':'stone','count':1}
+            player['wood']=3
+            self.assertEqual(inv_weight(player['inventory']),100)
+            # Server cannot remove a box until the carry limit is satisfied.
+            box_id=123456
+            self.world.boxes[box_id]={'x':0,'z':0,'expires_at':time.time()+600,
+                                      'item':{'id':'branch','count':1}}
+            await alice.send(json.dumps({'type':'pickup_box','id':box_id}))
+            denied=await self.receive(alice,'action_denied')
+            self.assertIn('100 кг',denied['reason'])
+            self.assertIn(box_id,self.world.boxes)
+            resource=next((node for node in welcome['resources'] if node['kind'] in ('branch','stone')),None)
+            self.assertIsNotNone(resource)
+            player['x']=resource['x'];player['z']=resource['z']
+            await alice.send(json.dumps({'type':'collect_resource','id':resource['id']}))
+            denied=await self.receive(alice,'action_denied')
+            self.assertIn('100 кг',denied['reason'])
+            self.assertNotIn(resource['id'],self.world.resource_cooldowns)
+            self.assertEqual(inv_weight(player['inventory']),100)
+
+
+class WeightInventoryTests(unittest.TestCase):
+    def test_server_weight_matches_client_and_caps_additions(self):
+        inv=[{'id':'axe','tier':0}]+[None]*11
+        self.assertEqual(inv_weight(inv),3)
+        self.assertEqual(inv_give_logs(inv,5),3)
+        self.assertEqual(inv_weight(inv),78)
+        self.assertEqual(inv_weight_space(inv,'log'),0)
+        self.assertTrue(inv_add(inv,{'id':'stone','count':10}))
+        self.assertEqual(inv_weight(inv),98)
+        self.assertFalse(inv_add(inv,{'id':'stone','count':2}))
+        self.assertTrue(inv_add(inv,{'id':'stone','count':1}))
+        self.assertEqual(inv_weight(inv),MAX_CARRY_WEIGHT)
+        self.assertFalse(inv_can_add(inv,{'id':'branch','count':1}))
+        self.assertEqual(inv_give_logs(inv,5),0)
+
+    def test_existing_overweight_items_are_not_removed(self):
+        inv=[{'id':'axe','tier':0},{'id':'log','count':5}]+[None]*10
+        self.assertEqual(inv_weight(inv),128)
+        self.assertFalse(inv_add(inv,{'id':'stone','count':1}))
+        self.assertEqual(inv_logs(inv),5)
+        self.assertEqual(inv_weight_space(inv,'log'),0)
+        self.assertTrue(inv_take_logs(inv,2))
+        self.assertEqual(inv_weight(inv),78)

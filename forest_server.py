@@ -17,14 +17,27 @@ from terrain_height import height_at, base_height
 from ponds import pond_depth_at, pond_height_before_lakes
 
 MAX_MESSAGE = 2048
-# Twelve initial bag slots; the axe occupies one. Future bag upgrades increase this.
-DEFAULT_WOOD_CAPACITY = (12-1)*5
+# Initial 3 kg axe leaves capacity for three 25 kg logs, regardless of bag slots.
+DEFAULT_WOOD_CAPACITY = 3
 BOX_TTL_SECONDS=3600
 MUSHROOM_SPECIES=('fly_agaric','boletus','death_cap','milkcap')
 FLOWER_SPECIES=('daisy','buttercup','pink_wildflower','blue_wildflower')
 DECOR_ITEM_IDS=tuple('mushroom:'+name for name in MUSHROOM_SPECIES)+tuple('flower:'+name for name in FLOWER_SPECIES)
 ITEM_LIMITS={"log":5,"branch":10,"stone":10,"bench":1,"axe":1,
              **{name:10 for name in DECOR_ITEM_IDS}}
+MAX_CARRY_WEIGHT=100
+ITEM_WEIGHT={"log":25,"branch":0.5,"stone":2,"bench":15,"axe":3,
+             **{name:0.1 for name in DECOR_ITEM_IDS}}
+
+def item_weight(item):
+    return ITEM_WEIGHT[item['id']] * (1 if item['id']=='axe' else item['count']) if item else 0
+
+def inv_weight(inv):
+    return sum(item_weight(item) for item in inv if item)
+
+def inv_weight_space(inv,kind):
+    return max(0,math.floor((MAX_CARRY_WEIGHT-inv_weight(inv)+1e-8)/ITEM_WEIGHT[kind]))
+
 DECOR_CHUNK_SIZE=24
 DECOR_SLOTS=25
 AXE_LEVELS = ((1, 1.0), (2, 1.2), (3, 1.45), (4, 1.7))
@@ -163,18 +176,24 @@ def inv_logs(inv):
 
 def inv_space_for(inv,kind,count=1):
     if kind=='bench':
-        return any(item is None for item in inv)
-    return sum((5-item['count'] if item and item['id']=='log' else 5 if item is None else 0) for item in inv)>=count
+        return count==1 and inv_can_add(inv,{'id':'bench','count':1})
+    if kind=='log':
+        return inv_weight_space(inv,'log')>=count and sum(
+            (5-item['count'] if item and item['id']=='log' else 5 if item is None else 0)
+            for item in inv)>=count
+    return False
 
 def inv_give_logs(inv,amount):
-    left=amount
+    if type(amount) is not int or amount<0:return 0
+    allowed=min(amount,inv_weight_space(inv,'log'))
+    left=allowed
     for item in inv:
         if item and item['id']=='log' and left:
             n=min(left,5-item['count']);item['count']+=n;left-=n
     for i,item in enumerate(inv):
         if item is None and left:
             n=min(left,5);inv[i]={'id':'log','count':n};left-=n
-    return amount-left
+    return allowed-left
 
 def inv_take_logs(inv,amount):
     if inv_logs(inv)<amount:return False
@@ -186,6 +205,7 @@ def inv_take_logs(inv,amount):
     return True
 
 def inv_add_bench(inv):
+    if inv_weight_space(inv,'bench')<1:return False
     try:i=inv.index(None)
     except ValueError:return False
     inv[i]={'id':'bench','count':1}
@@ -199,8 +219,13 @@ def valid_item(item):
 def inv_count(inv,kind):
     return sum((1 if kind=='axe' else item['count']) for item in inv if item and item['id']==kind)
 
+def inv_capacity_reason(inv,item):
+    if valid_item(item) and inv_weight(inv)+item_weight(item)>MAX_CARRY_WEIGHT+1e-8:
+        return 'Превышен лимит переносимого веса (100 кг)'
+    return 'Сумка заполнена'
+
 def inv_can_add(inv,item):
-    if not valid_item(item):return False
+    if not valid_item(item) or inv_weight(inv)+item_weight(item)>MAX_CARRY_WEIGHT+1e-8:return False
     if item['id'] in ('axe','bench'):return None in inv
     limit=ITEM_LIMITS[item['id']]
     return sum(limit-it['count'] if it and it['id']==item['id'] else limit if it is None else 0 for it in inv)>=item['count']
@@ -626,7 +651,7 @@ class World:
                     if math.hypot(player['x']-resource['x'],player['z']-resource['z'])>2.5:continue
                     if self.resource_cooldowns.get(ident,0)>time.time():continue
                     if not inv_add(player['inventory'],{'id':resource['kind'],'count':1}):
-                        await self.send(ws,{'type':'action_denied','reason':'Сумка заполнена'});continue
+                        await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],{'id':resource['kind'],'count':1})});continue
                     self.resource_cooldowns[ident]=time.time()+RESOURCE_RESPAWN_SECONDS
                     self.save()
                     await self.broadcast({'type':'resource_remove','id':ident})
@@ -653,7 +678,7 @@ class World:
                     box=self.boxes.get(ident)
                     if not box or box['expires_at']<=time.time() or math.hypot(player['x']-box['x'],player['z']-box['z'])>2.8:continue
                     if not inv_add(player['inventory'],box['item']):
-                        await self.send(ws,{'type':'action_denied','reason':'Сумка заполнена'});continue
+                        await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],box['item'])});continue
                     if box['item']['id']=='log':player['wood']+=box['item']['count']
                     del self.boxes[ident]
                     await self.broadcast({'type':'box_remove','id':ident})
@@ -688,7 +713,7 @@ class World:
                     inv_take(inv,'branch',3);inv_take(inv,'stone',2)
                     if not inv_add(inv,{'id':'axe','tier':0}):
                         player['inventory']=snapshot
-                        await self.send(ws,{'type':'action_denied','reason':'Нет свободного слота для топора'});continue
+                        await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],{'id':'axe','tier':0})});continue
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='hello':
                     player['name']=str(data.get('name','Игрок'))[:22].strip() or f'Игрок {uid}'
@@ -829,7 +854,7 @@ class World:
                     await self.broadcast({'type':'equipment','by':uid,'axe_equipped':player['axe_equipped']})
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='craft_item':
-                    if data.get('recipe')!='bench' or player['wood']<3 or not inv_space_for(player['inventory'],'bench'):
+                    if data.get('recipe')!='bench' or player['wood']<3 or None not in player['inventory']:
                         await self.send(ws,{'type':'action_denied','reason':'Нужно 3 бревна и свободный слот'});continue
                     snapshot=[item.copy() if item else None for item in player['inventory']]
                     if not inv_take_logs(player['inventory'],3):continue
@@ -878,14 +903,14 @@ class World:
                         old=self.furniture.get(ident)
                         if old is None or math.hypot(old['x']-player['x'],old['z']-player['z'])>6:continue
                         if not inv_add_bench(player['inventory']):
-                            await self.send(ws,{'type':'action_denied','reason':'Сумка заполнена'});continue
+                            await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],{'id':'bench','count':1})});continue
                         del self.furniture[ident]
                         await self.broadcast({'type':'furniture_remove','id':ident,'by':uid,'wood':player['wood']})
                     elif typ=='log':
                         old=self.logs.get(ident)
                         if old is None or math.hypot(old['x']-player['x'],old['z']-player['z'])>6:continue
                         if not inv_space_for(player['inventory'],'log'):
-                            await self.send(ws,{'type':'action_denied','reason':'Сумка заполнена'});continue
+                            await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],{'id':'log','count':1})});continue
                         inv_give_logs(player['inventory'],1);player['wood']+=1
                         del self.logs[ident]
                         await self.broadcast({'type':'log_remove','id':ident,'by':uid,'wood':player['wood']})

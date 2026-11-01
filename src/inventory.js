@@ -2,6 +2,11 @@ import {DECOR_ITEM_IDS} from './collectible-decor.js';
 // Server and offline inventory share the same item limits and recipes.
 export const LOG_STACK=5, QUICK_SLOTS=4, BASE_BAG_SLOTS=12, SLOTS_PER_UPGRADE=4;
 export const ITEM_STACK={log:5,branch:10,stone:10,bench:1,axe:1,...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,10]))};
+export const MAX_CARRY_WEIGHT=100;
+// kg per item. Counts, not stacks, determine weight; axe has no count field.
+export const ITEM_WEIGHT={log:25,branch:0.5,stone:2,bench:15,axe:3,
+ ...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,0.1]))};
+export const itemWeight=item=>item?(ITEM_WEIGHT[item.id]??0)*(item.id==='axe'?1:item.count):0;
 export const RECIPES={bench:{log:3},axe:{branch:3,stone:2}};
 export const AXE_STATS=[
   {name:'Обычный топор',damage:1,speed:1},
@@ -21,7 +26,10 @@ export function createInventoryModel(){
  const capacity=()=>BASE_BAG_SLOTS+tier*SLOTS_PER_UPGRADE;
  const count=id=>slots.reduce((n,x)=>n+(x?.id===id?(id==='axe'?1:x.count):0),0);
  const wood=()=>count('log');
- const free=id=>slots.reduce((n,x)=>n+(x?.id===id?(id==='axe'?0:ITEM_STACK[id]-x.count):!x?ITEM_STACK[id]:0),0);
+ const weight=()=>slots.reduce((n,item)=>n+itemWeight(item),0);
+ const remainingWeight=()=>Math.max(0,MAX_CARRY_WEIGHT-weight());
+ const freeStack=id=>slots.reduce((n,x)=>n+(x?.id===id?(id==='axe'?0:ITEM_STACK[id]-x.count):!x?ITEM_STACK[id]:0),0);
+ const free=id=>Math.min(freeStack(id),Math.max(0,Math.floor((remainingWeight()+1e-8)/ITEM_WEIGHT[id])));
  const freeLogs=()=>free('log');
  const quickSlot=i=>{
   const id=quickIds[i],ref=quickRefs[i];
@@ -41,15 +49,16 @@ export function createInventoryModel(){
   while(tier<next){tier++;slots.push(...Array(SLOTS_PER_UPGRADE).fill(null));}
   return true;
  }
- function canAdd(item){
+ function canAdd(item,{ignoreWeight=false}={}){
   if(!item||!Object.hasOwn(ITEM_STACK,item.id))return false;
-  if(item.id==='axe')return Number.isInteger(item.tier)&&item.tier>=0&&item.tier<AXE_STATS.length&&hasSpace();
+  if(item.id==='axe')return Number.isInteger(item.tier)&&item.tier>=0&&item.tier<AXE_STATS.length&&hasSpace()&&(ignoreWeight||weight()+itemWeight(item)<=MAX_CARRY_WEIGHT+1e-8);
   if(!Number.isSafeInteger(item.count)||item.count<1||item.count>50000)return false;
+  if(!ignoreWeight&&weight()+itemWeight(item)>MAX_CARRY_WEIGHT+1e-8)return false;
   if(item.id==='bench')return item.count===1&&hasSpace();
-  return free(item.id)>=item.count;
+  return freeStack(item.id)>=item.count;
  }
- function addItem(item){
-  if(!canAdd(item))return false;
+ function addItem(item,options){
+  if(!canAdd(item,options))return false;
   let remaining=item.id==='axe'?1:item.count;
   if(item.id!=='axe'&&item.id!=='bench'){
    for(const x of slots)if(x?.id===item.id&&remaining){
@@ -86,14 +95,15 @@ export function createInventoryModel(){
  function addBench(){return addItem({id:'bench',count:1});}
  function removeBench(i){if(slots[i]?.id!=='bench')return false;slots[i]=null;return true;}
  function craftBench(){return craft('bench');}
- function addLogs(amount){if(!Number.isSafeInteger(amount)||amount<0)return 0;
-  const n=Math.min(amount,freeLogs());if(n>0)addItem({id:'log',count:n});return n;}
+ function addLogs(amount,{ignoreWeight=false}={}){if(!Number.isSafeInteger(amount)||amount<0)return 0;
+  const n=Math.min(amount,ignoreWeight?freeStack('log'):freeLogs());
+  if(n>0)addItem({id:'log',count:n},{ignoreWeight});return n;}
  function spendLogs(n){return spend('log',n);}
  function setWood(total,{migrate=false}={}){
   if(!Number.isSafeInteger(total)||total<0)return false;
-  if(migrate)while(total>wood()+freeLogs()&&tier<100)upgradeBag(tier+1);
+  if(migrate)while(total>wood()+freeStack('log')&&tier<100)upgradeBag(tier+1);
   const delta=total-wood();
-  return delta>=0?addLogs(delta)===delta:spendLogs(-delta);
+  return delta>=0?addLogs(delta,{ignoreWeight:migrate})===delta:spendLogs(-delta);
  }
  function transfer(a,b,{half=false}={}){
   if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<0||a>=slots.length||b>=slots.length||a===b||!slots[a])return false;
@@ -158,7 +168,7 @@ export function createInventoryModel(){
   const item=copy(slots[i]);slots[i]=null;return item;
  }
  function restoreSlot(i,item){
-  if(!Number.isInteger(i)||i<0||i>=slots.length||slots[i]||!validItem(item))return false;
+  if(!Number.isInteger(i)||i<0||i>=slots.length||slots[i]||!validItem(item)||!canAdd(item))return false;
   slots[i]=copy(item);return true;
  }
  function serialize(){return {version:1,bagTier:tier,selectedQuick:quick,quickRefs:[...quickRefs],quickIds:[...quickIds],slots:slots.map(copy)};}
@@ -179,7 +189,7 @@ export function createInventoryModel(){
   tier=0;slots=Array(BASE_BAG_SLOTS).fill(null);slots[0]={id:'axe',tier:0};quick=0;quickRefs=[0,1,2,3];quickIds=['axe',null,null,null];
   return setWood(legacyWood,{migrate:true});
  }
- return {capacity,count,wood,free,freeLogs,equipped,axe,selected,hasSpace,canAdd,addItem,spend,craft,
+ return {capacity,count,wood,free,freeLogs,weight,remainingWeight,equipped,axe,selected,hasSpace,canAdd,addItem,spend,craft,
   upgradeBag,addLogs,spendLogs,setWood,move,transfer,split,assignQuick,swapQuick,quickItem,quickSlot,selectedSlot,select,consumeAt,consumeSelected,removeSlot,restoreSlot,addBench,removeBench,craftBench,
   serialize,restore,get slots(){return slots.map(copy)},
   get bagTier(){return tier},get selectedQuick(){return quick},get quickRefs(){return [...quickRefs]},get quickIds(){return [...quickIds]}};

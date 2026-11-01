@@ -81,7 +81,7 @@ export function createGroundBoxes(ctx,doc=document){
   const b=id===null?nearest():boxes.get(id);
   if(!b||Math.hypot(b.x-ctx.px,b.z-ctx.pz)>2.8)return false;
   if(ctx.isOnline?.()){ctx.sendNet?.({type:'pickup_box',id:b.id});return true;}
-  if(!ctx.inventory?.state.addItem(b.item)){ctx.notify?.('Нет места для предмета','warning','box-full');return false;}
+  if(!ctx.inventory?.state.addItem(b.item)){ctx.notify?.('Нет места или превышен лимит 100 кг','warning','box-full');return false;}
   remove(b.id);ctx.wood=ctx.inventory.state.wood();ctx.inventory.render();
   ctx.offlineSave?.markDirty?.();return true;
  }

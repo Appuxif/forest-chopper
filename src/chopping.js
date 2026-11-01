@@ -42,7 +42,7 @@ const now=performance.now();const chopCooldown=(ctx.ownAvatar?.actions?.Chop2?.g
    }
    if(best){
      if(best.kind==='bench'){ctx.crafting?.dismantle(best.id);return;}
-     if(ctx.inventory.state.freeLogs()<1){ctx.notify('Сумка заполнена','warning');return;}
+     if(ctx.inventory.state.freeLogs()<1){ctx.notify('Сумка заполнена или превышен лимит 100 кг','warning');return;}
      if(ctx.isOnline()){
        if(best.id!=null)ctx.sendNet({type:'hit_structure',kind:'log',id:best.id});
      }else{
