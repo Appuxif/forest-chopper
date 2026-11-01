@@ -7,7 +7,8 @@ import {createAnimations} from './animations.js?v=20261102-chop-frame18';
 import {createWorld} from './world.js?v=20261103-region-default-3';
 import {generateSpruceParts} from './spruce-model.js?v=20261103-shared-birch-all1';
 import {generateBirchParts} from './birch-model.js?v=20261103-shared-birch-all1';
-import {createHumanoidGamePreview} from './humanoid-game-preview.js?v=20261101-demo1';
+import {createHumanoidPlayerModel} from './humanoid-player-model.js?v=20261101-menu-model1';
+import {normalizeCharacterModel} from './character-model-selection.js';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
 import {readActiveTreeConfig,limitTreeModelTriangles} from './tree-model-config.js?v=20261103-shared-birch-all1';
 import {createSpruceDiagnostics} from './spruce-diagnostics.js?v=20261031-spruce-bark1';
@@ -589,7 +590,7 @@ ownAvatar=createLumberjack();if(ownAvatar){
  camera.layers.enable(1);
  camera.layers.enable(3);
  scene.add(ownAvatar.group);
- humanoidPreview=createHumanoidGamePreview({THREE,avatar:ownAvatar,game:host,renderer});
+ humanoidPreview=createHumanoidPlayerModel({THREE,avatar:ownAvatar,model:normalizeCharacterModel(menuLaunch.characterModel)});
 }
 ragdoll=createRagdoll(ctx);
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));

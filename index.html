@@ -24,6 +24,8 @@
     <section class="menu-card menu-navigation menu-section" id="menu-home">
       <button type="button" class="menu-btn primary" id="menu-saves">💾 Локальная игра</button>
       <button type="button" class="menu-btn" id="menu-online">🌐 Мультиплеер</button>
+      <button type="button" class="menu-btn" id="menu-character">🧍 Персонаж</button>
+      <div class="menu-meta" id="menu-character-current">Сейчас: Классический</div>
       <button type="button" class="menu-btn" id="menu-settings">⚙ Настройки</button>
       <button type="button" class="menu-btn secondary ghost" id="menu-fullscreen">⛶ Полный экран</button>
       <button type="button" class="menu-btn secondary ghost" id="menu-help">? Управление</button>
@@ -38,6 +40,29 @@
       </div>
       <input type="file" id="slots-file" accept="application/json,.json" hidden>
       <div class="menu-actions"><button type="button" class="menu-btn ghost menu-back">← Назад</button></div>
+    </section>
+    <section class="menu-card menu-section" id="menu-character-panel" hidden aria-label="Выбор модели персонажа">
+      <h2>Персонаж</h2>
+      <p>Выбери модель перед входом в мир. Настройка действует для одиночной и сетевой игры.</p>
+      <div class="menu-character-options" role="group" aria-label="Модель персонажа">
+        <button type="button" class="menu-character-card" data-character-model="legacy" aria-pressed="true">
+          <span class="menu-character-icon" aria-hidden="true">🪓</span>
+          <strong>Классический</strong>
+          <span>Исходный лесоруб</span>
+        </button>
+        <button type="button" class="menu-character-card" data-character-model="male" aria-pressed="false">
+          <span class="menu-character-icon" aria-hidden="true">🧍‍♂️</span>
+          <strong>Мужской</strong>
+          <span>Новый 53-костный риг</span>
+        </button>
+        <button type="button" class="menu-character-card" data-character-model="female" aria-pressed="false">
+          <span class="menu-character-icon" aria-hidden="true">🧍‍♀️</span>
+          <strong>Женский</strong>
+          <span>Новый 53-костный риг</span>
+        </button>
+      </div>
+      <p class="menu-hint">Пока без изменения лица, телосложения и одежды. У новых моделей фиксированный комплект снаряжения.</p>
+      <div class="menu-actions"><button type="button" class="menu-btn primary menu-back">✓ Готово</button></div>
     </section>
     <section class="menu-card menu-section" id="menu-new-panel" hidden>
       <h2>Новый лес</h2><p>Новый seed создаёт независимый процедурный мир.</p>

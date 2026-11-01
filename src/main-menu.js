@@ -1,6 +1,7 @@
 import {parseOfflineSave,slotKey} from './offline-save.js';
 import {exportSlots,parseSlotArchive,importSlots,deleteSlot} from './save-slots.js?v=20261104-local-game3';
 import {createSettings} from './settings.js?v=20261104-hud2';
+import {readCharacterModel,saveCharacterModel} from './character-model-selection.js';
 import {
   MENU_NAME_KEY,MENU_LAUNCH_KEY,MAX_SEED,parseSeed,listSavedSlots,
   normalizeServerAddress,serverStatusAddress,parseLaunchQuery,
@@ -12,7 +13,8 @@ const $=id=>document.getElementById(id);
 const storage=(()=>{try{return localStorage;}catch{return null;}})();
 const launchStorage=(()=>{try{return sessionStorage;}catch{return null;}})();
 const game=$('game'),menu=$('mainmenu'),home=$('menu-home'),
-  newPanel=$('menu-new-panel'),savesPanel=$('menu-saves-panel'),onlinePanel=$('menu-online-panel'),helpPanel=$('menu-help-panel');
+  newPanel=$('menu-new-panel'),savesPanel=$('menu-saves-panel'),onlinePanel=$('menu-online-panel'),
+  characterPanel=$('menu-character-panel'),helpPanel=$('menu-help-panel');
 let launching=false,checking=null;
 let menuSettings=null;
 let selectedSlot=1;
@@ -105,6 +107,7 @@ function view(name='home'){
   newPanel.hidden=name!=='new';
   savesPanel.hidden=name!=='saves';
   onlinePanel.hidden=name!=='online';
+  characterPanel.hidden=name!=='character';
   helpPanel.hidden=name!=='help';
   importPanel.hidden=name!=='import';
   if(name==='home'||name==='saves'||name==='new')refreshSlots();
@@ -210,6 +213,7 @@ async function launch(options,{force=false,auto=false}={}){
   }
   // Same-document dynamic import does not require browser storage. Session
   // storage is a harmless fallback for tools that load main.js directly.
+  options={...options,characterModel:readCharacterModel(storage)};
   globalThis.__forestLaunch=options;
   try{launchStorage?.setItem(MENU_LAUNCH_KEY,JSON.stringify(options));}
   catch{}
@@ -241,7 +245,22 @@ function openNewWorld(slot){
 }
 $('menu-new-back').onclick=()=>view('saves');
 $('menu-online').onclick=()=>{view('online');updateRecents();};
+$('menu-character').onclick=()=>view('character');
 $('menu-help').onclick=()=>view('help');
+function reflectCharacterModel(){
+  const selected=readCharacterModel(storage);
+  const names={legacy:'Классический',male:'Мужской',female:'Женский'};
+  $('menu-character-current').textContent='Сейчас: '+names[selected];
+  for(const card of document.querySelectorAll('[data-character-model]')){
+    const active=card.dataset.characterModel===selected;
+    card.classList.toggle('selected',active);
+    card.setAttribute('aria-pressed',String(active));
+  }
+}
+for(const card of document.querySelectorAll('[data-character-model]')){
+  card.onclick=()=>{saveCharacterModel(storage,card.dataset.characterModel);reflectCharacterModel();};
+}
+reflectCharacterModel();
 for(const button of document.querySelectorAll('.menu-back'))button.onclick=()=>view();
 $('menu-random-seed').onclick=()=>{$('menu-seed').value=String(randomSeed());};
 function createNewWorld({force=false,auto=false}={}){

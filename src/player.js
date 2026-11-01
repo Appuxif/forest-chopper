@@ -245,7 +245,6 @@ for(const avatar of ctx.avatars.values()){
    if(gpuStarted)gpuTimer.end();
  }
  ctx.worldStartupGate?.tick(now,ctx);
- ctx.humanoidPreview?.renderTick(now);
  if(profiling)ctx.settings.recordCpuFrame(performance.now()-cpuStart,now);
 }
 

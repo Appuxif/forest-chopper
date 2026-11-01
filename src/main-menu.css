@@ -101,3 +101,20 @@ body.fc-world-loading > :not(#game):not(#mainmenu):not(script):not(style){
 
 .save-slot-delete{flex:none;align-self:center;display:grid;place-items:center;width:44px;height:44px;margin:0 12px 0 0;border:1px solid #a46e6866;border-radius:9px;background:#472c29aa;color:#ffd0c8;font-size:19px;cursor:pointer}
 .save-slot-delete:hover,.save-slot-delete:focus-visible{background:#75433c;outline:2px solid #ffc4b5;outline-offset:2px}
+
+/* Pre-game character selection; never rendered as a gameplay overlay. */
+.menu-character-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0}
+.menu-character-card{display:flex;flex-direction:column;align-items:center;gap:7px;padding:22px 10px;
+  border-radius:14px;border:1px solid #5c8f6b80;background:#193b2b;color:#e9f8ed;cursor:pointer;
+  font:inherit;transition:background .15s,border-color .15s,box-shadow .15s}
+.menu-character-card .menu-character-icon{font-size:39px;line-height:1.4}
+.menu-character-card strong{font-size:16px}
+.menu-character-card>span:last-child{font-size:12px;color:#a8c9b3;text-align:center}
+.menu-character-card.selected,.menu-character-card[aria-pressed="true"]{background:#326245;border-color:#b6f7c0;
+  box-shadow:0 0 0 2px #8ce6a849 inset}
+.menu-character-card:focus-visible{outline:3px solid #b6f7c0;outline-offset:3px}
+.menu-character-card:hover{background:#2e5640}
+@media(max-width:540px){.menu-character-options{grid-template-columns:1fr}.menu-character-card{padding:10px 12px;
+  display:grid;grid-template-columns:49px 1fr;gap:0 12px;text-align:left}
+  .menu-character-card .menu-character-icon{grid-row:span 2;font-size:30px}
+  .menu-character-card>span:last-child{text-align:left}}
