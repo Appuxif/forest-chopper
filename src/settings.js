@@ -214,7 +214,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <label>Масштаб рендера: <output id="fc-render-scale-value"></output>%
       <input id="fc-render-scale" type="range" min="50" max="125" step="5"></label>
     <label><input id="fc-antialias" type="checkbox"> MSAA сглаживание</label>
-    <small>Изменение MSAA применяется после перезагрузки страницы (ограничение WebGL-контекста).</small>
+    <small>MSAA применяется при следующем входе в игру (или после перезагрузки игрового клиента).</small>
     <label>Максимальный FPS
       <select id="fc-max-fps"><option value="30">30 FPS</option><option value="60">60 FPS</option>
       <option value="90">90 FPS</option><option value="120">120 FPS</option>
@@ -324,7 +324,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <section class="fc-settings-page" data-category="world" aria-label="Мир" hidden>
     <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в деревьях</label>
     <label><input id="fc-day-cycle" type="checkbox"> Локальная смена дня и ночи</label>
-    <small>Только визуально, цикл 8 минут. В сетевой игре у каждого своё время суток.</small>
+    <small>Цикл 8 минут. В сетевой игре время суток общее и управляется сервером.</small>
     </section></div>
     <footer class="fc-settings-footer"><small>Изменения сохраняются автоматически</small>
       <button id="fc-reset-settings" type="button">Сбросить всё</button></footer>`;
@@ -723,5 +723,12 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get grassWidth(){return state.grassWidth;},
     get grassTurnMin(){return state.grassTurnMin;},
     get grassTurnMax(){return state.grassTurnMax;},
-    tick, close, setConnected, setLatency};
+    tick, close, setConnected, setLatency,
+  open:()=>toggle.onclick(),
+  setMenuMode(enabled){
+    toggle.hidden=!!enabled;
+    fps.hidden=!!enabled||!state.showFps;
+  },
+  destroy(){close();toggle.remove?.();backdrop.remove?.();panel.remove?.();fps.remove?.();css.remove?.();},
+  };
 }

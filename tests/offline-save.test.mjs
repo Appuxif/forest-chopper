@@ -222,3 +222,15 @@ test('old offline saves default to daytime and reject invalid clock phases',()=>
     assert.equal(parseOfflineSave(JSON.stringify({...saved,dayPhase:phase})),null);
   }
 });
+
+test('multiplayer started from menu suspends writes without overwriting the solo save',()=>{
+  const original=fixture();
+  original.save.save();
+  const bytes=original.storage.getItem(OFFLINE_SAVE_KEY);
+  const next=fixture(bytes);
+  next.ctx.seed=999999;
+  next.save.suspend({flush:false});
+  assert.equal(next.save.suspended,true);
+  assert.equal(next.save.save(),false);
+  assert.equal(next.storage.getItem(OFFLINE_SAVE_KEY),bytes);
+});

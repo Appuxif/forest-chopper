@@ -1,5 +1,5 @@
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261101-streaming2';
+import {createWorld} from './world.js?v=20261101-startup-loader2';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
@@ -9,18 +9,18 @@ import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
-import {createMicroGrass} from './micro-grass.js?v=20261101-grass-worker1';
+import {createMicroGrass} from './micro-grass.js?v=20261101-startup-loader1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
 import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
 import {createPhysics} from './physics.js?v=20261031-ponds1';
 import {createBuilding} from './building.js?v=20261031-ponds1';
 import {createChopping} from './chopping.js?v=20261031-jump-energy1';
-import {createControls} from './controls.js?v=20261101-shared-day-clock1';
-import {createPlayer} from './player.js?v=20261101-world-streamer1';
+import {createControls} from './controls.js?v=20261101-startup-loader1';
+import {createPlayer} from './player.js?v=20261101-startup-loader1';
 import {createMultiplayer} from './multiplayer.js?v=20261101-shared-day-clock1';
 import {createMinimap} from './minimap.js?v=20261031-rare-lakes1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261101-day-clock-checkbox1';
+import {createSettings} from './settings.js?v=20261101-main-menu2';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
@@ -35,16 +35,27 @@ import {createCrafting} from './crafting.js?v=20261031-ponds1';
 import {createInteractionHighlight} from './interaction-highlight.js';
 import {createDiscoveries} from './discoveries.js';
 import {createCommunityGoal} from './community-goal.js';
-import {createOfflineSave} from './offline-save.js?v=20261101-time-persistence1';
+import {createOfflineSave} from './offline-save.js?v=20261101-main-menu2';
 import {createTutorial} from './tutorial.js';
-import {createProgress} from './progress.js?v=20261030-discoveries1';
+import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261031-stability1';
 import {createVitalsUI} from './vitals-ui.js?v=20261031-stability1';
 import {createForestResources} from './forest-resources.js?v=20261031-ponds1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261031-boxes1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 import {WorldTaskScheduler} from './world-task-scheduler.js';
+import {createWorldStartupGate} from './world-startup.js';
 
+// Read and consume launch mode before touching any saved game data.
+const MENU_LAUNCH_KEY='forest-chopper:launch:v1';
+let menuLaunch={mode:'continue'};
+try{
+  const supplied=globalThis.__forestLaunch;
+  const value=supplied??JSON.parse(sessionStorage.getItem(MENU_LAUNCH_KEY)||'null');
+  delete globalThis.__forestLaunch;
+  sessionStorage.removeItem(MENU_LAUNCH_KEY);
+  if(value&&['continue','new','online'].includes(value.mode))menuLaunch=value;
+}catch{}
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 
 
@@ -118,7 +129,7 @@ for(let i=0;i<68;i++){
 }
 const birchBarkTexture=new THREE.CanvasTexture(barkCanvas);birchBarkTexture.colorSpace=THREE.SRGBColorSpace;
 const birchTrunkMat=new THREE.MeshLambertMaterial({map:birchBarkTexture});
-const trees=new Map(),chunks=new Map(),rockColliders=new Map(),felled=new Set(),falling=[],particles=[],keys={},treeDamage=new Map();let seed=(Math.random()*999999)|0,px=0,pz=0,yaw=0,pitch=0,wood=0,cuts=0,joyX=0,joyY=0,swing=0,lastHit=0,drag=null,frame=0,lastTime=performance.now();const chunkSize=24;terrain.setSeed(seed);
+const trees=new Map(),chunks=new Map(),rockColliders=new Map(),felled=new Set(),falling=[],particles=[],keys={},treeDamage=new Map();let seed=menuLaunch.mode==='new'&&Number.isInteger(menuLaunch.seed)&&menuLaunch.seed>=0&&menuLaunch.seed<=999998?menuLaunch.seed:((Math.random()*999999)|0),px=0,pz=0,yaw=0,pitch=0,wood=0,cuts=0,joyX=0,joyY=0,swing=0,lastHit=0,drag=null,frame=0,lastTime=performance.now();const chunkSize=24;terrain.setSeed(seed);
 
 scene.add(camera);const axe=new THREE.Group();camera.add(axe);const handle=new THREE.Mesh(new THREE.CylinderGeometry(.045,.065,1.3,8),new THREE.MeshLambertMaterial({color:0x99623b}));handle.rotation.z=-.2;axe.add(handle);const metal=new THREE.MeshStandardMaterial({color:0xc2cbd0,metalness:.65,roughness:.35});const head=new THREE.Mesh(new THREE.BoxGeometry(.48,.32,.15),metal);head.position.set(-.18,.58,0);axe.add(head);const blade=new THREE.Mesh(new THREE.CylinderGeometry(.26,.26,.15,3),metal);blade.rotation.x=Math.PI/2;blade.rotation.z=Math.PI/2;blade.position.set(-.44,.58,0);axe.add(blade);axe.position.set(.72,-.7,-1.1);axe.rotation.z=-.25;
 
@@ -190,8 +201,16 @@ const atmosphere=createAtmosphere({
  },
 });
 const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere});
+if(menuLaunch.mode==='new'){
+  try{
+    // Reset only after the render engine has successfully initialized.
+    resetWorldProgress(localStorage);
+    localStorage.removeItem('forest-chopper:tutorial:v1');
+  }catch{}
+}
 const tutorial=createTutorial({notify:notifications.notify});
 let offlineSave=null,progress=null,inventory=null,vitals=null,forestResources=null,groundBoxes=null;
+let worldStartupGate=null;
 
 let distantForest, replaceTreeModels, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
@@ -257,6 +276,7 @@ const ctx={
  get ground(){return ground;},
  get terrain(){return terrain;},
  get worldStreamer(){return worldStreamer;},
+ get worldStartupGate(){return worldStartupGate;},
  get handle(){return handle;},
  get head(){return head;},
  get host(){return host;},
@@ -516,11 +536,41 @@ const highlight=createInteractionHighlight(ctx);
 const discoveries=createDiscoveries(ctx);
 const communityGoal=createCommunityGoal(ctx);
 offlineSave=createOfflineSave(ctx);
-offlineSave.restore();
+if(menuLaunch.mode==='continue')offlineSave.restore();
+else if(menuLaunch.mode==='new')offlineSave.reset();
+else if(menuLaunch.mode==='online')offlineSave.suspend({flush:false});
 progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}});
 ({toggleView, animate}=createPlayer(ctx));
 ({showMapPing,clearMapPings}=createMinimap(ctx));
 ({look}=createControls(ctx));
+worldStartupGate=createWorldStartupGate({loading,online:menuLaunch.mode==='online'});
+// Returning to the menu uses a page reload: every WebGL resource and listener
+// is torn down by the browser, avoiding a fragile half-destroyed scene.
+$('menu-backgame').onclick=()=>{
+  const warning=offlineSave.suspended
+    ?'Выйти из сетевого мира и вернуться в главное меню?'
+    :'Сохранить игру и вернуться в главное меню?';
+  if(!confirm(warning))return;
+  offlineSave.save(); // Suspended for multiplayer, so solo saves remain untouched.
+  closeNet?.();
+  try{sessionStorage.removeItem(MENU_LAUNCH_KEY);}catch{}
+  location.reload();
+};
+if(menuLaunch.mode==='online'){
+  $('netname').value=String(menuLaunch.name??'Лесоруб').slice(0,22);
+  $('netmode').value=['host','guest'].includes(menuLaunch.modeConnection)
+    ?menuLaunch.modeConnection:'direct';
+  $('netmode').onchange();
+  $('neturl').value=menuLaunch.address??'ws://localhost:8765';
+  $('peerroom').value=menuLaunch.peerRoom??'';
+  $('peercustom').checked=menuLaunch.peerCustom===true;
+  $('peercustom').onchange();
+  if(menuLaunch.peerHost)$('peerhost').value=menuLaunch.peerHost;
+  if(menuLaunch.peerPort)$('peerport').value=menuLaunch.peerPort;
+  if(menuLaunch.peerPath)$('peerpath').value=menuLaunch.peerPath;
+  $('peersecure').checked=menuLaunch.peerSecure===true;
+  $('connect').click();
+}
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
   const { installDebug } = await import('./debug.js?v=20261031-stamina1');

@@ -529,6 +529,8 @@ export function createMicroGrass(ctx) {
       for(const record of layer.active.values())sum+=record.mesh.count;
       return sum;},
     get tiles(){return near.active.size+far.active.size;},
+    get nearPending(){return near.pending.size;},
+    get nearDesired(){return near.desired.size;},
     get generatedTiles(){return generatedTiles;},
     get mesh(){return near.active.values().next().value?.mesh??null;},
     dispose(){

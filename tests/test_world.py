@@ -82,6 +82,31 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 clock_task.cancel()
                 await asyncio.gather(clock_task,return_exceptions=True)
 
+    async def test_status_route_does_not_create_player_or_mutate_world(self):
+        created=self.world.world_created_at
+        self.world.save()
+        reloaded=World(self.path)
+        self.assertEqual(reloaded.world_created_at,created)
+        self.assertEqual(reloaded.server_status()['world_created_at'],created)
+        self.assertEqual(self.world.clients,{})
+        async with connect(self.url+'/status') as ws:
+            response=json.loads(await asyncio.wait_for(ws.recv(),2))
+            self.assertEqual(response['type'],'server_status')
+            self.assertEqual(response['online'],0)
+            self.assertEqual(response['max_players'],32)
+            self.assertEqual(response['world_seed'],self.world.seed)
+            self.assertEqual(response['protocol_version'],1)
+            self.assertTrue(0<=response['day_phase']<1)
+        self.assertEqual(self.world.clients,{},'status must not allocate a player')
+        async with connect(self.url) as player:
+            welcome=await self.receive(player,'welcome')
+            async with connect(self.url+'/status') as status:
+                payload=json.loads(await asyncio.wait_for(status.recv(),2))
+                self.assertEqual(payload['online'],1)
+                self.assertEqual(payload['world_seed'],welcome['seed'])
+                self.assertEqual(self.world.next_id,welcome['id']+1,
+                    'status must not consume a player ID')
+
     async def test_welcome_chat_join_leave_and_invalid_messages(self):
         async with connect(self.url) as alice:
             welcome = await self.receive(alice, 'welcome')

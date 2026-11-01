@@ -253,6 +253,7 @@ export function createDistantForest(ctx){
     meshes:sectors,
     get count(){return count;},get pending(){return [...desired].filter(k=>!cache.has(k)).length+dirtySectors.size;},
     get chunkCount(){return cache.size;},
+    get desiredChunkCount(){return desired.size;},
     get sectorCount(){return sectors.size;},
   };
 }

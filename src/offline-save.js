@@ -175,10 +175,12 @@ export function createOfflineSave(ctx, {
   function tick(time) {
     if (!suspended && storage && time - lastWrite > 15000) markDirty();
   }
-  function suspend() {
+  function suspend({flush=true}={}) {
     if (suspended) return;
     if (timer !== null) {clearTimer(timer);timer = null;}
-    save(); // Flush the offline world *before* server welcome replaces it.
+    // Entering multiplayer straight from the menu must not overwrite the
+    // previous offline save with a freshly initialized empty world.
+    if(flush)save();
     suspended = true;
   }
   function reset() {

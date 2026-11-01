@@ -379,6 +379,7 @@ class World:
         self.path=Path(path);self.clients={};self.next_id=1;self.seed=random.randrange(1,999999)
         self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.boxes={};self.next_box=1;self.resource_cooldowns={};self.community_cuts=0;self.chat=[];self.chat_seq=0
         self.day_epoch=time.time()
+        self.world_created_at=self.day_epoch
         self.last_day_sync=time.monotonic()
         self.bots=BotManager(self);self.bot_token=bot_token
         if self.path.exists():
@@ -439,13 +440,18 @@ class World:
                 community_cuts=data.get('community_cuts',0)
                 if type(community_cuts) is not int or not 0<=community_cuts<=1_000_000_000:
                     raise ValueError('Invalid community progress')
+                created=data.get('world_created_at',epoch)
+                if (type(created) not in (int,float) or not math.isfinite(created)
+                    or not 0<created<=time.time()+DAY_CYCLE_SECONDS):
+                    raise ValueError('Invalid world creation date')
                 self.day_epoch=epoch
+                self.world_created_at=created
                 self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.community_cuts=community_cuts;self.resource_cooldowns=cooldowns
                 self.next_log=max(logs,default=0)+1
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
-        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts,'day_epoch':self.day_epoch}
+        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts,'day_epoch':self.day_epoch,'world_created_at':self.world_created_at}
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,self.path)
     async def prune_boxes(self,now=None):
         now=time.time() if now is None else now
@@ -578,8 +584,19 @@ class World:
         self.save()
         return True
 
+    def server_status(self):
+        return {'type':'server_status','name':'Forest Chopper Server',
+                'online':len(self.clients),'max_players':32,
+                'world_seed':self.seed,'world_created_at':self.world_created_at,
+                'day_phase':self.day_phase(),'protocol_version':1}
+
     async def handler(self,ws):
-        if ws.request.path.split('?',1)[0]=='/bots':
+        path=ws.request.path.split('?',1)[0]
+        if path=='/status':
+            await self.send(ws,self.server_status())
+            await ws.close()
+            return
+        if path=='/bots':
             await self.bot_handler(ws);return
         if len(self.clients)+len(self.bots.bots)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
@@ -899,6 +916,10 @@ class World:
 async def main():
     ap=argparse.ArgumentParser();ap.add_argument('--host',default='0.0.0.0');ap.add_argument('--port',type=int,default=8765);ap.add_argument('--save',default='forest_world.json');ap.add_argument('--bot-token',default=os.getenv('FOREST_BOT_TOKEN',''));args=ap.parse_args()
     world=World(args.save,args.bot_token)
+    # Persist the creation time and seed even before the first player modifies
+    # the world. Server status then reports a stable world age after a restart.
+    if not world.path.exists():
+        world.save()
     async with serve(world.handler,args.host,args.port,max_size=MAX_MESSAGE,ping_interval=20):
         simulation=asyncio.create_task(world.bots.run())
         expiry_task=asyncio.create_task(world.box_expiration_loop())

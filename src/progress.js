@@ -1,6 +1,7 @@
 // Per-browser, local-only lifetime stats and small achievements.
 // Not server-authoritative; only count events confirmed by the game client.
 export const PROGRESS_KEY = 'forest-chopper:progress:v1';
+export const LIFETIME_ACHIEVEMENTS_KEY = 'forest-chopper:achievements:v1';
 export const ACHIEVEMENTS = [
   {id:'first-tree',title:'Первое дерево',metric:'trees',goal:1},
   {id:'five-trees',title:'Лесоруб · 5 деревьев',metric:'trees',goal:5},
@@ -43,6 +44,32 @@ export function parseProgress(raw) {
   } catch {return null;}
 }
 
+// Old progress saves combined world counters and achievements. Before a new
+// world replaces counters, migrate earned achievements to a lifetime key.
+export function lifetimeAchievements(storage){
+  let stored=[];
+  try{
+    const data=JSON.parse(storage?.getItem(LIFETIME_ACHIEVEMENTS_KEY)||'null');
+    if(Array.isArray(data))stored=data.filter(id=>typeof id==='string'
+      &&ACHIEVEMENTS.some(a=>a.id===id));
+  }catch{}
+  let progress=null;
+  try{progress=parseProgress(storage?.getItem(PROGRESS_KEY));}catch{}
+  if(!progress)return [...new Set(stored)];
+  const values={...progress,chunks:progress.visited.length,
+    discoveries:progress.discovered.length};
+  return [...new Set([...stored,...ACHIEVEMENTS.filter(a=>values[a.metric]>=a.goal)
+    .map(a=>a.id)])];
+}
+export function resetWorldProgress(storage){
+  const earned=lifetimeAchievements(storage);
+  try{
+    storage?.setItem(LIFETIME_ACHIEVEMENTS_KEY,JSON.stringify(earned));
+    storage?.removeItem(PROGRESS_KEY);
+  }catch{}
+  return earned;
+}
+
 export function createProgress({
   doc = document,
   storage = null,
@@ -64,7 +91,7 @@ export function createProgress({
   const metricValue=metric=>metric==='chunks'?visited.size:metric==='discoveries'?discovered.size:state[metric];
   let objectiveIndex=restored?.objective?.index??0;
   let objectiveBaseline=restored?.objective?.baseline??metricValue(OBJECTIVES[objectiveIndex]?.metric??'trees');
-  const unlocked=new Set(ACHIEVEMENTS.filter(a=>metricValue(a.metric)>=a.goal).map(a=>a.id));
+  const unlocked=new Set(lifetimeAchievements(storage));
   let previous={x:start.x,z:start.z}, timer=null;
 
   const style=doc.createElement('style');
@@ -123,6 +150,7 @@ export function createProgress({
     try {
       storage.setItem(PROGRESS_KEY,JSON.stringify({version:1,...state,visited:[...visited],discovered:[...discovered],
         objective:{index:objectiveIndex,baseline:objectiveBaseline}}));
+      storage.setItem(LIFETIME_ACHIEVEMENTS_KEY,JSON.stringify([...unlocked]));
     } catch { /* Disabled storage does not prevent play. */ }
   }
   function schedule() {
