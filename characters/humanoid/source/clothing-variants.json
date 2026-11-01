@@ -1,0 +1,437 @@
+{
+  "version": 1,
+  "resolution": 512,
+  "items": {
+    "tshirt": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "olive",
+        "label": "Оливковая",
+        "color": "#69734b",
+        "style": "cotton",
+        "seed": 13
+      },
+      {
+        "id": "charcoal",
+        "label": "Графитовая",
+        "color": "#383d3e",
+        "style": "cotton",
+        "seed": 50
+      },
+      {
+        "id": "sand",
+        "label": "Песочная",
+        "color": "#a99a76",
+        "style": "cotton",
+        "seed": 87
+      },
+      {
+        "id": "navy",
+        "label": "Тёмно-синяя",
+        "color": "#313f54",
+        "style": "cotton",
+        "seed": 124
+      },
+      {
+        "id": "rust",
+        "label": "Выцветшая красная",
+        "color": "#985747",
+        "style": "cotton",
+        "seed": 161
+      }
+    ],
+    "shirt": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "red-plaid",
+        "label": "Красная клетка",
+        "color": "#8c4740",
+        "style": "plaid",
+        "accent": "#d3ad8a",
+        "seed": 13
+      },
+      {
+        "id": "green-plaid",
+        "label": "Зелёная клетка",
+        "color": "#465f4a",
+        "style": "plaid",
+        "accent": "#b7aa80",
+        "seed": 50
+      },
+      {
+        "id": "brown-plaid",
+        "label": "Коричневая клетка",
+        "color": "#806248",
+        "style": "plaid",
+        "accent": "#d6c4a1",
+        "seed": 87
+      },
+      {
+        "id": "blue-plaid",
+        "label": "Синяя клетка",
+        "color": "#475e73",
+        "style": "plaid",
+        "accent": "#a8bec3",
+        "seed": 124
+      },
+      {
+        "id": "work-gray",
+        "label": "Серая рабочая",
+        "color": "#6e7772",
+        "style": "canvas",
+        "seed": 161
+      }
+    ],
+    "hoodie": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "pine",
+        "label": "Хвойная",
+        "color": "#435b47",
+        "style": "fleece",
+        "seed": 13
+      },
+      {
+        "id": "coal",
+        "label": "Угольная",
+        "color": "#404144",
+        "style": "fleece",
+        "seed": 50
+      },
+      {
+        "id": "walnut",
+        "label": "Ореховая",
+        "color": "#6a5445",
+        "style": "fleece",
+        "seed": 87
+      },
+      {
+        "id": "steel",
+        "label": "Серо-синяя",
+        "color": "#506270",
+        "style": "fleece",
+        "seed": 124
+      },
+      {
+        "id": "ash",
+        "label": "Пепельная",
+        "color": "#828784",
+        "style": "fleece",
+        "seed": 161
+      }
+    ],
+    "jeans": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "classic",
+        "label": "Синий деним",
+        "color": "#456280",
+        "style": "denim",
+        "seed": 13
+      },
+      {
+        "id": "indigo",
+        "label": "Тёмный индиго",
+        "color": "#263c5a",
+        "style": "denim",
+        "seed": 50
+      },
+      {
+        "id": "washed",
+        "label": "Выцветший деним",
+        "color": "#75889b",
+        "style": "denim",
+        "seed": 87
+      },
+      {
+        "id": "black",
+        "label": "Чёрный деним",
+        "color": "#45464b",
+        "style": "denim",
+        "seed": 124
+      }
+    ],
+    "shorts": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "khaki",
+        "label": "Хаки",
+        "color": "#938463",
+        "style": "canvas",
+        "seed": 13
+      },
+      {
+        "id": "olive",
+        "label": "Оливковые",
+        "color": "#5e6c4e",
+        "style": "canvas",
+        "seed": 50
+      },
+      {
+        "id": "slate",
+        "label": "Графитовые",
+        "color": "#515d61",
+        "style": "canvas",
+        "seed": 87
+      },
+      {
+        "id": "earth",
+        "label": "Землистые",
+        "color": "#7c624c",
+        "style": "canvas",
+        "seed": 124
+      }
+    ],
+    "boots": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "brown",
+        "label": "Коричневая кожа",
+        "color": "#67432b",
+        "style": "leather",
+        "seed": 13
+      },
+      {
+        "id": "dark",
+        "label": "Тёмная кожа",
+        "color": "#302c28",
+        "style": "leather",
+        "seed": 50
+      },
+      {
+        "id": "oxblood",
+        "label": "Бордовая кожа",
+        "color": "#5b332e",
+        "style": "leather",
+        "seed": 87
+      },
+      {
+        "id": "muddy",
+        "label": "Походные, грязные",
+        "color": "#645342",
+        "style": "leather",
+        "seed": 124
+      }
+    ],
+    "shoes": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "tan",
+        "label": "Песочная замша",
+        "color": "#897457",
+        "style": "suede",
+        "seed": 13
+      },
+      {
+        "id": "forest",
+        "label": "Зелёные",
+        "color": "#505d4c",
+        "style": "suede",
+        "seed": 50
+      },
+      {
+        "id": "black",
+        "label": "Чёрные",
+        "color": "#393c40",
+        "style": "leather",
+        "seed": 87
+      },
+      {
+        "id": "stone",
+        "label": "Серые",
+        "color": "#79796d",
+        "style": "canvas",
+        "seed": 124
+      }
+    ],
+    "jacket": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "forest",
+        "label": "Лесная",
+        "color": "#4d5c42",
+        "style": "canvas",
+        "seed": 13
+      },
+      {
+        "id": "sandstone",
+        "label": "Песочная",
+        "color": "#96846a",
+        "style": "canvas",
+        "seed": 50
+      },
+      {
+        "id": "charcoal",
+        "label": "Графитовая",
+        "color": "#414b49",
+        "style": "canvas",
+        "seed": 87
+      },
+      {
+        "id": "rust",
+        "label": "Рыжевато-коричневая",
+        "color": "#795441",
+        "style": "canvas",
+        "seed": 124
+      },
+      {
+        "id": "navy",
+        "label": "Тёмно-синяя",
+        "color": "#3d4b5a",
+        "style": "canvas",
+        "seed": 161
+      }
+    ],
+    "trenchcoat": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "black",
+        "label": "Чёрный плащ",
+        "color": "#2d3436",
+        "style": "waxed",
+        "seed": 13
+      },
+      {
+        "id": "olive",
+        "label": "Оливковый плащ",
+        "color": "#4d5947",
+        "style": "waxed",
+        "seed": 50
+      },
+      {
+        "id": "brown",
+        "label": "Коричневый плащ",
+        "color": "#776049",
+        "style": "waxed",
+        "seed": 87
+      },
+      {
+        "id": "blue",
+        "label": "Тёмно-синий плащ",
+        "color": "#344655",
+        "style": "waxed",
+        "seed": 124
+      }
+    ],
+    "briefs": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "slate",
+        "label": "Графитовые",
+        "color": "#565c62",
+        "style": "cotton",
+        "seed": 13
+      },
+      {
+        "id": "navy",
+        "label": "Синие",
+        "color": "#3e5167",
+        "style": "cotton",
+        "seed": 50
+      },
+      {
+        "id": "forest",
+        "label": "Зелёные",
+        "color": "#4f624e",
+        "style": "cotton",
+        "seed": 87
+      }
+    ],
+    "panties": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "slate",
+        "label": "Графитовые",
+        "color": "#565c62",
+        "style": "cotton",
+        "seed": 13
+      },
+      {
+        "id": "cream",
+        "label": "Бежевые",
+        "color": "#b5a18c",
+        "style": "cotton",
+        "seed": 50
+      },
+      {
+        "id": "moss",
+        "label": "Оливковые",
+        "color": "#6a705a",
+        "style": "cotton",
+        "seed": 87
+      }
+    ],
+    "bra": [
+      {
+        "id": "default",
+        "label": "Оригинальная",
+        "original": true
+      },
+      {
+        "id": "slate",
+        "label": "Графитовый",
+        "color": "#565c62",
+        "style": "cotton",
+        "seed": 13
+      },
+      {
+        "id": "cream",
+        "label": "Бежевый",
+        "color": "#b5a18c",
+        "style": "cotton",
+        "seed": 50
+      },
+      {
+        "id": "moss",
+        "label": "Оливковый",
+        "color": "#6a705a",
+        "style": "cotton",
+        "seed": 87
+      }
+    ]
+  }
+}

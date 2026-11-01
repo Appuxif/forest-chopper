@@ -41,6 +41,7 @@ function animate(now){
  if(ctx.ownAvatar){
   ctx.ownAvatar.group.rotation.y=ctx.yaw;
   const rootDelta=ctx.tickActor(ctx.ownAvatar,dt,motion,!ctx.onGround,rate);
+  ctx.humanoidPreview?.tick(dt,motion,rate,ctx.ownAvatar);
   dx=rootDelta.x;dz=rootDelta.z;
   // Diagonal input keeps its intended direction; step distance still comes
   // from the animation, rather than an independent hard-coded speed.
