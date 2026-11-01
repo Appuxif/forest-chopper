@@ -274,7 +274,7 @@ class BotManager:
                                 if rack and rack['kind']=='rack':
                                     requested=params['amount']
                                     if kind=='depositLogs':
-                                        count=min(requested,bot['wood'],48-rack['logs'])
+                                        count=min(requested,3,bot['wood'],48-rack['logs'])
                                         rack['logs']+=count;bot['wood']-=count
                                     else:
                                         count=min(requested,rack['logs'],max(0,3-bot['wood']))

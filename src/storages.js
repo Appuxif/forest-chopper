@@ -65,7 +65,21 @@ export function createStorages(ctx,doc=document){
  function add(raw){
   if(!validStorage(raw))return false;
   const existing=structures.get(raw.id);
-  if(existing){existing.group.userData.label?.material.map?.dispose();existing.group.userData.label?.material.dispose();scene.remove(existing.group);}
+  if(existing&&existing.kind===raw.kind&&existing.x===raw.x&&existing.z===raw.z){
+   const changedLabel=existing.kind==='chest'&&existing.name!==raw.name;
+   const group=existing.group;
+   Object.assign(existing,{...raw,slots:raw.slots?.map(x=>x?{...x}:null),group});
+   if(changedLabel){
+    const label=group.userData.label;
+    label.material.map?.dispose();
+    label.material.dispose();
+    label.material=nameMaterial(existing.name);
+   }
+   if(existing.kind==='rack')updateRack(existing);
+   if(opened===existing.id)render();
+   return true;
+  }
+  if(existing)remove(raw.id);
   const item={...raw,slots:raw.slots?.map(x=>x?{...x}:null),group:null};
   item.group=visual(item);structures.set(item.id,item);scene.add(item.group);
   if(item.kind==='rack')updateRack(item);
