@@ -354,3 +354,13 @@ python3 -m http.server 8790
 ## 12. Короткая инструкция следующему агенту
 
 > Продолжай **Forest Chopper Humanoid Lite**, см. `characters/humanoid/AGENT_HANDOFF.md`. Сначала изучи commits `f055736` / `fd48f5f`, `characters/humanoid/README.md`, `build_lite.py`, `humanoid-lite.js`, `preview-lite.html`, тесты и текущий git status. Это модульный игровой персонаж ~10k triangles: male/female, 3 готовых лица, 53 bones, 12 animations, сменные skinned одежда/волосы, без runtime морфов. Исходные CC0 GLB — `source/`, пересборка — `build_all_lite.py`, результат — `lite/`. Не интегрируй автоматически в игру и не заменяй `lumberjack.glb`. Сначала улучши визуальную совместимость одежды и скрытие тела под одеждой, проверь анимации в браузере и Blender, запусти unit tests, делай изолированные commits. Никаких персонажей из примитивов; сохрани человеческую анатомию.
+
+### Update (2026-11-01): morph-aligned production rigs
+
+The 50 GLBs in `lite/` now contain male/female-specific rest joints for all
+53 bones, baked in `build_lite.py` from `source/base_body.joints.json` using
+the same `0.8` gender morph weight as mesh geometry. Do not restore the old
+unisex bind positions. No separate preview GLB library remains. Run the two
+rig-specific tests in `tests/test_humanoid_lite.py` after any changes to the
+skeleton or garment exports. The latest animation authoring scene is
+`animation/male_chop_workbench_final.blend` (preserve its `FC_Male_Chop` Action).

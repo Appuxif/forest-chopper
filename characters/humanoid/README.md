@@ -406,3 +406,26 @@ while `outerwear=hoodie`. Removing the hoodie or changing outerwear to a
 jacket/trenchcoat restores the top immediately. The rule applies in both
 `LiteHumanoid` runtime and the preview, including when exiting mask-paint mode.
 No new alpha masks or skin changes are involved.
+
+## Permanent morph-aligned skeleton (2026-11-01)
+
+`build_lite.py` now adjusts **all 53 rest-pose joints** using the same
+`gender_male` / `gender_female` morph offsets and weight `0.8` that it bakes
+into the body and outfit meshes. The previous build morphed mesh vertices but
+left the bones in their neutral unisex positions. That caused the finger
+controls to sit centimetres away from the skinned fingers in Blender.
+
+The corrected **production** models are all 50 `lite/*.glb` files. There is
+no longer a separate `lite-rigfix` runtime, preview switch, or alternate
+export mode. Body, garments, and hair are always built with matching joint
+rest poses and inverse bind matrices. Bone names, hierarchy, 12 game clips,
+mesh vertex positions, UVs, and skinning weights remain unchanged.
+
+Rebuild with `python3 characters/humanoid/build_all_lite.py --force --jobs 4`.
+The test `test_humanoid_lite.py` verifies every gender-specific joint against
+`source/base_body.joints.json` and the garment-to-body bind compatibility.
+
+For authoring a new chop animation, use
+`animation/male_chop_workbench_final.blend`: it contains all 53 corrected Male
+joints, the 5-part axe bound to `hand_r`, and the `FC_Male_Chop` Action. Older
+`male_chop_workbench*.blend` copies were left untouched to preserve any work.

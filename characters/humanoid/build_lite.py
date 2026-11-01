@@ -107,6 +107,31 @@ if args.kind=='gear' and args.asset in ('clothing_shirt.glb','clothing_tshirt.gl
  for garment in list(bpy.context.scene.objects):
   if garment.type=='MESH' and garment.name.startswith('Cloth_'):
    seal_garment_openings(garment,args.gender,args.asset,P)
+# Make the baked male/female silhouette and its skeleton agree. Shape keys
+# deform mesh vertices but do not automatically move armature joints. Apply
+# matching morph offsets to all 53 rest-pose pivots for body and equipment,
+# preserving the bone hierarchy, rotations, names, weights and animation clips.
+# Source GLBs remain untouched; the exported skin includes updated bind poses.
+from mathutils import Vector
+joints=json.loads((SOURCE/'base_body.joints.json').read_text())
+gender_deltas=joints['morphs']['gender_'+args.gender]
+if len(joints['bones'])!=53 or len(gender_deltas)!=53:
+ raise RuntimeError('Expected morph offsets for every one of the 53 bones')
+bpy.ops.object.select_all(action='DESELECT')
+rig.select_set(True)
+bpy.context.view_layer.objects.active=rig
+bpy.ops.object.mode_set(mode='EDIT')
+for name,base_xyz in joints['bones'].items():
+ eb=rig.data.edit_bones.get(name)
+ if eb is None:raise RuntimeError('Missing joint '+name)
+ delta=gender_deltas[name]
+ point=[base_xyz[i]+0.8*delta[i] for i in range(3)]
+ target=Vector((point[0],-point[2],point[1]))
+ offset=target-eb.head.copy()
+ eb.head=target
+ eb.tail+=offset
+bpy.ops.object.mode_set(mode='OBJECT')
+print('MORPH_ALIGNED_RIG',args.gender,'bones',len(joints['bones']),flush=True)
 
 # Protect immutable source and select only skinned meshes + one skeleton.
 bpy.ops.object.select_all(action='DESELECT')

@@ -28,6 +28,46 @@ def joints(gltf):
 def shape_keys(gltf):
     return sum(len(p.get('targets',[])) for m in gltf['meshes'] for p in m['primitives'])
 
+def quaternion_multiply(a,b):
+    """Multiply xyzw glTF quaternions, without a Blender runtime dependency."""
+    x,y,z,w=a
+    X,Y,Z,W=b
+    return (w*X+x*W+y*Z-z*Y, w*Y-x*Z+y*W+z*X,
+            w*Z+x*Y-y*X+z*W, w*W-x*X-y*Y-z*Z)
+
+
+def quaternion_rotate(q,vector):
+    return quaternion_multiply(quaternion_multiply(q,(*vector,0)),
+                               (-q[0],-q[1],-q[2],q[3]))[:3]
+
+
+def rest_joint_positions(gltf):
+    """Reconstruct world rest-pose joint positions from glTF parent/TRS."""
+    nodes=gltf['nodes']
+    parents={child:i for i,node in enumerate(nodes) for child in node.get('children',[])}
+    cached={}
+    def transform(index):
+        if index in cached:return cached[index]
+        node=nodes[index]
+        position=node.get('translation',(0,0,0))
+        rotation=node.get('rotation',(0,0,0,1))
+        scale=node.get('scale',(1,1,1))
+        if index in parents:
+            pp,pq,ps=transform(parents[index])
+            rotated=quaternion_rotate(pq,[position[i]*ps[i] for i in range(3)])
+            position=[pp[i]+rotated[i] for i in range(3)]
+            rotation=quaternion_multiply(pq,rotation)
+            scale=[ps[i]*scale[i] for i in range(3)]
+        cached[index]=(position,rotation,scale)
+        return cached[index]
+    return {nodes[i]['name']:transform(i)[0] for i in gltf['skins'][0]['joints']}
+
+
+def rest_joint_transforms(gltf):
+    """The body's outfit skeletons must share precisely the same local bind pose."""
+    return {gltf['nodes'][i]['name']:gltf['nodes'][i] for i in gltf['skins'][0]['joints']}
+
+
 class HumanoidLiteTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -42,6 +82,44 @@ class HumanoidLiteTest(unittest.TestCase):
         self.assertTrue({'hand_l','hand_r','pelvis','ball_l','head'}<=joints(male))
         self.assertEqual(shape_keys(male),0)
         self.assertEqual(shape_keys(female),0)
+
+    def test_gender_morph_moves_all_rest_joints(self):
+        """Baked mesh morphs must also move all 53 skeleton pivots."""
+        source=json.loads((SRC/'base_body.joints.json').read_text())
+        for gender,model in self.body.items():
+            positions=rest_joint_positions(model)
+            deltas=source['morphs']['gender_'+gender]
+            self.assertEqual(len(positions),53)
+            self.assertEqual(set(positions),set(source['bones']))
+            for name,base in source['bones'].items():
+                expected=[base[i]+0.8*deltas[name][i] for i in range(3)]
+                for i in range(3):
+                    with self.subTest(gender=gender,joint=name,axis=i):
+                        self.assertAlmostEqual(positions[name][i],expected[i],delta=0.001)
+        # Male and female rest skeletons must no longer be identical.
+        male=rest_joint_positions(self.body['male'])
+        female=rest_joint_positions(self.body['female'])
+        self.assertGreater(abs(male['hand_r'][0]-female['hand_r'][0]),0.03)
+
+    def test_garments_have_same_bind_joint_transforms_as_body(self):
+        for gender,model in self.body.items():
+            expected=rest_joint_transforms(model)
+            for item in self.clothing+self.hair:
+                filename=item['file'].removesuffix('.glb')+'_'+gender+'.glb'
+                obj=doc(LITE/filename)
+                actual=rest_joint_transforms(obj)
+                with self.subTest(gender=gender,item=item['id']):
+                    self.assertEqual(set(actual),set(expected))
+                    self.assertEqual(obj['accessors'][obj['skins'][0]['inverseBindMatrices']]['count'],53)
+                    for name,node in actual.items():
+                        reference=expected[name]
+                        for field in ('translation','rotation','scale'):
+                            a=node.get(field,[])
+                            b=reference.get(field,[])
+                            self.assertEqual(len(a),len(b))
+                            for i in range(len(a)):
+                                self.assertAlmostEqual(a[i],b[i],delta=0.0001,
+                                    msg=f'{filename} {name} {field}[{i}]')
 
     def test_fixed_face_presets_have_no_runtime_morphs(self):
         for gender in self.body:

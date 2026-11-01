@@ -15,6 +15,7 @@ parser=argparse.ArgumentParser()
 parser.add_argument('--jobs',type=int,default=4)
 parser.add_argument('--force',action='store_true')
 args=parser.parse_args()
+OUT=HERE/'lite'
 if args.jobs<1 or args.jobs>8:
  parser.error('--jobs must be 1..8 to avoid memory pressure')
 garments=json.loads((HERE/'source/clothing.json').read_text())['items']
@@ -24,11 +25,11 @@ body_jobs=[]
 gear_jobs=[]
 for gender in ('male','female'):
  for face in ('default','angular','soft'):
-  output=HERE/'lite'/('body_'+gender+(('' if face=='default' else '_'+face))+'.glb')
+  output=OUT/('body_'+gender+(('' if face=='default' else '_'+face))+'.glb')
   if args.force or not output.exists():
    body_jobs.append((output,['--kind','body','--gender',gender,'--face',face]))
  for file in files:
-  output=HERE/'lite'/(file.removesuffix('.glb')+'_'+gender+'.glb')
+  output=OUT/(file.removesuffix('.glb')+'_'+gender+'.glb')
   if args.force or not output.exists():
    gear_jobs.append((output,['--kind','gear','--gender',gender,'--asset',file]))
 def build(item):
