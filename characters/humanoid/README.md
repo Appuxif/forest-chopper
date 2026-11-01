@@ -450,9 +450,10 @@ The asset pipeline produces gender-specific body, clothing and hair GLBs,
 but does not produce more workbench `.blend` copies. Save this **same** scene
 and commit changes through Git; older animation scenes were deleted.
 
-The same 30 finger-bone poses from frame 1 of `Chop` are applied to all 12
-standard animation clips in **both** `body_male*.glb` and `body_female*.glb`,
-without editing wrist, arm, or locomotion channels. The versioned snapshot is
+The same 30 finger-bone poses from frame 1 of `Chop` are applied to the 11
+remaining stock animation clips in **both** `body_male*.glb` and `body_female*.glb`,
+without editing wrist, arm, or locomotion channels. The independently authored
+`idle` is an exception. The versioned snapshot is
 `animation/chop_finger_pose.json`. Whenever the first Chop frame changes,
 refresh the snapshot and rebuild exported models:
 
@@ -488,6 +489,25 @@ python3 characters/humanoid/build_all_lite.py --jobs 4 --force
 The body GLB exporter applies the same boundaries to all six Male/Female
 body-and-face variants, while preserving each other channel's interior.
 Some upstream glTF clips omit static bone channels, so the builder adds
-only the necessary boundary overrides. For `land`, which ends on a fractional
+only the necessary boundary overrides to **stock** clips; the fully authored
+`idle` overrides its entire action. For `land`, which ends on a fractional
 frame in the upstream action, the last integer export sample is explicitly
 pinned as well; the canonical Blender Action's frame range remains untouched.
+
+### Artist-authored `idle` (Male + Female)
+
+The original eight-second stock `idle` is **no longer** the runtime idle.
+`build_lite.py` imports the complete `idle` Action (all 53 bones and keyframes)
+from the single `animation/humanoid_animation_workbench.blend` and replaces the
+stock NLA Action in every male/female body GLB. The authored clip has keys on
+frames 1, 25 and 47 at 30 FPS (approximately 1.5 seconds). The pipeline
+compensates for the upstream base animation scene's 24 FPS without retiming
+any other clips. It deliberately **does not** impose the old Chop finger pose
+or endpoint overrides on this handmade `idle`; the Action is the source of truth.
+The 11 other clips still follow the legacy build rules until individually
+replaced by authored Actions.
+
+After editing `idle`, **save** the existing workbench in Blender and rebuild
+both genders' body GLBs with `build_all_lite.py --force` (or `build_lite.py`
+for each gender/face). Reload the game on port 8791 to see the new animation.
+Version the single `.blend` via Git instead of creating additional files.

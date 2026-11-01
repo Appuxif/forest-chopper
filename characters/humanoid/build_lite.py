@@ -149,11 +149,45 @@ if args.kind=='body':
  endpoints=json.loads((P/'animation/chop_pose_endpoints.json').read_text())
  target_actions={strip.action.name:strip.action
                  for track in rig.animation_data.nla_tracks for strip in track.strips}
- updated=apply_endpoints(list(target_actions.values()),endpoints,rig)
+ updated=apply_endpoints(list(target_actions.values()),endpoints,rig,skip={'idle'})
  from tools.align_chop_endpoint_poses import pin_fractional_land_export_frame
  pin_fractional_land_export_frame(list(target_actions.values()),endpoints)
- assert len(updated)==6,updated
+ assert len(updated)==5,updated
  print('BAKED_SHARED_CHOP_ENDPOINTS',args.gender,updated,flush=True)
+ # Replace only Idle with the complete hand-edited Action in the canonical
+ # Blender workbench. Do not replace/retime the other 11 source animations.
+ workbench=P/'animation/humanoid_animation_workbench.blend'
+ with bpy.data.libraries.load(str(workbench),link=False) as (available,loaded):
+  assert 'idle' in available.actions, 'Missing hand-edited idle Action'
+  loaded.actions=['idle']
+ authored_idle=loaded.actions[0]
+ assert authored_idle and len(authored_idle.slots)==1
+ old_idle=target_actions['idle']
+ idle_tracks=[track for track in rig.animation_data.nla_tracks
+              if any(strip.action==old_idle for strip in track.strips)]
+ assert len(idle_tracks)==1,idle_tracks
+ idle_strip=idle_tracks[0].strips[0]
+ assert idle_strip.action==old_idle
+ idle_strip.action=authored_idle
+ idle_strip.action_slot=authored_idle.slots[0]
+ idle_strip.action_frame_start=authored_idle.frame_range[0]
+ idle_strip.action_frame_end=authored_idle.frame_range[1]
+ # The canonical Blender file is authored at 30fps; upstream CC0 glTF
+ # imports at 24fps. Scale *only* this NLA strip to retain the authored timing.
+ idle_strip.frame_start=1
+ authored_fps=30
+ idle_strip.scale=bpy.context.scene.render.fps/authored_fps
+ idle_strip.frame_end=1+(authored_idle.frame_range[1]-authored_idle.frame_range[0])*idle_strip.scale
+ idle_strip.repeat=1
+ # Remove the original imported idle (which has now lost its NLA reference).
+ assert old_idle.users<=1,(old_idle.name,old_idle.users)
+ bpy.data.actions.remove(old_idle)
+ authored_idle.name='idle'
+ print('BAKED_AUTHORED_IDLE',args.gender,
+       'frames',tuple(float(f) for f in authored_idle.frame_range),
+       'keys',sum(len(fc.keyframe_points) for l in authored_idle.layers for st in l.strips
+                  for bag in st.channelbags for fc in bag.fcurves),
+       'strip',tuple(float(f) for f in (idle_strip.frame_start,idle_strip.frame_end)),flush=True)
 
 # Protect immutable source and select only skinned meshes + one skeleton.
 bpy.ops.object.select_all(action='DESELECT')

@@ -54,11 +54,14 @@ def target_rules(actions):
     return rules
 
 
-def apply_endpoints(actions, pose, rig=None):
+def apply_endpoints(actions, pose, rig=None, skip=()):
     """Change requested endpoint keys only. Preserve all interior animation."""
     source = {(row["path"], row["index"]): row["value"] for row in pose["channels"]}
     assert len(source) == 530
     rules = target_rules(actions)
+    for name in skip:
+        assert name in rules, name
+        del rules[name]
     changed = {}
     for action in actions:
         selected = rules.get(action.name)

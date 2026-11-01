@@ -170,7 +170,7 @@ class HumanoidLiteTest(unittest.TestCase):
         self.assertEqual(list(animation.glob('*.blend1')),[])
 
     def test_all_humanoid_animations_keep_chop_finger_pose(self):
-        """All 12 clips of both body types reuse finger-only pose from Chop."""
+        """All 11 stock clips retain the common Chop finger pose; idle is artist-authored."""
         shared_pose=json.loads((ROOT/'animation/chop_finger_pose.json').read_text())
         names=set(shared_pose['finger_bones'])
         self.assertEqual(len(names),30)
@@ -186,6 +186,8 @@ class HumanoidLiteTest(unittest.TestCase):
             payload=path.read_bytes()
             reference={}
             for clip in gltf['animations']:
+                if clip['name']=='idle':
+                    continue  # Entire Action comes from the user's Blender file.
                 for name in names:
                     for channel in ('translation','rotation'):
                         samples=glb_animation_samples(payload,gltf,clip,name,channel)
@@ -208,8 +210,7 @@ class HumanoidLiteTest(unittest.TestCase):
         self.assertEqual(snapshot['action'],'Chop')
         self.assertEqual(snapshot['frame'],1)
         self.assertEqual(len(snapshot['channels']),530)
-        requested={'idle':('first','last'),
-                   'idle_breathe':('first','last'),
+        requested={'idle_breathe':('first','last'),
                    'idle_fidget':('first','last'),
                    'idle_look':('first','last'),
                    'jump':('first','last'),
@@ -221,7 +222,7 @@ class HumanoidLiteTest(unittest.TestCase):
                 model=doc(path)
                 data=path.read_bytes()
                 animations={a['name']:a for a in model['animations']}
-                idle=animations['idle']
+                idle=animations['idle_breathe']
                 channels={
                     (model['nodes'][c['target']['node']]['name'],c['target']['path'])
                     for c in idle['channels']
@@ -237,6 +238,29 @@ class HumanoidLiteTest(unittest.TestCase):
                             for i,(expected,value) in enumerate(zip(reference,actual)):
                                 self.assertAlmostEqual(value,expected,delta=0.0002,
                                     msg=f'{gender}:{face}:{clip}:{endpoint}:{bone}.{prop}[{i}]')
+
+    def test_artist_authored_idle_exported_for_both_genders(self):
+        """The user-authored 47-frame Blender Action replaces 8-second stock idle."""
+        import math
+        for gender in ('male','female'):
+            for face in ('default','angular','soft'):
+                suffix='' if face=='default' else '_'+face
+                path=LITE/f'body_{gender}{suffix}.glb'
+                model=doc(path)
+                idle=next(a for a in model['animations'] if a['name']=='idle')
+                self.assertEqual(len(idle['channels']),159)
+                durations=[]
+                for sampler in idle['samplers']:
+                    accessor=model['accessors'][sampler['input']]
+                    durations.append(accessor['max'][0]-accessor['min'][0])
+                # Blender workbench: 47 frames at 30fps, retimed for 24fps source export.
+                self.assertTrue(all(1.45 <= duration <= 1.60 for duration in durations),
+                                (gender,face,durations[:5]))
+                self.assertTrue(any(model['accessors'][s['input']]['count']>30
+                                    for s in idle['samplers']))
+                stock=next(a for a in model['animations'] if a['name']=='idle_breathe')
+                stock_accessor=model['accessors'][stock['samplers'][0]['input']]
+                self.assertGreater(stock_accessor['max'][0]-stock_accessor['min'][0],7.9)
 
     def test_every_clothing_and_hair_variant(self):
         for gender in self.body:
