@@ -36,7 +36,7 @@ export function createHumanoidGamePreview({THREE,avatar,game,renderer}){
   metrics.style.marginTop='5px';metrics.style.fontSize='11px';
   metrics.textContent='Одинаковый мир / камера / настройки.\nСравни FPS и Draw Calls.';
   panel.append(label,select,metrics);game.append(panel);
-  let lastMetricsAt=performance.now(),frames=0;
+  let lastRenderSample=0,renderedFrames=0;
   function switchLayer(name,layer,speed=1){
     if(!active)return;
     const bank=active.layers[name];if(!bank||!bank[layer])return;
@@ -144,19 +144,22 @@ export function createHumanoidGamePreview({THREE,avatar,game,renderer}){
     }
   }
   select.addEventListener('change',()=>{void choose(select.value)});
+  // This counter runs only after an actual WebGL render, not on every
+  // requestAnimationFrame / simulation update (which can be ~144 Hz at 60 FPS).
+  function renderTick(now){
+    if(!lastRenderSample){lastRenderSample=now;return;}
+    renderedFrames++;
+    if(now-lastRenderSample<1000)return;
+    const fps=Math.round(renderedFrames*1000/(now-lastRenderSample));
+    renderedFrames=0;lastRenderSample=now;
+    const info=renderer.info.render;
+    const description=active
+      ? LABELS[selected]+' · '+active.stats.triangles.toLocaleString('ru')+' трис · '+active.stats.skinnedMeshes+' мешей'
+      : 'Старый дровосек';
+    metrics.textContent=description+'\nRender FPS '+fps+' · Draw '+info.calls+' · Tri '+info.triangles.toLocaleString('ru')+
+      '\nПередвижение и физика без изменений';
+  }
   function tick(dt,motion,rate,gameActor){
-    const now=performance.now();
-    frames++;
-    if(now-lastMetricsAt>=1000){
-      const fps=Math.round(frames*1000/(now-lastMetricsAt));
-      frames=0;lastMetricsAt=now;
-      const info=renderer.info.render;
-      const description=active
-        ? LABELS[selected]+' · '+active.stats.triangles.toLocaleString('ru')+' трис · '+active.stats.skinnedMeshes+' мешей'
-        : 'Старый дровосек';
-      metrics.textContent=description+'\nFPS '+fps+' · Draw '+info.calls+' · Tri '+info.triangles.toLocaleString('ru')+
-        '\nПередвижение и физика без изменений';
-    }
     if(!active)return;
     const name=MOTIONS[motion]||'idle';
     switchLayer(name,'lower',rate<0?-Math.abs(rate):Math.abs(rate));
@@ -171,5 +174,5 @@ export function createHumanoidGamePreview({THREE,avatar,game,renderer}){
     }else switchLayer(name,'upper',Math.abs(rate));
     active.actor.update(dt);
   }
-  return {tick,choose,get selected(){return selected},get active(){return active},panel};
+  return {tick,renderTick,choose,get selected(){return selected},get active(){return active},panel};
 }
