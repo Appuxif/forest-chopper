@@ -371,9 +371,8 @@ def decor_resource(seed,cx,cz,i):
         kind='mushroom:'+MUSHROOM_SPECIES[int(decor_rand(seed,cx,cz,1000+i)*4)]
     elif decor_rand(seed,cx,cz,900+i)>.79:
         kind='flower:'+FLOWER_SPECIES[int(decor_rand(seed,cx,cz,1100+i)*4)]
-    elif decor_rand(seed,cx,cz,17000+i)>.78:
-        kind='dry_grass'
-    else:return None
+    else:
+        kind='dry_grass'  # Every decorative grass tuft yields dry grass.
     x=cx*DECOR_CHUNK_SIZE+decor_rand(seed,cx,cz,100+i*2)*DECOR_CHUNK_SIZE
     z=cz*DECOR_CHUNK_SIZE+decor_rand(seed,cx,cz,101+i*2)*DECOR_CHUNK_SIZE
     if pond_depth_at(seed,x,z)>.12:return None

@@ -34,9 +34,8 @@ export function decorResource(seed,cx,cz,i){
     kind='mushroom:'+MUSHROOM_IDS[Math.floor(decorRand(seed,cx,cz,1000+i)*4)];
   else if(decorRand(seed,cx,cz,900+i)>.79)
     kind='flower:'+FLOWER_IDS[Math.floor(decorRand(seed,cx,cz,1100+i)*4)];
-  else if(decorRand(seed,cx,cz,17000+i)>.78)
-    kind='dry_grass';
-  else return null; // Ordinary decorative grass.
+  else
+    kind='dry_grass'; // Every decorative grass tuft yields the same dry-grass resource.
   return {
     id:decorResourceId(cx,cz,i),
     kind,

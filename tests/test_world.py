@@ -426,8 +426,10 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_existing_decor_species_follow_exact_world_seed_and_inventory_stacks(self):
         flowers=nearby_decor(12345,0,0,{},now=0)
-        self.assertEqual(len(flowers),71)
-        self.assertEqual(sum(item['kind']=='dry_grass' for item in flowers),30)
+        self.assertEqual(len(flowers),193)
+        self.assertEqual(sum(item['kind']=='dry_grass' for item in flowers),152)
+        self.assertEqual(decor_resource(12345,-1,-1,0)['kind'],'dry_grass',
+                         'ordinary green grass must now be collectible')
         sample=decor_resource(12345,-1,-1,5)
         self.assertEqual(sample['kind'],'flower:pink_wildflower')
         self.assertAlmostEqual(sample['x'],-13.965131644072244)

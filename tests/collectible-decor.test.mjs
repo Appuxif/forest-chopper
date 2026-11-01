@@ -22,14 +22,14 @@ test('four actual mushroom species and four flowers are individually collectible
 });
 test('existing chunk positions and species are stable across generation and reload',()=>{
   const items=nearbyDecorResources(12345,0,0);
-  assert.equal(items.length,71);
-  assert.equal(items.filter(x=>x.kind==='dry_grass').length,30);
+  assert.equal(items.length,193);
+  assert.equal(items.filter(x=>x.kind==='dry_grass').length,152);
   assert.deepEqual(items.slice(0,2).map(item=>({
     id:item.id,kind:item.kind,
     x:+item.x.toFixed(4),z:+item.z.toFixed(4),
   })),[
-    {id:'d:-1,-1:5',kind:'flower:pink_wildflower',x:-13.9651,z:-16.4325},
-    {id:'d:-1,-1:7',kind:'dry_grass',x:-23.1193,z:-19.8328},
+    {id:'d:-1,-1:0',kind:'dry_grass',x:-10.4095,z:-3.4063},
+    {id:'d:-1,-1:1',kind:'dry_grass',x:-19.287,z:-10.0601},
   ]);
   for(const item of items){
     assert.ok(isDecorResourceId(item.id));
@@ -37,6 +37,10 @@ test('existing chunk positions and species are stable across generation and relo
     assert.deepEqual(decorResource(12345,cx,cz,index),item);
     assert.ok(item.kind==='dry_grass'||['mushroom:','flower:'].some(prefix=>item.kind.startsWith(prefix)));
   }
+  assert.equal(decorResource(12345,-1,-1,0)?.kind,'dry_grass',
+    'formerly ordinary grass must be collectible without changing its resource ID');
+  assert.equal(decorResource(12345,-1,-1,5)?.kind,'flower:pink_wildflower',
+    'existing flower species and position must not change');
   assert.equal(decorResource(12345,0,0,25),null);
   assert.equal(decorResource(12345,0,0,-1),null);
   assert.equal(isDecorResourceId('d:0,0:25'),false);
@@ -81,7 +85,7 @@ test('flower and mushroom respawn after exactly ten minutes using existing resou
   assert.deepEqual(reloaded.nodes.find(x=>x.id===flower.id),flower);
   assert.deepEqual(reloaded.nodes.find(x=>x.id===mushroom.id),mushroom);
   assert.equal(reloaded.isCollected(flower.id),false);
-  assert.equal(nearbyResources(12345,0,0,{}).length,18+71);
+  assert.equal(nearbyResources(12345,0,0,{}).length,18+193);
 });
 
 test('dry grass shares cooldowns and has tiny carry weight',()=>{

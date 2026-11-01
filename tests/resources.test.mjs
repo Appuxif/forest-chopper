@@ -161,7 +161,7 @@ test('deterministic flowers, shrubs, mushrooms and rocks retain seeded slots and
   function snapshot() {
     const {ctx,created,sharedGeometry,sharedMaterial} = fixture();
     const world = createWorld(ctx);
-    const counts = {grass:0,dry_grass:0,rock:0,flower:0,mushroom:0};
+    const counts = {grass:0,rock:0,flower:0,mushroom:0};
     const rows=[];
     for(let i=0;i<14;i++){
       world.build(i,2);
@@ -172,7 +172,14 @@ test('deterministic flowers, shrubs, mushrooms and rocks retain seeded slots and
         decor.children.filter(mesh=>mesh.userData.decorType==='rock').length,
         'rock collisions share the decorative world seed');
       assert.equal(decor.userData.reactivePlants.length,
-        decor.children.filter(mesh=>['grass','dry_grass','flower'].includes(mesh.userData.decorType)).length);
+        decor.children.filter(mesh=>['grass','flower'].includes(mesh.userData.decorType)).length);
+      assert.deepEqual(
+        decor.userData.collectibles.map(mesh=>mesh.userData.collectibleId).sort(),
+        decor.children.filter(mesh=>mesh.userData.decorType!=='rock')
+          .map(mesh=>mesh.userData.collectibleId).sort(),
+        'every grass tuft, flower and mushroom is collectible, and rocks are not');
+      assert.equal(new Set(decor.userData.collectibles.map(mesh=>mesh.userData.collectibleId)).size,
+        decor.userData.collectibles.length,'one resource per decorative tuft');
       const chunk=decor.children.map(mesh=>{
         const type=mesh.userData.decorType;
         if(type==='mushroom'){
@@ -191,11 +198,10 @@ test('deterministic flowers, shrubs, mushrooms and rocks retain seeded slots and
           assert.equal(mesh.scale.x,oldScale*.5,'every mushroom is exactly 50% of its previous size');
           assert.equal(mesh.position.y,0,'mushroom base must sit on the ground');
         }
-        if(type==='grass'||type==='dry_grass'){
+        if(type==='grass'){
           assert.equal(mesh.position.y,0,'grass tuft roots must sit at ground level');
           assert.ok(['meadow','lush','sedge','fan'].includes(mesh.userData.grassShape));
           assert.ok(['forest','fresh','dry'].includes(mesh.userData.grassPalette));
-          if(type==='dry_grass')assert.equal(mesh.userData.grassPalette,'dry');
         }
         if(type==='flower'){
           assert.equal(mesh.position.y,0,'flower stem must start at ground level');
