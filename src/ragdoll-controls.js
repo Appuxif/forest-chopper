@@ -32,11 +32,11 @@ export function createRagdollControls(ctx,doc=document){
   button.textContent=busy?'🦴 …':'🦴 Ragdoll';
   button.hidden=mode!=='none'||ctx.deathSystem?.active===true;
  }
- async function ragdoll(){
+ async function ragdoll({impactSpeed=0}={}){
   if(busy||mode!=='none'||ctx.deathSystem?.active||ctx.ragdoll?.active)return false;
   busy=true;refresh();
   try{
-   await ctx.ragdoll.trigger({allowOnline:true});
+   await ctx.ragdoll.trigger({allowOnline:true,impactSpeed});
    mode='manual';return true;
   }catch(error){console.warn('Manual ragdoll failed:',error);ctx.notify?.('Не удалось включить Ragdoll','warning');return false;}
   finally{busy=false;refresh();}
@@ -57,6 +57,7 @@ export function createRagdollControls(ctx,doc=document){
    }
    bed={item,pose};
    mode='sleep';
+   ctx.fallTracker?.reset?.();
    // Bed spawn is selected only once lying on the bed actually succeeded.
    ctx.deathSystem?.setBed?.(item.id);
    if(!ctx.isOnline?.()){
@@ -108,6 +109,7 @@ export function createRagdollControls(ctx,doc=document){
    ctx.verticalSpeed=ctx.onGround?0:Math.min(0,landing.vy);
   }
   if(mode==='sleep'&&bed){
+   ctx.fallTracker?.reset?.();
    const {pose}=bed;
    if(!ctx.isOnline?.()){
      ctx.px=pose.wakeX;ctx.pz=pose.wakeZ;
@@ -125,6 +127,10 @@ export function createRagdollControls(ctx,doc=document){
    ctx.ownAvatar.group.rotation.set(0,ctx.yaw,0);
    ctx.ownAvatar.group.updateMatrixWorld?.(true);
   }
+  // Preserve the peak if Space was pressed in midair, so the remaining
+  // descent still receives fall damage. An already-resolved bounce remains
+  // locked until it returns to ground; a grounded get-up permits new falls.
+  if(mode==='manual'&&ctx.onGround)ctx.fallTracker?.reset?.();
   mode='none';bed=null;refresh();
   return true;
  }

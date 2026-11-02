@@ -199,6 +199,33 @@ def has_crafting_station(camp,kind,x,z):
                for item in camp.values())
 
 
+def fall_damage_for_height(height):
+    """Same three discrete thresholds as the browser controller."""
+    if not math.isfinite(height) or height < 3 - 1e-6:
+        return 0
+    if height >= 5 - 1e-6:
+        return 5
+    return 3 if height >= 4 - 1e-6 else 2
+
+
+def record_fall_landing(player, old_y, y, airborne):
+    """Return (drop, damage) once, on validated transition to landing.
+
+    Called only *after* a network movement packet passes anti-cheat checks.
+    The client provides positions, never a damage number or fall height.
+    """
+    peak = player.get('fall_peak')
+    if airborne:
+        player['fall_peak'] = max(old_y, y, peak if peak is not None else old_y)
+        return None
+    player['fall_peak'] = None
+    if peak is None:
+        return None
+    drop = max(0.0, peak - y)
+    damage = fall_damage_for_height(drop)
+    return (drop, damage) if damage else None
+
+
 def vitals_view(player):
     view={'health':player['health'],'hunger':player['hunger'],
           'stamina':round(player.get('stamina',MAX_VITALS),3),
@@ -871,6 +898,7 @@ class World:
         player['last_hunger_at']=time.monotonic()
         player['last_stamina_at']=time.monotonic()
         player['stamina_sprint_locked']=False;player['sprinting']=False
+        player['fall_peak']=None
         player['last_effect_ids']=frozenset()
         for key in STATUS_PLAYER_KEYS.values():player.pop(key,None)
         await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':0})
@@ -1369,7 +1397,17 @@ class World:
                         player['walk_credit']=credit
                     player['sprinting']=permitted_sprint
                     old_x,old_z=player['x'],player['z']
+                    impact=record_fall_landing(player,player['y'],y,jumping)
                     player.update(x=x,z=z,y=y,yaw=yaw,jumping=jumping,last_pos=now)
+                    if impact:
+                        drop,damage=impact
+                        player['health']=max(0,player['health']-damage)
+                        if player['health']==0:
+                            await self.handle_death(ws,player)
+                            continue
+                        await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
+                        await self.send(ws,{'type':'fall_impact',
+                            'height':round(drop,3),'damage':damage})
                     ox,oz=player.get('last_box_sync',(0,0))
                     if math.hypot(x-ox,z-oz)>=12:
                         await self.sync_boxes(ws,player)

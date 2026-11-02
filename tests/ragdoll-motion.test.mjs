@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createPlayerMotionTracker,captureRagdollMomentum,applyRagdollMomentum} from '../src/ragdoll-motion.js';
+import {createPlayerMotionTracker,captureRagdollMomentum,ragdollActivationMotion,applyRagdollMomentum} from '../src/ragdoll-motion.js';
 
 const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-8,`expected ${a} ≈ ${b}`);
 test('real player displacement (Root Motion + collision resolved) provides world velocity',()=>{
@@ -55,4 +55,13 @@ test('tracker reset after ragdoll/respawn cannot produce teleport velocity',()=>
  m.sample(3,-2,0,.02);
  m.reset(0,0,0);
  assert.deepEqual(m.sample(0,0,0,.016),{x:0,z:0,angularY:0});
+});
+
+test('landing ragdoll does not reuse fall impact speed as downward injection',()=>{
+ const ctx={onGround:true,verticalSpeed:-13,motionVelocity:{x:3,z:-2,angularY:1.2}};
+ assert.deepEqual(ragdollActivationMotion(ctx),{x:3,y:0,z:-2,angularY:1.2});
+ assert.deepEqual(ragdollActivationMotion({...ctx,onGround:false}),
+  {x:3,y:-13,z:-2,angularY:1.2},'manual midair ragdoll keeps fall speed');
+ assert.deepEqual(ragdollActivationMotion({...ctx,onGround:false},{bed:true}),
+  {x:0,y:0,z:0,angularY:0});
 });

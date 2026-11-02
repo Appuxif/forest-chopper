@@ -153,3 +153,19 @@ test('online sleep changes only local pose, not authoritative coordinates',async
  assert.deepEqual([f.ctx.px,f.ctx.pz],[initial.x,initial.z]);
  assert.equal(f.sent.length,0);
 });
+
+test('midair recovery does not reset fall tracker; grounded recovery does',async()=>{
+ const f=fixture(),events=[];
+ f.ctx.fallTracker={reset(){events.push('reset');}};
+ f.ctx.ragdoll.pose=()=>({x:1,z:2,hipsY:5,feetY:4,
+   standingHipOffset:1,vy:-7});
+ f.ctx.ragdollStandingSupport=()=>0;
+ await f.controls.ragdoll();
+ f.controls.getUp();
+ assert.deepEqual(events,[],'keep initial peak of an unfinished fall');
+ f.ctx.ragdoll.pose=()=>({x:1,z:2,hipsY:1,feetY:0,
+   standingHipOffset:1,vy:0});
+ await f.controls.ragdoll();
+ f.controls.getUp();
+ assert.deepEqual(events,['reset'],'grounded get-up unlocks subsequent falls');
+});

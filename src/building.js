@@ -140,7 +140,7 @@ export function createBuilding(ctx) {
     const error = placeError(ctx.placement);
     ctx.preview.material.color.setHex(error ? 0xff6666 : 0x83efb5);
     hint(error || 'Ось '+['X','Z','Y'][ctx.placement.orientation]+' · Высота +'+
-      (ctx.placement.height*.5).toFixed(1)+' м · PgUp/PgDn ↕ · Alt+стрелки ↔ · R повернуть');
+      (ctx.placement.height*.5).toFixed(1)+' м · PgUp/PgDn или +/- ↕ · Alt+стрелки ↔ · R повернуть');
   }
 
   function placeLog() {

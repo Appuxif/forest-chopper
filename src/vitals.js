@@ -89,6 +89,12 @@ export function createVitals({now=()=>performance.now()/1000,epoch=()=>Date.now(
     if(hunger===0){progress=0;starvationProgress=0;}
     return true;
   }
+  function damage(amount){
+    if(!Number.isFinite(amount)||amount<=0||health===0)return 0;
+    const actual=Math.min(health,Math.ceil(amount));
+    health=clamp(health-actual);
+    return actual;
+  }
   function canSprint(){
     return stamina>0&&!sprintLocked;
   }
@@ -118,7 +124,7 @@ export function createVitals({now=()=>performance.now()/1000,epoch=()=>Date.now(
     if(status)applyTimedEffect(effects,status,epoch());
     return true;
   }
-  return {tick,eat,hit,jump,chopWarning,canSprint,reset,restore,snapshot,
+  return {tick,eat,hit,jump,damage,chopWarning,canSprint,reset,restore,snapshot,
     get health(){return health},get hunger(){return hunger},get stamina(){return stamina},
     get hasNightVision(){return hasStatusEffect(effects,'night_vision',epoch())},
     get damageMultiplier(){return lumberjackDamageMultiplier(effects,epoch())},

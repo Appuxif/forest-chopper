@@ -1,5 +1,5 @@
 import {createRagdollEnvironment} from './ragdoll-colliders.js';
-import {captureRagdollMomentum,applyRagdollMomentum} from './ragdoll-motion.js';
+import {ragdollActivationMotion,applyRagdollMomentum} from './ragdoll-motion.js?v=20261102-bounce-fix1';
 export {makeGroundMesh} from './ragdoll-colliders.js';
 // Shared local-player ragdoll. Uses the same GLB SkinnedMesh/bones as the
 // animated character. Rapier is loaded only when a death or DEBUG trigger occurs.
@@ -62,12 +62,12 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
    bodies:instance?.parts.length??0,
    hipsHeight:instance?.parts[0]?.body.translation().y??null,
  });
- async function trigger({allowOnline=false,bed=null,restPose=null}={}){
+ async function trigger({allowOnline=false,bed=null,restPose=null,impactSpeed=0}={}){
    if(instance)return state();
    if(loading)return loading;
    // Capture on the input frame, BEFORE loading Rapier asynchronously: a
    // first-time WASM fetch must not erase the velocity of a jump or sprint.
-   const initialMotion=captureRagdollMomentum(ctx,{bed:!!bed});
+   const initialMotion=ragdollActivationMotion(ctx,{bed:!!bed});
    loading=(async()=>{
      const actor=ctx.ownAvatar;
      if(!actor)throw new Error('3D character has not loaded');
@@ -191,16 +191,17 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
      // A small forward impulse makes the body topple instead of concertina
      // collapsing in place under perfectly symmetrical gravity.
      const facing=new THREE.Vector3(0,0,-1).applyQuaternion(actor.group.quaternion);
+     const onLanding=impactSpeed>0&&ctx.onGround;
      if(!bed)byName.get('Spine').body.applyImpulse({
-       x:facing.x*11,y:0,z:facing.z*11
+       x:facing.x*(onLanding?1.5:11),y:0,z:facing.z*(onLanding?1.5:11)
      },true);
      // A very gentle push on the head nudges it in the character's forward
      // direction. The neck hinge transfers the motion to the body.
      if(!bed){
        byName.get('Head').body.applyImpulse({
-         x:facing.x*1.1,y:0,z:facing.z*1.1
+         x:facing.x*(onLanding?.3:1.1),y:0,z:facing.z*(onLanding?.3:1.1)
        },true);
-       byName.get('Spine').body.applyTorqueImpulse({x:-4,y:0,z:0},true);
+       byName.get('Spine').body.applyTorqueImpulse({x:onLanding?-.7:-4,y:0,z:0},true);
      }
      // Store the animated pose before handing the very same GLB to physics.
      actor.mixer.stopAllAction();

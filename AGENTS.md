@@ -119,3 +119,9 @@ python3 forest_server.py --host 127.0.0.1 --port 18765 --save /tmp/forest-choppe
 ## Collision World — обязательное правило
 
 При добавлении нового твёрдого объекта или новой формы коллизии обновляйте **`src/collision-world.js`**, не создавайте вторую модель геометрии в `physics.js` или `ragdoll-colliders.js`. Для построек задавайте `group.userData.collisionBoxes`, для отдельных категорий расширяйте engine-neutral генератор форм. Обычная физика работает через `src/collision-kinematic.js`, Rapier — через `src/ragdoll-colliders.js`. При создании, удалении, перемещении объектов или загрузке чанков вызывайте `ctx.collisionWorld?.invalidate?.()`, чтобы активный ragdoll обновил свои статические тела. При изменении проверяйте тесты `tests/collision-world.test.mjs`, `tests/physics.test.mjs`, `tests/ragdoll-colliders.test.mjs`.
+
+## Высотный урон и ragdoll
+
+Новые виды урона наносите через единые `src/vitals.js:damage` / `src/vitals-ui.js:damage`, чтобы корректно обновлялись HUD, сохранения и `deathSystem`. Высоту падения отслеживает **`src/fall-damage.js`**, а не отдельный код в анимациях или камере. Порог урона 3/4/5 м — тесты `tests/fall-damage.test.mjs` и `tests/test_fall_damage.py`; в multiplayer здоровье изменяет только `forest_server.py` на основе проверенных пакетов, клиент не должен доверять входящему damage, высоту от локального ragdoll в online сервер пока не знает. Не дублировать запуск смерти при 0 HP или запуск ragdoll после смертельного падения.
+
+При автоматическом ragdoll после приземления **никогда не передавайте прошлую скорость удара как новую отрицательную линейную скорость**: ноги уже на опоре, движок вытолкнет капсулы и произойдёт неестественный высокий отскок. Для manual ragdoll в воздухе скорость сохраняется. Повторные отскоки одного тела нельзя считать новым падением до подъёма / заземления. Регрессии описаны в `tests/fall-damage.test.mjs` и `tests/ragdoll-motion.test.mjs`.

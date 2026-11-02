@@ -61,6 +61,14 @@ export function createVitalsUI(ctx,doc=document){
   if(beforeHunger>state.hunger&&!state.canChop)ctx.notify?.(state.chopWarning(),'warning','vitals-low');
   return changed;
  }
+ function damage(amount){
+  const dealt=state.damage(amount);
+  if(!dealt)return 0;
+  render();
+  if(!ctx.isOnline?.())ctx.offlineSave?.markDirty?.();
+  if(state.health===0)ctx.deathSystem?.onDeath?.();
+  return dealt;
+ }
  function canSprint(){return state.canSprint();}
  function hit(){
   if(!state.hit())return false;
@@ -122,7 +130,7 @@ export function createVitalsUI(ctx,doc=document){
   return true;
  }
  render();
- return {state,tick,consume,craftConsumable,craftPotion:craftConsumable,hit,jump,chopWarning:()=>state.chopWarning(),canSprint,restore,acceptServer,render,serialize:()=>state.snapshot(),
+ return {state,tick,consume,craftConsumable,craftPotion:craftConsumable,hit,jump,damage,chopWarning:()=>state.chopWarning(),canSprint,restore,acceptServer,render,serialize:()=>state.snapshot(),
   get health(){return state.health},get hunger(){return state.hunger},get stamina(){return state.stamina},
   get canChop(){return state.canChop},
   get hasNightVision(){return state.hasNightVision},

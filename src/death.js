@@ -23,6 +23,7 @@ export function createDeathSystem(ctx,{
  function begin(){
   if(active())return false;
   phase='falling';startedAt=clock();deathOnline=!!ctx.isOnline?.();
+  ctx.fallTracker?.reset?.();
   ctx.ragdollControls?.clearForDeath?.();
   for(const key in ctx.keys??{})ctx.keys[key]=false;
   ctx.jumpRequested=false;
@@ -31,7 +32,8 @@ export function createDeathSystem(ctx,{
   if(typeof document!=='undefined'&&document.pointerLockElement)document.exitPointerLock?.();
   screen?.begin?.(()=>respawn());
   // If Rapier/CDN fails, the death screen and manual respawn still work.
-  Promise.resolve().then(()=>ctx.ragdoll?.trigger?.({allowOnline:true}))
+  const impactSpeed=ctx.fallImpactSpeed??0;
+  Promise.resolve().then(()=>ctx.ragdoll?.trigger?.({allowOnline:true,impactSpeed}))
    .then(()=>{if(!active())ctx.ragdoll?.reset?.();})
    .catch(error=>console.warn('Death ragdoll unavailable:',error));
   return true;
@@ -85,6 +87,7 @@ export function createDeathSystem(ctx,{
   if(bedId===id){bedId=null;ctx.offlineSave?.markDirty?.();ctx.notify?.('Кровать убрана — возрождение на старте','warning');}
  }
  function respawnAt(x,z){
+  ctx.fallTracker?.reset?.();
   ctx.px=x;ctx.pz=z;ctx.feetY=ctx.terrain.heightAt(x,z);
   ctx.verticalSpeed=0;ctx.onGround=true;ctx.buildMode=false;
   ctx.disposePreview?.();

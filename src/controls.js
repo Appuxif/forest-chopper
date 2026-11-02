@@ -1,4 +1,20 @@
 import {createTouchJoystick} from './touch-input.js';
+// Fn+PgUp/PgDn on many laptops emits a different physical `code` from
+// the logical `key`. Prefer the logical key, but keep physical fallback and
+// +/- shortcuts for keyboards with no dedicated Page keys.
+export function buildPlacementShortcut(event){
+ const key=event.key,code=event.code;
+ if(key==='PageUp'||code==='PageUp'||code==='Equal'||code==='NumpadAdd')return ['height',1];
+ if(key==='PageDown'||code==='PageDown'||code==='Minus'||code==='NumpadSubtract')return ['height',-1];
+ const arrow=key?.startsWith('Arrow')?key:code;
+ if(event.altKey){
+  if(arrow==='ArrowLeft')return ['x',-1];
+  if(arrow==='ArrowRight')return ['x',1];
+  if(arrow==='ArrowUp')return ['z',-1];
+  if(arrow==='ArrowDown')return ['z',1];
+ }
+ return null;
+}
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 export function createControls(ctx) {
 function look(dx,dy){const sensitivity=.003*ctx.settings.mouseSensitivity;ctx.yaw-=dx*sensitivity;const limit=ctx.thirdPerson?ctx.settings.cameraPitchLimit*Math.PI/180:1.43;ctx.pitch=Math.max(-limit,Math.min(limit,ctx.pitch-dy*sensitivity))}ctx.renderer.domElement.addEventListener('pointerdown',e=>{if(ctx.deathSystem?.active)return;if(e.pointerType==='mouse'){if(document.pointerLockElement!==ctx.renderer.domElement)ctx.renderer.domElement.requestPointerLock?.();ctx.chop()}else{ctx.drag={id:e.pointerId,x:e.clientX,y:e.clientY};ctx.renderer.domElement.setPointerCapture(e.pointerId)}});ctx.renderer.domElement.addEventListener('pointermove',e=>{if(ctx.drag?.id===e.pointerId){look(e.clientX-ctx.drag.x,e.clientY-ctx.drag.y);ctx.drag.x=e.clientX;ctx.drag.y=e.clientY}});ctx.renderer.domElement.addEventListener('pointerup',e=>{if(ctx.drag?.id===e.pointerId)ctx.drag=null});ctx.renderer.domElement.addEventListener('pointercancel',e=>{if(ctx.drag?.id===e.pointerId)ctx.drag=null});ctx.renderer.domElement.addEventListener('lostpointercapture',e=>{if(ctx.drag?.id===e.pointerId)ctx.drag=null});document.addEventListener('mousemove',e=>{if(document.pointerLockElement===ctx.renderer.domElement)look(e.movementX,e.movementY)});
@@ -28,18 +44,14 @@ const isTypingTarget=el=>el instanceof Element&&!!el.closest('input, textarea, s
      ctx.storages?.place?.(ctx.inventory.selected);e.preventDefault();return;
    }
  }
-if(e.code==='Space'){e.preventDefault();if(!e.repeat&&!ctx.ragdollControls?.getUp?.())ctx.requestJump();return}if(e.code==='KeyV'){if(!e.repeat)ctx.toggleView();return}if(e.code==='KeyB'&&!ctx.inventory){if(!e.repeat)ctx.setMode(!ctx.buildMode);return}if(ctx.buildMode&&ctx.inventory?.selected==='log'&&
- ['PageUp','PageDown','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)
- &&(['PageUp','PageDown'].includes(e.code)||e.altKey)){
+if(e.code==='Space'){e.preventDefault();if(!e.repeat&&!ctx.ragdollControls?.getUp?.())ctx.requestJump();return}
+ if(e.code==='KeyV'){if(!e.repeat)ctx.toggleView();return}
+ if(e.code==='KeyB'&&!ctx.inventory){if(!e.repeat)ctx.setMode(!ctx.buildMode);return}
+ const buildShortcut=ctx.buildMode&&ctx.inventory?.selected==='log'
+   ?buildPlacementShortcut(e):null;
+ if(buildShortcut){
    e.preventDefault();
-   if(!e.repeat){
-    if(e.code==='PageUp')ctx.nudgeLog?.('height',1);
-    else if(e.code==='PageDown')ctx.nudgeLog?.('height',-1);
-    else if(e.code==='ArrowLeft')ctx.nudgeLog?.('x',-1);
-    else if(e.code==='ArrowRight')ctx.nudgeLog?.('x',1);
-    else if(e.code==='ArrowUp')ctx.nudgeLog?.('z',-1);
-    else ctx.nudgeLog?.('z',1);
-   }
+   ctx.nudgeLog?.(...buildShortcut);
    return;
  }
  if(e.code==='KeyR'&&ctx.buildMode){e.preventDefault();if(!e.repeat)ctx.rotateLog?.();return}if(e.code==='KeyQ'&&ctx.buildMode&&!ctx.inventory){ctx.removeLog();return}if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight'].includes(e.code)){ctx.keys[e.code]=true;e.preventDefault()}});document.addEventListener('keyup',e=>{ctx.keys[e.code]=false});window.addEventListener('blur',()=>{for(const code in ctx.keys)ctx.keys[code]=false});ctx.$('jump').addEventListener('pointerdown',e=>{e.preventDefault();if(!ctx.ragdollControls?.getUp?.())ctx.requestJump()});ctx.$('hit').addEventListener('pointerdown',e=>{e.preventDefault();ctx.chop()});const joystick=createTouchJoystick(ctx,ctx.$('stick'),ctx.$('knob'));

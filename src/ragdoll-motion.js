@@ -13,6 +13,15 @@ export function captureRagdollMomentum(ctx,{bed=false}={}){
  return {x:vx*scale,y:clamp(ctx.verticalSpeed,MAX_RAGDOLL_VERTICAL_SPEED),
    z:vz*scale,angularY:clamp(motion.angularY,MAX_RAGDOLL_TURN_RATE)};
 }
+// On a landing the kinematic controller has already clamped feet to the
+// collision surface. Starting ragdoll with its *previous* impact speed would
+// drive capsules through the floor and make Rapier eject them vertically.
+// Midair/manual ragdoll still inherits the full real vertical velocity.
+export function ragdollActivationMotion(ctx,{bed=false}={}){
+ const velocity=captureRagdollMomentum(ctx,{bed});
+ if(ctx.onGround)velocity.y=0;
+ return velocity;
+}
 export function createPlayerMotionTracker(){
  let previous=null,last={x:0,z:0,angularY:0};
  function reset(x,z,yaw){

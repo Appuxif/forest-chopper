@@ -154,7 +154,7 @@ function connectSocket(ws) {
  ws.onopen=()=>{if(ctx.socket===ws)ws.send(JSON.stringify({type:'hello',name:ctx.$('netname').value,resources:true}))};
  ws.onerror=()=>{if(ctx.socket===ws)status('Ошибка соединения. Проверьте сервер, адрес и сеть.')};
  ws.onclose=()=>{if(ctx.socket===ws){const wasConnected=ctx.myId!==null;closeNet();status('Соединение потеряно. Переподключитесь: сетевой мир не сохраняется локально.');if(wasConnected)ctx.notify('Соединение потеряно', 'warning', 'connection-lost')}};
- ws.onmessage=e=>{if(ctx.socket!==ws)return;let d;try{d=JSON.parse(e.data)}catch{return}switch(d.type){case 'vitals_state':ctx.vitals?.acceptServer?.(d.vitals);break;
+ ws.onmessage=e=>{if(ctx.socket!==ws)return;let d;try{d=JSON.parse(e.data)}catch{return}switch(d.type){case 'vitals_state':ctx.vitals?.acceptServer?.(d.vitals);break;case 'fall_impact':ctx.applyFallImpact?.({height:d.height,damage:d.damage,speed:Math.sqrt(2*(ctx.GRAVITY??19)*d.height)},{authoritative:true});break;
  case 'player_respawn':ctx.deathSystem?.receive?.(d);break;
  case 'spawn_bed_set':ctx.deathSystem?.acceptBed?.(d.id);break;
  case 'time_sync':ctx.dayCycle?.syncServerPhase?.(d.day_phase,performance.now());break;

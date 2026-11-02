@@ -132,7 +132,17 @@ function animate(now){
   wasPosing=false;
  }else{
   wasPosing=true; // Don't treat teleport/stand-up as walking velocity.
-  if(ragdoll){ctx.ragdoll.tick(dt);ctx.ragdollControls?.syncPose?.();}
+  if(ragdoll){
+   ctx.ragdoll.tick(dt);ctx.ragdollControls?.syncPose?.();
+   if(ctx.ragdollControls?.mode==='manual'&&!ctx.deathSystem?.active){
+    const pose=ctx.ragdoll.pose?.();
+    if(pose){
+     const support=ctx.ragdollStandingSupport?.(pose.x,pose.z,pose.hipsY)
+       ??ctx.terrain.heightAt(pose.x,pose.z);
+     ctx.fallTracker?.observeRagdoll(pose.feetY,support,pose.vy);
+    }
+   }
+  }
  }
  ctx.waterSplashes?.tick(dt);
  ctx.microGrass?.tick();
@@ -140,6 +150,8 @@ function animate(now){
  ctx.groundBoxes?.tick(now);ctx.storages?.tick();ctx.campStructures?.tick(now);
  ctx.plantInteraction?.tick(dt);
  if(ctx.ownAvatar&&!posing&&!dead)ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
+ const fallImpact=ctx.fallTracker?.take?.();
+ if(fallImpact)ctx.applyFallImpact?.(fallImpact,{alreadyRagdoll:ragdoll});
  if(ctx.thirdPerson){const limit=ctx.settings.cameraPitchLimit*Math.PI/180;ctx.pitch=Math.max(-limit,Math.min(limit,ctx.pitch));}
  const fallPose=ragdoll?ctx.ragdoll.pose?.():null;
  const follow=fallPose?{

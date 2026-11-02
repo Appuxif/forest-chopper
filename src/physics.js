@@ -44,6 +44,7 @@ function simulateVertical(dt){
  ctx.jumpRequested=false;
  const previous=ctx.feetY;
  if(!ctx.onGround)ctx.verticalSpeed-=ctx.GRAVITY*dt;
+ const impactSpeed=ctx.verticalSpeed;
  let next=ctx.feetY+ctx.verticalSpeed*dt;
  const ground=ctx.terrain.heightAt(ctx.px,ctx.pz);
  if(ctx.verticalSpeed>0){
@@ -59,6 +60,7 @@ function simulateVertical(dt){
  // A sloped terrain surface is support just like a log or a boulder.
  if(ctx.onGround&&ctx.feetY>ground+.02 &&
    !collisions.standingOn(ctx.px,ctx.pz,ctx.feetY))ctx.onGround=false;
+ ctx.fallTracker?.observe(previous,ctx.feetY,ctx.onGround,impactSpeed);
 }
 // Highest reachable solid surface *beneath the ragdoll pelvis* for standing
 // back up. Use the same log/rock/building footprints as walking physics.

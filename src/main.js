@@ -1,5 +1,5 @@
-import {createRagdoll} from './ragdoll.js?v=20261102-collision-world1';
-import {createRagdollControls} from './ragdoll-controls.js?v=20261102-ragdoll-camera1';
+import {createRagdoll} from './ragdoll.js?v=20261102-bounce-fix1';
+import {createRagdollControls} from './ragdoll-controls.js?v=20261102-bounce-fix1';
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
 import {createWorld} from './world.js?v=20261102-collision-world1';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
@@ -14,13 +14,14 @@ import {createGrass} from './grass.js';
 import {createMicroGrass} from './micro-grass.js?v=20261101-startup-loader1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
 import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
-import {createPhysics} from './physics.js?v=20261102-collision-world1';
+import {createPhysics} from './physics.js?v=20261102-fall-impact1';
+import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bounce-fix1';
 import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
-import {createBuilding} from './building.js?v=20261102-collision-world1';
+import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261102-collision-world1';
-import {createControls} from './controls.js?v=20261102-collision-world1';
-import {createPlayer} from './player.js?v=20261102-ragdoll-momentum1';
-import {createMultiplayer} from './multiplayer.js?v=20261102-collision-world1';
+import {createControls} from './controls.js?v=20261102-bounce-fix1';
+import {createPlayer} from './player.js?v=20261102-fall-impact1';
+import {createMultiplayer} from './multiplayer.js?v=20261102-fall-impact1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261102-url-launch1';
@@ -44,14 +45,14 @@ import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-w
 import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
 import {createStorages} from './storages.js?v=20261102-collision-world1';
 import {createCampStructures} from './camp-structures.js?v=20261102-collision-world1';
-import {createVitalsUI} from './vitals-ui.js?v=20261102-ragdoll-sleep1';
+import {createVitalsUI} from './vitals-ui.js?v=20261102-fall-impact1';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261102-ragdoll-sleep1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 import {WorldTaskScheduler} from './world-task-scheduler.js';
 import {createWorldStartupGate} from './world-startup.js';
 import {createPickupInteraction} from './pickup-interaction.js?v=20261102-ragdoll-sleep1';
-import {createDeathSystem} from './death.js';
+import {createDeathSystem} from './death.js?v=20261102-fall-impact1';
 
 // Read and consume launch mode before touching any saved game data.
 const MENU_LAUNCH_KEY='forest-chopper:launch:v1';
@@ -224,6 +225,8 @@ let offlineSave=null,progress=null,inventory=null,vitals=null,forestResources=nu
 let pickupInteraction=null,storages=null,campStructures=null;
 let worldStartupGate=null;
 
+const fallTracker=createFallTracker();
+let fallImpactSpeed=0;
 let collisionWorld=null;
 let distantForest, replaceTreeModels, ragdollStandingSupport, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, nudgeLog, rotateLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
@@ -339,6 +342,9 @@ const ctx={
  get ragdollControls(){return ragdollControls;},
  get ragdollCamera(){return ragdollCamera;},
  get ragdollStandingSupport(){return ragdollStandingSupport;},
+ get fallTracker(){return fallTracker;},
+ get fallImpactSpeed(){return fallImpactSpeed;},set fallImpactSpeed(v){fallImpactSpeed=v;},
+ applyFallImpact(impact,options){return applyFallImpact(ctx,impact,options);},
  get collisionWorld(){return collisionWorld;},
  get particles(){return particles;},
  get pitch(){return pitch;}, set pitch(value){pitch=value;},
