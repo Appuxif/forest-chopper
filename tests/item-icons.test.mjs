@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {itemIconKey} from '../src/item-icons.js';
+import {itemIconKey,benchIconModel} from '../src/item-icons.js';
 
 test('the same species shares an icon across all stacks and hotbar slots',()=>{
  assert.equal(itemIconKey({id:'stone',count:3}),itemIconKey({id:'stone',count:10}));
@@ -22,4 +22,12 @@ test('icon preview uses cached images rather than live 3D viewports inside slots
  assert.match(ui,/renderItemIcons\(ctx,doc\)/);
  assert.match(ui,/icons\.get\(itemIconKey\(item\)\)/);
  assert.match(ui,/createElement\('img'\)/);
+});
+
+test('bench icon faces opposite direction without rotating placed world bench',()=>{
+ const worldBench={rotation:{y:0}},snapshot={rotation:{y:0}};
+ const ctx={crafting:{createIconModel:()=>snapshot}};
+ assert.equal(benchIconModel(ctx),snapshot);
+ assert.equal(snapshot.rotation.y,Math.PI);
+ assert.equal(worldBench.rotation.y,0,'only the icon model changes');
 });

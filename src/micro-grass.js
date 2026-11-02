@@ -276,7 +276,7 @@ export function createMicroGrass(ctx) {
     for(const bench of ctx.crafting?.items?.values?.()??[])
       clearings.push({x:bench.x,z:bench.z,radius:1.55});
     for(const log of ctx.placed??[])
-      if(log.level===0)clearings.push({x:log.x,z:log.z,radius:1.15});
+      if(log.level===0||log.height===0)clearings.push({x:log.x,z:log.z,radius:1.15});
     clearings.sort((a,b)=>
       (a.x-x)**2+(a.z-z)**2-(b.x-x)**2-(b.z-z)**2);
     const groundUniforms=ctx.ground?.material?.userData?.grassDensityUniforms;

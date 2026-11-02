@@ -8,7 +8,7 @@ import {
 
 function fixture(){
   const ctx={terrain:flatTerrain(),chunkSize:24,rockColliders:new Map(),
-    logLength:3.6,logRadius:.29,PLAYER_RADIUS:.31,PLAYER_HEIGHT:1.7,
+    logLength:3,logRadius:.29,PLAYER_RADIUS:.31,PLAYER_HEIGHT:1.7,
     GRAVITY:19,JUMP_SPEED:7.5,trees:new Map(),placed:[],
     px:0,pz:0,feetY:0,verticalSpeed:0,onGround:true,jumpRequested:false};
   ctx.rockColliders.set('0,0',[{x:1,z:0,radius:.65,top:.82,bottom:0}]);

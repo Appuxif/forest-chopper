@@ -72,6 +72,7 @@ export function createCrafting(ctx,doc=document) {
     if(!validBench(item)||items.size>=MAX_BENCHES||items.has(item.id))return false;
     const group=mesh(item);ctx.scene.add(group);
     items.set(item.id,{...item,group});
+    ctx.collisionWorld?.invalidate?.();
     ctx.atmosphere?.invalidateStaticShadows?.();
     if(Number.isInteger(item.id) && item.id<0)offlineId=Math.min(offlineId,item.id);
     return true;
@@ -79,6 +80,7 @@ export function createCrafting(ctx,doc=document) {
   function remove(id){
     const old=items.get(id);if(!old)return false;
     ctx.scene.remove(old.group);items.delete(id);
+    ctx.collisionWorld?.invalidate?.();
     ctx.atmosphere?.invalidateStaticShadows?.();
     return true;
   }

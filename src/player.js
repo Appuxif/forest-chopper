@@ -1,14 +1,56 @@
-import {tickFallingTrees} from './falling-trees.js';
+import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
+import {createPlayerMotionTracker} from './ragdoll-motion.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js';
 import {createFrameLimiter} from './frame-limiter.js';
 import {createGpuFrameTimer} from './gpu-frame-timer.js';
-import {createOrbitCamera} from './orbit-camera.js?v=20261030-camera-up-arc1';
+import {createOrbitCamera} from './orbit-camera.js?v=20261102-ragdoll-clip1';
+// Clipping is a rendering property, not a collision between the camera and
+// the character. Keep the established camera orbit untouched; while ragdoll
+// is active, reduce only the near clipping plane so nearby limbs aren't cut.
+export function setRagdollCameraClipping(camera,active,normalNear){
+ const desired=active?Math.min(normalNear,.01):normalNear;
+ if(camera.near===desired)return false;
+ camera.near=desired;
+ camera.updateProjectionMatrix();
+ return true;
+}
+// One lifecycle for every ragdoll exit (Space, bed wake-up, respawn, or
+// interrupted death setup). Physics never needs to know how the orbit
+// camera, view layers or near clipping plane are implemented.
+export function createRagdollCameraLifecycle(ctx,{toggleView,resetOrbit}){
+ const normalNear=ctx.camera.near;
+ let priorThirdPerson=null;
+ function enter(){
+  if(priorThirdPerson!==null)return false;
+  priorThirdPerson=ctx.thirdPerson;
+  if(!ctx.thirdPerson)toggleView(); // Render the falling character.
+  setRagdollCameraClipping(ctx.camera,true,normalNear);
+  resetOrbit();
+  return true;
+ }
+ function exit(){
+  if(priorThirdPerson===null)return false;
+  const restoreThirdPerson=priorThirdPerson;
+  priorThirdPerson=null;
+  setRagdollCameraClipping(ctx.camera,false,normalNear);
+  if(ctx.thirdPerson!==restoreThirdPerson)toggleView();
+  // Snap the spring-arm pivot to the next player position. Especially
+  // important when respawn teleports from the corpse to the spawn/bed.
+  resetOrbit();
+  return true;
+ }
+ return {enter,exit,get active(){return priorThirdPerson!==null;}};
+}
+
 export function createPlayer(ctx) {
 const limiter=createFrameLimiter();
 const gpuTimer=createGpuFrameTimer(ctx.renderer);
 const orbitCamera=createOrbitCamera(ctx);
+const motionTracker=createPlayerMotionTracker();
+ctx.motionVelocity=motionTracker.reset(ctx.px,ctx.pz,ctx.yaw);
+let wasPosing=false;
 let lastWorldTick=-Infinity;
 function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
  orbitCamera.reset();
@@ -19,6 +61,9 @@ function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
  ctx.axe.visible=!ctx.thirdPerson&&(ctx.inventory?.equipped??true);
  ctx.$('viewtoggle').textContent=ctx.thirdPerson?'👤 Камера: сзади':'👁 Камера: глаза'}
 ctx.$('viewtoggle').onclick=toggleView;ctx.axe.visible=false;
+const ragdollCamera=createRagdollCameraLifecycle(ctx,{
+ toggleView,resetOrbit:()=>orbitCamera.reset(),
+});
 
 function animate(now){
  requestAnimationFrame(animate);
@@ -38,21 +83,27 @@ function animate(now){
  ctx.settings.tickPhysics(now);
  const dt=Math.max(0,Math.min(.05,(now-ctx.lastTime)/1000));
  ctx.lastTime=now;
+ ctx.deathSystem?.tick(now);
+ ctx.ragdollControls?.tick();
+ const dead=ctx.deathSystem?.active===true;
+ const ragdoll=ctx.ragdoll?.active===true;
+ const posing=ragdoll||ctx.ragdollControls?.busy===true;
+ if(posing||dead)ctx.jumpRequested=false; // no movement while dead
  ctx.wind.tick(now);ctx.treeWindShader?.tick(now,ctx.px,ctx.pz,ctx.settings.windEnabled);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
- let forward=(ctx.keys.KeyW||ctx.keys.ArrowUp?1:0)-(ctx.keys.KeyS||ctx.keys.ArrowDown?1:0)-ctx.joyY;
- let side=(ctx.keys.KeyD||ctx.keys.ArrowRight?1:0)-(ctx.keys.KeyA||ctx.keys.ArrowLeft?1:0)+ctx.joyX;
+ let forward=(posing||dead)?0:(ctx.keys.KeyW||ctx.keys.ArrowUp?1:0)-(ctx.keys.KeyS||ctx.keys.ArrowDown?1:0)-ctx.joyY;
+ let side=(posing||dead)?0:(ctx.keys.KeyD||ctx.keys.ArrowRight?1:0)-(ctx.keys.KeyA||ctx.keys.ArrowLeft?1:0)+ctx.joyX;
  const len=Math.max(1,Math.hypot(forward,side));forward/=len;side/=len;
  const moving=Math.hypot(forward,side)>.1;
  const wantsSprint=shouldSprint(ctx.keys,ctx.settings.autoSprint,moving);
  const sprint=moving&&wantsSprint&&(!ctx.vitals||ctx.vitals.canSprint());
- ctx.vitals?.tick(sprint);
+ if(!dead)ctx.vitals?.tick(sprint);
  ctx.sprinting=sprint;
  const motion=!moving?'Idle':Math.abs(forward)>.1?(sprint?'Run':'Walk'):(side<0?'StrafeLeft':'StrafeRight');
  // Playback rate also scales Root Motion distance: faster feet = faster travel.
  const rate=motion==='Idle'?1:(motion==='StrafeLeft'||motion==='StrafeRight')?(sprint?5:4):(motion==='Run'?(forward<0?-2.35:2.35):(forward<0?-2.25:2.25));
- ctx.simulateVertical(dt);
+ if(!posing&&!dead)ctx.simulateVertical(dt);
  let dx=0,dz=0;
- if(ctx.ownAvatar){
+ if(ctx.ownAvatar&&!posing&&!dead){
   ctx.ownAvatar.group.rotation.y=ctx.yaw;
   const rootDelta=ctx.tickActor(ctx.ownAvatar,dt,motion,!ctx.onGround,rate);
   dx=rootDelta.x;dz=rootDelta.z;
@@ -67,28 +118,61 @@ function animate(now){
  // Jump movement remains physics/input-driven, not extracted from Root.
  // Also keep a fallback when testing against an old GLB without Root Motion.
  const noRoot=motion!=='Idle'&&(!ctx.rootMotion[motion]||ctx.rootMotion[motion].travel.lengthSq()<1e-5);
- if(!ctx.onGround||!ctx.ownAvatar||noRoot){
+ if(!dead&&!posing&&(!ctx.onGround||!ctx.ownAvatar||noRoot)){
   const speed=sprint?4.6:2.5;
   dx=(-Math.sin(ctx.yaw)*forward+Math.cos(ctx.yaw)*side)*speed*dt;
   dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*speed*dt;
  }
- ctx.moveHorizontal(dx,dz);
+ if(!posing&&!dead){
+  ctx.moveHorizontal(dx,dz);
+  // Always derive velocity from actual collision-resolved displacement,
+  // including walking, running, strafing and airborne input.
+  ctx.motionVelocity=wasPosing?motionTracker.reset(ctx.px,ctx.pz,ctx.yaw)
+    :motionTracker.sample(ctx.px,ctx.pz,ctx.yaw,dt);
+  wasPosing=false;
+ }else{
+  wasPosing=true; // Don't treat teleport/stand-up as walking velocity.
+  if(ragdoll){
+   ctx.ragdoll.tick(dt);ctx.ragdollControls?.syncPose?.();
+   if(ctx.ragdollControls?.mode==='manual'&&!ctx.deathSystem?.active){
+    const pose=ctx.ragdoll.pose?.();
+    if(pose){
+     const support=ctx.ragdollStandingSupport?.(pose.x,pose.z,pose.hipsY)
+       ??ctx.terrain.heightAt(pose.x,pose.z);
+     ctx.fallTracker?.observeRagdoll(pose.feetY,support,pose.vy);
+    }
+   }
+  }
+ }
  ctx.waterSplashes?.tick(dt);
+ ctx.audio?.tick(now);
  ctx.microGrass?.tick();
  ctx.worldStreamer?.tick();
- ctx.groundBoxes?.tick(now);ctx.storages?.tick();
+ ctx.groundBoxes?.tick(now);ctx.storages?.tick();ctx.campStructures?.tick(now);
  ctx.plantInteraction?.tick(dt);
- if(ctx.ownAvatar)ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
+ if(ctx.ownAvatar&&!posing&&!dead)ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
+ const fallImpact=ctx.fallTracker?.take?.();
+ if(fallImpact)ctx.applyFallImpact?.(fallImpact,{alreadyRagdoll:ragdoll});
  if(ctx.thirdPerson){const limit=ctx.settings.cameraPitchLimit*Math.PI/180;ctx.pitch=Math.max(-limit,Math.min(limit,ctx.pitch));}
- ctx.camera.position.set(ctx.px,ctx.feetY+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
- if(ctx.thirdPerson)orbitCamera.update(dt);
+ const fallPose=ragdoll?ctx.ragdoll.pose?.():null;
+ const follow=fallPose?{
+   px:fallPose.x,pz:fallPose.z,hipsY:fallPose.hipsY,
+   feetY:Math.max(ctx.terrain.heightAt(fallPose.x,fallPose.z),fallPose.feetY),
+ }:null;
+ ctx.camera.position.set(follow?.px??ctx.px,
+   (follow?.feetY??ctx.feetY)+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,
+   follow?.pz??ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
+ if(ctx.thirdPerson)orbitCamera.update(dt,follow);
+ // Animation mixer and camera have both updated: resolve any frame-18 tree
+ // contact using the *current* crosshair, not the mouse-down position.
+ ctx.tickChopImpact?.(now);
  // The real skinned meshes cast shadows on every rendered frame.
  // The shadow pass runs after both local and remote animation poses update.
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;
 tickFallingTrees(ctx,dt);
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}
-ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx.offlineSave.tick(now);ctx.progress.trackPosition(ctx.px,ctx.pz,ctx.seed);ctx.discoveries.check(now);ctx.updateChunks();ctx.forestResources?.tick(now);ctx.updatePreview();const t=ctx.buildMode?null:ctx.aimed();const pickup=ctx.pickupInteraction?.update?.();ctx.highlight.update(t);if(t)ctx.tutorial.complete('tree-aimed');updateCrosshair(ctx.$('crosshair'),aimState(ctx.buildMode,t,ctx.buildMode?(ctx.inventory?.selected==='bench'?ctx.crafting?.placeError?.(ctx.placement):ctx.placeError(ctx.placement)):'',pickup));ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`${u.species==='birch'?'🌳 Берёза':'🌲 Дерево'} · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':
-   pickup?pickup.label+' · '+(matchMedia('(pointer:coarse)').matches?'📥 Поднять':'E — подобрать'):''}if(ctx.isOnline()&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}for(const avatar of ctx.avatars.values()){
+ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx.offlineSave.tick(now);ctx.progress.trackPosition(ctx.px,ctx.pz,ctx.seed);ctx.discoveries.check(now);ctx.updateChunks();ctx.forestResources?.tick(now);ctx.inventory?.tickBook?.();ctx.updatePreview();const t=ctx.buildMode?null:ctx.aimed();ctx.pickupInteraction?.update?.();const interaction=ctx.pickupInteraction?.current;ctx.highlight.update(t);if(t)ctx.tutorial.complete('tree-aimed');updateCrosshair(ctx.$('crosshair'),aimState(ctx.buildMode,t,ctx.buildMode?(ctx.inventory?.selected==='bench'?ctx.crafting?.placeError?.(ctx.placement):(ctx.preview?.userData?.previewError??ctx.placeError(ctx.placement))):'',interaction));ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`${u.species==='birch'?'🌳 Берёза':'🌲 Дерево'} · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':
+   interaction?interaction.label+' · '+(interaction.verb??(interaction.type==='box'||interaction.type==='resource'?'Подобрать':'Открыть')):''}if(ctx.isOnline()&&!dead&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}for(const avatar of ctx.avatars.values()){
  const previousX=avatar.group.position.x,previousZ=avatar.group.position.z;
  avatar.group.position.lerp(avatar.goal,Math.min(1,dt*10));
  avatar.group.rotation.y+=Math.atan2(Math.sin(avatar.angle-avatar.group.rotation.y),Math.cos(avatar.angle-avatar.group.rotation.y))*Math.min(1,dt*8);
@@ -121,6 +205,11 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
    ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
    ctx.distantForest?.updateVisibility?.(ctx.yaw);
    ctx.renderer.render(ctx.scene,ctx.camera);
+   ctx.debugFpsCollector?.frame(now,{
+     drawCalls:ctx.renderer.info.render.calls,
+     triangles:ctx.renderer.info.render.triangles,
+     heapBytes:performance.memory?.usedJSHeapSize,
+   });
  }finally{
    if(gpuStarted)gpuTimer.end();
  }
@@ -128,5 +217,5 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
  if(profiling)ctx.settings.recordCpuFrame(performance.now()-cpuStart,now);
 }
 
-return {toggleView, animate};
+return {toggleView,ragdollCamera,animate};
 }

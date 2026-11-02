@@ -219,3 +219,22 @@ test('shared team progress comes solely from server welcome/confirmed felled eve
   assert.equal(f.ctx.communityGoal.value,null);
  }finally{f.restore()}
 });
+
+test('server damage event with author skips duplicate local chips, but remote hits still spawn chips',async()=>{
+ const f=fixture(),chips=[],ack=[];
+ try{
+  f.ctx.spawnChips=tree=>chips.push(tree.userData.id);
+  f.ctx.acknowledgeLocalChop=(treeId,by)=>{ack.push([treeId,by]);return by===f.ctx.myId;};
+  const tree={userData:{id:'0,0:1',hp:4},position:{x:1,z:0}};
+  f.ctx.trees.set(tree.userData.id,tree);
+  await f.ctx.$('connect').onclick();
+  f.socket.message({type:'welcome',id:1,seed:21,felled:[],damage:{},logs:[],players:[],wood:0,cuts:0,chat:[]});
+  f.ctx.trees.set(tree.userData.id,tree);
+  f.socket.message({type:'tree_hit',tree:'0,0:1',hp:3,by:1});
+  assert.deepEqual(chips,[],'predicted chips already shown at player impact frame');
+  assert.equal(tree.userData.hp,3);
+  f.socket.message({type:'tree_hit',tree:'0,0:1',hp:2,by:2});
+  assert.deepEqual(chips,['0,0:1'],'another player hit still creates visible chips');
+  assert.deepEqual(ack,[['0,0:1',1],['0,0:1',2]]);
+ }finally{f.restore();}
+});

@@ -1,3 +1,4 @@
+import {logHalfExtents} from './log-grid.js';
 // Third-person camera rig. Pure orbit geometry plus a cheap, collider-based
 // spring arm; never raycast the 30k-triangle spruce GLB each frame.
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
@@ -89,12 +90,11 @@ export function springArmFraction(start,end,ctx){
           rock.radius+.25,rock.bottom,rock.top+.25));
   }
   for(const log of ctx.placed??[]){
-    const half=(ctx.logLength??3.6)*.5+.3,r=(ctx.logRadius??.29)+.27;
-    const alongX=log.orientation===0;
+    const ext=logHalfExtents(log,ctx.logRadius??.29);
     fraction=Math.min(fraction,boxHit(start,end,{
-      x:log.x-(alongX?half:r),y:log.y-r,z:log.z-(alongX?r:half),
+      x:log.x-ext.x-.3,y:log.y-ext.y-.27,z:log.z-ext.z-.3,
     },{
-      x:log.x+(alongX?half:r),y:log.y+r,z:log.z+(alongX?r:half),
+      x:log.x+ext.x+.3,y:log.y+ext.y+.27,z:log.z+ext.z+.3,
     }));
   }
   return fraction;
@@ -107,11 +107,13 @@ export function createOrbitCamera(ctx){
   const offset=new THREE.Vector3();
   let initialized=false,armFactor=1;
   function reset(){initialized=false;armFactor=1;}
-  function update(dt){
-    const {px,pz,feetY,yaw,pitch,settings,camera}=ctx;
+  function update(dt,follow=null){
+    const {yaw,pitch,settings,camera}=ctx;
+    const px=follow?.px??ctx.px,pz=follow?.pz??ctx.pz;
+    const feetY=follow?.feetY??ctx.feetY;
     const distance=settings.cameraDistance;
-    // Dynamic pivot tracks the upper torso and gently moves with the look
-    // direction, instead of pitching around the character's feet.
+    // Keep the exact same orbit geometry and collision spring arm for
+    // walking and ragdoll. Only the target position follows ragdoll physics.
     const forward=.12+.10*Math.max(0,-Math.sin(pitch));
     const targetX=px-Math.sin(yaw)*forward;
     const targetZ=pz-Math.cos(yaw)*forward;

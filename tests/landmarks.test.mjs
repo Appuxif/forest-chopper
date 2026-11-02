@@ -60,7 +60,7 @@ function fixture(seed=321) {
     this.layers={enabled:[],enable(layer){this.enabled.push(layer)}};
     this.shadow={mapSize:{set(x,y){this.x=x;this.y=y}},camera:{},needsUpdate:false};
   }}
-  const THREE={Mesh,Group,PlaneGeometry:Geometry,CylinderGeometry:Geometry,ConeGeometry:Geometry,
+  const THREE={Mesh,Group,PlaneGeometry:Geometry,CylinderGeometry:Geometry,ConeGeometry:Geometry,BoxGeometry:Geometry,DodecahedronGeometry:Geometry,
     MeshLambertMaterial:Material,PointLight,
     CanvasTexture:Texture,SRGBColorSpace:'srgb',DoubleSide:2};
   const ctx={THREE,terrain:flatTerrain(),seed,chunkSize:24,px:0,pz:0,radius:1,trees:new Map(),chunks:new Map(),
@@ -119,7 +119,7 @@ test('continuous, seed-stable trail uses exactly one shared quad per z=0 chunk',
   assert.equal(new Set(f.posts.map(x=>x[3])).size,1,'posts share geometry');
   assert.equal(new Set(f.board.map(x=>x[4])).size,1,'boards share geometry');
   assert.ok(new Set(f.board.map(x=>x[5])).size<=2,'only two globally shared sign textures/materials');
-  assert.equal(f.assets.length,31,'15 trail geometry clones; shared materials/textures stay cached');
+  assert.equal(f.assets.length,36,'15 trail tiles plus shared crafted-campfire geometry and materials');
   assert.ok(f.trail.every(entry=>entry[5].vertices.every(vertex=>vertex[2]===.025)),
     'terrain-following vertices are 2.5 cm above flat ground');
   const trail=f.ctx.chunks.get('0,0').children.find(m=>m.userData.landmark==='trail');
@@ -159,14 +159,43 @@ test('one decorative campfire at the trailhead reuses assets and never changes w
   assert.equal(fires.length,1);
   const fire=fires[0];
   assert.deepEqual([fire.position.x,fire.position.y,fire.position.z],[5,0,5]);
-  assert.equal(fire.children.length,15,'six rocks, three logs, two flames, one light and three sparks');
-  const rock=fire.children.slice(0,6);
-  const logs=fire.children.slice(6,9);
-  assert.ok(rock.every(x=>x.geometry===f.ctx.rockGeo && x.material===f.ctx.rockMat));
-  assert.ok(logs.every(x=>x.geometry===f.ctx.logGeo && x.material===f.ctx.logMat));
-  assert.equal(fire.children.filter(x=>x.geometry).length,14);
+  assert.equal(fire.children.length,24,'nine stones, nine angled logs, two flames, three sparks, one light; no glowing coals');
+  const rocks=fire.children.slice(0,9),logs=fire.children.slice(9,18);
+  assert.ok(rocks.every(x=>x.geometry?.args[0]===.24),'original crafted dodecahedron stone ring');
+  assert.ok(logs.every(x=>x.geometry?.args[0]===1),'crafted rectangular logs');
+  const gap=Math.PI*2/9;
+  assert.ok(logs.every((log,i)=>{
+    const angle=(i+.5)*gap;
+    return Math.abs(log.rotation.y-(angle-Math.PI/2))<1e-8
+      &&Math.abs(log.position.x-Math.sin(angle)*.34)<1e-8
+      &&Math.abs(log.position.z-Math.cos(angle)*.34)<1e-8;
+  }), 'each outer tip points to a distinct gap between adjacent stones');
+  assert.ok(logs.every((log,i)=>{
+    const angle=(i+.5)*gap;
+    const dirX=Math.cos(log.rotation.y),dirZ=-Math.sin(log.rotation.y);
+    const outerX=log.position.x+dirX*.4*Math.cos(log.rotation.z);
+    const outerZ=log.position.z+dirZ*.4*Math.cos(log.rotation.z);
+    const innerX=log.position.x-dirX*.4*Math.cos(log.rotation.z);
+    const innerZ=log.position.z-dirZ*.4*Math.cos(log.rotation.z);
+    return Math.hypot(outerX-Math.sin(angle)*.70,outerZ-Math.cos(angle)*.70)<.03
+      &&Math.hypot(innerX,innerZ)<.03;
+  }), 'all nine logs physically converge at the centre, with outer ends in stone gaps');
+  assert.ok(logs.every(x=>x.rotation.order==='YXZ' && Math.abs(x.rotation.z+.45)<1e-8),
+    'nine logs lean inward and rise toward the centre');
+  assert.ok(logs.every(x=>Math.abs(x.scale.y-.1008)<1e-8 && Math.abs(x.scale.z-.1008)<1e-8),
+    'logs are 20% thinner than the previous 0.126 m profile');
+  assert.ok(logs.every(log=>{
+    const innerY=log.position.y-log.scale.x*.5*Math.sin(log.rotation.z);
+    const outerY=log.position.y+log.scale.x*.5*Math.sin(log.rotation.z);
+    const outerRadius=.34+log.scale.x*.5*Math.cos(log.rotation.z);
+    return innerY>outerY+.3&&outerY>.12&&outerY<.24
+      &&Math.abs(outerRadius-.70)<.025;
+  }), 'outer tips reach the stone gaps at ground level, inner tips meet higher');
+  assert.equal(fire.children[18].geometry.args[0],.435,'outer flame is 50% wider');
+  assert.equal(fire.children[19].geometry.args[0],.225,'inner flame is 50% wider');
+  assert.equal(fire.children.filter(x=>x.geometry).length,23);
   assert.equal(fire.children.filter(x=>x.intensity!==undefined).length,1,'one low-radius point light');
-  const point=fire.children[11];
+  const point=fire.children[23];
   assert.equal(point.castShadow,true,'fire point light has genuine depth-cube shadows');
   assert.deepEqual([point.shadow.mapSize.x,point.shadow.mapSize.y],[256,256]);
   assert.equal(point.shadow.camera.near,.2);
@@ -192,8 +221,8 @@ test('campfire flicker is bounded and reduced-motion stops all fire movement imm
     const f=fixture();
     f.world.build(0,0);
     const fire=f.ctx.chunks.get('0,0').children.find(x=>x.userData.landmark==='campfire');
-    const flame=fire.children[9],inner=fire.children[10],light=fire.children[11];
-    const sparks=fire.children.slice(12);
+    const flame=fire.children[18],inner=fire.children[19],light=fire.children[23];
+    const sparks=fire.children.slice(20,23);
     f.landmarks.tick(2000);
     assert.equal(flame.scale.y,1);
     assert.equal(inner.scale.y,1);
@@ -203,9 +232,11 @@ test('campfire flicker is bounded and reduced-motion stops all fire movement imm
     assert.ok(Math.abs(flame.scale.y-1)>.001);
     assert.ok(light.intensity>1.5&&light.intensity<2.1);
     const yBefore=flame.scale.y;
+    const sparksBefore=sparks.map(s=>s.position.y);
     light.shadow.needsUpdate=false;
     f.landmarks.tick(2200);
     assert.equal(light.shadow.needsUpdate,true,'point shadow refreshes near the player despite flame flicker throttle');
+    assert.notDeepEqual(sparks.map(s=>s.position.y),sparksBefore,'sparks move every frame, independent of the flame throttle');
     assert.equal(flame.scale.y,yBefore,'fire updates are rate-limited');
     // Point-light shadow updates stop when the local avatar is far away.
     f.ctx.px=100;f.ctx.pz=100;
@@ -217,6 +248,6 @@ test('campfire flicker is bounded and reduced-motion stops all fire movement imm
     assert.equal(flame.scale.y,1);
     assert.equal(inner.scale.y,1);
     assert.equal(light.intensity,1.8);
-    assert.deepEqual(sparks.map((s,i)=>s.position.y),[.95,1.08,1.21]);
+    assert.deepEqual(sparks.map(s=>Number(s.position.y.toFixed(2))),[1.05,1.18,1.31]);
   }finally{globalThis.matchMedia=old;}
 });

@@ -74,3 +74,9 @@ src/micro-grass.js, src/world.js, src/world-startup.js.
 The detailed near-forest Three.js object construction remains incremental on
 the main thread, as required by collision and interaction objects. Profiling
 and adaptive frame-time budgets are intentionally deferred.
+
+## Наземный лут / AOI (2026-11-01)
+- Box spatial grid 24×24 м: клиент индексирует отдельно каждую обычную коробку и каждый из оставшихся сегментов поваленного дерева.
+- Один textured instanced batch на тип геометрии на активный чанк; чанки за пределами видимости освобождают WebGL-объекты, но не логические данные.
+- TTL каждого бокса отслеживается min-heap, без полного сканирования списка на каждом кадре.
+- Multiplayer: серверный BoxRegistry (spatial hash + heap) и радиус подписки 120 м, обновление при смещении 12 м. Welcome не содержит полный массив лута удалённых чанков; вновь появившиеся коробки получают только релевантные клиенты. Это защищает WebSocket-трафик и предотвращает передачу тысяч неактуальных объектов на клиенте.

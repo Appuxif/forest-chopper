@@ -28,6 +28,19 @@ export function shadowMapSizeForQuality(quality) {
   return SHADOW_MAP_SIZES[quality] ?? SHADOW_MAP_SIZES.balanced;
 }
 
+// The sky is camera-centred, but the terrain changes camera.far between
+// graphics presets (180m on Low, 230m on Medium). A fixed 235m dome lies
+// beyond that plane, producing a polygonal hole centred on the crosshair.
+// Keep the sky and its sun/moon wholly inside the current view frustum.
+export function skyGeometryDistances(cameraFar){
+  const far=Number.isFinite(cameraFar)&&cameraFar>0?cameraFar:280;
+  const domeRadius=Math.min(235,far*.9);
+  const bodyDistance=Math.min(210,domeRadius*.9);
+  return {domeRadius,bodyDistance,
+    sunRadius:6.4*bodyDistance/210,
+    moonRadius:4.2*bodyDistance/210};
+}
+
 // The nearest trees cast shadows; culled trees never enter the expensive pass.
 // Return stable tree references instead of owning/recreating their geometry.
 export function selectShadowTrees(trees, x, z, radius=SHADOW_TREE_RADIUS,
@@ -262,9 +275,14 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
       ...getBuiltShadowCasters(x,z,radius)];
   }
   function tick(now,x,z) {
+    const sky=skyGeometryDistances(camera.far);
     dome.position.copy(camera.position);
-    sunBody.position.copy(camera.position).addScaledVector(sunVector,210);
-    moonBody.position.copy(camera.position).addScaledVector(moonVector,210);
+    dome.scale.setScalar(sky.domeRadius/235);
+    sunBody.position.copy(camera.position).addScaledVector(sunVector,sky.bodyDistance);
+    moonBody.position.copy(camera.position).addScaledVector(moonVector,sky.bodyDistance);
+    // Preserve the angular size of celestial bodies as their distance changes.
+    sunBody.scale.setScalar(sky.sunRadius);
+    moonBody.scale.setScalar(sky.moonRadius);
     const radius=Math.max(20,Math.min(100,settings.shadowDistance??SHADOW_TREE_RADIUS));
     const interval=Math.max(0,Math.min(5000,
       (settings.shadowRefreshSeconds??SHADOW_UPDATE_MS/1000)*1000));

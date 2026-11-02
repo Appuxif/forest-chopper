@@ -1,0 +1,173 @@
+{
+  "method": "ffmpeg silencedetect -32dB / 0.12s; 35ms padding; 25ms fades",
+  "source_pages": {
+    "male_hurt": "https://opengameart.org/content/7-male-pain-voices",
+    "female_hurt": "https://opengameart.org/content/female-gruntwork-1",
+    "male_death": "https://opengameart.org/content/2-male-death-voices",
+    "female_death": "https://opengameart.org/content/deathdying-female-fighterwarrior-voice-over-vocal-sound-for-character",
+    "male_jump": "https://opengameart.org/content/jumping-man-sounds"
+  },
+  "clips": {
+    "hurt_male": [
+      {
+        "file": "voices/male/hurt/hurt_male_1.mp3",
+        "original": "8.wav",
+        "start": 0,
+        "end": 1.566,
+        "duration": 1.566
+      },
+      {
+        "file": "voices/male/hurt/hurt_male_2.mp3",
+        "original": "9.wav",
+        "start": 0,
+        "end": 0.875,
+        "duration": 0.875
+      },
+      {
+        "file": "voices/male/hurt/hurt_male_3.mp3",
+        "original": "10.wav",
+        "start": 0,
+        "end": 0.813,
+        "duration": 0.812
+      },
+      {
+        "file": "voices/male/hurt/hurt_male_4.mp3",
+        "original": "11.wav",
+        "start": 0,
+        "end": 0.715,
+        "duration": 0.715
+      },
+      {
+        "file": "voices/male/hurt/hurt_male_5.mp3",
+        "original": "12.wav",
+        "start": 0,
+        "end": 1.063,
+        "duration": 1.062
+      },
+      {
+        "file": "voices/male/hurt/hurt_male_6.mp3",
+        "original": "13.wav",
+        "start": 0,
+        "end": 0.641,
+        "duration": 0.641
+      },
+      {
+        "file": "voices/male/hurt/hurt_male_7.mp3",
+        "original": "14.wav",
+        "start": 0,
+        "end": 0.438,
+        "duration": 0.438
+      }
+    ],
+    "hurt_female": [
+      {
+        "file": "voices/female/hurt/hurt_female_3.mp3",
+        "original": "FEMALE_Gruntwork_1.mp3",
+        "source_take": 3,
+        "start": 2.309,
+        "end": 2.842,
+        "duration": 0.533
+      },
+      {
+        "file": "voices/female/hurt/hurt_female_4.mp3",
+        "original": "FEMALE_Gruntwork_1.mp3",
+        "source_take": 4,
+        "start": 3.378,
+        "end": 3.821,
+        "duration": 0.443
+      },
+      {
+        "file": "voices/female/hurt/hurt_female_5.mp3",
+        "original": "FEMALE_Gruntwork_1.mp3",
+        "source_take": 5,
+        "start": 4.327,
+        "end": 4.765,
+        "duration": 0.437
+      },
+      {
+        "file": "voices/female/hurt/hurt_female_20.mp3",
+        "original": "FEMALE_Gruntwork_1.mp3",
+        "source_take": 20,
+        "start": 22.749,
+        "end": 23.497,
+        "duration": 0.749
+      }
+    ],
+    "death_male": [
+      {
+        "file": "voices/male/death/death_male_1.mp3",
+        "original": "15.wav",
+        "start": 0,
+        "end": 2.0,
+        "duration": 2.0
+      }
+    ],
+    "death_female": [
+      {
+        "file": "voices/female/death/death_female_1.mp3",
+        "original": "1_dying.ogg",
+        "start": 0.36,
+        "end": 2.385,
+        "duration": 2.025
+      }
+    ],
+    "jump_female": [
+      {
+        "file": "voices/female/jump/jump_female_24.mp3",
+        "original": "FEMALE_Gruntwork_1.mp3",
+        "source_take": 24,
+        "start": 28.611,
+        "end": 28.814,
+        "duration": 0.203
+      },
+      {
+        "file": "voices/female/jump/jump_female_25.mp3",
+        "original": "FEMALE_Gruntwork_1.mp3",
+        "source_take": 25,
+        "start": 29.444,
+        "end": 29.691,
+        "duration": 0.247
+      },
+      {
+        "file": "voices/female/jump/jump_female_26.mp3",
+        "original": "FEMALE_Gruntwork_1.mp3",
+        "source_take": 26,
+        "start": 30.102,
+        "end": 30.407,
+        "duration": 0.305
+      },
+      {
+        "file": "voices/female/jump/jump_female_27.mp3",
+        "original": "FEMALE_Gruntwork_1.mp3",
+        "source_take": 27,
+        "start": 30.908,
+        "end": 31.171,
+        "duration": 0.262
+      },
+      {
+        "file": "voices/female/jump/jump_female_28.mp3",
+        "original": "FEMALE_Gruntwork_1.mp3",
+        "source_take": 28,
+        "start": 31.541,
+        "end": 31.819,
+        "duration": 0.279
+      }
+    ],
+    "jump_male": [
+      {
+        "file": "voices/male/jump/jump_male_1.mp3",
+        "original": "JumpSoundsMan/jumppp11.ogg",
+        "start": 0,
+        "end": 0.469,
+        "duration": 0.469
+      },
+      {
+        "file": "voices/male/jump/jump_male_2.mp3",
+        "original": "JumpSoundsMan/jumppp22.ogg",
+        "start": 0,
+        "end": 0.45,
+        "duration": 0.45
+      }
+    ]
+  }
+}

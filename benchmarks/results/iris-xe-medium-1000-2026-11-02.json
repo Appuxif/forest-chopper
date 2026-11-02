@@ -1,0 +1,44 @@
+{
+  "benchmark": "box-stress-1000",
+  "date": "2026-11-02",
+  "seed": 517013,
+  "preset": "medium",
+  "fpsCap": 60,
+  "renderer": "ANGLE (Intel, Mesa Intel(R) Iris(R) Xe Graphics (ADL GT2), OpenGL ES 3.2)",
+  "canvasResolution": [
+    1536,
+    724
+  ],
+  "warmupSeconds": 10,
+  "measurementSecondsPerPhase": 10,
+  "settleSeconds": 5,
+  "measurementWindows": {
+    "baseline": 9,
+    "stress": 9
+  },
+  "baseline": {
+    "boxes": 0,
+    "meanFps": 60.99,
+    "minimumFps": 60.99,
+    "maximumFps": 61,
+    "meanDrawCalls": 707,
+    "meanTriangles": 1495421,
+    "meanP95FrametimeMs": 20.9,
+    "worstP99FrametimeMs": 20.9,
+    "meanJsHeapMiB": 89.82
+  },
+  "stress": {
+    "boxes": 1000,
+    "batches": 4,
+    "meanFps": 60.99,
+    "minimumFps": 60.99,
+    "maximumFps": 61,
+    "meanDrawCalls": 711,
+    "meanTriangles": 1507421,
+    "meanP95FrametimeMs": 20.9,
+    "worstP99FrametimeMs": 20.9,
+    "meanJsHeapMiB": 91.46
+  },
+  "observedFpsChange": 0,
+  "notes": "Repeat on a warmed, stable forest: baseline 707 draw calls, stress 711; 12,000 new triangles. No FPS change at the 60 FPS cap."
+}

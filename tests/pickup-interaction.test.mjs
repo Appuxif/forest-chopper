@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  selectPickupTarget,nearestPickupTarget,pickupCandidates,createPickupInteraction,
+  selectPickupTarget,nearestPickupTarget,pickupCandidates,worldInteractionCandidates,createPickupInteraction,
 } from '../src/pickup-interaction.js';
 import {aimState,updateCrosshair} from '../src/aim-state.js';
 import {createGroundBoxes} from '../src/ground-boxes.js';
@@ -178,4 +178,79 @@ test('dropped boxes win fallback pickup when grass has shorter world distance',(
   assert.equal(focusedBox.id,17);
   assert.equal(nearestPickupTarget([],boxes).id,17);
   assert.equal(nearestPickupTarget(resources,[]).id,'dry-grass');
+});
+
+test('aimed flower wins over nearby chest and E uses the same single visible target',()=>{
+ const oldMatch=globalThis.matchMedia;
+ globalThis.matchMedia=()=>({matches:false});
+ try{
+  let facing='flower';
+  const actions=[];
+  class Vector3{
+   set(x,y,z){Object.assign(this,{x,y,z});return this;}
+   project(){
+    const flower=this.x===1;
+    const centered=facing==='flower'?flower:!flower;
+    this.x=centered?.01:.54;this.y=.02;this.z=.5;return this;
+   }
+  }
+  const button={hidden:true,disabled:true,addEventListener(){},setAttribute(){}};
+  const chest={id:6,kind:'chest',name:'Инструменты',x:2,z:0};
+  const ctx={
+   $:id=>id==='pickup'?button:null,THREE:{Vector3},camera:{},
+   px:0,pz:0,buildMode:false,
+   terrain:{heightAt:()=>0,waterDepthAt:()=>0},
+   storages:{structures:new Map([[6,chest]]),open:id=>{actions.push('open:'+id);return true;}},
+   campStructures:{items:new Map(),toggle:id=>{actions.push('toggle:'+id);return true;}},
+   forestResources:{nodes:[{id:'rose',kind:'flower:pink_wildflower',x:1,z:0}],
+     isVisible:()=>true,collect:id=>{actions.push('collect:'+id);return true;}},
+   groundBoxes:{boxes:[]},
+  };
+  assert.equal(worldInteractionCandidates(ctx).storages[0].id,6);
+  const picker=createPickupInteraction(ctx);
+  assert.equal(picker.update()?.id,'rose');
+  assert.equal(picker.current.label,'Розовый полевой цветок');
+  assert.equal(picker.interact(),true);
+  assert.deepEqual(actions,['collect:rose'],'the E action matches the focused flower');
+  facing='chest';
+  assert.equal(picker.update()?.id,6);
+  assert.equal(picker.current.label,'Сундук');
+  assert.equal(aimState(false,null,'',picker.current).kind,'pickup');
+  assert.equal(picker.interact(),true);
+  assert.deepEqual(actions,['collect:rose','open:6'],'the E action now matches the focused chest');
+  ctx.forestResources.nodes.length=0;
+  ctx.storages.structures.clear();
+  assert.equal(picker.update(),null);
+  assert.equal(picker.current,null);
+ }finally{
+  if(oldMatch===undefined)delete globalThis.matchMedia;
+  else globalThis.matchMedia=oldMatch;
+ }
+});
+
+test('reticle and E use the same camp interaction as for a pickup',()=>{
+ const oldMatch=globalThis.matchMedia;
+ globalThis.matchMedia=()=>({matches:false});
+ try{
+  let toggled=-1;
+  class Vector3{
+   set(x,y,z){Object.assign(this,{x,y,z});return this;}
+   project(){this.x=.01;this.y=.03;this.z=.3;return this;}
+  }
+  const ctx={
+   $:()=>null,THREE:{Vector3},camera:{},px:0,pz:0,buildMode:false,
+   terrain:{heightAt:()=>0,waterDepthAt:()=>0},
+   campStructures:{items:new Map([[4,{id:4,kind:'campfire',x:1,z:0,lit:false}]]),
+    toggle(id){toggled=id;return true;}},
+   forestResources:{nodes:[]},groundBoxes:{boxes:[]},
+  };
+  const picker=createPickupInteraction(ctx);
+  assert.equal(picker.update().label,'Костёр');
+  assert.equal(picker.current.verb,'Зажечь');
+  assert.equal(picker.interact(),true);
+  assert.equal(toggled,4);
+ }finally{
+  if(oldMatch===undefined)delete globalThis.matchMedia;
+  else globalThis.matchMedia=oldMatch;
+ }
 });

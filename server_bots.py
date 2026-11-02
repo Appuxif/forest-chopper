@@ -39,14 +39,20 @@ def can_stand(world, x, z, feet=None):
         if math.hypot(x-tx, z-tz) < TREE_RADIUS:
             return False
     for log in world.logs.values():
-        top = log['y'] + .29
-        bottom = log['y'] - .29
+        vertical=log['orientation']==2
+        half_y=1.5 if vertical else .29
+        top=log['y']+half_y
+        bottom=log['y']-half_y
         if not (feet < top-.045 and feet+1.7 > bottom+.045):
             continue
-        along = x-log['x'] if log['orientation'] == 0 else z-log['z']
-        across = z-log['z'] if log['orientation'] == 0 else x-log['x']
-        if math.hypot(max(0, abs(along)-1.8), across) < .29 + BOT_RADIUS:
-            return False
+        if vertical:
+            collides=math.hypot(x-log['x'],z-log['z'])<.29+BOT_RADIUS
+        else:
+            along=x-log['x'] if log['orientation']==0 else z-log['z']
+            across=z-log['z'] if log['orientation']==0 else x-log['x']
+            half_length=1.5
+            collides=math.hypot(max(0,abs(along)-half_length),across)<.29+BOT_RADIUS
+        if collides:return False
     return True
 
 

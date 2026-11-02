@@ -75,6 +75,20 @@ export function createMinimap(ctx) {
       g.strokeStyle='#eab95a';g.lineWidth=2;
       g.beginPath();g.arc(px,py,8,0,Math.PI*2);g.stroke();
     }
+    // Persistent last-death location, edge clamped just like player/ping pins.
+    const death=ctx.deathSystem?.marker;
+    if(death){
+      const [x,y]=position(death.x,death.z);
+      const dx=x-center,dy=y-center,d=Math.hypot(dx,dy);
+      const scale=d>radius-9?(radius-9)/d:1;
+      const px=center+dx*scale,py=center+dy*scale;
+      circle(px,py,7,'#3c1117');
+      circle(px,py,5,'#ff5c63');
+      g.font='bold 10px system-ui';g.fillStyle='#ffffff';g.textAlign='center';
+      g.fillText('✕',px,py+3);
+      g.strokeStyle='#ff6b73';g.lineWidth=1.5;
+      g.beginPath();g.arc(px,py,8,0,Math.PI*2);g.stroke();
+    }
     // Own position and view direction (forward is -sin(yaw), -cos(yaw)).
     const angle=ctx.yaw;
     const dx=-Math.sin(angle),dy=-Math.cos(angle);

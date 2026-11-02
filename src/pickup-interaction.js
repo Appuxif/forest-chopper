@@ -1,5 +1,4 @@
-import {DECOR_ITEM_NAMES} from './collectible-decor.js';
-import {ITEM_NAMES} from './ground-boxes.js';
+import {itemDisplayName} from './item-display.js';
 
 export const PICKUP_RETICLE_RADIUS=0.28;
 
@@ -38,25 +37,54 @@ export function pickupCandidates(ctx){
       type:'resource',id:node.id,kind:node.kind,x:node.x,z:node.z,
       y:ctx.terrain.heightAt(node.x,node.z)+(node.kind==='branch'?.18:.23),
       maxDistance:2.4,distance,
-      label:DECOR_ITEM_NAMES[node.kind]??(node.kind==='branch'?'Ветка':'Камень'),
+      label:itemDisplayName(node.kind),
     });
   }
   const boxes=[];
-  for(const node of ctx.groundBoxes?.pickupNodes??ctx.groundBoxes?.boxes??[]){
+  for(const node of (ctx.groundBoxes?.nearbyPickupNodes?.(ctx.px,ctx.pz,2.8)??ctx.groundBoxes?.pickupNodes??ctx.groundBoxes?.boxes??[])){
     const distance=Math.hypot(node.x-ctx.px,node.z-ctx.pz);
     if(distance>2.8)continue;
     boxes.push({
       type:'box',id:node.id,segment:node.segment,x:node.x,z:node.z,
       y:ctx.terrain.heightAt(node.x,node.z)+.28,maxDistance:2.8,distance,
-      label:node.kind==='fallen_logs'?('Бревно · осталось '+node.item.count):(ITEM_NAMES[node.item.id]??'Предмет'),
+      label:node.kind==='fallen_logs'?('Бревно · осталось '+node.item.count):itemDisplayName(node.item.id),
     });
   }
   return {resources,boxes};
 }
+// World interactions are resolved alongside pickups, so the crosshair,
+// tooltip and E/touch actions all refer to exactly the same target.
+export function worldInteractionCandidates(ctx){
+ const storages=[],fires=[];
+ for(const storage of ctx.storages?.structures?.values?.()??[]){
+  const distance=Math.hypot(storage.x-ctx.px,storage.z-ctx.pz);
+  if(distance>3.2)continue;
+  storages.push({
+   type:'storage',id:storage.id,x:storage.x,z:storage.z,
+   y:ctx.terrain.heightAt(storage.x,storage.z)+(storage.kind==='chest'?1.05:.85),
+   distance,maxDistance:3.2,
+   label:storage.kind==='chest'?'Сундук':'Склад брёвен',
+   verb:'Открыть',
+  });
+ }
+ for(const fire of ctx.campStructures?.items?.values?.()??[]){
+  if(!['campfire','torch','bed'].includes(fire.kind))continue;
+  const distance=Math.hypot(fire.x-ctx.px,fire.z-ctx.pz);
+  if(distance>3.2)continue;
+  fires.push({
+   type:'camp',id:fire.id,x:fire.x,z:fire.z,
+   y:ctx.terrain.heightAt(fire.x,fire.z)+(fire.kind==='torch'?1.65:fire.kind==='bed'?.6:.7),
+   distance,maxDistance:3.2,
+   label:fire.kind==='torch'?'Факел':fire.kind==='bed'?'Кровать':'Костёр',
+   verb:fire.kind==='bed'?'Лечь спать':fire.lit?'Потушить':'Зажечь',
+  });
+ }
+ return {storages,fires};
+}
 export function createPickupInteraction(ctx){
   const button=ctx.$('pickup');
   const scratch=new ctx.THREE.Vector3();
-  let target=null;
+  let target=null,focused=null;
   const coarse=()=>matchMedia('(pointer:coarse)').matches;
   const project=item=>{
     scratch.set(item.x,item.y,item.z).project(ctx.camera);
@@ -64,39 +92,59 @@ export function createPickupInteraction(ctx){
   };
   function calculate(){
     const {resources,boxes}=pickupCandidates(ctx);
-    // Tree/craft placement reticles are independent; a reachable nearby item
-    // remains available by E or the touch button even if not aimed at.
-    // The user intentionally dropped boxes; prioritize them over dense grass
-    // and nearby forest loot so E and the mobile button pick the aimed box.
-    const focused=selectPickupTarget(boxes,project)??selectPickupTarget(resources,project);
-    return {focused,nearest:nearestPickupTarget([],boxes)??nearestPickupTarget(resources,[])};
+    const {storages,fires}=worldInteractionCandidates(ctx);
+    // Preserve the priority given to deliberately dropped boxes. Otherwise
+    // select by on-screen crosshair proximity, not structure proximity alone.
+    const centered=selectPickupTarget(boxes,project)
+      ??selectPickupTarget([...storages,...fires,...resources],project);
+    // When nothing is aimed at, keep E usable for the nearest world object.
+    // The same fallback is also shown by the reticle; no phantom E prompts.
+    const nearestWorld=nearestPickupTarget(fires,storages);
+    const nearestPickup=nearestPickupTarget([],boxes)??nearestPickupTarget(resources,[]);
+    return {focused:centered,selected:centered??nearestWorld??nearestPickup};
   }
   function update(){
     const result=calculate();
-    target=result.focused;
+    focused=ctx.buildMode?null:result.focused;
+    target=ctx.buildMode?null:result.selected;
     if(button){
-      const available=!ctx.buildMode&&!!(result.focused??result.nearest);
+      const available=!ctx.buildMode&&!!target;
       button.hidden=!coarse()||!available;
       button.disabled=!available;
-      const label=result.focused?.label??result.nearest?.label;
-      button.setAttribute('aria-label',label?'Поднять: '+label:'Поднять предмет');
-      button.title=label?'Поднять: '+label:'Поднять предмет';
+      const label=target?.label;
+      button.setAttribute('aria-label',label?'Взаимодействовать: '+label:'Взаимодействовать');
+      button.title=label?'Взаимодействовать: '+label:'Взаимодействовать';
     }
-    return ctx.buildMode?null:target;
+    return focused;
   }
-  function pickup(){
-    const {focused,nearest}=calculate();
-    const item=focused??nearest;
+  function pickItem(item){
     if(!item)return false;
-    return item.type==='box'
+    const success=item.type==='box'
       ?(ctx.groundBoxes?.pickup(item.id,item.segment)??false)
       :(ctx.forestResources?.collect(item.id)??false);
+    if(success)ctx.audio?.effect('pickup');
+    return success;
+  }
+  function pickup(){
+    const {focused,selected}=calculate();
+    const item=focused?.type==='box'||focused?.type==='resource'?focused:
+      selected?.type==='box'||selected?.type==='resource'?selected:null;
+    return pickItem(item);
+  }
+  function interact(){
+    if(ctx.buildMode||ctx.storages?.opened!=null)return false;
+    const {selected}=calculate();
+    if(!selected)return false;
+    if(selected.type==='storage')return ctx.storages?.open?.(selected.id)??false;
+    if(selected.type==='camp')return ctx.campStructures?.activate?.(selected.id)??ctx.campStructures?.toggle?.(selected.id)??false;
+    return pickItem(selected);
   }
   if(button)button.addEventListener('click',event=>{
     event.preventDefault();
     event.stopPropagation();
-    pickup();
+    interact();
     update();
   });
-  return {update,pickup,get focused(){return target;}};
+  return {update,pickup,interact,
+    get focused(){return focused;},get current(){return target;}};
 }

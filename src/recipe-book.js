@@ -2,6 +2,8 @@
 // "planned" entries are informational; they never dispatch a craft request.
 export const RECIPE_TABS=[
  {id:'tools',name:'Инструменты',icon:'🪓'},
+ {id:'alchemy',name:'Алхимия',icon:'🧪'},
+ {id:'food',name:'Еда',icon:'🍲'},
  {id:'structures',name:'Постройки',icon:'🏕️'},
  {id:'free',name:'Свободное строительство',icon:'🪵'},
 ];
@@ -10,11 +12,26 @@ export const RECIPE_PAGES=[
  {id:'bench',tab:'structures',name:'Скамейка',icon:'🪑',description:'Деревянная скамейка для обустройства лагеря.',ingredients:{log:3},craftable:true,effects:['Можно установить и разобрать']},
  {id:'chest',tab:'structures',name:'Сундук',icon:'📦',description:'Стационарный инвентарь на 24 слота и 300 кг. Поставить перед персонажем.',ingredients:{log:2,branch:4},craftable:true,placement:true},
  {id:'rack',tab:'structures',name:'Склад брёвен',icon:'🪵',description:'Уложить до 48 брёвен в штабеля. Поставить перед персонажем.',ingredients:{log:2},craftable:true,placement:true},
- {id:'campfire',tab:'structures',name:'Костёр',icon:'🔥',description:'Очаг для освещения лагеря. Рецепт появится при введении управляемого костра.',planned:true,effects:['Зажечь / погасить · в разработке']},
+ {id:'potion:health',tab:'alchemy',name:'Зелье здоровья',icon:'❤️',description:'Восстанавливает 3 жизни и 1 единицу голода — усиливает действие двух ромашек и сохраняет питательность боровика.',ingredients:{'flower:daisy':2,'mushroom:boletus':1},craftable:true,effects:['Лечение +3','Сытость +1']},
+ {id:'potion:stamina',tab:'alchemy',name:'Зелье выносливости',icon:'🧪',description:'Удваивает восстановление выносливости на 30 секунд. Не восполняет её мгновенно.',ingredients:{'flower:blue_wildflower':2,'flower:pink_wildflower':2},craftable:true,effects:['Регенерация ×2 на 30 секунд','Без мгновенного восстановления']},
+ {id:'potion:lumberjack',tab:'alchemy',name:'Эликсир дровосека',icon:'🪓',description:'На 45 секунд удваивает урон по деревьям ценой одной жизни.',ingredients:{'mushroom:fly_agaric':1,'flower:pink_wildflower':2,'flower:daisy':1},craftable:true,effects:['Урон по деревьям ×2 на 45 секунд','−1 здоровье при употреблении']},
+ {id:'potion:light_feet',tab:'alchemy',name:'Зелье лёгких ног',icon:'🪽',description:'На 45 секунд уменьшает расход выносливости при беге вдвое, но вызывает голод.',ingredients:{'flower:blue_wildflower':2,'flower:pink_wildflower':1,'flower:buttercup':1},craftable:true,effects:['Расход выносливости при беге −50% на 45 секунд','−1 голод при употреблении']},
+ {id:'potion:night_vision',tab:'alchemy',name:'Сумеречное зрение',icon:'🌙',description:'Улучшает видимость ночью на 5 минут. При употреблении отнимает одну жизнь.',ingredients:{'mushroom:fly_agaric':1,'flower:blue_wildflower':1,'flower:buttercup':1},craftable:true,effects:['Ночное зрение на 5 минут','−1 здоровье при употреблении']},
+ {id:'food:mushroom_stew',tab:'food',name:'Грибное рагу',icon:'🍲',description:'Сытное рагу из двух съедобных грибов. Готовится возле костра, восстанавливает 3 единицы голода.',ingredients:{'mushroom:boletus':1,'mushroom:milkcap':1},craftable:true,effects:['Сытость +3']},
+ {id:'food:herbal_mushroom_stew',tab:'food',name:'Грибное рагу с травами',icon:'🍲',description:'Рагу из боровика и груздя с синим полевым цветком. Готовится возле костра, восстанавливает 3 голода и 1 здоровье.',ingredients:{'mushroom:boletus':1,'mushroom:milkcap':1,'flower:blue_wildflower':1},craftable:true,effects:['Сытость +3','Лечение +1']},
+ {id:'alchemy_table',tab:'structures',name:'Алхимический стол',icon:'⚗️',description:'Рабочее место с ретортой, перегонным кубом и колбами. Необходимо для приготовления всех зелий в радиусе 10 м.',ingredients:{log:3,stone:5,branch:5,'flower:daisy':3,'flower:pink_wildflower':2,'flower:blue_wildflower':3,'mushroom:fly_agaric':1},craftable:true,placement:true,effects:['Алхимия в радиусе 10 м']},
+ {id:'bed',tab:'structures',name:'Кровать',icon:'🛏️',description:'Установи кровать и нажми E рядом с ней, чтобы сменить точку возрождения. Спать пока нельзя.',ingredients:{log:3,branch:4,dry_grass:5},craftable:true,placement:true,effects:['Меняет точку возрождения']},
+ {id:'campfire',tab:'structures',name:'Костёр',icon:'🔥',description:'Освещает лагерь. Подойди и нажми E, чтобы зажечь или погасить.',ingredients:{log:2,stone:3},craftable:true,placement:true,effects:['Не требует топлива']},
+ {id:'torch',tab:'structures',name:'Стационарный факел',icon:'🕯️',description:'Постоянный факел для освещения дорожек. E включает и выключает.',ingredients:{branch:1,stone:3,dry_grass:1},craftable:true,placement:true},
+ {id:'table',tab:'structures',name:'Стол',icon:'🪑',description:'Деревянная площадка с коллизией — можно запрыгнуть.',ingredients:{log:3},craftable:true,placement:true},
+ {id:'fence',tab:'structures',name:'Ограда',icon:'🚧',description:'Деревянные стойки и перекладины, перекрывают проход.',ingredients:{log:2,branch:2},craftable:true,placement:true},
+ {id:'workbench',tab:'structures',name:'Верстак',icon:'🛠️',description:'Рабочая поверхность для будущего производственного крафта.',ingredients:{log:4,stone:2},craftable:true,placement:true},
  {id:'signpost',tab:'structures',name:'Указатель',icon:'🪧',description:'Деревянный знак с надписью для тропы или лагеря.',planned:true,effects:['Надпись · в разработке']},
- {id:'column',tab:'free',name:'Столб из брёвен',icon:'🪵',description:'Выбери бревно в хотбаре, поворачивай постройку и укладывай брёвна друг на друга. Подсказка показывает доступную высоту.',guide:true},
- {id:'wall',tab:'free',name:'Стена из брёвен',icon:'🧱',description:'Поставь несколько брёвен рядом, повторяй слои. Поворачивай элементы перед укладкой. Схема не расходует дополнительные ресурсы.',guide:true},
+ {id:'column',tab:'free',name:'Столб из брёвен',icon:'🪵',description:'Выбери бревно в хотбаре, R переключает оси X/Z/Y. Выбери вертикальную ось Y, Alt+стрелки сдвигают позицию по сетке 0,5 м, PageUp/PageDown — высоту.',guide:true},
+ {id:'wall',tab:'free',name:'Стена из брёвен',icon:'🧱',description:'Укладывай брёвна длиной 3 м вдоль X или Z. Alt+стрелки — сдвиг на 0,5 м, PageUp/PageDown — новый ряд выше. Шесть рядов дают стену высотой около 3 м.',guide:true},
  {id:'floor',tab:'free',name:'Настил из брёвен',icon:'🏗️',description:'Расположи брёвна параллельно в одном уровне. Для выравнивания используй полуметровую сетку размещения.',guide:true},
+ {id:'stairs',tab:'free',name:'Лестница',icon:'🪜',description:'Чередуй уровни укладки брёвен, делая ступени с горизонтальным шагом 0,5–1 м. Для подъёма ставь брёвна поперёк направления движения.',guide:true},
+ {id:'roof',tab:'free',name:'Перекрытие',icon:'🏠',description:'Выстрой две опорные стены, затем уложи горизонтальные брёвна вплотную друг к другу. Проверь доступность ступеней для прыжка.',guide:true},
 ];
 export const recipeById=id=>RECIPE_PAGES.find(entry=>entry.id===id)??null;
 export const recipeAvailable=(entry,inventory)=>!!entry?.craftable&&Object.entries(entry.ingredients??{}).every(([id,count])=>inventory.count(id)>=count);

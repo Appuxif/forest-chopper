@@ -1,10 +1,11 @@
+import {STRUCTURE_KINDS,STRUCTURE_RECIPES,STRUCTURE_WEIGHT,isStructureItem} from './structure-items.js';
 import {DECOR_ITEM_IDS} from './collectible-decor.js';
 // Server and offline inventory share the same item limits and recipes.
 export const LOG_STACK=5, QUICK_SLOTS=4, BASE_BAG_SLOTS=12, SLOTS_PER_UPGRADE=4;
-export const ITEM_STACK={log:5,branch:10,stone:10,bench:1,axe:1,...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,10]))};
+export const ITEM_STACK={...Object.fromEntries(STRUCTURE_KINDS.map(id=>[id,1])),log:5,branch:10,stone:10,bench:1,axe:1,'potion:health':10,'potion:stamina':10,'potion:lumberjack':10,'potion:light_feet':10,'potion:night_vision':10,'food:mushroom_stew':10,'food:herbal_mushroom_stew':10,...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,10]))};
 export const MAX_CARRY_WEIGHT=100;
 // kg per item. Counts, not stacks, determine weight; axe has no count field.
-export const ITEM_WEIGHT={log:10,branch:0.5,stone:2,bench:15,axe:3,
+export const ITEM_WEIGHT={...STRUCTURE_WEIGHT,log:10,branch:0.5,stone:2,bench:15,axe:3,'potion:health':0.5,'potion:stamina':0.5,'potion:lumberjack':0.5,'potion:light_feet':0.5,'potion:night_vision':0.5,'food:mushroom_stew':0.6,'food:herbal_mushroom_stew':0.7,
  ...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,0.1]))};
 export const itemWeight=item=>item?(ITEM_WEIGHT[item.id]??0)*(item.id==='axe'?1:item.count):0;
 export const RECIPES={bench:{log:3},axe:{branch:3,stone:2}};
@@ -54,13 +55,13 @@ export function createInventoryModel(){
   if(item.id==='axe')return Number.isInteger(item.tier)&&item.tier>=0&&item.tier<AXE_STATS.length&&hasSpace()&&(ignoreWeight||weight()+itemWeight(item)<=MAX_CARRY_WEIGHT+1e-8);
   if(!Number.isSafeInteger(item.count)||item.count<1||item.count>50000)return false;
   if(!ignoreWeight&&weight()+itemWeight(item)>MAX_CARRY_WEIGHT+1e-8)return false;
-  if(item.id==='bench')return item.count===1&&hasSpace();
+  if(item.id==='bench'||isStructureItem(item.id))return item.count===1&&hasSpace();
   return freeStack(item.id)>=item.count;
  }
  function addItem(item,options){
   if(!canAdd(item,options))return false;
   let remaining=item.id==='axe'?1:item.count;
-  if(item.id!=='axe'&&item.id!=='bench'){
+  if(item.id!=='axe'&&item.id!=='bench'&&!isStructureItem(item.id)){
    for(const x of slots)if(x?.id===item.id&&remaining){
     const n=Math.min(remaining,ITEM_STACK[item.id]-x.count);
     x.count+=n;remaining-=n;
@@ -91,6 +92,21 @@ export function createInventoryModel(){
   const item=recipe==='axe'?{id:'axe',tier:0}:{id:'bench',count:1};
   if(addItem(item))return true;
   slots=snapshot;return false;
+ }
+ function craftStructure(kind){
+  const cost=STRUCTURE_RECIPES[kind];
+  if(!cost||!Object.entries(cost).every(([id,n])=>count(id)>=n))return false;
+  const before=serialize(),woodBefore=wood();
+  for(const [id,n] of Object.entries(cost))spend(id,n);
+  if(addItem({id:kind,count:1}))return true;
+  restore(before,woodBefore);
+  return false;
+ }
+ function canCraftStructure(kind){
+  if(!isStructureItem(kind))return false;
+  const mock=createInventoryModel();
+  if(!mock.restore(serialize(),wood()))return false;
+  return mock.craftStructure(kind);
  }
  function addBench(){return addItem({id:'bench',count:1});}
  function removeBench(i){if(slots[i]?.id!=='bench')return false;slots[i]=null;return true;}
@@ -199,7 +215,7 @@ export function createInventoryModel(){
   return setWood(legacyWood,{migrate:true});
  }
  return {capacity,count,wood,free,freeLogs,weight,remainingWeight,equipped,axe,selected,hasSpace,canAdd,addItem,spend,craft,
-  upgradeBag,addLogs,spendLogs,setWood,move,transfer,split,assignQuick,swapQuick,quickItem,quickSlot,selectedSlot,select,consumeAt,consumeSelected,takeAt,removeSlot,restoreSlot,addBench,removeBench,craftBench,
+  upgradeBag,addLogs,spendLogs,setWood,craftStructure,canCraftStructure,move,transfer,split,assignQuick,swapQuick,quickItem,quickSlot,selectedSlot,select,consumeAt,consumeSelected,takeAt,removeSlot,restoreSlot,addBench,removeBench,craftBench,
   serialize,restore,get slots(){return slots.map(copy)},
   get bagTier(){return tier},get selectedQuick(){return quick},get quickRefs(){return [...quickRefs]},get quickIds(){return [...quickIds]}};
 }

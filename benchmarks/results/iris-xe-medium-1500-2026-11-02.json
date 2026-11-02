@@ -1,0 +1,38 @@
+{
+  "benchmark": "box-stress-1500",
+  "date": "2026-11-02",
+  "seed": 517013,
+  "preset": "medium",
+  "fpsCap": 60,
+  "renderer": "ANGLE (Intel, Mesa Intel(R) Iris(R) Xe Graphics (ADL GT2), OpenGL ES 3.2)",
+  "canvasResolution": [1536, 724],
+  "warmupSeconds": 10,
+  "measurementSecondsPerPhase": 10,
+  "settleSeconds": 5,
+  "measurementWindows": {"baseline": 9, "stress": 9},
+  "baseline": {
+    "boxes": 0,
+    "meanFps": 60.99,
+    "minimumFps": 60.99,
+    "maximumFps": 61,
+    "meanDrawCalls": 707,
+    "meanTriangles": 1495421,
+    "meanP95FrametimeMs": 20.9,
+    "worstP99FrametimeMs": 20.9,
+    "meanJsHeapMiB": 88.55
+  },
+  "stress": {
+    "boxes": 1500,
+    "batches": 4,
+    "meanFps": 60.99,
+    "minimumFps": 60.99,
+    "maximumFps": 61,
+    "meanDrawCalls": 711,
+    "meanTriangles": 1513421,
+    "meanP95FrametimeMs": 20.9,
+    "worstP99FrametimeMs": 21,
+    "meanJsHeapMiB": 89.78
+  },
+  "observedFpsChange": 0,
+  "notes": "FPS at the 60 FPS cap; no measurable slowdown. Exactly 4 extra draw calls and 18,000 extra triangles, consistent with four instanced chunks of 1,500 wooden box primitives."
+}

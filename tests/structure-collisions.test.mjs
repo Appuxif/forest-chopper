@@ -22,7 +22,7 @@ function fixture(orientation=0){
     terrain:flatTerrain(),
     scene:{add(){},remove(){}},
     $:()=>({append(){}}),trees:new Map(),placed:[],rockColliders:new Map(),chunkSize:24,
-    logLength:3.6,logRadius:.29,PLAYER_RADIUS:.31,PLAYER_HEIGHT:1.7,
+    logLength:3,logRadius:.29,PLAYER_RADIUS:.31,PLAYER_HEIGHT:1.7,
     GRAVITY:19,JUMP_SPEED:7.5,px:0,pz:0,feetY:0,verticalSpeed:0,
     jumpRequested:false,onGround:true,
   };

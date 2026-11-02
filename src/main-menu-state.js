@@ -12,6 +12,24 @@ export function parseSeed(raw){
   const value=Number(String(raw).trim());
   return Number.isSafeInteger(value)&&value<=MAX_SEED?value:null;
 }
+// Only parse URL input here. The menu applies it through its normal controls.
+export function parseLaunchQuery(search=''){
+  const params=new URLSearchParams(String(search).replace(/^\?/,''));
+  const type=params.get('type');
+  const performance=params.get('performance');
+  const diag=params.get('diag');
+  return {
+    type:['continue','new','multiplayer'].includes(type)?type:null,
+    seedProvided:params.has('seed'),
+    seed:params.has('seed')?parseSeed(params.get('seed')):null,
+    force:params.get('force')==='true',
+    performance:['low','medium','high'].includes(performance)?performance:null,
+    diag:diag==='true'?true:diag==='false'?false:null,
+    name:params.has('name')?String(params.get('name')).trim().slice(0,22):null,
+    server:params.has('server')?params.get('server'):null,
+  };
+}
+
 export function readLocalWorld(storage){
   try{return parseOfflineSave(storage?.getItem(OFFLINE_SAVE_KEY)??null);}
   catch{return null;}

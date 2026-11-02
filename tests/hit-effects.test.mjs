@@ -4,7 +4,8 @@ import {createChopping} from '../src/chopping.js';
 import {createHitEffects} from '../src/hit-effects.js';
 
 function setup(online=false) {
-  const sent=[], damage=new Map(), sceneObjects=[];
+  const sent=[], damage=new Map(), sceneObjects=[], events=[];
+  let canAim=true,aimTarget=null;
   class Mesh {
     constructor(geometry,material) {
       this.geometry=geometry;this.material=material;
@@ -26,7 +27,7 @@ function setup(online=false) {
     constructor(){this.ray={origin:new Vector3(),direction:new Vector3(0,0,-1)};}
     set() {}
     setFromCamera() {}
-    intersectObjects(objects) {return objects.length ? [{distance:2}] : [];}
+    intersectObjects(objects) {return canAim&&objects.length&&(!aimTarget||objects.includes(aimTarget)) ? [{distance:2}] : [];}
   }
   const material={name:'shared trunk material'};
   const trunk=new Mesh({},material);
@@ -37,12 +38,56 @@ function setup(online=false) {
     thirdPerson:true,px:0,pz:0,yaw:0,pitch:0,
     trees:new Map([[tree.userData.id,tree]]),scene:{add(mesh){sceneObjects.push(mesh);}},
     particles:[],CHOP_SPEED:1,lastHit:-100000,swing:0,ownAvatar:null,
-    actorChop(){},buildMode:false,wood:0,cuts:0,
+    actorChop(){events.push('swing');},buildMode:false,wood:0,cuts:0,
+    audio:{effect:name=>events.push(name)},
     treeDamage:damage,isOnline:()=>online,sendNet:data=>sent.push(data),
     offlineSave:{markDirty(){}},
   };
-  return {ctx,tree,trunk,material,sent,damage,sceneObjects, chopping:createChopping(ctx)};
+  return {ctx,tree,trunk,material,sent,damage,sceneObjects,events,
+    setAim(value){canAim=value;},setAimTarget(mesh){aimTarget=mesh;},chopping:createChopping(ctx)};
 }
+
+test('empty-space swing can land if player aims at a tree exactly on frame 18 (offline)',()=>{
+ const f=setup();
+ f.setAim(false);
+ f.chopping.chop();
+ assert.deepEqual(f.events,['swing'],'empty space launches animation without sound');
+ assert.equal(f.ctx.particles.length,0);
+ assert.equal(f.tree.userData.hp,5);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+700),false);
+ f.setAim(true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.tree.userData.hp,4);
+ assert.equal(f.ctx.particles.length,7);
+ assert.deepEqual(f.events,['swing','axe']);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1000),false,'impact occurs once');
+});
+
+test('empty-space swing never hits if there is no tree at contact',()=>{
+ const f=setup();
+ f.setAim(false);
+ f.ctx.vitals={canChop:true,hit:()=>{throw Error('miss must not spend stamina')}};
+ f.chopping.chop();
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),false);
+ assert.equal(f.tree.userData.hp,5);
+ assert.equal(f.ctx.particles.length,0);
+ assert.deepEqual(f.events,['swing']);
+ f.setAim(true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1000),false,'late aiming cannot revive missed swing');
+});
+
+test('empty-space swing sends online hit only at contact, not before',()=>{
+ const f=setup(true);
+ f.setAim(false);
+ f.chopping.chop();
+ assert.deepEqual(f.sent,[]);
+ f.setAim(true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.deepEqual(f.sent,[{type:'hit',tree:f.tree.userData.id}]);
+ assert.equal(f.tree.userData.hp,5,'HP remains server-authoritative');
+ assert.equal(f.ctx.particles.length,7);
+ assert.deepEqual(f.events,['swing','axe']);
+});
 
 test('offline successful chop keeps entire trunk material, scale and rotation constant',()=>{
   const f=setup();
@@ -50,7 +95,13 @@ test('offline successful chop keeps entire trunk material, scale and rotation co
   const originalTrunkScale={...trunk.scale};
   const originalTrunkRotation={...tree.rotation};
   chopping.chop();
+  assert.equal(tree.userData.hp,5,'click itself does not damage');
+  assert.equal(ctx.particles.length,0,'click itself does not spawn chips');
+  assert.equal(chopping.tickImpact(ctx.lastHit+700),false,'before frame 18');
+  assert.equal(chopping.tickImpact(ctx.lastHit+715),true,'frame 18 collision');
   assert.equal(tree.userData.hp,4);
+  assert.deepEqual(f.events,['swing','axe']);
+  assert.equal(chopping.tickImpact(ctx.lastHit+2000),false,'frame 18 cannot apply twice');
   assert.equal(tree.userData.scar,undefined,'no rectangular damage overlay');
   assert.equal(trunk.material,material,'no full-trunk flash');
   assert.deepEqual(trunk.scale,originalTrunkScale,'no full-trunk scaling');
@@ -63,10 +114,14 @@ test('offline successful chop keeps entire trunk material, scale and rotation co
 test('online chop sends request but waits for authoritative tree_hit to show feedback',()=>{
   const f=setup(true);
   f.chopping.chop();
+  assert.deepEqual(f.sent,[],'server receives nothing until contact');
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
   assert.deepEqual(f.sent,[{type:'hit',tree:'0,0:1'}]);
+  assert.deepEqual(f.events,['swing','axe']);
+  assert.equal(f.ctx.particles.length,7,'predicted local chips appear on frame 18');
   assert.equal(f.tree.userData.hp,5);
   assert.equal(f.tree.userData.scar,undefined);
-  assert.equal(f.ctx.particles.length,0);
+  assert.equal(f.ctx.particles.length,7,'online local player sees one burst at impact');
   assert.equal(f.trunk.material,f.material);
 });
 
@@ -88,4 +143,105 @@ test('previous cached hit effect API is inert for compatibility',()=>{
   assert.equal(f.trunk.material,f.material);
   assert.equal(f.tree.userData.scar,undefined);
   assert.equal(fx.activeCount,0);
+});
+
+test('aiming away at frame 18 is a complete miss: no sound, stamina, damage or chips',()=>{
+ const f=setup();
+ f.ctx.vitals={canChop:true,hit:()=>{throw Error('miss spends stamina')}};
+ f.chopping.chop();
+ f.setAim(false);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+500),false);
+ assert.equal(f.tree.userData.hp,5);
+ assert.equal(f.ctx.particles.length,0);
+ assert.deepEqual(f.events,['swing']);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+600),false);
+});
+
+test('aiming from tree A to B before frame 18 damages only B',()=>{
+ const f=setup(),a=f.tree;
+ const bMesh=new f.ctx.THREE.Mesh({},f.material);
+ const b={children:[bMesh],position:{x:2.2,z:0},rotation:{x:0,y:0,z:0},
+   userData:{id:'0,0:2',hp:6,maxHp:6,x:2.2,z:0}};
+ f.ctx.trees.set(b.userData.id,b);
+ f.setAimTarget(f.trunk);
+ f.chopping.chop();
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+700),false);
+ f.setAimTarget(bMesh);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(a.userData.hp,5,'original target A remains untouched');
+ assert.equal(b.userData.hp,5,'current target B receives exactly one hit');
+ assert.equal(f.damage.get(b.userData.id),5);
+ assert.equal(f.damage.has(a.userData.id),false);
+ assert.equal(f.ctx.particles.length,7);
+ assert.deepEqual(f.events,['swing','axe']);
+});
+
+test('empty-space swing can aim at B instead of A by contact frame',()=>{
+ const f=setup();
+ const bMesh=new f.ctx.THREE.Mesh({},f.material);
+ const b={children:[bMesh],position:{x:2.2,z:0},rotation:{x:0,y:0,z:0},
+   userData:{id:'0,0:2',hp:6,maxHp:6,x:2.2,z:0}};
+ f.ctx.trees.set(b.userData.id,b);
+ f.setAim(false);
+ f.chopping.chop();
+ f.setAim(true);f.setAimTarget(bMesh);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.tree.userData.hp,5);
+ assert.equal(b.userData.hp,5);
+ assert.deepEqual(f.events,['swing','axe']);
+});
+
+
+test('ragdoll or death before contact cancels pending impact permanently',()=>{
+ for(const status of ['ragdoll','death']){
+  const f=setup();f.chopping.chop();
+  if(status==='ragdoll')f.ctx.ragdoll={active:true};
+  else f.ctx.deathSystem={active:true};
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+500),false);
+  delete f.ctx.ragdoll;delete f.ctx.deathSystem;
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1200),false);
+  assert.equal(f.tree.userData.hp,5);
+  assert.deepEqual(f.events,['swing']);
+ }
+});
+
+test('impact uses actual mixer time, not wall-clock, and supports fast axes',()=>{
+ const f=setup();
+ const action={time:0,getClip(){return {duration:1.7916667}}};
+ f.ctx.ownAvatar={upper:{Chop2:action},actions:{Chop2:action}};
+ f.ctx.CHOP_SPEED=1.6;
+ f.ctx.inventory={selected:'axe',equipped:true,axe:{speed:1.5,damage:2},
+  state:{selectedQuick:0,quickItem(){return {id:'axe'}}}};
+ f.chopping.chop();
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false,'mixer not yet at impact');
+ action.time=17/24-.001;
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false);
+ action.time=17/24;
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),true);
+ assert.equal(f.tree.userData.hp,3);
+ assert.deepEqual(f.events,['swing','axe']);
+});
+
+test('server confirms locally predicted chips once; remote hits remain visible',()=>{
+ const f=setup(true);
+ f.ctx.myId=11;
+ f.chopping.chop();
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.ctx.particles.length,7);
+ assert.equal(f.chopping.acknowledgeLocalChop('0,0:1',12),false,
+  'other player hits must not consume local prediction');
+ assert.equal(f.chopping.acknowledgeLocalChop('0,0:1',11),true);
+ assert.equal(f.chopping.acknowledgeLocalChop('0,0:1',11),false,'at-most-once acknowledgement');
+ f.chopping.resetChop();
+});
+
+test('a temporary aim deviation recovers if crosshair returns by the contact frame',()=>{
+ const f=setup();
+ f.chopping.chop();
+ f.setAim(false);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+400),false);
+ f.setAim(true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.tree.userData.hp,4);
+ assert.deepEqual(f.events,['swing','axe']);
 });

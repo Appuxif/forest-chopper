@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  celestialDirections,shadowMapSizeForQuality,selectShadowTrees,
+  celestialDirections,shadowMapSizeForQuality,skyGeometryDistances,selectShadowTrees,
   createAtmosphere,SHADOW_TREE_LIMIT,SHADOW_TREE_RADIUS,SHADOW_UPDATE_MS,
   CHARACTER_SHADOW_RADIUS,CHARACTER_SHADOW_MAP_SIZES,
 } from '../src/atmosphere.js';
@@ -25,6 +25,18 @@ test('celestial positions follow the 8-minute cycle: sun by day, moon by night',
     assert.ok(Math.abs(sun.x+moon.x)<1e-10);
     assert.ok(Math.abs(sun.y+moon.y)<1e-10);
   }
+});
+
+test('sky dome and sun/moon fit within every graphics preset far clip distance',()=>{
+ for(const [preset,far] of [['low',180],['medium',230],['high',280],['ultra',320]]){
+  const {domeRadius,bodyDistance,sunRadius,moonRadius}=skyGeometryDistances(far);
+  assert.ok(domeRadius<far,`${preset}: sky dome must be inside far plane`);
+  assert.ok(bodyDistance+sunRadius<far,`${preset}: sun must be visible`);
+  assert.ok(bodyDistance+moonRadius<far,`${preset}: moon must be visible`);
+  assert.ok(bodyDistance<domeRadius,`${preset}: bodies stay inside dome`);
+  assert.ok(Math.abs(sunRadius/bodyDistance-6.4/210)<1e-9,
+    `${preset}: sun angular size must not change`);
+ }
 });
 
 test('shadow budget picks nearest trees and honors quality levels',()=>{
@@ -91,7 +103,7 @@ function fixture(){
     add(...objects){this.children.push(...objects);},
     remove(...objects){this.children=this.children.filter(c=>!objects.includes(c));},
   };
-  const camera={position:new Vector3(2,3,4),layers:new Layers()};
+  const camera={position:new Vector3(2,3,4),layers:new Layers(),far:280};
   camera.layers.enable(1);camera.layers.enable(3);
   const sun=new DirectionalLight();
   const hemisphere={layers:new Layers(),intensity:2.1};
@@ -115,6 +127,23 @@ function fixture(){
     getPointShadowCasters:()=>[characters[0]]});
   return {scene,renderer,renders,ground,sun,hemisphere,trees,settings,atmosphere,camera};
 }
+
+test('atmosphere rescales camera-centered sky and celestial bodies when preset changes far plane',()=>{
+ const f=fixture();
+ for(const far of [280,230,180,320]){
+  f.camera.far=far;
+  f.atmosphere.tick(far,0,0);
+  const sky=skyGeometryDistances(far);
+  assert.ok(Math.abs(f.atmosphere.dome.scale.value-sky.domeRadius/235)<1e-9);
+  assert.ok(Math.abs(f.atmosphere.sunBody.scale.value-sky.sunRadius)<1e-9);
+  assert.ok(Math.abs(f.atmosphere.moonBody.scale.value-sky.moonRadius)<1e-9);
+  assert.ok(Math.abs(Math.hypot(
+    f.atmosphere.sunBody.position.x-f.camera.position.x,
+    f.atmosphere.sunBody.position.y-f.camera.position.y,
+    f.atmosphere.sunBody.position.z-f.camera.position.z,
+  )-sky.bodyDistance)<1e-9);
+ }
+});
 
 test('point-light shadow renders a bounded local caster scene and restores camera layers',()=>{
   const f=fixture();

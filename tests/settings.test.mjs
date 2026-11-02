@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {sanitizeSettings,createSettings} from '../src/settings.js';
 import {PERFORMANCE_DEFAULTS,PERFORMANCE_PRESETS} from '../src/performance-presets.js';
+import {DEFAULT_AUDIO,SOUND_CONTROLS} from '../src/sound-rules.js';
 
 const defaults = {...PERFORMANCE_DEFAULTS,performancePreset:'high',
   mouseSensitivity:1,showFps:false,spruceFoliageVisible:true,spruceFoliageShadows:true,spruceFoliageDensity:100,windEnabled:true,dayCycleEnabled:false,
   autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:70,grassDensity:30,
   grassDistance:70,grassMinSize:2.5,grassMaxSize:5.5,grassWidth:1,
   grassTurnMin:-30,grassTurnMax:30,fov:75,
-  cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
+  cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,audio:DEFAULT_AUDIO,
 };
 
 test('settings defaults and rejects invalid or corrupted saved values',()=>{
@@ -278,6 +279,12 @@ test('preset selection applies all graphics properties; manual graphics changes 
   assert.equal(settings.performancePreset,'custom');
   assert.equal(settings.renderScale,75);
   assert.equal(writes.at(-1).performancePreset,'custom');
+  assert.equal(settings.setShowFps(true),true);
+  assert.equal(writes.at(-1).showFps,true);
+  assert.equal(settings.setShowFps(false),false);
+  assert.equal(writes.at(-1).showFps,false);
+  assert.equal(settings.setPerformancePreset('medium').preset,'medium');
+  assert.equal(writes.at(-1).performancePreset,'medium');
   profile.value='ultra';profile.onchange();
   assert.equal(settings.performancePreset,'ultra');
   assert.equal(settings.maxFps,0);
@@ -318,4 +325,101 @@ test('in-game settings leave the world sharp and undimmed; main-menu modal keeps
   settings.setMenuMode(false);
   assert.equal(backdrop.className,'fc-settings-backdrop');
   settings.destroy();
+});
+
+test('sound tab has independent persisted sliders, playable previews and audio-only reset',()=>{
+ const nodes=new Map(),writes=[],previews=[];
+ function element(id){
+  if(!nodes.has(id))nodes.set(id,{value:'',checked:false,textContent:'',style:{},
+   dataset:{},setAttribute(){},querySelector:element});
+  return nodes.get(id);
+ }
+ let panel=null;
+ const doc={
+  createElement:tag=>{
+   const node={tag,hidden:false,setAttribute(){},querySelector:element,
+    querySelectorAll(selector){
+     if(selector==='[data-preview]')return ['fire','axe','water'].map(key=>element('#preview-'+key));
+     if(selector==='[data-voice-preview]')return ['hurt_male_7','hurt_female_20','death_male_1','death_female_1','axe_chop_7','jump_female_24','jump_male_2'].map(key=>element('#voice-'+key));
+     return [];
+    },
+   };
+   if(tag==='section')panel=node;
+   return node;
+  },
+  head:{append(){}},body:{append(){}}
+ };
+ const store=new Map();
+ const storage={getItem:k=>store.get(k)??null,
+  setItem(k,v){store.set(k,v);writes.push(JSON.parse(v))}};
+ for(const key of ['fire','axe','water'])element('#preview-'+key).dataset.preview=key;
+ for(const key of ['hurt_male_7','hurt_female_20','death_male_1','death_female_1','axe_chop_7','jump_female_24','jump_male_2'])element('#voice-'+key).dataset.voicePreview=key;
+ const settings=createSettings(doc,storage,null,null,null,null,(key,exact)=>previews.push(exact?[key,exact]:key));
+ assert.match(panel.innerHTML,/data-category="audio"/);
+ assert.match(panel.innerHTML,/data-voice-preview="hurt_female_20"/);
+ assert.match(panel.innerHTML,/data-voice-preview="jump_female_24"/);
+ assert.match(panel.innerHTML,/data-voice-preview="jump_male_2"/);
+ assert.match(panel.innerHTML,/data-voice-preview="hurt_female_20">▶ 20<\/button>/);
+ assert.match(panel.innerHTML,/data-voice-preview="jump_female_24">▶ 24<\/button>/);
+ assert.doesNotMatch(panel.innerHTML,/data-voice-preview="hurt_female_1"/);
+ assert.doesNotMatch(panel.innerHTML,/data-voice-preview="hurt_female_37"/);
+ assert.match(panel.innerHTML,/data-voice-preview="hurt_male_7"/);
+ assert.match(panel.innerHTML,/data-voice-preview="axe_chop_7"/);
+ assert.doesNotMatch(panel.innerHTML,/data-preview="owl"/);
+ assert.match(panel.innerHTML,/data-voice-preview="death_male_1"/);
+ for(const {key,label} of SOUND_CONTROLS){
+  assert.match(panel.innerHTML,new RegExp(`id="fc-audio-${key}"`));
+  assert.ok(panel.innerHTML.includes(label));
+ }
+ assert.equal(element('#fc-audio-fire').value,String(DEFAULT_AUDIO.fire));
+ const fire=element('#fc-audio-fire');fire.value='17';fire.oninput();
+ assert.equal(settings.audio.fire,17);
+ assert.equal(element('#fc-audio-fire-value').textContent,'17');
+ assert.equal(writes.at(-1).audio.fire,17);
+ assert.equal(settings.performancePreset,'high','sound does not touch quality preset');
+ const male=element('#fc-audio-hurtMale');male.value='0';male.oninput();
+ const female=element('#fc-audio-hurtFemale');female.value='90';female.oninput();
+ assert.equal(settings.audio.hurtMale,0);
+ assert.equal(settings.audio.hurtFemale,90);
+ element('#preview-water').onclick();
+ element('#voice-hurt_female_20').onclick();
+ element('#voice-jump_female_24').onclick();
+ element('#voice-jump_male_2').onclick();
+ element('#voice-death_male_1').onclick();
+ element('#voice-axe_chop_7').onclick();
+ assert.deepEqual(previews,['water',['hurt_female_20',true],['jump_female_24',true],['jump_male_2',true],['death_male_1',true],['axe_chop_7',true]]);
+ const persisted=createSettings(doc,storage);
+ assert.equal(persisted.audio.fire,17);
+ assert.equal(persisted.audio.hurtFemale,90);
+ element('#fc-audio-defaults').onclick();
+ assert.deepEqual(persisted.audio,DEFAULT_AUDIO);
+ assert.equal(writes.at(-1).audio.fire,DEFAULT_AUDIO.fire);
+});
+
+
+test('saved untouched pre-review audio volumes migrate once to new 40% defaults',()=>{
+ const data=new Map([["forest-chopper:settings:v1",JSON.stringify({
+  audio:{fire:60,water:38,forest:42,hurtFemale:78,axe:53,birds:12},
+ })]]);
+ const storage={getItem:key=>data.get(key)??null,setItem:(key,value)=>data.set(key,value)};
+ const nodes=new Map();
+ const element=id=>{
+  if(!nodes.has(id))nodes.set(id,{value:'',checked:false,textContent:'',style:{},
+   setAttribute(){},querySelector:element});
+  return nodes.get(id);
+ };
+ const doc={createElement:()=>({hidden:false,textContent:'',style:{},
+  setAttribute(){},querySelector:element}),head:{append(){}},body:{append(){}}};
+ const settings=createSettings(doc,storage);
+ assert.equal(settings.audio.fire,40);
+ assert.equal(settings.audio.water,40);
+ assert.equal(settings.audio.forest,40);
+ assert.equal(settings.audio.hurtFemale,78);
+ assert.equal(settings.audio.axe,53);
+ assert.equal(settings.audio.birds,12);
+ assert.equal(data.get('forest-chopper:audio-rework-defaults:v2'),'1');
+ assert.equal(data.get('forest-chopper:voice-samples:v3'),'1');
+ const fire=element('#fc-audio-fire');fire.value='71';fire.oninput();
+ const settingsAgain=createSettings(doc,storage);
+ assert.equal(settingsAgain.audio.fire,71,'custom user value survives future starts');
 });

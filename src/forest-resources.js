@@ -1,6 +1,7 @@
 // Deterministic branch/stone positions in the nearby 3x3 grid. Server-authoritative cooldowns online.
 import {createResourceZones,RESOURCE_LIMIT,RESOURCE_UPDATE_MS} from './resource-zones.js';
-import {DECOR_ITEM_IDS,DECOR_ITEM_NAMES,DECOR_CHUNK_SIZE,isDecorResourceId} from './collectible-decor.js';
+import {DECOR_ITEM_IDS,DECOR_CHUNK_SIZE,isDecorResourceId} from './collectible-decor.js';
+import {itemDisplayName} from './item-display.js';
 export {RESOURCE_LIMIT};
 export function createForestResources(ctx){
  const {THREE,scene}=ctx;
@@ -107,7 +108,7 @@ export function createForestResources(ctx){
   }
   spawner.collect(near.id);nodes.delete(near.id);refresh();
   ctx.inventory.render();ctx.offlineSave?.markDirty?.();
-  const title=DECOR_ITEM_NAMES[near.kind]??(near.kind==='branch'?'Ветка':'Камень');
+  const title=itemDisplayName(near.kind);
   ctx.notify?.((near.kind.startsWith('mushroom:')?'🍄 ':near.kind.startsWith('flower:')?'🌸 ':near.kind==='dry_grass'?'🌾 ':'')+title+' собран','success','resource-collected');
   return true;
  }

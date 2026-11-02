@@ -18,6 +18,13 @@ const PHASES = Object.freeze([
   {at:1,    sky:0xa4c8be, ambient:2.1, sun:2.3, sunlight:0xffe4a6},
 ]);
 
+// Night vision changes local lighting only; daylight stays unchanged.
+// Preserve the night sky colour and the moon so the effect isn't a fake daytime.
+export function nightVisionLighting(ambient,sun,enabled=false){
+  const night=Math.max(0,Math.min(1,(1.85-ambient)/1.36));
+  return enabled?{ambient:ambient+night*.95,sun:sun+night*.30}:{ambient,sun};
+}
+
 // Pure scalar interpolation helps keep the brightness floor explicit in tests.
 export function dayPhaseValues(phase) {
   const f = normalizeDayPhase(phase);
@@ -74,10 +81,11 @@ export function createDayCycle(ctx, {
     scene.background.copy(colors[a].sky).lerp(colors[b].sky,t);
     if(scene.fog)scene.fog.color.copy(scene.background);
     sun.color.copy(colors[a].sun).lerp(colors[b].sun,t);
-    if(ctx.atmosphere?.setAmbientIntensity)ctx.atmosphere.setAmbientIntensity(ambient);
-    else hemisphere.intensity=ambient;
-    if(ctx.atmosphere?.setSunIntensity)ctx.atmosphere.setSunIntensity(sunIntensity);
-    else sun.intensity=sunIntensity;
+    const vision=nightVisionLighting(ambient,sunIntensity,ctx.vitals?.hasNightVision===true);
+    if(ctx.atmosphere?.setAmbientIntensity)ctx.atmosphere.setAmbientIntensity(vision.ambient);
+    else hemisphere.intensity=vision.ambient;
+    if(ctx.atmosphere?.setSunIntensity)ctx.atmosphere.setSunIntensity(vision.sun);
+    else sun.intensity=vision.sun;
     ctx.atmosphere?.setPhase(phase);
     displayPhase=normalizeDayPhase(phase);
     active=true;
