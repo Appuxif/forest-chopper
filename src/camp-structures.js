@@ -207,7 +207,7 @@ export function createCampStructures(ctx,doc=document){
   function activate(id){
     const item=items.get(id);
     if(!item||Math.hypot(ctx.px-item.x,ctx.pz-item.z)>3.2)return false;
-    return item.kind==='bed'?ctx.deathSystem?.setBed(id)??false:toggle(id);
+    return item.kind==='bed'?(ctx.ragdollControls?.sleepInBed(item),true):toggle(id);
   }
   function use(){const fire=nearFire();return fire?toggle(fire.id):false;}
   function position(){

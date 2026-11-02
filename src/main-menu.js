@@ -139,7 +139,7 @@ async function launch(options){
   document.body.classList.add('fc-world-loading');
   menu.hidden=true;game.hidden=false;
   try{
-    await import('./main.js?v=20261102-bench-3000');
+    await import('./main.js?v=20261102-ragdoll-sleep1');
   }catch(error){
     console.error('Forest Chopper startup failed',error);
     delete globalThis.__forestLaunch;

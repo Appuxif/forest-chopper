@@ -117,7 +117,9 @@ export function createVitalsUI(ctx,doc=document){
   const wasHungry=state.hunger;
   if(!state.restore(snapshot))return false;
   if(wasHungry>0&&state.hunger===0)ctx.notify?.('⚠️ Сильный Голод! Здоровье падает каждые 10 секунд.','warning','starving');
-  lastVisualStamina=state.stamina;lastVisualHunger=state.hunger;render();return true;
+  lastVisualStamina=state.stamina;lastVisualHunger=state.hunger;render();
+  if(state.health===0)ctx.deathSystem?.onDeath?.();
+  return true;
  }
  render();
  return {state,tick,consume,craftConsumable,craftPotion:craftConsumable,hit,jump,chopWarning:()=>state.chopWarning(),canSprint,restore,acceptServer,render,serialize:()=>state.snapshot(),

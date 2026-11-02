@@ -5,8 +5,14 @@ import {createInventoryModel} from '../src/inventory.js';
 import {MAX_GROUND_DROPS} from '../src/ground-boxes.js';
 
 function fixture({online=false,capacity=0}={}){
- let now=1000;
- const records=new Map(),sent=[],notices=[],saved=[];
+ let now=1000,nowMs=0;
+ const records=new Map(),sent=[],notices=[],saved=[],screenEvents=[],physics=[];
+ const screen={
+  begin(fn){this.callback=fn;screenEvents.push('begin');},
+  show(enabled){screenEvents.push(['show',enabled]);},
+  enable(enabled){screenEvents.push(['enable',enabled]);},
+  end(){screenEvents.push('end');},
+ };
  const inventory=createInventoryModel();
  inventory.addItem({id:'stone',count:8});
  inventory.addItem({id:'mushroom:boletus',count:3});
@@ -27,10 +33,16 @@ function fixture({online=false,capacity=0}={}){
   vitals:{health:0,restore(data){this.health=data.health;this.restored=data;return true;}},
   offlineSave:{markDirty(){saved.push('dirty')},save(){saved.push('save')}},
   notify:(...args)=>notices.push(args),disposePreview(){},
+  keys:{KeyW:true},ragdoll:{
+    active:false,
+    async trigger(){this.active=true;physics.push('start');},
+    reset(){this.active=false;physics.push('reset');return true;},
+  },
  };
- const death=createDeathSystem(ctx,{epoch:()=>now});
+ const death=createDeathSystem(ctx,{epoch:()=>now,clock:()=>nowMs,screen});
  ctx.deathSystem=death;
- return {death,ctx,inventory,records,notices,sent,saved,bed,set now(t){now=t}};
+ return {death,ctx,inventory,records,notices,sent,saved,bed,screenEvents,physics,
+   set now(t){now=t},set nowMs(t){nowMs=t}};
 }
 
 test('death spreads one-hour pickup boxes without dropping or duplicating a stack',()=>{
@@ -43,9 +55,22 @@ test('death spreads one-hour pickup boxes without dropping or duplicating a stac
  assert.deepEqual(positions[0],[8.8,9]);
  assert.ok([...f.records.values()].every(b=>b.expires_at===1000+DEATH_MARKER_TTL));
  assert.equal(f.inventory.slots.filter(Boolean).length,0);
+ assert.equal(f.ctx.px,8);assert.equal(f.ctx.pz,9,'no teleport during death fall');
+ assert.equal(f.ctx.vitals.health,0);
+ assert.equal(f.death.phase,'falling');
+ assert.equal(f.death.snapshot().pending,true);
+ assert.equal(f.death.respawn(),false,'respawn stays locked for the first five seconds');
+ f.death.tick(4999);
+ assert.equal(f.death.phase,'falling');
+ f.death.tick(5000);
+ assert.equal(f.death.phase,'ready');
+ assert.deepEqual(f.screenEvents.at(-1),['show',true]);
+ assert.equal(f.death.respawn(),true);
  assert.equal(f.ctx.px,0);assert.equal(f.ctx.pz,0);
  assert.equal(f.ctx.vitals.health,5);
  assert.equal(f.ctx.vitals.restored.hunger,3);
+ assert.equal(f.death.snapshot().pending,undefined);
+ assert.equal(f.death.respawn(),false);
  assert.equal(f.death.marker.expires_at,4600);
  assert.ok(f.saved.includes('save'));
  f.now=4601;
@@ -61,6 +86,8 @@ test('bed selects and persists a respawn position; dismantling reverts to the wo
  second.death.restore(state);
  assert.equal(second.death.bedId,-12);
  assert.equal(second.death.onDeath(),true);
+ assert.equal(second.ctx.px,8);
+ second.death.tick(5000);assert.equal(second.death.respawn(),true);
  assert.equal(second.ctx.px,42.5);assert.equal(second.ctx.pz,-11);
  second.death.onStructureRemoved(-12);
  assert.equal(second.death.bedId,null);
@@ -77,6 +104,10 @@ test('online bed action sends intent; only server acknowledgement sets local spa
  assert.equal(f.death.bedId,-12);
  f.death.receive({x:42.5,z:-11,marker:{x:8,z:9,expires_at:4600}});
  assert.equal(f.death.marker.x,8);
+ assert.equal(f.ctx.px,8,'server packet is deferred until the player clicks respawn');
+ f.death.tick(5000);
+ assert.equal(f.death.phase,'ready');
+ assert.equal(f.death.respawn(),true);
  assert.equal(f.ctx.px,42.5);
  f.death.acceptBed(null);
  assert.equal(f.death.bedId,null);
@@ -103,4 +134,38 @@ test('stale death marker is not displayed; spread is deterministic',()=>{
  assert.equal(validDeathMarker({x:1,z:2,expires_at:4600},1000),true);
  assert.equal(validDeathMarker({x:1,z:2,expires_at:4600},4600),false);
  assert.equal(validDeathMarker({x:1,z:2,expires_at:90000},1000),false);
+});
+
+
+test('offline reload while dead resumes death screen without duplicating drops',()=>{
+ const f=fixture();
+ f.death.onDeath();
+ const saved=f.death.snapshot();
+ assert.equal(saved.pending,true);
+ const g=fixture();
+ g.ctx.vitals.health=0;
+ g.death.restore(saved);
+ assert.equal(g.death.active,true);
+ assert.equal(g.records.size,0);
+ assert.equal(g.death.marker.x,8);
+ assert.equal(g.death.onDeath(),false);
+ g.death.tick(5000);
+ assert.equal(g.death.respawn(),true);
+ assert.equal(g.ctx.vitals.health,5);
+ assert.equal(g.death.active,false);
+});
+
+test('server-deferred respawn cannot be used until the authoritative packet arrives',()=>{
+ const f=fixture({online:true});
+ assert.equal(f.death.onDeath(),true);
+ assert.equal(f.records.size,0,'online client must never drop authoritative items');
+ f.death.tick(5000);
+ assert.equal(f.death.respawn(),false);
+ assert.deepEqual(f.screenEvents.at(-1),['show',false]);
+ f.death.receive({x:21,z:10,marker:{x:8,z:9,expires_at:4600}});
+ assert.deepEqual(f.screenEvents.at(-1),['enable',true]);
+ assert.equal(f.death.respawn(),true);
+ assert.equal(f.ctx.px,21);assert.equal(f.ctx.pz,10);
+ assert.equal(f.death.phase,'alive');
+ assert.equal(f.saved.includes('save'),false,'online respawn must not overwrite offline save');
 });

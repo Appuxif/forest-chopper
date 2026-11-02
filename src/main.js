@@ -1,3 +1,5 @@
+import {createRagdoll} from './ragdoll.js';
+import {createRagdollControls} from './ragdoll-controls.js';
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
 import {createWorld} from './world.js?v=20261101-startup-loader2';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
@@ -15,10 +17,10 @@ import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
 import {createPhysics} from './physics.js?v=20261031-ponds1';
 import {createBuilding} from './building.js?v=20261031-ponds1';
 import {createChopping} from './chopping.js?v=20261031-jump-energy1';
-import {createControls} from './controls.js?v=20261102-bench-3000';
-import {createPlayer} from './player.js?v=20261102-bench-3000';
-import {createMultiplayer} from './multiplayer.js?v=20261102-bench-3000';
-import {createMinimap} from './minimap.js?v=20261102-bench-3000';
+import {createControls} from './controls.js?v=20261102-ragdoll-sleep1';
+import {createPlayer} from './player.js?v=20261102-ragdoll-sleep1';
+import {createMultiplayer} from './multiplayer.js?v=20261102-ragdoll-sleep1';
+import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261101-main-menu2';
 import {applyQuality} from './quality.js';
@@ -35,19 +37,19 @@ import {createCrafting} from './crafting.js?v=20261031-ponds1';
 import {createInteractionHighlight} from './interaction-highlight.js';
 import {createDiscoveries} from './discoveries.js';
 import {createCommunityGoal} from './community-goal.js';
-import {createOfflineSave} from './offline-save.js?v=20261102-bench-3000';
+import {createOfflineSave} from './offline-save.js?v=20261102-ragdoll-sleep1';
 import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
-import {createInventory} from './inventory-ui.js?v=20261102-bench-3000';
+import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
 import {createStorages} from './storages.js';
-import {createCampStructures} from './camp-structures.js?v=20261102-bench-3000';
-import {createVitalsUI} from './vitals-ui.js?v=20261102-bench-3000';
+import {createCampStructures} from './camp-structures.js?v=20261102-ragdoll-sleep1';
+import {createVitalsUI} from './vitals-ui.js?v=20261102-ragdoll-sleep1';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
-import {createGroundBoxes} from './ground-boxes.js?v=20261102-bench-3000';
+import {createGroundBoxes} from './ground-boxes.js?v=20261102-ragdoll-sleep1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 import {WorldTaskScheduler} from './world-task-scheduler.js';
 import {createWorldStartupGate} from './world-startup.js';
-import {createPickupInteraction} from './pickup-interaction.js?v=20261102-bench-3000';
+import {createPickupInteraction} from './pickup-interaction.js?v=20261102-ragdoll-sleep1';
 import {createDeathSystem} from './death.js';
 
 // Read and consume launch mode before touching any saved game data.
@@ -88,7 +90,7 @@ let distantBirchParts=generateBirchParts({
 });
 let distantTreeParts={conifer:distantSpruceParts,birch:distantBirchParts};
 const treeWindShader=createTreeWindShader({motionQuery:typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false}});
-let ownAvatar=null,thirdPerson=true;
+let ownAvatar=null,thirdPerson=true,ragdoll=null,ragdollControls=null;
 let refreshPerformance=()=>{};
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 let initialAntialias=true;
@@ -331,6 +333,8 @@ const ctx={
  get orientation(){return orientation;}, set orientation(value){orientation=value;},
  get overlaps(){return overlaps;},
  get ownAvatar(){return ownAvatar;}, set ownAvatar(value){ownAvatar=value;},
+ get ragdoll(){return ragdoll;},
+ get ragdollControls(){return ragdollControls;},
  get particles(){return particles;},
  get pitch(){return pitch;}, set pitch(value){pitch=value;},
  get placeLog(){return placeLog;},
@@ -537,6 +541,7 @@ ownAvatar=createLumberjack();if(ownAvatar){
  camera.layers.enable(3);
  scene.add(ownAvatar.group);
 }
+ragdoll=createRagdoll(ctx);
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));
 inventory=createInventory(ctx);
 storages=createStorages(ctx);
@@ -545,6 +550,7 @@ vitals=createVitalsUI(ctx);
 forestResources=createForestResources(ctx);
 groundBoxes=createGroundBoxes(ctx);
 deathSystem=createDeathSystem(ctx);
+ragdollControls=createRagdollControls(ctx);
 pickupInteraction=createPickupInteraction(ctx);
 const emotes=createEmotes(ctx);
 const playerList=createPlayerList(ctx);
@@ -597,7 +603,7 @@ if(menuLaunch.mode==='online'){
 }
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261102-bench-3000');
+  const { installDebug } = await import('./debug.js?v=20261102-ragdoll-sleep1');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

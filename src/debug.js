@@ -6,6 +6,7 @@ import {isFood} from './vitals.js';
 export function installDebug(ctx) {
   const fps=createDebugFps();
   ctx.debugFpsCollector=fps;
+  const ragdoll=ctx.ragdoll;
   let benchmarkFixture=null,benchmarkRun=null;
   // Debug launches are deterministic: don't overwrite settings in the
   // production page. Test tools can still switch presets at runtime.
@@ -290,6 +291,16 @@ export function installDebug(ctx) {
     clearEvents(){events.length=0;},
     inventory() {return ctx.inventory?.serialize()??null;},
     vitals(){return ctx.vitals?.serialize()??null;},
+    spawnTestBed(orientation=0){
+      if(ctx.isOnline())throw new Error('Offline only');
+      if(!Number.isInteger(orientation)||orientation<0||orientation>3)
+        throw new Error('Orientation must be 0..3');
+      const id=-(Date.now()%500000+10000);
+      const bed={id,kind:'bed',x:ctx.px,z:ctx.pz-1.6,orientation,lit:false};
+      if(!ctx.campStructures.add(bed))throw new Error('Bed placement rejected');
+      ctx.offlineSave.markDirty();
+      return bed;
+    },
     async loadBenchmarkSave(path='/benchmarks/box-stress-500.json'){
       if(ctx.isOnline())throw new Error('Offline debug helper only');
       if(benchmarkRun?.status==='running')throw new Error('Benchmark already running');
@@ -445,6 +456,16 @@ export function installDebug(ctx) {
       ctx.offlineSave?.markDirty?.();
       return {added:ctx.wood-before,wood:ctx.wood,inventory:api.inventory()};
     },
+    async ragdoll(){if(ctx.deathSystem?.active)throw new Error('Cannot toggle ragdoll during death');releaseAll();return ctx.ragdollControls.ragdoll();},
+    resetRagdoll(){if(ctx.deathSystem?.active)return false;return ctx.ragdollControls.getUp();},
+    ragdollState(){return ragdoll.state();},
+    die(){
+      if(ctx.isOnline())throw new Error('Offline debug helper only');
+      if(ctx.deathSystem?.active)return false;
+      const v=ctx.vitals.serialize();
+      ctx.vitals.restore({...v,health:0});
+      return ctx.deathSystem.onDeath();
+    },
     jump() { ctx.requestJump(); return api.state(); },
     chop() { ctx.chop(); return api.state(); },
     look(dx = 0, dy = 0) { ctx.look(dx, dy); return api.state(); },
@@ -464,7 +485,7 @@ export function installDebug(ctx) {
         yaw: ctx.yaw, pitch: ctx.pitch, grounded: ctx.onGround,
         verticalSpeed: ctx.verticalSpeed, keys: Object.keys(ctx.keys).filter(k => ctx.keys[k]),
         animation: avatar ? { lower: avatar.lowerState, upper: avatar.upperState } : null,
-        camera: { thirdPerson: ctx.thirdPerson },
+        camera: { thirdPerson: ctx.thirdPerson },ragdoll:ragdoll.state(),
         renderer: { draws: ctx.renderer.info.render.calls, triangles: ctx.renderer.info.render.triangles },
         world: { trees: ctx.trees.size, chunks: ctx.chunks.size }
       };
@@ -475,7 +496,7 @@ export function installDebug(ctx) {
     get atmosphere() { return ctx.atmosphere; },
     get player() { return ctx.ownAvatar; },
     get rootMotion() { return ctx.rootMotion; },
-    help: 'loadBenchmarkSave(), benchmarkBoxes(enabled), startBoxBenchmark(options), benchmarkStatus(), exitBenchmark(), setPreset(name), getPreset(), fpsStart({clear,phase}), fpsStats(phase), fpsSamples(), fpsPhase(name), fpsStop(), grantLog(), dropLog(), bulkLogs(count,{intervalMs,phase}), startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
+    help: 'die(), ragdoll(), resetRagdoll(), ragdollState(), loadBenchmarkSave(), benchmarkBoxes(enabled), startBoxBenchmark(options), benchmarkStatus(), exitBenchmark(), setPreset(name), getPreset(), fpsStart({clear,phase}), fpsStats(phase), fpsSamples(), fpsPhase(name), fpsStop(), grantLog(), dropLog(), bulkLogs(count,{intervalMs,phase}), startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
   };
   window.__gameDebug = api;
   window.addEventListener('blur', releaseAll);

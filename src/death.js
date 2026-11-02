@@ -1,3 +1,4 @@
+import {createDeathScreen,DEATH_SCREEN_DELAY_MS} from './death-screen.js';
 import {BOX_LIFETIME_SECONDS,MAX_GROUND_DROPS} from './ground-boxes.js';
 export const DEATH_MARKER_TTL=BOX_LIFETIME_SECONDS;
 export function deathDropPosition(x,z,index){
@@ -12,8 +13,58 @@ export function validDeathMarker(marker,now=Date.now()/1000){
   &&Number.isFinite(marker.expires_at)
   &&marker.expires_at>now&&marker.expires_at<=now+DEATH_MARKER_TTL+2;
 }
-export function createDeathSystem(ctx,{epoch=()=>Date.now()/1000}={}){
- let marker=null,bedId=null,handling=false;
+export function createDeathSystem(ctx,{
+ epoch=()=>Date.now()/1000,clock=()=>performance.now(),
+ screen=typeof document==='undefined'?null:createDeathScreen(document),
+}={}){
+ let marker=null,bedId=null,handling=false,phase='alive',startedAt=0;
+ let pendingRespawn=null,deathOnline=false;
+ const active=()=>phase!=='alive';
+ function begin(){
+  if(active())return false;
+  phase='falling';startedAt=clock();deathOnline=!!ctx.isOnline?.();
+  ctx.ragdollControls?.clearForDeath?.();
+  for(const key in ctx.keys??{})ctx.keys[key]=false;
+  ctx.jumpRequested=false;
+  ctx.inventory?.close?.();
+  ctx.storages?.close?.();
+  if(typeof document!=='undefined'&&document.pointerLockElement)document.exitPointerLock?.();
+  screen?.begin?.(()=>respawn());
+  // If Rapier/CDN fails, the death screen and manual respawn still work.
+  Promise.resolve().then(()=>ctx.ragdoll?.trigger?.({allowOnline:true}))
+   .then(()=>{if(!active())ctx.ragdoll?.reset?.();})
+   .catch(error=>console.warn('Death ragdoll unavailable:',error));
+  return true;
+ }
+ function tick(now=clock()){
+  if(phase!=='falling'||now-startedAt<DEATH_SCREEN_DELAY_MS)return;
+  phase='ready';
+  screen?.show?.(!deathOnline||!!pendingRespawn);
+ }
+ function respawn(){
+  if(phase!=='ready')return false;
+  if(deathOnline){
+   if(!pendingRespawn)return false;
+   const data=pendingRespawn;
+   pendingRespawn=null;
+   ctx.ragdoll?.reset?.();
+   respawnAt(data.x,data.z);
+   ctx.inventory?.close?.();
+   ctx.notify?.('☠️ Вы погибли! Ищите вещи по метке на миникарте.','warning','player-death');
+  }else{
+   const bed=ctx.campStructures?.items?.get(bedId);
+   const spawn=bed?.kind==='bed'?{x:bed.x+2.5,z:bed.z}:{x:0,z:0};
+   if(!bed||bed.kind!=='bed')bedId=null;
+   ctx.ragdoll?.reset?.();
+   respawnAt(spawn.x,spawn.z);
+   ctx.vitals.restore({health:5,hunger:3,stamina:5,staminaLocked:false,hungerProgress:0,starvationProgress:0});
+   ctx.vitals.render?.();
+  }
+  phase='alive';
+  screen?.end?.();
+  if(!deathOnline)ctx.offlineSave?.save?.();
+  return true;
+ }
  function setMarker(value){
   marker=validDeathMarker(value,epoch())?{x:value.x,z:value.z,expires_at:value.expires_at}:null;
   if(!ctx.isOnline?.())ctx.offlineSave?.markDirty?.();
@@ -40,7 +91,8 @@ export function createDeathSystem(ctx,{epoch=()=>Date.now()/1000}={}){
   if(ctx.ownAvatar)ctx.ownAvatar.group.position.set(x,ctx.feetY,z);
  }
  function onDeath(){
-  if(handling||ctx.isOnline?.()||ctx.vitals?.health>0)return false;
+  if(handling||active()||ctx.vitals?.health>0)return false;
+  if(ctx.isOnline?.())return begin();
   const entries=ctx.inventory.state.slots.map((item,slot)=>({item,slot})).filter(v=>v.item);
   if(ctx.groundBoxes.count+entries.length>MAX_GROUND_DROPS){
    ctx.notify?.('Нет места для всех коробок — вещи сохранены, повторяем позже','warning','death-drop-full');
@@ -61,12 +113,8 @@ export function createDeathSystem(ctx,{epoch=()=>Date.now()/1000}={}){
    }
    for(const {slot} of entries)ctx.inventory.state.removeSlot(slot);
    ctx.wood=ctx.inventory.state.wood();ctx.inventory.render();
-   const bed=ctx.campStructures?.items?.get(bedId);
-   const originBed=bed?.kind==='bed'?{x:bed.x+2.5,z:bed.z}:{x:0,z:0};
-   if(!bed||bed.kind!=='bed')bedId=null;
-   respawnAt(originBed.x,originBed.z);
-   ctx.vitals.restore({health:5,hunger:3,stamina:5,staminaLocked:false,hungerProgress:0,starvationProgress:0});
    setMarker({...origin,expires_at});
+   begin();
    ctx.notify?.('☠️ Вы погибли! Вещи остались на месте смерти на 1 час.','warning','player-death');
    ctx.offlineSave?.save?.();
    return true;
@@ -79,19 +127,32 @@ export function createDeathSystem(ctx,{epoch=()=>Date.now()/1000}={}){
  function receive(data){
   if(!data||!Number.isFinite(data.x)||!Number.isFinite(data.z))return;
   if(data.marker)setMarker(data.marker);
-  respawnAt(data.x,data.z);
-  ctx.inventory?.close?.();
-  ctx.notify?.('☠️ Вы погибли! Ищите вещи по метке на миникарте.','warning','player-death');
+  pendingRespawn={x:data.x,z:data.z};
+  if(!active())begin();
+  if(phase==='ready')screen?.enable?.(true);
  }
  function restore(value){
+  if(active()){
+   ctx.ragdoll?.reset?.();
+   phase='alive';pendingRespawn=null;screen?.end?.();
+  }
   bedId=Number.isSafeInteger(value?.bedId)?value.bedId:null;
   if(ctx.campStructures?.items?.get(bedId)?.kind!=='bed')bedId=null;
   marker=validDeathMarker(value?.marker,epoch())?{...value.marker}:null;
+  if(value?.pending===true&&!active()&&!ctx.isOnline?.()){
+   // Restore an interrupted death without dropping the inventory twice.
+   ctx.ownAvatar?.group?.position?.set(ctx.px,ctx.feetY,ctx.pz);
+   if(ctx.ownAvatar)ctx.ownAvatar.group.rotation.y=ctx.yaw;
+   begin();
+  }
  }
  function snapshot(){
-  return {bedId,marker:validDeathMarker(marker,epoch())?{...marker}:null};
+  return {bedId,marker:validDeathMarker(marker,epoch())?{...marker}:null,
+   ...(active()&&!deathOnline?{pending:true}:{})};
  }
  return {setBed,acceptBed,onStructureRemoved,onDeath,receive,restore,snapshot,setMarker,
+   tick,respawn,
+   get phase(){return phase},get active(){return active()},
    get marker(){return validDeathMarker(marker,epoch())?marker:null},
    get bedId(){return bedId}};
 }

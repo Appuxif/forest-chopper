@@ -231,6 +231,7 @@ test('bed has mattress, pillow and collision; E selection is distinct from fire 
  assert.equal(camp.toggle(25),false);
  let activated=null;
  ctx.deathSystem={setBed:id=>{activated=id;return true;}};
+ ctx.ragdollControls={sleepInBed:bed=>ctx.deathSystem.setBed(bed.id)};
  assert.equal(camp.activate(25),true);
  assert.equal(activated,25);
  assert.equal(camp.snapshot()[0].kind,'bed');

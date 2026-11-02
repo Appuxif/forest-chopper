@@ -102,6 +102,7 @@ export function parseOfflineSave(raw) {
         ||(vitals.starvationProgress!==undefined&&(!Number.isFinite(vitals.starvationProgress)||vitals.starvationProgress<0||vitals.starvationProgress>=STARVATION_DAMAGE_INTERVAL))))return null;
     const death=data.death??null;
     if(death!==null&&(typeof death!=='object'||Array.isArray(death)
+      ||(death.pending!==undefined&&typeof death.pending!=='boolean')
       ||(death.bedId!==null&&death.bedId!==undefined&&!Number.isSafeInteger(death.bedId))
       ||(death.marker!==null&&death.marker!==undefined&&(
         !Number.isFinite(death.marker.x)||!Number.isFinite(death.marker.z)

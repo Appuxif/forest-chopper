@@ -76,7 +76,7 @@ export function worldInteractionCandidates(ctx){
    y:ctx.terrain.heightAt(fire.x,fire.z)+(fire.kind==='torch'?1.65:fire.kind==='bed'?.6:.7),
    distance,maxDistance:3.2,
    label:fire.kind==='torch'?'Факел':fire.kind==='bed'?'Кровать':'Костёр',
-   verb:fire.kind==='bed'?'Установить точку возрождения':fire.lit?'Потушить':'Зажечь',
+   verb:fire.kind==='bed'?'Лечь спать':fire.lit?'Потушить':'Зажечь',
   });
  }
  return {storages,fires};
