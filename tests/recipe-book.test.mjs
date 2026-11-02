@@ -4,8 +4,8 @@ import {RECIPE_TABS,RECIPE_PAGES,recipeAvailable,recipeById} from '../src/recipe
 import {createInventoryModel} from '../src/inventory.js';
 test('recipe book has category tabs, two executable recipes and future construction plans',()=>{
  assert.deepEqual(RECIPE_TABS.map(t=>t.id),['tools','alchemy','food','structures','free']);
- assert.deepEqual(RECIPE_PAGES.filter(r=>r.craftable).map(r=>r.id),['axe','bench','chest','rack','potion:health','potion:stamina','potion:lumberjack','potion:light_feet','potion:night_vision','food:mushroom_stew','food:herbal_mushroom_stew','alchemy_table','campfire','torch','table','fence','workbench']);
- assert.equal(RECIPE_PAGES.filter(r=>r.tab==='structures').length,10);
+ assert.deepEqual(RECIPE_PAGES.filter(r=>r.craftable).map(r=>r.id),['axe','bench','chest','rack','potion:health','potion:stamina','potion:lumberjack','potion:light_feet','potion:night_vision','food:mushroom_stew','food:herbal_mushroom_stew','alchemy_table','bed','campfire','torch','table','fence','workbench']);
+ assert.equal(RECIPE_PAGES.filter(r=>r.tab==='structures').length,11);
  assert.equal(RECIPE_PAGES.filter(r=>r.guide).length,5);
  assert.ok(RECIPE_PAGES.every(r=>r.name&&r.description&&r.icon));
  assert.equal(recipeById('missing'),null);
@@ -48,4 +48,11 @@ test('three experimental potions have required reagents and are locked to alchem
   assert.deepEqual(recipe.ingredients,reagents);
   assert.ok(recipe.effects.length===2);
  }
+});
+
+test('bed recipe uses dry grass and carries a respawn ability',()=>{
+ const bed=recipeById('bed');
+ assert.deepEqual(bed.ingredients,{log:3,branch:4,dry_grass:5});
+ assert.equal(bed.placement,true);
+ assert.ok(bed.effects.join(' ').includes('возрождения'));
 });

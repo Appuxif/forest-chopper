@@ -121,6 +121,11 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
    ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
    ctx.distantForest?.updateVisibility?.(ctx.yaw);
    ctx.renderer.render(ctx.scene,ctx.camera);
+   ctx.debugFpsCollector?.frame(now,{
+     drawCalls:ctx.renderer.info.render.calls,
+     triangles:ctx.renderer.info.render.triangles,
+     heapBytes:performance.memory?.usedJSHeapSize,
+   });
  }finally{
    if(gpuStarted)gpuTimer.end();
  }

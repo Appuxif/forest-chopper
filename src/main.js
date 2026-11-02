@@ -15,10 +15,10 @@ import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
 import {createPhysics} from './physics.js?v=20261031-ponds1';
 import {createBuilding} from './building.js?v=20261031-ponds1';
 import {createChopping} from './chopping.js?v=20261031-jump-energy1';
-import {createControls} from './controls.js?v=20261101-pickup-reticle1';
-import {createPlayer} from './player.js?v=20261101-pickup-reticle1';
-import {createMultiplayer} from './multiplayer.js?v=20261101-shared-day-clock1';
-import {createMinimap} from './minimap.js?v=20261031-rare-lakes1';
+import {createControls} from './controls.js?v=20261102-bench-3000';
+import {createPlayer} from './player.js?v=20261102-bench-3000';
+import {createMultiplayer} from './multiplayer.js?v=20261102-bench-3000';
+import {createMinimap} from './minimap.js?v=20261102-bench-3000';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261101-main-menu2';
 import {applyQuality} from './quality.js';
@@ -35,19 +35,20 @@ import {createCrafting} from './crafting.js?v=20261031-ponds1';
 import {createInteractionHighlight} from './interaction-highlight.js';
 import {createDiscoveries} from './discoveries.js';
 import {createCommunityGoal} from './community-goal.js';
-import {createOfflineSave} from './offline-save.js?v=20261101-main-menu2';
+import {createOfflineSave} from './offline-save.js?v=20261102-bench-3000';
 import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
-import {createInventory} from './inventory-ui.js?v=20261101-standalone-recipes1';
+import {createInventory} from './inventory-ui.js?v=20261102-bench-3000';
 import {createStorages} from './storages.js';
-import {createCampStructures} from './camp-structures.js';
-import {createVitalsUI} from './vitals-ui.js?v=20261031-stability1';
+import {createCampStructures} from './camp-structures.js?v=20261102-bench-3000';
+import {createVitalsUI} from './vitals-ui.js?v=20261102-bench-3000';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
-import {createGroundBoxes} from './ground-boxes.js?v=20261101-pickup-reticle1';
+import {createGroundBoxes} from './ground-boxes.js?v=20261102-bench-3000';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 import {WorldTaskScheduler} from './world-task-scheduler.js';
 import {createWorldStartupGate} from './world-startup.js';
-import {createPickupInteraction} from './pickup-interaction.js?v=20261101-touch-pickup2';
+import {createPickupInteraction} from './pickup-interaction.js?v=20261102-bench-3000';
+import {createDeathSystem} from './death.js';
 
 // Read and consume launch mode before touching any saved game data.
 const MENU_LAUNCH_KEY='forest-chopper:launch:v1';
@@ -142,7 +143,7 @@ const logGeo=new THREE.CylinderGeometry(logRadius,logRadius,logLength,10);
 const fallenLogGeo=logGeo;
 const logMat=new THREE.MeshLambertMaterial({color:0x92613a});
 const endMat=new THREE.MeshLambertMaterial({color:0xd6ac72});
-let buildMode=false,orientation=0,preview=null,placement=null,buildOffset={x:0,z:0,height:0};
+let deathSystem=null;let buildMode=false,orientation=0,preview=null,placement=null,buildOffset={x:0,z:0,height:0};
 // Feet-based, lightweight collision physics for the shared log construction.
 let feetY=0,verticalSpeed=0,onGround=true,jumpRequested=false;
 const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
@@ -235,6 +236,7 @@ const ctx={
  get inventory(){return inventory;},
  get storages(){return storages;},
  get vitals(){return vitals;},
+ get deathSystem(){return deathSystem;},
  get forestResources(){return forestResources;},
  get groundBoxes(){return groundBoxes;},
  get pickupInteraction(){return pickupInteraction;},
@@ -542,6 +544,7 @@ campStructures=createCampStructures(ctx);
 vitals=createVitalsUI(ctx);
 forestResources=createForestResources(ctx);
 groundBoxes=createGroundBoxes(ctx);
+deathSystem=createDeathSystem(ctx);
 pickupInteraction=createPickupInteraction(ctx);
 const emotes=createEmotes(ctx);
 const playerList=createPlayerList(ctx);
@@ -594,7 +597,7 @@ if(menuLaunch.mode==='online'){
 }
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261031-stamina1');
+  const { installDebug } = await import('./debug.js?v=20261102-bench-3000');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

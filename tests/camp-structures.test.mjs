@@ -220,3 +220,19 @@ test('alchemy bench has a stone surface, glass vessels and a distillation unit',
  assert.equal(camp.snapshot()[0].kind,'alchemy_table');
  assert.equal(camp.items.get(41).group.userData.flame,undefined,'station is not a fire');
 });
+
+test('bed has mattress, pillow and collision; E selection is distinct from fire toggle',()=>{
+ const {camp,ctx,physics,sent}=fixture(true);
+ assert.deepEqual(CAMP_RECIPES.bed,{log:3,branch:4,dry_grass:5});
+ assert.equal(camp.add(item(25,'bed')),true);
+ const bed=camp.items.get(25);
+ assert.ok(bed.group.children.length>=10,'procedural wooden legs, mattress and pillow');
+ assert.equal(physics.blocksPlayerAt(0,0,0),true);
+ assert.equal(camp.toggle(25),false);
+ let activated=null;
+ ctx.deathSystem={setBed:id=>{activated=id;return true;}};
+ assert.equal(camp.activate(25),true);
+ assert.equal(activated,25);
+ assert.equal(camp.snapshot()[0].kind,'bed');
+ assert.equal(camp.createIconModel('bed').children.length,bed.group.children.length);
+});

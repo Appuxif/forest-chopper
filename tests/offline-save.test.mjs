@@ -311,3 +311,65 @@ test('legacy placed logs are invalidated without losing other saved world data',
  assert.equal(target.ctx.placed.length,1);
  assert.equal(target.ctx.placed[0].height,0);
 });
+
+test('offline save preserves valid bed spawn and one-hour death marker',()=>{
+ const original=fixture();
+ const future=Date.now()/1000+300;
+ original.ctx.campStructures={snapshot:()=>[{kind:'bed',id:-4,x:10,z:20,orientation:0,lit:false}]};
+ original.ctx.deathSystem={snapshot:()=>({bedId:-4,marker:{x:7,z:8,expires_at:future}})};
+ assert.equal(original.save.save(),true);
+ const raw=original.storage.getItem(OFFLINE_SAVE_KEY);
+ const parsed=parseOfflineSave(raw);
+ assert.equal(parsed.death.bedId,-4);
+ assert.equal(parsed.death.marker.expires_at,future);
+ const expired={...JSON.parse(raw)};
+ expired.death={bedId:-4,marker:{x:7,z:8,expires_at:Date.now()/1000-10}};
+ assert.ok(parseOfflineSave(JSON.stringify(expired)),
+  'expired marker must not invalidate the entire world save');
+ assert.equal(parseOfflineSave(JSON.stringify({...expired,death:{bedId:-4,marker:{x:'invalid',z:8,expires_at:future}}})),null);
+});
+
+test('debug snapshot loads without overwriting the existing persisted solo game',()=>{
+ const f=fixture();
+ assert.equal(f.save.save(),true);
+ const original=f.storage.getItem(OFFLINE_SAVE_KEY);
+ const debug=JSON.parse(original);
+ debug.seed=12345;
+ debug.position={x:41,z:51,y:0,yaw:0,pitch:0};
+ debug.logs=[];
+ let cleared=0;
+ f.ctx.clearWorld=()=>{cleared++;f.ctx.placed.length=0;};
+ f.ctx.updateChunks=()=>{};
+ f.save.suspend({flush:false});
+ assert.equal(f.save.restoreSnapshot(JSON.stringify(debug),{replace:true}),true);
+ assert.equal(cleared,1);
+ assert.equal(f.ctx.seed,12345);
+ assert.equal(f.ctx.px,41);
+ assert.equal(f.ctx.pz,51);
+ assert.equal(f.save.save(),false);
+ assert.equal(f.storage.getItem(OFFLINE_SAVE_KEY),original,
+   'the benchmark must not replace the ordinary world save');
+ assert.equal(f.save.restoreSnapshot('malformed',{replace:true}),false);
+ assert.equal(cleared,1,'an invalid fixture must not clear the active world');
+});
+
+test('10,000 drops round-trip through v1 offline save, 10,001 is rejected',()=>{
+ const f=fixture();
+ const expires=Date.now()/1000+3600;
+ const boxes=Array.from({length:10000},(_,i)=>({
+   id:i+1,x:5+(i%100)*.08,z:10+Math.floor(i/100)*.08,
+   expires_at:expires,item:{id:'stone',count:1},
+ }));
+ f.ctx.groundBoxes={snapshot:()=>boxes};
+ assert.equal(f.save.save(),true,'10k objects must fit within the allowed snapshot size');
+ const raw=f.storage.getItem(OFFLINE_SAVE_KEY);
+ assert.equal(parseOfflineSave(raw)?.boxes.length,10000);
+ const invalid=JSON.parse(raw);
+ invalid.boxes.push({id:10001,x:5,z:10,expires_at:expires,item:{id:'stone',count:1}});
+ assert.equal(parseOfflineSave(JSON.stringify(invalid)),null,
+   'validation must enforce the same limit as runtime');
+ f.ctx.groundBoxes.snapshot=()=>invalid.boxes;
+ assert.equal(f.save.save(),false,'saver must not write an oversized box count');
+ assert.equal(f.storage.getItem(OFFLINE_SAVE_KEY),raw,
+   'failed snapshot must not overwrite the previously valid save');
+});

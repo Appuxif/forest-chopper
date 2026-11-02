@@ -37,7 +37,8 @@ test('every recipe ingredient has a Russian label; each spread has at most five 
   assert.deepEqual(recipeSpread(entries,pages.length),[]);
  }
  const buildings=RECIPE_PAGES.filter(r=>r.tab==='structures');
- assert.equal(buildings.length,10);
- assert.deepEqual(recipeSpread(buildings,0).map(x=>x.id),['bench','chest','rack','alchemy_table','campfire']);
- assert.deepEqual(recipeSpread(buildings,1).map(x=>x.id),['torch','table','fence','workbench','signpost']);
+ assert.equal(buildings.length,11);
+ assert.deepEqual(recipeSpread(buildings,0).map(x=>x.id),['bench','chest','rack','alchemy_table','bed']);
+ assert.deepEqual(recipeSpread(buildings,1).map(x=>x.id),['campfire','torch','table','fence','workbench']);
+ assert.deepEqual(recipeSpread(buildings,2).map(x=>x.id),['signpost']);
 });

@@ -41,7 +41,7 @@ export function pickupCandidates(ctx){
     });
   }
   const boxes=[];
-  for(const node of ctx.groundBoxes?.pickupNodes??ctx.groundBoxes?.boxes??[]){
+  for(const node of (ctx.groundBoxes?.nearbyPickupNodes?.(ctx.px,ctx.pz,2.8)??ctx.groundBoxes?.pickupNodes??ctx.groundBoxes?.boxes??[])){
     const distance=Math.hypot(node.x-ctx.px,node.z-ctx.pz);
     if(distance>2.8)continue;
     boxes.push({
@@ -68,15 +68,15 @@ export function worldInteractionCandidates(ctx){
   });
  }
  for(const fire of ctx.campStructures?.items?.values?.()??[]){
-  if(!['campfire','torch'].includes(fire.kind))continue;
+  if(!['campfire','torch','bed'].includes(fire.kind))continue;
   const distance=Math.hypot(fire.x-ctx.px,fire.z-ctx.pz);
   if(distance>3.2)continue;
   fires.push({
    type:'camp',id:fire.id,x:fire.x,z:fire.z,
-   y:ctx.terrain.heightAt(fire.x,fire.z)+(fire.kind==='torch'?1.65:.7),
+   y:ctx.terrain.heightAt(fire.x,fire.z)+(fire.kind==='torch'?1.65:fire.kind==='bed'?.6:.7),
    distance,maxDistance:3.2,
-   label:fire.kind==='torch'?'Факел':'Костёр',
-   verb:fire.lit?'Потушить':'Зажечь',
+   label:fire.kind==='torch'?'Факел':fire.kind==='bed'?'Кровать':'Костёр',
+   verb:fire.kind==='bed'?'Установить точку возрождения':fire.lit?'Потушить':'Зажечь',
   });
  }
  return {storages,fires};
@@ -134,7 +134,7 @@ export function createPickupInteraction(ctx){
     const {selected}=calculate();
     if(!selected)return false;
     if(selected.type==='storage')return ctx.storages?.open?.(selected.id)??false;
-    if(selected.type==='camp')return ctx.campStructures?.toggle?.(selected.id)??false;
+    if(selected.type==='camp')return ctx.campStructures?.activate?.(selected.id)??ctx.campStructures?.toggle?.(selected.id)??false;
     return pickItem(selected);
   }
   if(button)button.addEventListener('click',event=>{

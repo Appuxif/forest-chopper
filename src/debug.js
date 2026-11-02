@@ -1,6 +1,15 @@
+import {createDebugFps} from './debug-fps.js';
+import {parseOfflineSave} from './offline-save.js';
+import {BOX_LIFETIME_SECONDS,MAX_GROUND_DROPS} from './ground-boxes.js';
 import {isFood} from './vitals.js';
 // Only loaded by index_debug.html. Never expose these controls on the normal page.
 export function installDebug(ctx) {
+  const fps=createDebugFps();
+  ctx.debugFpsCollector=fps;
+  let benchmarkFixture=null,benchmarkRun=null;
+  // Debug launches are deterministic: don't overwrite settings in the
+  // production page. Test tools can still switch presets at runtime.
+  ctx.settings.setPerformancePreset('medium');
   const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight',
     'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
   const activeTimers = new Map();
@@ -281,6 +290,134 @@ export function installDebug(ctx) {
     clearEvents(){events.length=0;},
     inventory() {return ctx.inventory?.serialize()??null;},
     vitals(){return ctx.vitals?.serialize()??null;},
+    async loadBenchmarkSave(path='/benchmarks/box-stress-500.json'){
+      if(ctx.isOnline())throw new Error('Offline debug helper only');
+      if(benchmarkRun?.status==='running')throw new Error('Benchmark already running');
+      if(!['/benchmarks/box-stress-500.json','/benchmarks/box-stress-1000.json',
+        '/benchmarks/box-stress-1500.json',
+        '/benchmarks/box-stress-3000.json'].includes(path))
+        throw new Error('Only approved local benchmark fixtures may be loaded');
+      const response=await fetch(path,{cache:'no-store'});
+      if(!response.ok)throw new Error('Benchmark fixture HTTP '+response.status);
+      const blueprint=await response.json();
+      const deadline=Date.now()/1000+BOX_LIFETIME_SECONDS;
+      const world={...blueprint,boxes:blueprint.boxes.map(box=>({...box,expires_at:deadline}))};
+      const raw=JSON.stringify(world);
+      if(!parseOfflineSave(raw))throw new Error('Invalid benchmark save fixture');
+      // No production game state, localStorage or multiplayer save is touched.
+      // Reloading the tab restores the player's ordinary solo game.
+      ctx.offlineSave.suspend({flush:false});
+      if(!ctx.offlineSave.restoreSnapshot(raw,{replace:true}))
+        throw new Error('Could not restore benchmark save');
+      ctx.settings.setPerformancePreset('medium');
+      benchmarkFixture=world;
+      fps.reset();
+      ctx.inventory?.render?.();
+      return {seed:world.seed,boxes:world.boxes.length,
+        position:{x:ctx.px,z:ctx.pz},preset:ctx.settings.performancePreset,
+        saveSuspended:ctx.offlineSave.suspended};
+    },
+    benchmarkBoxes(enabled=true){
+      if(!benchmarkFixture)throw new Error('Load the benchmark fixture first');
+      ctx.groundBoxes.set(enabled?benchmarkFixture.boxes:[]);
+      return {enabled:!!enabled,boxes:ctx.groundBoxes.count};
+    },
+    benchmarkStatus(){
+      return benchmarkRun?{...benchmarkRun,
+        fps:api.fpsStats(benchmarkRun.phase)}:{status:'not_started'};
+    },
+    startBoxBenchmark({warmupMs=8000,measureMs=10000,settleMs=4000}={}){
+      if(!benchmarkFixture)throw new Error('Load the benchmark fixture first');
+      if(benchmarkRun?.status==='running')throw new Error('Benchmark already running');
+      for(const n of [warmupMs,measureMs,settleMs]){
+        if(!Number.isInteger(n)||n<1000||n>60000)
+          throw new Error('Benchmark timings must be 1000..60000 ms');
+      }
+      const report={status:'running',phase:'warming_up',startedAt:Date.now(),
+        seed:benchmarkFixture.seed,preset:ctx.settings.performancePreset,
+        boxes:benchmarkFixture.boxes.length};
+      benchmarkRun=report;
+      const run=async()=>{
+        fps.reset();
+        api.benchmarkBoxes(false);
+        fps.setPhase('warmup');await pause(warmupMs);
+        report.phase='baseline';fps.setPhase('baseline');await pause(measureMs);
+        report.baseline=api.fpsStats('baseline');
+        api.benchmarkBoxes(true);
+        report.phase='settling_boxes';fps.setPhase('box_settle');await pause(settleMs);
+        report.phase='boxes';fps.setPhase('boxes');await pause(measureMs);
+        report.boxesResult=api.fpsStats('boxes');
+        report.samples=api.fpsSamples();
+        report.loot=api.lootStats();
+        const gl=ctx.renderer.getContext();
+        const ext=gl.getExtension('WEBGL_debug_renderer_info');
+        report.gpu=ext?gl.getParameter(ext.UNMASKED_RENDERER_WEBGL):
+          gl.getParameter(gl.RENDERER);
+        report.viewport=[ctx.renderer.domElement.width,ctx.renderer.domElement.height];
+        report.finishedAt=Date.now();
+        report.status='completed';
+        fps.setPhase('idle');
+      };
+      run().catch(error=>{report.status='failed';report.error=String(error);
+        report.finishedAt=Date.now();});
+      return {status:report.status,phase:report.phase,seed:report.seed,
+        preset:report.preset};
+    },
+    exitBenchmark(){location.reload();},
+    setPreset(name){return ctx.settings.setPerformancePreset(name);},
+    getPreset(){return {preset:ctx.settings.performancePreset,maxFps:ctx.settings.maxFps,
+      renderScale:ctx.settings.renderScale};},
+    fpsStart({clear=false,phase='idle'}={}){
+      if(clear)fps.reset();
+      fps.start();fps.setPhase(phase);
+      return {running:fps.running,phase:fps.phase,limit:120};
+    },
+    fpsStop(){fps.stop();return api.fpsStats();},
+    fpsClear(){fps.reset();return api.fpsStats();},
+    fpsPhase(name){fps.setPhase(name);return {phase:fps.phase};},
+    fpsSamples(){return fps.samples;},
+    fpsStats(phase=null){return fps.stats({phase});},
+    grantLog(){
+      if(ctx.isOnline())throw new Error('Offline debug helper only');
+      if(!ctx.inventory?.state?.addItem({id:'log',count:1}))return false;
+      ctx.wood=ctx.inventory.state.wood();
+      ctx.inventory.render();ctx.offlineSave?.markDirty?.();
+      return true;
+    },
+    dropLog(){
+      if(ctx.isOnline())throw new Error('Offline debug helper only');
+      // No accidentally dropping a full stack during a single-log test.
+      const slot=ctx.inventory.state.slots.findIndex(item=>item?.id==='log'&&item.count===1);
+      if(slot<0)return false;
+      return ctx.groundBoxes.dropSlot(slot);
+    },
+    async bulkLogs(count=100,{intervalMs=100,phase='bulk'}={}){
+      if(ctx.isOnline())throw new Error('Offline debug helper only');
+      if(!Number.isSafeInteger(count)||count<1||count>1000)
+        throw new Error('Count must be 1..1000');
+      if(!Number.isFinite(intervalMs)||intervalMs<0||intervalMs>1000)
+        throw new Error('intervalMs must be between 0 and 1000');
+      if(ctx.inventory.state.count('log')!==0)
+        throw new Error('Bulk drop requires no pre-existing logs (to avoid dropping a stack)');
+      if(ctx.groundBoxes.count+count>MAX_GROUND_DROPS)
+        throw new Error('Not enough world drop slots for this batch');
+      fps.setPhase(phase);
+      const since=performance.now();
+      let added=0,dropped=0;
+      for(let i=0;i<count;i++){
+        if(!api.grantLog())throw new Error('Grant failed at cycle '+(i+1));
+        added++;
+        if(!api.dropLog())throw new Error('Drop failed at cycle '+(i+1));
+        dropped++;
+        // Yield to the real render loop so FPS under growing load is sampled.
+        await pause(intervalMs);
+      }
+      const report={requested:count,added,dropped,elapsedMs:round(performance.now()-since),
+        boxCount:ctx.groundBoxes.count,drawBatches:ctx.groundBoxes.batchCount,
+        fps:api.fpsStats(phase)};
+      fps.setPhase('recovery');
+      return report;
+    },
     grantFood(id,count=1){
       if(ctx.isOnline())throw new Error('Offline debug helper only');
       if(!isFood(id)||!Number.isInteger(count)||count<1||count>10)throw new Error('Invalid food');
@@ -296,6 +433,7 @@ export function installDebug(ctx) {
     },
     resources(){return ctx.forestResources?.nodes??[];},
     boxes(){return ctx.groundBoxes?.snapshot()??[];},
+    lootStats(){return {boxes:ctx.groundBoxes?.count??0,drawBatches:ctx.groundBoxes?.batchCount??0};},
     collectResource(){return ctx.forestResources?.collect()??false;},
     pickupBox(){return ctx.groundBoxes?.pickup()??false;},
     // Debug-page only: simulate a legitimate wood reward for UI smoke tests.
@@ -337,7 +475,7 @@ export function installDebug(ctx) {
     get atmosphere() { return ctx.atmosphere; },
     get player() { return ctx.ownAvatar; },
     get rootMotion() { return ctx.rootMotion; },
-    help: 'startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
+    help: 'loadBenchmarkSave(), benchmarkBoxes(enabled), startBoxBenchmark(options), benchmarkStatus(), exitBenchmark(), setPreset(name), getPreset(), fpsStart({clear,phase}), fpsStats(phase), fpsSamples(), fpsPhase(name), fpsStop(), grantLog(), dropLog(), bulkLogs(count,{intervalMs,phase}), startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
   };
   window.__gameDebug = api;
   window.addEventListener('blur', releaseAll);

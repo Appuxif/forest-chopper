@@ -12,6 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
+from box_registry import BoxRegistry,AOI_RADIUS
 from server_bots import BotManager, can_stand
 from terrain_height import height_at, base_height
 from ponds import pond_depth_at, pond_height_before_lakes
@@ -20,7 +21,8 @@ MAX_MESSAGE = 2048
 # Initial 3 kg axe leaves room for nine 10 kg logs, regardless of bag slots.
 DEFAULT_WOOD_CAPACITY = 3
 BOX_TTL_SECONDS=3600
-MAX_GROUND_DROPS=3000
+STARVATION_INTERVAL_SECONDS=10
+MAX_GROUND_DROPS=10_000
 TREE_LOG_COUNT=3
 FALLEN_LOG_LENGTH=3.0
 FALLEN_LOG_GAP=.08
@@ -63,8 +65,8 @@ def fallen_logs_box(x,z,count=TREE_LOG_COUNT,direction=0,tree=None,ready_at=None
 MUSHROOM_SPECIES=('fly_agaric','boletus','death_cap','milkcap')
 FLOWER_SPECIES=('daisy','buttercup','pink_wildflower','blue_wildflower')
 DECOR_ITEM_IDS=tuple('mushroom:'+name for name in MUSHROOM_SPECIES)+tuple('flower:'+name for name in FLOWER_SPECIES)+('dry_grass',)
-STRUCTURE_KINDS=("campfire","torch","table","fence","workbench","alchemy_table","chest","rack")
-STRUCTURE_WEIGHTS={"campfire":18,"torch":4,"table":18,"fence":12,"workbench":25,"alchemy_table":35,"chest":15,"rack":16}
+STRUCTURE_KINDS=("campfire","torch","table","fence","workbench","alchemy_table","bed","chest","rack")
+STRUCTURE_WEIGHTS={"campfire":18,"torch":4,"table":18,"fence":12,"workbench":25,"alchemy_table":35,"bed":18,"chest":15,"rack":16}
 ITEM_LIMITS={**{name:1 for name in STRUCTURE_KINDS},"log":5,"branch":10,"stone":10,"bench":1,"axe":1,"potion:health":10,"potion:stamina":10,"potion:lumberjack":10,"potion:light_feet":10,"potion:night_vision":10,"food:mushroom_stew":10,"food:herbal_mushroom_stew":10,
              **{name:10 for name in DECOR_ITEM_IDS}}
 MAX_CARRY_WEIGHT=100
@@ -212,7 +214,14 @@ def vitals_view(player):
 def advance_hunger(player,now):
     delta=max(0,min(now-player['last_hunger_at'],3600))
     player['last_hunger_at']=now
-    if player['hunger']==0:return False
+    if player['hunger']==0:
+        progress=player.get('starvation_progress',0)+delta
+        damage=int(progress//STARVATION_INTERVAL_SECONDS)
+        player['starvation_progress']=progress%STARVATION_INTERVAL_SECONDS
+        if damage:
+            player['health']=max(0,player['health']-damage)
+            return True
+        return False
     progress=player['hunger_progress']+delta
     steps=int(progress//HUNGER_INTERVAL_SECONDS)
     if steps==0:
@@ -220,6 +229,7 @@ def advance_hunger(player,now):
         return False
     player['hunger']=max(0,player['hunger']-steps)
     player['hunger_progress']=progress%HUNGER_INTERVAL_SECONDS if player['hunger'] else 0
+    if not player['hunger']:player['starvation_progress']=0
     return True
 
 def advance_stamina(player,now):
@@ -267,6 +277,7 @@ def apply_food(player,kind):
     if effect is None:return False
     player['health']=max(0,min(MAX_VITALS,player['health']+effect[0]))
     player['hunger']=max(0,min(MAX_VITALS,player['hunger']+effect[1]))
+    if player['hunger']>0:player['starvation_progress']=0
     status=POTION_STATUS.get(kind)
     if status:
         # Every fresh dose refreshes its own timer, never stacks multipliers.
@@ -372,6 +383,7 @@ CAMP_RECIPES={
     'fence':{'log':2,'branch':2},
     'workbench':{'log':4,'stone':2},
     'alchemy_table':{'log':3,'stone':5,'branch':5,'flower:daisy':3,'flower:pink_wildflower':2,'flower:blue_wildflower':3,'mushroom:fly_agaric':1},
+    'bed':{'log':3,'branch':4,'dry_grass':5},
 }
 MAX_CAMP_STRUCTURES=100
 def valid_camp_structure(item):
@@ -657,7 +669,7 @@ class World:
 
     def __init__(self,path,bot_token=""):
         self.path=Path(path);self.clients={};self.next_id=1;self.seed=random.randrange(1,999999)
-        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.storages={};self.next_storage=1;self.camp_structures={};self.next_camp=1;self.boxes={};self.next_box=1;self.resource_cooldowns={};self.community_cuts=0;self.chat=[];self.chat_seq=0
+        self.felled=set();self.damage={};self.logs={};self.next_log=1;self.furniture={};self.next_furniture=1;self.storages={};self.next_storage=1;self.camp_structures={};self.next_camp=1;self.boxes=BoxRegistry();self.next_box=1;self.resource_cooldowns={};self.community_cuts=0;self.chat=[];self.chat_seq=0
         self.day_epoch=time.time()
         self.world_created_at=self.day_epoch
         self.last_day_sync=time.monotonic()
@@ -742,7 +754,7 @@ class World:
                     elif box.get('kind') is not None:
                         raise ValueError('Invalid box kind')
                     if box['expires_at']>time.time():boxes[ident]=box
-                self.boxes=boxes;self.next_box=max((int(k) for k in boxes_raw),default=0)+1
+                self.boxes=BoxRegistry(boxes);self.next_box=max((int(k) for k in boxes_raw),default=0)+1
                 cooldown_raw=data.get('resource_cooldowns',{})
                 if not isinstance(cooldown_raw,dict) or len(cooldown_raw)>100000:
                     raise ValueError('Invalid resource cooldowns')
@@ -774,10 +786,27 @@ class World:
     def save(self):
         data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'storages':self.storages,'camp_structures':self.camp_structures,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts,'day_epoch':self.day_epoch,'world_created_at':self.world_created_at}
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,self.path)
+    def ensure_box_index(self):
+        if not isinstance(self.boxes,BoxRegistry):self.boxes=BoxRegistry(self.boxes)
+        return self.boxes
+
+    def visible_box_set(self,player):
+        return set(ident for ident,_ in self.ensure_box_index().nearby(
+            player['x'],player['z'],AOI_RADIUS))
+
+    async def sync_boxes(self,ws,player,force=False):
+        old=player.setdefault('visible_boxes',set())
+        current=self.visible_box_set(player)
+        for ident in sorted(old-current):
+            await self.send(ws,{'type':'box_remove','id':ident})
+        for ident in sorted(current-old):
+            await self.send(ws,{'type':'box_add','box':{'id':ident,**self.boxes[ident]}})
+        player['visible_boxes']=current
+        player['last_box_sync']=(player['x'],player['z'])
+
     async def prune_boxes(self,now=None):
         now=time.time() if now is None else now
-        expired=[i for i,b in self.boxes.items() if b['expires_at']<=now]
-        for ident in expired:del self.boxes[ident]
+        expired=self.ensure_box_index().expired(now)
         if expired:
             self.save()
             for ident in expired:await self.broadcast({'type':'box_remove','id':ident})
@@ -806,6 +835,56 @@ class World:
                 await self.send(ws,self.resource_view(player,current))
         return expired
 
+    async def handle_death(self,ws,player):
+        # Keep all items if the world is full; retry when boxes expire.
+        if player['health']>0:return False
+        await self.prune_boxes()
+        slots=[v.copy() for v in player['inventory'] if v]
+        if len(self.boxes)+len(slots)>MAX_GROUND_DROPS:
+            await self.send(ws,{'type':'action_denied',
+                'reason':'Недостаточно места для вещей. Смерть отложена, инвентарь сохранён.'})
+            return False
+        x,z=player['x'],player['z']
+        expires=time.time()+BOX_TTL_SECONDS
+        for i,item in enumerate(slots):
+            angle=i*2.399963229728653
+            radius=.8+.39*math.sqrt(i)
+            box={'x':round(x+math.cos(angle)*radius,2),
+                 'z':round(z+math.sin(angle)*radius,2),
+                 'expires_at':expires,'item':item}
+            ident=self.next_box;self.next_box+=1
+            self.boxes[ident]=box
+            await self.broadcast({'type':'box_add','box':{'id':ident,**box}})
+        player['inventory'][:]=[None]*len(player['inventory'])
+        player['wood']=0
+        refresh_equipment(player)
+        bed=self.camp_structures.get(player.get('spawn_bed'))
+        if bed and bed['kind']=='bed':
+            player['x']=bed['x']+2.5;player['z']=bed['z']
+        else:
+            player['x']=player['z']=0
+            player['spawn_bed']=None
+        player['y']=height_at(self.seed,player['x'],player['z'])
+        player['health']=MAX_VITALS;player['hunger']=3
+        player['stamina']=float(MAX_VITALS)
+        player['hunger_progress']=0;player['starvation_progress']=0
+        player['last_hunger_at']=time.monotonic()
+        player['last_stamina_at']=time.monotonic()
+        player['stamina_sprint_locked']=False;player['sprinting']=False
+        player['last_effect_ids']=frozenset()
+        for key in STATUS_PLAYER_KEYS.values():player.pop(key,None)
+        await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':0})
+        await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
+        await self.send(ws,{'type':'player_respawn','x':player['x'],'z':player['z'],
+          'marker':{'x':x,'z':z,'expires_at':expires}})
+        await self.sync_boxes(ws,player)
+        await self.broadcast({'type':'equipment','by':player['id'],'axe_equipped':False})
+        await self.broadcast({'type':'move','id':player['id'],
+          'x':player['x'],'z':player['z'],'y':player['y'],'yaw':player['yaw'],
+          'jumping':False},ws)
+        self.save()
+        return True
+
     async def box_expiration_loop(self):
         while True:
             await asyncio.sleep(1)
@@ -820,6 +899,8 @@ class World:
                 if current-player['last_pos']>.35:player['sprinting']=False
                 stamina_changed=advance_stamina(player,current)
                 hunger_changed=advance_hunger(player,current)
+                if player['health']==0:
+                    if await self.handle_death(ws,player):continue
                 # Status expiry is authoritative too: notify even idle players
                 # whose health/hunger/stamina remain unchanged at full bars.
                 current_statuses=active_status_ids(player)
@@ -834,7 +915,33 @@ class World:
         try:await ws.send(json.dumps(data,separators=(',',':')))
         except Exception:pass
     async def broadcast(self,data,except_ws=None):
-        if self.clients:await asyncio.gather(*(self.send(ws,data) for ws in list(self.clients) if ws!=except_ws))
+        if data.get('type')=='box_add':
+            box=data['box'];ident=box['id']
+            sends=[]
+            for ws,p in self.clients.items():
+                if ws==except_ws:continue
+                tracked=p.setdefault('visible_boxes',set())
+                relevant=math.hypot(p['x']-box['x'],p['z']-box['z'])<=AOI_RADIUS
+                if relevant:
+                    tracked.add(ident)
+                    sends.append(self.send(ws,data))
+                elif ident in tracked:
+                    tracked.remove(ident)
+                    sends.append(self.send(ws,{'type':'box_remove','id':ident}))
+            if sends:await asyncio.gather(*sends)
+            return
+        if data.get('type')=='box_remove':
+            ident=data['id'];sends=[]
+            for ws,p in self.clients.items():
+                tracked=p.setdefault('visible_boxes',set())
+                if ident in tracked:
+                    tracked.remove(ident)
+                    if ws!=except_ws:sends.append(self.send(ws,data))
+            if sends:await asyncio.gather(*sends)
+            return
+        if self.clients:
+            await asyncio.gather(*(self.send(ws,data) for ws in list(self.clients)
+                                  if ws!=except_ws))
     async def bot_handler(self,ws):
         # Minimal experimental authentication: a configured token is required remotely.
         remote=ws.remote_address[0] if ws.remote_address else ''
@@ -955,10 +1062,12 @@ class World:
             await self.bot_handler(ws);return
         if len(self.clients)+len(self.bots.bots)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
-        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':height_at(self.seed,0,0),'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'quick_refs':[0,1,2,3],'quick_ids':['axe',None,None,None],'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'last_hunger_at':time.monotonic(),'stamina':float(MAX_VITALS),'last_stamina_at':time.monotonic(),'stamina_sprint_locked':False,'sprinting':False,'last_stamina_sent':0,'last_jump':-10000,'jump_authorized_until':0}
+        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':height_at(self.seed,0,0),'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'quick_refs':[0,1,2,3],'quick_ids':['axe',None,None,None],'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'starvation_progress':0.0,'last_hunger_at':time.monotonic(),'stamina':float(MAX_VITALS),'last_stamina_at':time.monotonic(),'stamina_sprint_locked':False,'sprinting':False,'last_stamina_sent':0,'spawn_bed':None,'last_jump':-10000,'jump_authorized_until':0}
         self.clients[ws]=player
         await self.prune_boxes()
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'camp_structures':[{'id':k,**v} for k,v in self.camp_structures.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**v} for k,v in self.boxes.items()],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
+        player['visible_boxes']=self.visible_box_set(player)
+        player['last_box_sync']=(player['x'],player['z'])
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'camp_structures':[{'id':k,**v} for k,v in self.camp_structures.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**self.boxes[k]} for k in sorted(player['visible_boxes'])],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -1155,6 +1264,13 @@ class World:
                         player['inventory']=snapshot
                         await self.send(ws,{'type':'action_denied','reason':'Недостаточно места или веса'});continue
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
+                elif kind=='bed_spawn':
+                    ident=data.get('id')
+                    bed=self.camp_structures.get(ident) if type(ident) is int else None
+                    if bed and bed['kind']=='bed' and math.hypot(
+                      player['x']-bed['x'],player['z']-bed['z'])<=3.2:
+                        player['spawn_bed']=ident
+                        await self.send(ws,{'type':'spawn_bed_set','id':ident})
                 elif kind=='consume_food':
                     slot=data.get('slot')
                     if type(slot) is not int or not 0<=slot<len(player['inventory']):continue
@@ -1167,6 +1283,7 @@ class World:
                     player['last_effect_ids']=active_status_ids(player)
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                     await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
+                    if player['health']==0:await self.handle_death(ws,player)
                 elif kind=='craft_axe':
                     inv=player['inventory']
                     if inv_count(inv,'branch')<3 or inv_count(inv,'stone')<2:
@@ -1253,6 +1370,9 @@ class World:
                     player['sprinting']=permitted_sprint
                     old_x,old_z=player['x'],player['z']
                     player.update(x=x,z=z,y=y,yaw=yaw,jumping=jumping,last_pos=now)
+                    ox,oz=player.get('last_box_sync',(0,0))
+                    if math.hypot(x-ox,z-oz)>=12:
+                        await self.sync_boxes(ws,player)
                     if stamina_changed and now-player['last_stamina_sent']>.6:
                         player['last_stamina_sent']=now
                         await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
@@ -1376,6 +1496,11 @@ class World:
                         if not inv_add(player['inventory'],reward):
                             await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],reward)});continue
                         del self.camp_structures[ident]
+                        if old['kind']=='bed':
+                            for other_ws,other in self.clients.items():
+                                if other.get('spawn_bed')==ident:
+                                    other['spawn_bed']=None
+                                    await self.send(other_ws,{'type':'spawn_bed_set','id':None})
                         await self.broadcast({'type':'camp_remove','id':ident})
                     elif typ=='storage':
                         old=self.storages.get(ident)

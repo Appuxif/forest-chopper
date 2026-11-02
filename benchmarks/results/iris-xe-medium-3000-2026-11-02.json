@@ -1,0 +1,44 @@
+{
+  "benchmark": "box-stress-3000",
+  "date": "2026-11-02",
+  "seed": 517013,
+  "preset": "medium",
+  "fpsCap": 60,
+  "renderer": "ANGLE (Intel, Mesa Intel(R) Iris(R) Xe Graphics (ADL GT2), OpenGL ES 3.2)",
+  "canvasResolution": [
+    1536,
+    724
+  ],
+  "warmupSeconds": 10,
+  "measurementSecondsPerPhase": 10,
+  "settleSeconds": 5,
+  "measurementWindows": {
+    "baseline": 9,
+    "stress": 9
+  },
+  "baseline": {
+    "boxes": 0,
+    "meanFps": 61,
+    "minimumFps": 60.99,
+    "maximumFps": 61,
+    "meanDrawCalls": 707,
+    "meanTriangles": 1495421,
+    "meanP95FrametimeMs": 20.9,
+    "worstP99FrametimeMs": 20.9,
+    "meanJsHeapMiB": 90.24
+  },
+  "stress": {
+    "boxes": 3000,
+    "batches": 4,
+    "meanFps": 61.01,
+    "minimumFps": 60.99,
+    "maximumFps": 61.16,
+    "meanDrawCalls": 694.29,
+    "meanTriangles": 1512034.33,
+    "meanP95FrametimeMs": 20.9,
+    "worstP99FrametimeMs": 20.9,
+    "meanJsHeapMiB": 93.42
+  },
+  "observedFpsChange": 0.01,
+  "notes": "World streamer updated forest geometry during and after the measured 3000-box phase; its mean draw calls/triangles are not a clean box-only comparison. At the initial settled load, 3000 boxes added 4 InstancedMesh calls and 36000 triangles (707/1495421 -> 711/1531421). After further world streaming, scene reached 894 draws and 1676601 triangles even without moving camera. FPS was effectively 60 FPS capped throughout. The initial medium run is not suitable to quantify draw-call delta outside the stabilized period."
+}

@@ -1,0 +1,74 @@
+{
+  "benchmark": "box-stress-3000",
+  "date": "2026-11-02",
+  "seed": 517013,
+  "preset": "high",
+  "fpsCap": 60,
+  "renderScale": 100,
+  "renderer": "ANGLE (Intel, Mesa Intel(R) Iris(R) Xe Graphics (ADL GT2), OpenGL ES 3.2)",
+  "canvasResolution": [
+    1920,
+    905
+  ],
+  "warmupSeconds": 16,
+  "measurementSecondsPerPhase": 10,
+  "settleSeconds": 8,
+  "measurementWindows": {
+    "baseline": 9,
+    "stress": 9
+  },
+  "baseline": {
+    "boxes": 0,
+    "meanFps": 56.14,
+    "minimumFps": 54.99,
+    "maximumFps": 57.2,
+    "meanDrawCalls": 906,
+    "meanTriangles": 3261111,
+    "meanP95FrametimeMs": 27.78,
+    "worstP99FrametimeMs": 34.8,
+    "meanJsHeapMiB": 113.64
+  },
+  "stress": {
+    "boxes": 3000,
+    "batches": 4,
+    "meanFps": 55.39,
+    "minimumFps": 54.24,
+    "maximumFps": 56.99,
+    "meanDrawCalls": 910,
+    "meanTriangles": 3297111,
+    "meanP95FrametimeMs": 29.34,
+    "worstP99FrametimeMs": 41.6,
+    "meanJsHeapMiB": 115.57
+  },
+  "observedFpsChange": -0.75,
+  "notes": "Second repeat after 30-second warmup and a first measurement run, with fully stabilized forest geometry. Exact deltas: +4 instanced draw calls, +36000 triangles. FPS -0.75 (~1.3%), a small impact on the tested Intel Iris Xe. Unlike Medium, High runs render at 1920x905 with renderScale=100 and higher scene geometry. No CPU/GPU cost attribution beyond FPS/render counters is claimed.",
+  "observedFpsPercentChange": -1.34,
+  "initialRun": {
+    "warmupSeconds": 30,
+    "baseline": {
+      "boxes": 0,
+      "meanFps": 54.9,
+      "minimumFps": 53.62,
+      "maximumFps": 55.61,
+      "meanDrawCalls": 905,
+      "meanTriangles": 3428695,
+      "meanP95FrametimeMs": 32.39,
+      "worstP99FrametimeMs": 34.9,
+      "meanJsHeapMiB": 127.98
+    },
+    "stress": {
+      "boxes": 3000,
+      "batches": 4,
+      "meanFps": 54.82,
+      "minimumFps": 51.29,
+      "maximumFps": 56.0,
+      "meanDrawCalls": 906.58,
+      "meanTriangles": 3308668.56,
+      "meanP95FrametimeMs": 30.9,
+      "worstP99FrametimeMs": 48.6,
+      "meanJsHeapMiB": 131.04
+    },
+    "observedFpsChange": -0.08,
+    "notes": "First run on High. Scene draw calls and triangle counts changed during the test because of ongoing chunk/visibility changes. 3000 boxes independently form four instanced batches and 36000 triangles. Second run on a more stable world is performed separately."
+  }
+}

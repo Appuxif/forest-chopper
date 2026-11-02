@@ -185,6 +185,11 @@ class FallenLogTests(unittest.IsolatedAsyncioTestCase):
             expires=self.world.boxes[5]['expires_at']
             self.world.boxes[5]['mask']=0b010
             self.world.boxes[5]['item']['count']=1
+            # AOI: this box was inserted after welcome; explicitly announce
+            # it before asserting the subscription receives its removal.
+            await self.world.broadcast({'type':'box_add',
+                                        'box':{'id':5,**self.world.boxes[5]}})
+            self.assertEqual((await self.receive(ws,'box_add'))['box']['id'],5)
             self.world.save()
             self.assertEqual(World(self.world.path).boxes[5]['expires_at'],expires)
             self.assertEqual(World(self.world.path).boxes[5]['mask'],0b010)

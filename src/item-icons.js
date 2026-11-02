@@ -140,7 +140,7 @@ function collectModels(ctx){
   add('branch',()=>ctx.forestResources?.createIconModel('branch'));
   add('stone',()=>ctx.forestResources?.createIconModel('stone'));
   add('bench',()=>benchIconModel(ctx));
-  for(const kind of ['campfire','torch','table','fence','workbench','alchemy_table'])
+  for(const kind of ['campfire','torch','table','fence','workbench','alchemy_table','bed'])
     add(kind,()=>ctx.campStructures?.createIconModel?.(kind));
   for(const kind of ['chest','rack'])
     add(kind,()=>ctx.storages?.createIconModel?.(kind));

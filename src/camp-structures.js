@@ -12,6 +12,8 @@ export function createCampStructures(ctx,doc=document){
   const glass=new THREE.MeshStandardMaterial({color:0xb8e1ed,transparent:true,opacity:.38,roughness:.13,metalness:.1,depthWrite:false,side:THREE.DoubleSide});
   const emerald=new THREE.MeshStandardMaterial({color:0x52b88b,transparent:true,opacity:.75,roughness:.25});
   const violet=new THREE.MeshStandardMaterial({color:0x8059ab,transparent:true,opacity:.8,roughness:.25});
+  const mattress=new THREE.MeshLambertMaterial({color:0x8eaa8b});
+  const pillow=new THREE.MeshLambertMaterial({color:0xd5d0b6});
   const woodGeo=new THREE.BoxGeometry(1,1,1);
   const rockGeo=new THREE.DodecahedronGeometry(.24,0);
 
@@ -134,6 +136,15 @@ export function createCampStructures(ctx,doc=document){
         prop(new THREE.CylinderGeometry(.045,.07,.22,10),glass,x,1.47,z);
         prop(new THREE.CylinderGeometry(.08,.08,.055,10),darkMetal,x,1.59,z);
       }
+    }else if(item.kind==='bed'){
+      // A low wooden bed, green mattress and a recognizable pillow.
+      for(const x of [-.58,.58])beam(x,.38,0,.14,.60,2.00,wood);
+      beam(0,.37,-.91,1.36,.63,.14,wood);
+      beam(0,.27,.92,1.36,.28,.14,wood);
+      beam(0,.47,0,1.12,.26,1.78,mattress);
+      beam(0,.64,-.62,.85,.10,.36,pillow);
+      for(const x of [-.56,.56])for(const z of [-.92,.92])
+        beam(x,.18,z,.12,.36,.12,wood);
     }else if(item.kind==='fence'){
       for(const x of [-1,1])beam(x,.65,0,.15,1.3,.17,wood);
       for(const y of [.5,1.08])beam(0,y,0,2.25,.15,.13,wood);
@@ -175,7 +186,7 @@ export function createCampStructures(ctx,doc=document){
     return true;
   }
   function remove(id){const item=items.get(id);if(!item)return false;
-    scene.remove(item.group);items.delete(id);ctx.atmosphere?.invalidateStaticShadows?.();return true;}
+    scene.remove(item.group);items.delete(id);ctx.deathSystem?.onStructureRemoved?.(id);ctx.atmosphere?.invalidateStaticShadows?.();return true;}
   function clear(){for(const id of [...items.keys()])remove(id);}
   function set(list){clear();for(const item of list??[])add(item);}
   function snapshot(){return [...items.values()].map(({group,...item})=>({...item}));}
@@ -192,6 +203,11 @@ export function createCampStructures(ctx,doc=document){
     if(!item||!isFireKind(item.kind)||Math.hypot(ctx.px-item.x,ctx.pz-item.z)>3.2)return false;
     if(ctx.isOnline?.()){ctx.sendNet({type:'camp_toggle',id});return true;}
     item.lit=!item.lit;updateFlame(item);ctx.offlineSave?.markDirty?.();return true;
+  }
+  function activate(id){
+    const item=items.get(id);
+    if(!item||Math.hypot(ctx.px-item.x,ctx.pz-item.z)>3.2)return false;
+    return item.kind==='bed'?ctx.deathSystem?.setBed(id)??false:toggle(id);
   }
   function use(){const fire=nearFire();return fire?toggle(fire.id):false;}
   function position(){
@@ -244,7 +260,7 @@ export function createCampStructures(ctx,doc=document){
       if(light)light.visible=item.lit&&lighted.has(item.id);
     }
   }
-  return {add,remove,clear,set,snapshot,place,dismantle,toggle,use,tick,nearFire,
+  return {add,remove,clear,set,snapshot,place,dismantle,toggle,activate,use,tick,nearFire,
     createIconModel:kind=>kind==='campfire'?createCampfireModel(ctx).group:mesh({kind,x:0,z:0,orientation:0,lit:false}),
     get items(){return items;}};
 }

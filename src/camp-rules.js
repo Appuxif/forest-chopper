@@ -5,6 +5,7 @@ export const CAMP_RECIPES=Object.freeze({
   table:{log:3},
   fence:{log:2,branch:2},
   workbench:{log:4,stone:2},
+  bed:{log:3,branch:4,dry_grass:5},
   alchemy_table:{log:3,stone:5,branch:5,'flower:daisy':3,'flower:pink_wildflower':2,'flower:blue_wildflower':3,'mushroom:fly_agaric':1},
 });
 export const MAX_CAMP_STRUCTURES=100;

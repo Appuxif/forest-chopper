@@ -14,12 +14,14 @@ export function createVitalsUI(ctx,doc=document){
   '.fc-stamina[data-visible="true"]{opacity:1;visibility:visible;transition:opacity .2s ease,visibility 0s}',
   '.fc-stamina-fill{height:100%;background:#65d5e7;border-radius:10px;transition:width .12s linear}',
   '.fc-vitals[data-exhausted=true]{border-color:#d47969}',
+  '.fc-starvation{position:absolute;bottom:calc(100% + 11px);left:50%;transform:translateX(-50%);padding:5px 9px;color:#fff;border-radius:7px;border:1px solid #ef7770;background:#9d201de8;font:bold 13px system-ui;white-space:nowrap;text-shadow:0 1px 2px #400;pointer-events:none}',
+  '.fc-starvation[hidden]{display:none!important}',
   '@media(max-width:650px){.fc-vitals{bottom:221px;gap:9px;padding:3px 6px;font-size:10px}.fc-vitals-symbols{gap:1px;font-size:13px}.fc-stamina{height:4px}}',
  ].join('');
  doc.head.append(style);
  const panel=doc.createElement('section');
  panel.className='fc-vitals';panel.setAttribute('aria-label','Здоровье, голод и выносливость');
- panel.innerHTML='<div class="fc-stamina" title="Выносливость"><div class="fc-stamina-fill"></div></div><div class="fc-vitals-row"><span class="fc-vitals-symbols" data-vital="health" aria-label="Жизни"></span></div><div class="fc-vitals-row"><span class="fc-vitals-symbols" data-vital="hunger" aria-label="Голод"></span></div>';
+ panel.innerHTML='<div class="fc-starvation" role="alert" hidden>⚠️ Сильный Голод!</div><div class="fc-stamina" title="Выносливость"><div class="fc-stamina-fill"></div></div><div class="fc-vitals-row"><span class="fc-vitals-symbols" data-vital="health" aria-label="Жизни"></span></div><div class="fc-vitals-row"><span class="fc-vitals-symbols" data-vital="hunger" aria-label="Голод"></span></div>';
  doc.body.append(panel);
  function render(){
   for(const [key,symbol] of [['health','♥'],['hunger','🍗']]){
@@ -37,21 +39,25 @@ export function createVitalsUI(ctx,doc=document){
   staminaBar.dataset.visible=String(state.stamina<MAX_VITALS/2);
   staminaBar.querySelector('.fc-stamina-fill').style.width=(state.stamina/MAX_VITALS*100)+'%';
   staminaBar.title='Выносливость: '+state.stamina.toFixed(1)+'/5';
+  panel.querySelector('.fc-starvation').hidden=state.hunger!==0;
   panel.dataset.exhausted=String(!state.canChop);
   panel.title=state.chopWarning();
  }
  let lastVisualStamina=MAX_VITALS,lastVisualHunger=MAX_VITALS;
  function tick(sprinting=false){
   const beforeHunger=state.hunger;
+  const beforeHealth=state.health;
   const changed=state.tick({sprinting});
   // Online stamina is predicted locally for responsive movement; server
   // confirmations correct it via acceptServer without awarding client authority.
   // (The player loop invokes this each frame.)
   const stamina=state.stamina;
-  if(changed&&(Math.abs(stamina-lastVisualStamina)>.055||state.hunger!==lastVisualHunger)){
+  if(changed&&(Math.abs(stamina-lastVisualStamina)>.055||state.hunger!==lastVisualHunger||state.health!==beforeHealth)){
     lastVisualStamina=stamina;lastVisualHunger=state.hunger;render();
   }
   if(!ctx.isOnline?.()&&changed)ctx.offlineSave?.markDirty?.();
+  if(state.hunger===0&&beforeHunger!==0)ctx.notify?.('⚠️ Сильный Голод! Здоровье падает каждые 10 секунд.','warning','starving');
+  if(state.health===0)ctx.deathSystem?.onDeath?.();
   if(beforeHunger>state.hunger&&!state.canChop)ctx.notify?.(state.chopWarning(),'warning','vitals-low');
   return changed;
  }
@@ -91,6 +97,7 @@ export function createVitalsUI(ctx,doc=document){
   if(!ctx.inventory.state.consumeAt(index,item.id))return false;
   state.eat(item.id);
   ctx.inventory.render();render();ctx.offlineSave?.markDirty?.();
+  if(state.health===0)ctx.deathSystem?.onDeath?.();
   const {health,hunger}=FOOD_EFFECTS[item.id];
   const timedMessages={
     'potion:lumberjack':'Урон деревьям ×2 на 45 секунд · −1 жизнь',
@@ -107,7 +114,9 @@ export function createVitalsUI(ctx,doc=document){
   lastVisualStamina=state.stamina;lastVisualHunger=state.hunger;render();return true;
  }
  function acceptServer(snapshot){
+  const wasHungry=state.hunger;
   if(!state.restore(snapshot))return false;
+  if(wasHungry>0&&state.hunger===0)ctx.notify?.('⚠️ Сильный Голод! Здоровье падает каждые 10 секунд.','warning','starving');
   lastVisualStamina=state.stamina;lastVisualHunger=state.hunger;render();return true;
  }
  render();

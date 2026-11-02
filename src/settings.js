@@ -785,6 +785,12 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get grassTurnMin(){return state.grassTurnMin;},
     get grassTurnMax(){return state.grassTurnMax;},
     tick, tickPhysics, recordCpuFrame, setGpuFrameTime, close, setConnected, setLatency,
+    setPerformancePreset(name){
+      if(!PERFORMANCE_PRESETS[name])throw new Error('Unknown performance preset: '+name);
+      qualitySelect.value=name;
+      qualitySelect.onchange();
+      return {preset:state.performancePreset,maxFps:state.maxFps,renderScale:state.renderScale};
+    },
   open:()=>toggle.onclick(),
   setMenuMode(enabled){
     toggle.hidden=!!enabled;

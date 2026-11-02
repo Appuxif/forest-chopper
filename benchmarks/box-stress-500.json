@@ -1,0 +1,5024 @@
+{
+  "version": 1,
+  "terrainVersion": 3,
+  "seed": 517013,
+  "wood": 0,
+  "cuts": 0,
+  "dayPhase": 0.45,
+  "position": {
+    "x": 288,
+    "z": 272,
+    "y": 0,
+    "yaw": 3.141592653589793,
+    "pitch": 0
+  },
+  "felled": [],
+  "damage": {},
+  "logs": [],
+  "furniture": [],
+  "storages": [],
+  "camp_structures": [],
+  "resource_cooldowns": {},
+  "boxes": [
+    {
+      "id": 1,
+      "x": 279.96,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 2,
+      "x": 280.63,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 3,
+      "x": 281.3,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 4,
+      "x": 281.97,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 5,
+      "x": 282.64,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 6,
+      "x": 283.31,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 7,
+      "x": 283.98,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 8,
+      "x": 284.65,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 9,
+      "x": 285.32,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 10,
+      "x": 285.99,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 11,
+      "x": 286.66,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 12,
+      "x": 287.33,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 13,
+      "x": 288.0,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 14,
+      "x": 288.67,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 15,
+      "x": 289.34,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 16,
+      "x": 290.01,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 17,
+      "x": 290.68,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 18,
+      "x": 291.35,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 19,
+      "x": 292.02,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 20,
+      "x": 292.69,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 21,
+      "x": 293.36,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 22,
+      "x": 294.03,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 23,
+      "x": 294.7,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 24,
+      "x": 295.37,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 25,
+      "x": 296.04,
+      "z": 280.31,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 26,
+      "x": 279.96,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 27,
+      "x": 280.63,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 28,
+      "x": 281.3,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 29,
+      "x": 281.97,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 30,
+      "x": 282.64,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 31,
+      "x": 283.31,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 32,
+      "x": 283.98,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 33,
+      "x": 284.65,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 34,
+      "x": 285.32,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 35,
+      "x": 285.99,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 36,
+      "x": 286.66,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 37,
+      "x": 287.33,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 38,
+      "x": 288.0,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 39,
+      "x": 288.67,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 40,
+      "x": 289.34,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 41,
+      "x": 290.01,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 42,
+      "x": 290.68,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 43,
+      "x": 291.35,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 44,
+      "x": 292.02,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 45,
+      "x": 292.69,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 46,
+      "x": 293.36,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 47,
+      "x": 294.03,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 48,
+      "x": 294.7,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 49,
+      "x": 295.37,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 50,
+      "x": 296.04,
+      "z": 281.12,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 51,
+      "x": 279.96,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 52,
+      "x": 280.63,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 53,
+      "x": 281.3,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 54,
+      "x": 281.97,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 55,
+      "x": 282.64,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 56,
+      "x": 283.31,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 57,
+      "x": 283.98,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 58,
+      "x": 284.65,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 59,
+      "x": 285.32,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 60,
+      "x": 285.99,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 61,
+      "x": 286.66,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 62,
+      "x": 287.33,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 63,
+      "x": 288.0,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 64,
+      "x": 288.67,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 65,
+      "x": 289.34,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 66,
+      "x": 290.01,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 67,
+      "x": 290.68,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 68,
+      "x": 291.35,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 69,
+      "x": 292.02,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 70,
+      "x": 292.69,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 71,
+      "x": 293.36,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 72,
+      "x": 294.03,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 73,
+      "x": 294.7,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 74,
+      "x": 295.37,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 75,
+      "x": 296.04,
+      "z": 281.93,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 76,
+      "x": 279.96,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 77,
+      "x": 280.63,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 78,
+      "x": 281.3,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 79,
+      "x": 281.97,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 80,
+      "x": 282.64,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 81,
+      "x": 283.31,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 82,
+      "x": 283.98,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 83,
+      "x": 284.65,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 84,
+      "x": 285.32,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 85,
+      "x": 285.99,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 86,
+      "x": 286.66,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 87,
+      "x": 287.33,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 88,
+      "x": 288.0,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 89,
+      "x": 288.67,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 90,
+      "x": 289.34,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 91,
+      "x": 290.01,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 92,
+      "x": 290.68,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 93,
+      "x": 291.35,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 94,
+      "x": 292.02,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 95,
+      "x": 292.69,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 96,
+      "x": 293.36,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 97,
+      "x": 294.03,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 98,
+      "x": 294.7,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 99,
+      "x": 295.37,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 100,
+      "x": 296.04,
+      "z": 282.74,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 101,
+      "x": 279.96,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 102,
+      "x": 280.63,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 103,
+      "x": 281.3,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 104,
+      "x": 281.97,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 105,
+      "x": 282.64,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 106,
+      "x": 283.31,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 107,
+      "x": 283.98,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 108,
+      "x": 284.65,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 109,
+      "x": 285.32,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 110,
+      "x": 285.99,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 111,
+      "x": 286.66,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 112,
+      "x": 287.33,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 113,
+      "x": 288.0,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 114,
+      "x": 288.67,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 115,
+      "x": 289.34,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 116,
+      "x": 290.01,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 117,
+      "x": 290.68,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 118,
+      "x": 291.35,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 119,
+      "x": 292.02,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 120,
+      "x": 292.69,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 121,
+      "x": 293.36,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 122,
+      "x": 294.03,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 123,
+      "x": 294.7,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 124,
+      "x": 295.37,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 125,
+      "x": 296.04,
+      "z": 283.55,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 126,
+      "x": 279.96,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 127,
+      "x": 280.63,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 128,
+      "x": 281.3,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 129,
+      "x": 281.97,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 130,
+      "x": 282.64,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 131,
+      "x": 283.31,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 132,
+      "x": 283.98,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 133,
+      "x": 284.65,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 134,
+      "x": 285.32,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 135,
+      "x": 285.99,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 136,
+      "x": 286.66,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 137,
+      "x": 287.33,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 138,
+      "x": 288.0,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 139,
+      "x": 288.67,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 140,
+      "x": 289.34,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 141,
+      "x": 290.01,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 142,
+      "x": 290.68,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 143,
+      "x": 291.35,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 144,
+      "x": 292.02,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 145,
+      "x": 292.69,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 146,
+      "x": 293.36,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 147,
+      "x": 294.03,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 148,
+      "x": 294.7,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 149,
+      "x": 295.37,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 150,
+      "x": 296.04,
+      "z": 284.36,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 151,
+      "x": 279.96,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 152,
+      "x": 280.63,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 153,
+      "x": 281.3,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 154,
+      "x": 281.97,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 155,
+      "x": 282.64,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 156,
+      "x": 283.31,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 157,
+      "x": 283.98,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 158,
+      "x": 284.65,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 159,
+      "x": 285.32,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 160,
+      "x": 285.99,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 161,
+      "x": 286.66,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 162,
+      "x": 287.33,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 163,
+      "x": 288.0,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 164,
+      "x": 288.67,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 165,
+      "x": 289.34,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 166,
+      "x": 290.01,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 167,
+      "x": 290.68,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 168,
+      "x": 291.35,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 169,
+      "x": 292.02,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 170,
+      "x": 292.69,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 171,
+      "x": 293.36,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 172,
+      "x": 294.03,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 173,
+      "x": 294.7,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 174,
+      "x": 295.37,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 175,
+      "x": 296.04,
+      "z": 285.17,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 176,
+      "x": 279.96,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 177,
+      "x": 280.63,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 178,
+      "x": 281.3,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 179,
+      "x": 281.97,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 180,
+      "x": 282.64,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 181,
+      "x": 283.31,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 182,
+      "x": 283.98,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 183,
+      "x": 284.65,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 184,
+      "x": 285.32,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 185,
+      "x": 285.99,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 186,
+      "x": 286.66,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 187,
+      "x": 287.33,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 188,
+      "x": 288.0,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 189,
+      "x": 288.67,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 190,
+      "x": 289.34,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 191,
+      "x": 290.01,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 192,
+      "x": 290.68,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 193,
+      "x": 291.35,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 194,
+      "x": 292.02,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 195,
+      "x": 292.69,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 196,
+      "x": 293.36,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 197,
+      "x": 294.03,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 198,
+      "x": 294.7,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 199,
+      "x": 295.37,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 200,
+      "x": 296.04,
+      "z": 285.98,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 201,
+      "x": 279.96,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 202,
+      "x": 280.63,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 203,
+      "x": 281.3,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 204,
+      "x": 281.97,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 205,
+      "x": 282.64,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 206,
+      "x": 283.31,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 207,
+      "x": 283.98,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 208,
+      "x": 284.65,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 209,
+      "x": 285.32,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 210,
+      "x": 285.99,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 211,
+      "x": 286.66,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 212,
+      "x": 287.33,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 213,
+      "x": 288.0,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 214,
+      "x": 288.67,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 215,
+      "x": 289.34,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 216,
+      "x": 290.01,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 217,
+      "x": 290.68,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 218,
+      "x": 291.35,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 219,
+      "x": 292.02,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 220,
+      "x": 292.69,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 221,
+      "x": 293.36,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 222,
+      "x": 294.03,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 223,
+      "x": 294.7,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 224,
+      "x": 295.37,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 225,
+      "x": 296.04,
+      "z": 286.79,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 226,
+      "x": 279.96,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 227,
+      "x": 280.63,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 228,
+      "x": 281.3,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 229,
+      "x": 281.97,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 230,
+      "x": 282.64,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 231,
+      "x": 283.31,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 232,
+      "x": 283.98,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 233,
+      "x": 284.65,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 234,
+      "x": 285.32,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 235,
+      "x": 285.99,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 236,
+      "x": 286.66,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 237,
+      "x": 287.33,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 238,
+      "x": 288.0,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 239,
+      "x": 288.67,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 240,
+      "x": 289.34,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 241,
+      "x": 290.01,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 242,
+      "x": 290.68,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 243,
+      "x": 291.35,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 244,
+      "x": 292.02,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 245,
+      "x": 292.69,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 246,
+      "x": 293.36,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 247,
+      "x": 294.03,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 248,
+      "x": 294.7,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 249,
+      "x": 295.37,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 250,
+      "x": 296.04,
+      "z": 287.6,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 251,
+      "x": 279.96,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 252,
+      "x": 280.63,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 253,
+      "x": 281.3,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 254,
+      "x": 281.97,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 255,
+      "x": 282.64,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 256,
+      "x": 283.31,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 257,
+      "x": 283.98,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 258,
+      "x": 284.65,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 259,
+      "x": 285.32,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 260,
+      "x": 285.99,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 261,
+      "x": 286.66,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 262,
+      "x": 287.33,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 263,
+      "x": 288.0,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 264,
+      "x": 288.67,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 265,
+      "x": 289.34,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 266,
+      "x": 290.01,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 267,
+      "x": 290.68,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 268,
+      "x": 291.35,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 269,
+      "x": 292.02,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 270,
+      "x": 292.69,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 271,
+      "x": 293.36,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 272,
+      "x": 294.03,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 273,
+      "x": 294.7,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 274,
+      "x": 295.37,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 275,
+      "x": 296.04,
+      "z": 288.4,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 276,
+      "x": 279.96,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 277,
+      "x": 280.63,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 278,
+      "x": 281.3,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 279,
+      "x": 281.97,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 280,
+      "x": 282.64,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 281,
+      "x": 283.31,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 282,
+      "x": 283.98,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 283,
+      "x": 284.65,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 284,
+      "x": 285.32,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 285,
+      "x": 285.99,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 286,
+      "x": 286.66,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 287,
+      "x": 287.33,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 288,
+      "x": 288.0,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 289,
+      "x": 288.67,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 290,
+      "x": 289.34,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 291,
+      "x": 290.01,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 292,
+      "x": 290.68,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 293,
+      "x": 291.35,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 294,
+      "x": 292.02,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 295,
+      "x": 292.69,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 296,
+      "x": 293.36,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 297,
+      "x": 294.03,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 298,
+      "x": 294.7,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 299,
+      "x": 295.37,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 300,
+      "x": 296.04,
+      "z": 289.21,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 301,
+      "x": 279.96,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 302,
+      "x": 280.63,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 303,
+      "x": 281.3,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 304,
+      "x": 281.97,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 305,
+      "x": 282.64,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 306,
+      "x": 283.31,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 307,
+      "x": 283.98,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 308,
+      "x": 284.65,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 309,
+      "x": 285.32,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 310,
+      "x": 285.99,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 311,
+      "x": 286.66,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 312,
+      "x": 287.33,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 313,
+      "x": 288.0,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 314,
+      "x": 288.67,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 315,
+      "x": 289.34,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 316,
+      "x": 290.01,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 317,
+      "x": 290.68,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 318,
+      "x": 291.35,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 319,
+      "x": 292.02,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 320,
+      "x": 292.69,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 321,
+      "x": 293.36,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 322,
+      "x": 294.03,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 323,
+      "x": 294.7,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 324,
+      "x": 295.37,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 325,
+      "x": 296.04,
+      "z": 290.02,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 326,
+      "x": 279.96,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 327,
+      "x": 280.63,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 328,
+      "x": 281.3,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 329,
+      "x": 281.97,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 330,
+      "x": 282.64,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 331,
+      "x": 283.31,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 332,
+      "x": 283.98,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 333,
+      "x": 284.65,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 334,
+      "x": 285.32,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 335,
+      "x": 285.99,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 336,
+      "x": 286.66,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 337,
+      "x": 287.33,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 338,
+      "x": 288.0,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 339,
+      "x": 288.67,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 340,
+      "x": 289.34,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 341,
+      "x": 290.01,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 342,
+      "x": 290.68,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 343,
+      "x": 291.35,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 344,
+      "x": 292.02,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 345,
+      "x": 292.69,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 346,
+      "x": 293.36,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 347,
+      "x": 294.03,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 348,
+      "x": 294.7,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 349,
+      "x": 295.37,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 350,
+      "x": 296.04,
+      "z": 290.83,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 351,
+      "x": 279.96,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 352,
+      "x": 280.63,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 353,
+      "x": 281.3,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 354,
+      "x": 281.97,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 355,
+      "x": 282.64,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 356,
+      "x": 283.31,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 357,
+      "x": 283.98,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 358,
+      "x": 284.65,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 359,
+      "x": 285.32,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 360,
+      "x": 285.99,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 361,
+      "x": 286.66,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 362,
+      "x": 287.33,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 363,
+      "x": 288.0,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 364,
+      "x": 288.67,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 365,
+      "x": 289.34,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 366,
+      "x": 290.01,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 367,
+      "x": 290.68,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 368,
+      "x": 291.35,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 369,
+      "x": 292.02,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 370,
+      "x": 292.69,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 371,
+      "x": 293.36,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 372,
+      "x": 294.03,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 373,
+      "x": 294.7,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 374,
+      "x": 295.37,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 375,
+      "x": 296.04,
+      "z": 291.64,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 376,
+      "x": 279.96,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 377,
+      "x": 280.63,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 378,
+      "x": 281.3,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 379,
+      "x": 281.97,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 380,
+      "x": 282.64,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 381,
+      "x": 283.31,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 382,
+      "x": 283.98,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 383,
+      "x": 284.65,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 384,
+      "x": 285.32,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 385,
+      "x": 285.99,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 386,
+      "x": 286.66,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 387,
+      "x": 287.33,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 388,
+      "x": 288.0,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 389,
+      "x": 288.67,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 390,
+      "x": 289.34,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 391,
+      "x": 290.01,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 392,
+      "x": 290.68,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 393,
+      "x": 291.35,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 394,
+      "x": 292.02,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 395,
+      "x": 292.69,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 396,
+      "x": 293.36,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 397,
+      "x": 294.03,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 398,
+      "x": 294.7,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 399,
+      "x": 295.37,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 400,
+      "x": 296.04,
+      "z": 292.45,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 401,
+      "x": 279.96,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 402,
+      "x": 280.63,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 403,
+      "x": 281.3,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 404,
+      "x": 281.97,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 405,
+      "x": 282.64,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 406,
+      "x": 283.31,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 407,
+      "x": 283.98,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 408,
+      "x": 284.65,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 409,
+      "x": 285.32,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 410,
+      "x": 285.99,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 411,
+      "x": 286.66,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 412,
+      "x": 287.33,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 413,
+      "x": 288.0,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 414,
+      "x": 288.67,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 415,
+      "x": 289.34,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 416,
+      "x": 290.01,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 417,
+      "x": 290.68,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 418,
+      "x": 291.35,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 419,
+      "x": 292.02,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 420,
+      "x": 292.69,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 421,
+      "x": 293.36,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 422,
+      "x": 294.03,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 423,
+      "x": 294.7,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 424,
+      "x": 295.37,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 425,
+      "x": 296.04,
+      "z": 293.26,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 426,
+      "x": 279.96,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 427,
+      "x": 280.63,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 428,
+      "x": 281.3,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 429,
+      "x": 281.97,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 430,
+      "x": 282.64,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 431,
+      "x": 283.31,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 432,
+      "x": 283.98,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 433,
+      "x": 284.65,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 434,
+      "x": 285.32,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 435,
+      "x": 285.99,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 436,
+      "x": 286.66,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 437,
+      "x": 287.33,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 438,
+      "x": 288.0,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 439,
+      "x": 288.67,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 440,
+      "x": 289.34,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 441,
+      "x": 290.01,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 442,
+      "x": 290.68,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 443,
+      "x": 291.35,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 444,
+      "x": 292.02,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 445,
+      "x": 292.69,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 446,
+      "x": 293.36,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 447,
+      "x": 294.03,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 448,
+      "x": 294.7,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 449,
+      "x": 295.37,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 450,
+      "x": 296.04,
+      "z": 294.07,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 451,
+      "x": 279.96,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 452,
+      "x": 280.63,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 453,
+      "x": 281.3,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 454,
+      "x": 281.97,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 455,
+      "x": 282.64,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 456,
+      "x": 283.31,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 457,
+      "x": 283.98,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 458,
+      "x": 284.65,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 459,
+      "x": 285.32,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 460,
+      "x": 285.99,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 461,
+      "x": 286.66,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 462,
+      "x": 287.33,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 463,
+      "x": 288.0,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 464,
+      "x": 288.67,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 465,
+      "x": 289.34,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 466,
+      "x": 290.01,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 467,
+      "x": 290.68,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 468,
+      "x": 291.35,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 469,
+      "x": 292.02,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 470,
+      "x": 292.69,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 471,
+      "x": 293.36,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 472,
+      "x": 294.03,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 473,
+      "x": 294.7,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 474,
+      "x": 295.37,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 475,
+      "x": 296.04,
+      "z": 294.88,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 476,
+      "x": 279.96,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 477,
+      "x": 280.63,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 478,
+      "x": 281.3,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 479,
+      "x": 281.97,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 480,
+      "x": 282.64,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 481,
+      "x": 283.31,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 482,
+      "x": 283.98,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 483,
+      "x": 284.65,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 484,
+      "x": 285.32,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 485,
+      "x": 285.99,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 486,
+      "x": 286.66,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 487,
+      "x": 287.33,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 488,
+      "x": 288.0,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 489,
+      "x": 288.67,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 490,
+      "x": 289.34,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 491,
+      "x": 290.01,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 492,
+      "x": 290.68,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 493,
+      "x": 291.35,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 494,
+      "x": 292.02,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 495,
+      "x": 292.69,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 496,
+      "x": 293.36,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 497,
+      "x": 294.03,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 498,
+      "x": 294.7,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 499,
+      "x": 295.37,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    },
+    {
+      "id": 500,
+      "x": 296.04,
+      "z": 295.69,
+      "expires_at": 0,
+      "item": {
+        "id": "stone",
+        "count": 1
+      }
+    }
+  ]
+}
