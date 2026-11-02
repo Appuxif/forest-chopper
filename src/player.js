@@ -1,6 +1,7 @@
 import {debugFlightDelta} from './debug-flight-motion.js';
 import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
 import {createPlayerMotionTracker} from './ragdoll-motion.js';
+import {rootMotionSpeed,playbackRateForSpeed} from './root-motion-speed.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js?v=20261105-empty-loot3';
@@ -109,14 +110,16 @@ function animate(now){
  if(!dead)ctx.vitals?.tick(sprint);
  ctx.sprinting=sprint;
  const motion=!moving?'Idle':Math.abs(forward)>.1?(sprint?'Run':'Walk'):(side<0?'StrafeLeft':'StrafeRight');
- // Playback rate also scales Root Motion distance: faster feet = faster travel.
- const rate=motion==='Idle'?1:(motion==='StrafeLeft'||motion==='StrafeRight')?(sprint?5:4):(motion==='Run'?(forward<0?-2.35:2.35):(forward<0?-2.25:2.25));
+ // The actual GLB cycle duration and Root travel determine the feet playback.
+ // Run is played at an experimental fixed rate; Walk currently has no
+ // authored forward Root travel and uses input-driven fallback.
+ const targetSpeed=sprint?4.6:2.5;
+ const rate=(motion==='Run'?1.2:playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed))*(forward<-.1?-1:1);
  if(!posing&&!dead&&!flying)ctx.simulateVertical(dt);
  let dx=0,dz=0;
  if(ctx.ownAvatar&&!posing&&!dead){
   ctx.ownAvatar.group.rotation.y=ctx.yaw;
   const rootDelta=ctx.tickActor(ctx.ownAvatar,dt,motion,!ctx.onGround,rate);
-  ctx.humanoidPreview?.tick(dt,motion,rate,ctx.ownAvatar);
   dx=rootDelta.x;dz=rootDelta.z;
   // Diagonal input keeps its intended direction; step distance still comes
   // from the animation, rather than an independent hard-coded speed.
@@ -128,11 +131,10 @@ function animate(now){
  }
  // Jump movement remains physics/input-driven, not extracted from Root.
  // Also keep a fallback when testing against an old GLB without Root Motion.
- const noRoot=motion!=='Idle'&&(!ctx.rootMotion[motion]||ctx.rootMotion[motion].travel.lengthSq()<1e-5);
+ const noRoot=motion!=='Idle'&&rootMotionSpeed(ctx.rootMotion[motion])===0;
  if(!dead&&!posing&&!flying&&(!ctx.onGround||!ctx.ownAvatar||noRoot)){
-  const speed=sprint?4.6:2.5;
-  dx=(-Math.sin(ctx.yaw)*forward+Math.cos(ctx.yaw)*side)*speed*dt;
-  dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*speed*dt;
+  dx=(-Math.sin(ctx.yaw)*forward+Math.cos(ctx.yaw)*side)*targetSpeed*dt;
+  dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*targetSpeed*dt;
  }
  if(!posing&&!dead){
   if(flying){
@@ -214,7 +216,7 @@ for(const avatar of ctx.avatars.values()){
    const a=avatar.group.rotation.y,front=-Math.sin(a)*vx-Math.cos(a)*vz,right=Math.cos(a)*vx-Math.sin(a)*vz;
    const moving=avatar.moveSpeed>.55;
    const remoteMotion=!moving?'Idle':Math.abs(right)>Math.abs(front)*1.5?(right>0?'StrafeRight':'StrafeLeft'):(avatar.moveSpeed>3.3?'Run':'Walk');
-   const rate=remoteMotion==='Run'?2.35:remoteMotion==='Walk'?2.25:remoteMotion.startsWith('Strafe')?4:1;
+   const rate=(remoteMotion==='Run'?1.2:playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],Math.min(4.6,Math.max(0.5,avatar.moveSpeed))))*(front<0?-1:1);
    ctx.tickActor(avatar.actor,dt,remoteMotion,avatar.jumping,rate);
   }
  }

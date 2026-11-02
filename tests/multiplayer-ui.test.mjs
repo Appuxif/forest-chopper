@@ -75,7 +75,7 @@ function fixture() {
     communityGoal:{value:null,set(v){if(Number.isInteger(v)){this.value=v;return true}return false},clear(){this.value=null}},
     updateChunks(){},
     disposePreview(){},
-    createLumberjack:()=>({group:new Group(),mixer:{stopAllAction(){}}}),
+    createAvatar:async()=>({group:new Group(),visual:new Group(),shadowMeshes:[],mixer:{stopAllAction(){}}}),
     makeLog:()=>({position:{set(){}},rotation:{y:0}}),
   };
   const multiplayer=createMultiplayer(ctx);

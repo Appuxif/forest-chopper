@@ -369,7 +369,7 @@ export class LiteHumanoid {
 
     // Keep the arms relaxed but visibly clear of the narrower torso.
     // Gentle correction for locomotion; none for dramatic fall/jump poses.
-    const name=this.action?.getClip()?.name||'idle';
+    const name=this.motionName??this.action?.getClip()?.name??'idle';
     const target=name.startsWith('idle')?0.17
       : name==='walk'||name==='walk_back'||name.startsWith('strafe_')?0.12
       : name==='run'?0.085 : 0;
@@ -414,7 +414,7 @@ export async function createLiteHumanoid(options={}){
  if(!BODIES.includes(appearance.body))throw Error('Unknown body: '+appearance.body);
  if(!FACE_PRESETS.includes(appearance.face))throw Error('Unknown face preset: '+appearance.face);
  const [glb,catalog]=await Promise.all([
-   loadGLTF('lite/body_'+appearance.body+(appearance.face==='default'?'':'_'+appearance.face)+'.glb'),getHumanoidCatalog()
+   loadGLTF(appearance.game?'game/body_'+appearance.body+'.glb?v=fc-unified-1':'lite/body_'+appearance.body+(appearance.face==='default'?'':'_'+appearance.face)+'.glb'),getHumanoidCatalog()
  ]);
  const model=cloneSkinned(glb.scene);
  const actor=new LiteHumanoid(model,glb.animations,appearance,catalog);

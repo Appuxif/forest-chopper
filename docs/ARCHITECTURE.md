@@ -68,7 +68,7 @@ index.html / index_debug.html
 | Оркестрация | `main.js` | Собирает `ctx`; поддерживает offline и online |
 | Мир | `world.js`, `tree-spacing.js`, `terrain-noise.js`, `ponds.js`, `lakes.js` | Детерминированное распределение по seed и координатам |
 | Стриминг | `world-task-scheduler.js`, `world-stream-data.js`, `world-stream-worker.js`, `terrain.js`, `distant-forest.js`, `micro-grass.js` | Генерация вне render loop, ограниченное применение результатов; см. [world-streaming.md](world-streaming.md) |
-| Персонаж | `animations.js`, `player.js`, `physics.js`, `orbit-camera.js` | Существующий игровой GLB `lumberjack/lumberjack.glb`, root motion, коллизии |
+| Персонаж | `animations.js`, `player.js`, `physics.js`, `orbit-camera.js`, `characters/humanoid/humanoid-lite.js` | Один видимый риг и один AnimationMixer на каждого аватара; Root Motion берётся из его же Run; коллизии в координатах мира |
 | Игра | `chopping.js`, `building.js`, `inventory.js`, `crafting.js`, `vitals.js` | Действия, ограничения, ресурсы |
 | Подбор | `forest-resources.js`, `collectible-decor.js`, `resource-zones.js`, `ground-boxes.js`, `pickup-interaction.js`, `aim-state.js` | Доступность, расстояние, наведение и визуальный feedback; сервер подтверждает онлайн-действия |
 | Персистентность | `offline-save.js`, `save-slots.js`, `progress.js`, `tutorial.js`, `day-cycle.js` | Валидация локальных данных, сохранение прогресса/фазы |
@@ -77,10 +77,20 @@ index.html / index_debug.html
 
 URL shortcut (`?type=continue|new|multiplayer`, `seed`, `force`, `performance`, `name`, `diag`, `server`) парсится в `main-menu-state.js` и применяется через обычные обработчики `main-menu.js` **до** динамического импорта `main.js`. Пресет/FPS фиксируются в `forest-chopper:settings:v1`, имя/история серверов — в существующих localStorage-ключах. `type=continue` выбирает первый валидный занятый слот, `type=new` — слот 1; параметра выбора слота в URL нет. `force=true` отключает подтверждение перезаписи этого слота; меню после отказа и возврат из игры удаляют query URL, чтобы исключить автоперезапуск. Оба HTML entrypoint используют одну реализацию.
 
-Экспериментальный модульный Humanoid Lite живёт отдельно в
-`characters/humanoid/`: игровой runtime **по-прежнему использует**
-`lumberjack/lumberjack.glb` (см. `src/animations.js`). Не смешивать
-художественный pipeline и готовую игровую интеграцию.
+В режиме мужского или женского персонажа runtime загружает только один
+`characters/humanoid/game/body_male.glb` или `body_female.glb` на аватар:
+геометрия, скелет, анимации и Root Motion принадлежат одному объекту.
+Дополнительные GLB одежды/топора — **элементы экипировки**, не скрытые
+скелеты. Отдельный `src/humanoid-player-model.js` и невидимый driver удалены.
+Классический персонаж остаётся отдельным вариантом и использует собственный
+`lumberjack/lumberjack.glb` — тоже без второй модели-драйвера.
+
+Пайплайн обновления анимации: сохранить `characters/humanoid/animation/humanoid_animation_workbench.blend`,
+экспортировать `humanoid-game.glb` через `characters/humanoid/export_game_glb.py`,
+затем запустить `python3 characters/humanoid/build_game_bodies.py`.
+Последняя команда переносит авторские Run/Chop в модульные модели каждого пола,
+с поправкой на размеры костей женского рига; `.blend` и исходные `lite/body_*.glb`
+не перезаписываются. В браузере не загружается промежуточный `humanoid-game.glb`.
 
 ## 4. Процедурный мир и GPU
 

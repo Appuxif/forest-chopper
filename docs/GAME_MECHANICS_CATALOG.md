@@ -38,7 +38,7 @@
 | WORLD-09 | LIVE | Передвижение и коллизии | Root Motion, ходьба/бег, физика прыжка, столкновения с деревьями/камнями/брёвнами | `player.js`, `animations.js`, `physics.js`, `rock-collisions.js` |
 | WORLD-10 | LIVE | Ориентиры | Тропа, указатели, декоративный костёр, миникарта | `landmarks.js`, `minimap.js` |
 | WORLD-11 | PLANNED | Редактирование ландшафта | Действующего игрового интерфейса копания/насыпания в этом репозитории нет; `terrain.js` выполняет генерацию/стриминг высот, а не persistent voxel-редактирование | — |
-| WORLD-12 | PARTIAL | Персонажи | В игре загружается `lumberjack/lumberjack.glb`; отдельная Humanoid Lite-библиотека пока **не подключена как replacement игрового аватара** | `animations.js`, `characters/humanoid/` |
+| WORLD-12 | LIVE | Персонажи | Выбор классического, мужского или женского; для каждого аватара один видимый скелет и AnimationMixer; анимации, Root Motion и модульная одежда работают на одном риге (без скрытой модели-драйвера) | `animations.js`, `characters/humanoid/`, `tests/unified-humanoid-assets.test.mjs` |
 
 ## 3. Ресурсы, предметы, выживание
 

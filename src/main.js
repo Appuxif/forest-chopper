@@ -3,11 +3,10 @@ import {createMobs} from './mobs.js?v=20261105-corpse-cursor1';
 import {createMobileHud} from './mobile-hud.js?v=20261104-fps3';
 import {createRagdoll} from './ragdoll.js?v=20261103-ragdoll-save-recovery1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
-import {createAnimations} from './animations.js?v=20261102-chop-frame18';
+import {createAnimations} from './animations.js?v=20261104-unified-chop1';
 import {createWorld} from './world.js?v=20261103-region-default-3';
 import {generateSpruceParts} from './spruce-model.js?v=20261103-shared-birch-all1';
 import {generateBirchParts} from './birch-model.js?v=20261103-shared-birch-all1';
-import {createHumanoidPlayerModel} from './humanoid-player-model.js?v=20261101-menu-model1';
 import {normalizeCharacterModel} from './character-model-selection.js';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
 import {readActiveTreeConfig,limitTreeModelTriangles} from './tree-model-config.js?v=20261103-shared-birch-all1';
@@ -25,8 +24,8 @@ import {createCollisionWorld} from './collision-world.js?v=20261102-collision-wo
 import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261105-mob-hit-audio1';
 import {createControls} from './controls.js?v=20261105-corpse-cursor1';
-import {createPlayer} from './player.js?v=20261105-corpse-cursor1';
-import {createMultiplayer} from './multiplayer.js?v=20261103-decor-region2';
+import {createPlayer} from './player.js?v=20261104-unified-chop1';
+import {createMultiplayer} from './multiplayer.js?v=20261104-unified-chop1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261105-hen-voices1';
@@ -48,7 +47,7 @@ import {createCommunityGoal} from './community-goal.js';
 import {createOfflineSave} from './offline-save.js?v=20261104-save-slots1';
 import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
-import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
+import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-rebase2';
 import {createStorages} from './storages.js?v=20261102-collision-world1';
 import {createCampStructures} from './camp-structures.js?v=20261103-distant-fire-billboard20';
 import {createVitalsUI} from './vitals-ui.js?v=20261102-debug-cheats';
@@ -78,7 +77,7 @@ const [animations]=await Promise.all([
  createAnimations(THREE),
  loadRagdollPhysics().catch(error=>console.warn('Rapier preload failed; retrying on ragdoll',error)),
 ]);
-const {modelActors,CHOP_SPEED,createLumberjack,actorChop,tickActor,rootMotion}=animations;
+const {modelActors,CHOP_SPEED,createAvatar,actorChop,tickActor}=animations;
 const treeModels=readActiveTreeConfig();
 let spruceParts=generateSpruceParts(treeModels.models.spruce);
 let birchParts=generateBirchParts(treeModels.models.birch);
@@ -104,7 +103,7 @@ let distantBirchParts=generateBirchParts({
 let distantTreeParts={conifer:distantSpruceParts,birch:distantBirchParts};
 const treeWindShader=createTreeWindShader({motionQuery:typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false}});
 let mobs=null;
-let ownAvatar=null,humanoidPreview=null,thirdPerson=true,ragdoll=null,ragdollControls=null,ragdollCamera=null;
+let ownAvatar=null,thirdPerson=true,ragdoll=null,ragdollControls=null,ragdollCamera=null;
 let refreshPerformance=()=>{};
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 let initialAntialias=true;
@@ -311,7 +310,7 @@ const ctx={
  get chunks(){return chunks;},
  get clearWorld(){return clearWorld;},
  get closeNet(){return closeNet;},
- get createLumberjack(){return createLumberjack;},
+ get createAvatar(){return createAvatar;},
  get disposePreview(){return disposePreview;},
  get cuts(){return cuts;}, set cuts(value){cuts=value;},
  get dayCycle(){return dayCycle;},
@@ -408,7 +407,7 @@ const ctx={
  get rockColliders(){return rockColliders;},
  get rockGeo(){return rockGeo;},
  get rockMat(){return rockMat;},
- get rootMotion(){return rootMotion;},
+ get rootMotion(){return ownAvatar?.rootMotion??{};},
  get scene(){return scene;},
  get settings(){return settings;},
  get audio(){return gameAudio;},
@@ -582,16 +581,14 @@ collisionWorld=createCollisionWorld(ctx);
  simulateVertical, ragdollStandingSupport, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, placeError, updatePreview, placeLog, removeLog, setMode, disposePreview,nudge:nudgeLog,rotate:rotateLog}=createBuilding(ctx));
 ({aimed, spawnChips, chop, tickImpact:tickChopImpact,acknowledgeLocalChop,resetChop}=createChopping(ctx));
-ownAvatar=createLumberjack();if(ownAvatar){
- // Layer 3 is local-only (hidden in first person); layer 1 remains enabled
- // for remote players. Both layers are visible to the character shadow light.
- (ownAvatar.group.userData??={}).profileCategory='players';
- ownAvatar.visual.traverse(node=>{if(node.isMesh)node.layers.set(3);});
- camera.layers.enable(1);
- camera.layers.enable(3);
- scene.add(ownAvatar.group);
- humanoidPreview=createHumanoidPlayerModel({THREE,avatar:ownAvatar,model:normalizeCharacterModel(menuLaunch.characterModel)});
-}
+// One visible avatar drives its own Root Motion and bones. No hidden proxy.
+// Load the chosen body before entering gameplay so physics and visuals start
+// from the same frame, without an asynchronous second rig.
+ownAvatar=await createAvatar(normalizeCharacterModel(menuLaunch.characterModel),3);
+camera.layers.enable(1);
+camera.layers.enable(3);
+(ownAvatar.group.userData??={}).profileCategory='players';
+scene.add(ownAvatar.group);
 ragdoll=createRagdoll(ctx);
 ({isOnline, sendNet, updatePing, syncWood, clearWorld, addLog, treeHit, treeFell, addAvatar, removeAvatar, closeNet, sendChat, sendMapPing, sendEmote, chatHistory}=createMultiplayer(ctx));
 inventory=createInventory(ctx);

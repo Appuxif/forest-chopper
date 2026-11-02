@@ -309,6 +309,8 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   let connected = false, latency = null, lastRate = null, lastPhysicsRate = null, lastCpuMs = null, lastGpuMs = null, gpuTimingSupported = null, lastDiagnostics = '', lastPosition = '', lastGpu = null;
   let profilerSampling=false;
   const performanceSampling=()=>state.showFps||profilerSampling;
+  let lastWorldPositionSample=null;
+
   const css = doc.createElement('style');
   css.textContent = `
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
@@ -1102,15 +1104,26 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     renderFps();
   }
   function tick(now, gameCtx = null) {
-    if (!performanceSampling()) {lastSample = null;frames = 0;lastRate=null;lastDiagnostics='';return;}
+    if (!performanceSampling()) {lastSample = null;frames = 0;lastRate=null;lastDiagnostics='';lastWorldPositionSample=null;return;}
     if (lastGpu===null && gameCtx?.renderer)
       lastGpu=getGpuRendererName(gameCtx.renderer);
-    if (lastSample === null) {lastSample = now;frames = 0;renderFps();return;}
+    if (lastSample === null) {
+      lastSample = now;
+      if(gameCtx)lastWorldPositionSample={x:gameCtx.px,z:gameCtx.pz,now};
+      frames = 0;renderFps();return;
+    }
     frames++;
     if (now - lastSample >= 950) {
       const rate = Math.round(frames * 1000 / (now - lastSample));
       lastRate = Math.max(0, rate);
-      lastPosition = gameCtx ? `X ${gameCtx.px.toFixed(1)} · Y ${gameCtx.feetY.toFixed(1)} · Z ${gameCtx.pz.toFixed(1)}` : '';
+      if(gameCtx){
+        const elapsed=lastWorldPositionSample?(now-lastWorldPositionSample.now)/1000:0;
+        const worldSpeed=elapsed>0?Math.hypot(gameCtx.px-lastWorldPositionSample.x,
+          gameCtx.pz-lastWorldPositionSample.z)/elapsed:null;
+        lastWorldPositionSample={x:gameCtx.px,z:gameCtx.pz,now};
+        lastPosition=`World speed ${Number.isFinite(worldSpeed)?worldSpeed.toFixed(2):'0.00'} м/с`+
+          `\nX ${gameCtx.px.toFixed(1)} · Y ${gameCtx.feetY.toFixed(1)} · Z ${gameCtx.pz.toFixed(1)}`;
+      }else{lastWorldPositionSample=null;lastPosition='';}
       lastDiagnostics = gameCtx ? formatDiagnostics(collectDiagnostics(gameCtx)) : '';
       renderFps();
       frames = 0;
