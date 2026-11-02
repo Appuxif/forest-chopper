@@ -1,4 +1,5 @@
-import {createCampfireModel,animateCampfireModel} from './campfire-model.js';
+import {createCampfireModel,animateCampfireModel,presentCampfireModel,disposeCampfireEffects} from './campfire-model.js';
+import {createFireVisibilityTester} from './fire-effects.js';
 import {createTrailTexture} from './trail-texture.js';
 // Shared low-poly navigation cues. The trail is purely visual:
 // tree spawn coordinates, collision, server and save state remain unchanged.
@@ -13,7 +14,8 @@ export function createLandmarks(ctx,doc=document) {
   const poleMaterial=new THREE.MeshLambertMaterial({color:0x76553b});
   const boardGeometry=new THREE.PlaneGeometry(3.0,.8);
   const reduceMotion=typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false};
-  let activeFire=null,lastFireTick=-Infinity;
+  let activeFire=null,lastFireTick=-Infinity,lastVisibility=-Infinity;
+  const fireVisibility=createFireVisibilityTester(ctx);
 
   const boardMaterials=['←  К НАЧАЛУ','К НАЧАЛУ  →'].map(label=>{
     const canvas=doc.createElement('canvas');
@@ -46,6 +48,7 @@ export function createLandmarks(ctx,doc=document) {
   }
 
   function createCampfire(parent) {
+    if(activeFire)disposeCampfireEffects(activeFire.group);
     const visual=createCampfireModel(ctx,{shadows:true});
     const fire=visual.group;
     fire.position.set(5,ctx.terrain.heightAt(5,5),5);
@@ -54,25 +57,43 @@ export function createLandmarks(ctx,doc=document) {
     parent.userData?.shadowDecor?.push(fire);
     parent.userData?.grassClearings?.push({x:5,z:5,radius:1.65});
     activeFire={parent,...visual};
-    lastFireTick=-Infinity;
+    lastFireTick=-Infinity;lastVisibility=-Infinity;
   }
 
   function tick(now) {
     if(!activeFire)return;
-    if(ctx.chunks.get('0,0')!==activeFire.parent){activeFire=null;return;}
+    if(ctx.chunks.get('0,0')!==activeFire.parent){
+      disposeCampfireEffects(activeFire.group);
+      activeFire=null;return;
+    }
     if(!Number.isFinite(now))return;
-    const {light}=activeFire;
+    const {light,group}=activeFire;
+    const distance=Math.hypot(ctx.px-5,ctx.pz-5);
+    if(now-lastVisibility>=150){
+      lastVisibility=now;fireVisibility.begin();
+      const onScreen=fireVisibility.visible(5,group.position.y,5,'campfire',distance);
+      presentCampfireModel(ctx,group,{lit:true,distance,onScreen});
+      light.visible=distance<25;
+    }
+    const tier=group.userData.fireEffects?.tier;
+    if(tier==='off'||tier==='glow'||distance>=100){
+      if(reduceMotion.matches){
+        animateCampfireModel(group,now,true,true,ctx);
+        light.intensity=1.8;
+      }
+      return;
+    }
     if(reduceMotion.matches){
-      animateCampfireModel(activeFire.group,now,true);
+      animateCampfireModel(group,now,true,true,ctx);
       light.intensity=1.8;
       return;
     }
-    // Spark movement happens every frame, independent of flame flicker throttle.
-    animateCampfireModel(activeFire.group,now,false,false);
-    if(Math.hypot(ctx.px-5,ctx.pz-5)<11)light.shadow.needsUpdate=true;
+    // Spark motion stays independent of the legacy low-poly flame throttle.
+    animateCampfireModel(group,now,false,false,ctx);
+    if(distance<11)light.shadow.needsUpdate=true;
     if(now-lastFireTick<150)return;
     lastFireTick=now;
-    animateCampfireModel(activeFire.group,now,false);
+    animateCampfireModel(group,now,false,true,ctx);
     light.intensity=1.8+Math.sin(now*.007)*.20;
   }
 

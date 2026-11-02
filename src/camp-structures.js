@@ -1,10 +1,12 @@
-import {createCampfireModel,attachAnimatedFire,animateCampfireModel} from './campfire-model.js';
+import {createCampfireModel,attachAnimatedFire,animateCampfireModel,presentCampfireModel,disposeCampfireEffects} from './campfire-model.js';
+import {createFireVisibilityTester} from './fire-effects.js';
 import {CAMP_RECIPES,MAX_CAMP_STRUCTURES,validCampStructure,isFireKind} from './camp-rules.js';
 
 // Procedural campsite with bounded lights, offline snapshots and online authority.
 export function createCampStructures(ctx,doc=document){
   const {THREE,scene}=ctx,items=new Map();
-  let lastId=0,lastLighting=0;
+  let lastId=0,lastLighting=-Infinity;
+  const fireVisibility=createFireVisibilityTester(ctx);
   const wood=new THREE.MeshLambertMaterial({color:0x805437});
   const stone=new THREE.MeshLambertMaterial({color:0x797c75});
   const metal=new THREE.MeshStandardMaterial({color:0xb27a43,metalness:.67,roughness:.32});
@@ -63,6 +65,7 @@ export function createCampStructures(ctx,doc=document){
     if(item.kind==='campfire'){
       const fire=createCampfireModel(ctx);
       g.add(fire.group);
+      g.userData.fireOrigin=fire.group;
       g.userData.flame=fire.flame;
       g.userData.innerFlame=fire.inner;
       g.userData.sparks=fire.sparks;
@@ -163,13 +166,11 @@ export function createCampStructures(ctx,doc=document){
     return g;
   }
   function updateFlame(item){
-    const flame=item.group.userData.flame;
-    if(flame)flame.visible=item.lit;
-    if(item.group.userData.innerFlame)item.group.userData.innerFlame.visible=item.lit;
-    for(const spark of item.group.userData.sparks??[])spark.visible=item.lit;
-    const light=item.group.userData.light;
+    if(!isFireKind(item.kind))return;
+    const distance=Math.hypot(item.x-ctx.px,item.z-ctx.pz);
+    presentCampfireModel(ctx,item.group,{lit:item.lit,distance});
     // Enabled lights are selected in tick(): never light all saved fires at once.
-    if(light)light.visible=false;
+    if(item.group.userData.light)item.group.userData.light.visible=false;
   }
   function add(item){
     if(!validCampStructure(item))return false;
@@ -187,6 +188,7 @@ export function createCampStructures(ctx,doc=document){
     return true;
   }
   function remove(id){const item=items.get(id);if(!item)return false;
+    disposeCampfireEffects(item.group);
     scene.remove(item.group);items.delete(id);ctx.collisionWorld?.invalidate?.();ctx.deathSystem?.onStructureRemoved?.(id);ctx.atmosphere?.invalidateStaticShadows?.();return true;}
   function clear(){for(const id of [...items.keys()])remove(id);}
   function set(list){clear();for(const item of list??[])add(item);}
@@ -246,19 +248,35 @@ export function createCampStructures(ctx,doc=document){
   const reducedMotion=typeof matchMedia==='function'
     ?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false};
   function tick(now=0){
-    for(const item of items.values()){
-      if(item.lit&&isFireKind(item.kind)&&Math.hypot(item.x-ctx.px,item.z-ctx.pz)<25)
-        animateCampfireModel(item.group,now,reducedMotion.matches);
+    if(now-lastLighting>=150){
+      lastLighting=now;
+      fireVisibility.begin();
+      // Visibility and distance LOD are resolved only ~7 times/sec.
+      // Off-camera effects have no draw calls and no CPU animation.
+      for(const item of items.values()){
+        if(!isFireKind(item.kind))continue;
+        const distance=Math.hypot(item.x-ctx.px,item.z-ctx.pz);
+        const onScreen=item.lit&&fireVisibility.visible(
+          item.x,item.group.position.y,item.z,item.kind,distance);
+        presentCampfireModel(ctx,item.group,{lit:item.lit,distance,onScreen});
+      }
+      const lit=[...items.values()].filter(x=>x.lit&&isFireKind(x.kind))
+        .sort((a,b)=>Math.hypot(a.x-ctx.px,a.z-ctx.pz)-Math.hypot(b.x-ctx.px,b.z-ctx.pz));
+      const lighted=new Set(lit.slice(0,3).map(x=>x.id));
+      for(const item of lit){
+        const light=item.group.userData.light;
+        if(light)light.visible=lighted.has(item.id)&&
+          Math.hypot(item.x-ctx.px,item.z-ctx.pz)<25;
+      }
+      for(const item of items.values())if(!item.lit&&item.group.userData.light)
+        item.group.userData.light.visible=false;
     }
-    if(now-lastLighting<200)return;
-    lastLighting=now;
-    // Three nearest lit fires receive actual light, others keep cheap emissive flames.
-    const lit=[...items.values()].filter(x=>x.lit&&isFireKind(x.kind))
-      .sort((a,b)=>Math.hypot(a.x-ctx.px,a.z-ctx.pz)-Math.hypot(b.x-ctx.px,b.z-ctx.pz));
-    const lighted=new Set(lit.slice(0,3).map(x=>x.id));
     for(const item of items.values()){
-      const light=item.group.userData.light;
-      if(light)light.visible=item.lit&&lighted.has(item.id);
+      if(!item.lit||!isFireKind(item.kind))continue;
+      const data=(item.group.userData.fireOrigin??item.group).userData;
+      if(data.fireEffects?.tier==='off'||data.fireEffects?.tier==='glow')continue;
+      if(Math.hypot(item.x-ctx.px,item.z-ctx.pz)<100)
+        animateCampfireModel(item.group,now,reducedMotion.matches,true,ctx);
     }
   }
   return {add,remove,clear,set,snapshot,place,dismantle,toggle,activate,use,tick,nearFire,

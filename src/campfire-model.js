@@ -1,3 +1,5 @@
+import {createFireEffects,resolveFireTier,firePreset} from './fire-effects.js';
+
 // Shared upgraded crafting campfire: identical at spawn, in player structures,
 // and in inventory thumbnails. Logs converge upward in the centre, while
 // their outer ends rest near the rock ring.
@@ -27,6 +29,13 @@ function fireAssets(THREE){
  return asset;
 }
 
+export function disposeCampfireEffects(group){
+ const data=(group?.userData?.fireOrigin??group)?.userData;
+ if(!data?.fireEffects)return;
+ data.fireEffects.dispose();
+ data.fireEffects=null;
+}
+
 // Reusable two-cone fire. The campfire and the torch share materials,
 // animation, and the three-spark effect; only the geometry scale/placement differs.
 export function attachAnimatedFire(ctx,parent,{
@@ -36,6 +45,8 @@ export function attachAnimatedFire(ctx,parent,{
  shadows=false,
 }={}){
  const THREE=ctx.THREE,asset=fireAssets(THREE);
+ // Static fuel/stone/torch-head geometry is kept separately for far glow-only LOD.
+ parent.userData.fireBody=parent.children.slice();
  if(kind==='torch'&&!asset.torchFlameGeo){
   asset.torchFlameGeo=new THREE.ConeGeometry(.20,.62,7);
   asset.torchInnerGeo=new THREE.ConeGeometry(.11,.36,6);
@@ -76,6 +87,7 @@ export function attachAnimatedFire(ctx,parent,{
  parent.userData.innerFlame=inner;
  parent.userData.sparks=sparks;
  parent.userData.light=light;
+ parent.userData.fireKind=kind;
  return {flame,inner,light,sparks};
 }
 
@@ -116,11 +128,37 @@ export function createCampfireModel(ctx,{shadows=false}={}){
 }
 
 
+// Apply game graphics preset/distance to the source-generator effects.
+// Expensive instances are allocated lazily and reused across LOD changes.
+export function presentCampfireModel(ctx,group,{lit=true,distance=0,onScreen=true}={}){
+ const visual=group?.userData?.fireOrigin??group;
+ const data=visual?.userData;
+ if(!data?.flame)return 'off';
+ const tier=!lit||!onScreen?'off':resolveFireTier(firePreset(ctx.settings),distance);
+ // Over 100m only the glowing billboard remains (no rocks or logs drawn).
+ for(const part of data.fireBody??[])part.visible=distance<100;
+ const legacy=tier==='low';
+ data.flame.visible=legacy;
+ if(data.innerFlame)data.innerFlame.visible=legacy;
+ for(const spark of data.sparks??[])spark.visible=legacy;
+ if(['ultra','high','medium','glow'].includes(tier)&&!data.fireEffects){
+  data.fireEffects=createFireEffects(ctx.THREE,visual,data.fireKind??'campfire');
+ }
+ data.fireEffects?.setTier(tier);
+ return tier;
+}
+
+// Keep the original low-quality fire animation and sparks unchanged.
 // Called per frame for lit fires. No new geometry, materials or light sources.
 // When reduced motion is requested, sparks return to their resting positions.
-export function animateCampfireModel(group,now,reducedMotion=false,animateFlames=true){
- const {flame,innerFlame,sparks=[]}=group?.userData??{};
- if(!flame||flame.visible===false||!Number.isFinite(now))return;
+export function animateCampfireModel(group,now,reducedMotion=false,animateFlames=true,ctx=null){
+ const visual=group?.userData?.fireOrigin??group;
+ const {flame,innerFlame,sparks=[],fireEffects}=visual?.userData??{};
+ if(!Number.isFinite(now))return;
+ if(fireEffects&&ctx){
+  fireEffects.tick(now,ctx.camera?.position,group.position,reducedMotion);
+ }
+ if(!flame||flame.visible===false)return;
  const t=now*.001;
  if(animateFlames){
   if(reducedMotion){
