@@ -1,7 +1,7 @@
-import {createRagdoll} from './ragdoll.js?v=20261102-ragdoll-camera1';
+import {createRagdoll} from './ragdoll.js?v=20261102-collision-world1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261102-ragdoll-camera1';
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
-import {createWorld} from './world.js?v=20261101-startup-loader2';
+import {createWorld} from './world.js?v=20261102-collision-world1';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
@@ -14,12 +14,13 @@ import {createGrass} from './grass.js';
 import {createMicroGrass} from './micro-grass.js?v=20261101-startup-loader1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
 import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
-import {createPhysics} from './physics.js?v=20261102-ragdoll-height1';
-import {createBuilding} from './building.js?v=20261031-ponds1';
-import {createChopping} from './chopping.js?v=20261102-ragdoll-wake1';
-import {createControls} from './controls.js?v=20261102-ragdoll-sleep1';
-import {createPlayer} from './player.js?v=20261102-ragdoll-clip1';
-import {createMultiplayer} from './multiplayer.js?v=20261102-ragdoll-sleep1';
+import {createPhysics} from './physics.js?v=20261102-collision-world1';
+import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
+import {createBuilding} from './building.js?v=20261102-collision-world1';
+import {createChopping} from './chopping.js?v=20261102-collision-world1';
+import {createControls} from './controls.js?v=20261102-collision-world1';
+import {createPlayer} from './player.js?v=20261102-ragdoll-momentum1';
+import {createMultiplayer} from './multiplayer.js?v=20261102-collision-world1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261102-url-launch1';
@@ -29,20 +30,20 @@ import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
 import {createPlantInteraction} from './plant-interaction.js?v=20261031-collectible-plants1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
 import {createDayCycle} from './day-cycle.js?v=20261101-synced-time2';
-import {createAtmosphere} from './atmosphere.js?v=20261101-shadow-toggle1';
+import {createAtmosphere} from './atmosphere.js?v=20261102-sky-far-clip1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
-import {createCrafting} from './crafting.js?v=20261031-ponds1';
+import {createCrafting} from './crafting.js?v=20261102-collision-world1';
 import {createInteractionHighlight} from './interaction-highlight.js';
 import {createDiscoveries} from './discoveries.js';
 import {createCommunityGoal} from './community-goal.js';
-import {createOfflineSave} from './offline-save.js?v=20261102-ragdoll-sleep1';
+import {createOfflineSave} from './offline-save.js?v=20261102-collision-world1';
 import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
-import {createStorages} from './storages.js';
-import {createCampStructures} from './camp-structures.js?v=20261102-ragdoll-sleep1';
+import {createStorages} from './storages.js?v=20261102-collision-world1';
+import {createCampStructures} from './camp-structures.js?v=20261102-collision-world1';
 import {createVitalsUI} from './vitals-ui.js?v=20261102-ragdoll-sleep1';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261102-ragdoll-sleep1';
@@ -90,7 +91,7 @@ let distantBirchParts=generateBirchParts({
 });
 let distantTreeParts={conifer:distantSpruceParts,birch:distantBirchParts};
 const treeWindShader=createTreeWindShader({motionQuery:typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false}});
-let ownAvatar=null,thirdPerson=true,ragdoll=null,ragdollControls=null;
+let ownAvatar=null,thirdPerson=true,ragdoll=null,ragdollControls=null,ragdollCamera=null;
 let refreshPerformance=()=>{};
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
 let initialAntialias=true;
@@ -223,6 +224,7 @@ let offlineSave=null,progress=null,inventory=null,vitals=null,forestResources=nu
 let pickupInteraction=null,storages=null,campStructures=null;
 let worldStartupGate=null;
 
+let collisionWorld=null;
 let distantForest, replaceTreeModels, ragdollStandingSupport, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, nudgeLog, rotateLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
  get $(){return $;},
@@ -335,7 +337,9 @@ const ctx={
  get ownAvatar(){return ownAvatar;}, set ownAvatar(value){ownAvatar=value;},
  get ragdoll(){return ragdoll;},
  get ragdollControls(){return ragdollControls;},
+ get ragdollCamera(){return ragdollCamera;},
  get ragdollStandingSupport(){return ragdollStandingSupport;},
+ get collisionWorld(){return collisionWorld;},
  get particles(){return particles;},
  get pitch(){return pitch;}, set pitch(value){pitch=value;},
  get placeLog(){return placeLog;},
@@ -531,6 +535,7 @@ refreshPerformance=()=>{
     ctx.updateChunks?.();
   }
 };
+collisionWorld=createCollisionWorld(ctx);
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal,
  simulateVertical, ragdollStandingSupport, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, placeError, updatePreview, placeLog, removeLog, setMode, disposePreview,nudge:nudgeLog,rotate:rotateLog}=createBuilding(ctx));
@@ -569,7 +574,7 @@ if(menuLaunch.mode==='continue')offlineSave.restore();
 else if(menuLaunch.mode==='new')offlineSave.reset();
 else if(menuLaunch.mode==='online')offlineSave.suspend({flush:false});
 progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}});
-({toggleView, animate}=createPlayer(ctx));
+({toggleView, ragdollCamera, animate}=createPlayer(ctx));
 ({showMapPing,clearMapPings}=createMinimap(ctx));
 ({look}=createControls(ctx));
 worldStartupGate=createWorldStartupGate({

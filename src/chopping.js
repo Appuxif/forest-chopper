@@ -69,7 +69,7 @@ const now=performance.now();const chopCooldown=(ctx.ownAvatar?.actions?.Chop2?.g
        if(best.id!=null)ctx.sendNet({type:'hit_structure',kind:'log',id:best.id});
      }else{
        const index=ctx.placed.indexOf(best.entry);if(index>=0&&ctx.inventory.state.addLogs(1)===1){
-         ctx.scene.remove(best.entry.mesh);ctx.placed.splice(index,1);ctx.wood=ctx.inventory.state.wood();
+         ctx.scene.remove(best.entry.mesh);ctx.placed.splice(index,1);ctx.collisionWorld?.invalidate?.();ctx.wood=ctx.inventory.state.wood();
          ctx.inventory.render();
          ctx.atmosphere?.invalidateStaticShadows?.();
          ctx.offlineSave.markDirty();ctx.notify('🪵 Бревно возвращено в сумку','success');
@@ -96,7 +96,7 @@ if(u.hp<=0){
     ctx.notify?.('Слишком много предметов на земле — подбери часть брёвен','warning','ground-full');
     return;
   }
-  ctx.detachTreeForFall?.(t);ctx.trees.delete(u.id);ctx.felled.add(u.id);ctx.treeDamage.delete(u.id);
+  ctx.detachTreeForFall?.(t);ctx.trees.delete(u.id);ctx.collisionWorld?.invalidate?.();ctx.felled.add(u.id);ctx.treeDamage.delete(u.id);
   ctx.falling.push({tree:t,elapsed:0,direction,removed:false});
   ctx.cuts++;ctx.tutorial.complete('tree-fell');ctx.progress.record('tree-fell');
   ctx.$('cut').textContent=ctx.cuts;

@@ -181,12 +181,13 @@ export function createCampStructures(ctx,doc=document){
     if(items.size>=MAX_CAMP_STRUCTURES)return false;
     const entry={...item,group:mesh(item)};
     items.set(item.id,entry);scene.add(entry.group);updateFlame(entry);
+    ctx.collisionWorld?.invalidate?.();
     if(item.id<0)lastId=Math.min(lastId,item.id);
     ctx.atmosphere?.invalidateStaticShadows?.();
     return true;
   }
   function remove(id){const item=items.get(id);if(!item)return false;
-    scene.remove(item.group);items.delete(id);ctx.deathSystem?.onStructureRemoved?.(id);ctx.atmosphere?.invalidateStaticShadows?.();return true;}
+    scene.remove(item.group);items.delete(id);ctx.collisionWorld?.invalidate?.();ctx.deathSystem?.onStructureRemoved?.(id);ctx.atmosphere?.invalidateStaticShadows?.();return true;}
   function clear(){for(const id of [...items.keys()])remove(id);}
   function set(list){clear();for(const item of list??[])add(item);}
   function snapshot(){return [...items.values()].map(({group,...item})=>({...item}));}

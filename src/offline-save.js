@@ -203,6 +203,7 @@ export function createOfflineSave(ctx, {
       applyLogRotation(mesh,log.orientation);
       ctx.scene.add(mesh);
       ctx.placed.push({...log, y, mesh});
+      ctx.collisionWorld?.invalidate?.();
     }
     for(const furniture of state.furniture){ctx.crafting?.add({...furniture,id:-(ctx.crafting.items.size+1)});}
     ctx.storages?.set?.(state.storages);

@@ -161,6 +161,7 @@ export function createBuilding(ctx) {
     applyLogRotation(mesh,p.orientation);
     ctx.scene.add(mesh);
     ctx.placed.push({...p, mesh});
+    ctx.collisionWorld?.invalidate?.();
     ctx.atmosphere?.invalidateStaticShadows?.();
     ctx.wood=ctx.inventory?ctx.inventory.state.wood():ctx.wood-1;
     ctx.inventory?.render();
@@ -197,6 +198,7 @@ export function createBuilding(ctx) {
     }
     ctx.scene.remove(log.mesh);
     ctx.placed.splice(idx, 1);
+    ctx.collisionWorld?.invalidate?.();
     ctx.atmosphere?.invalidateStaticShadows?.();
     ctx.wood=ctx.inventory?ctx.inventory.state.wood():ctx.wood+1;
     ctx.inventory?.render();

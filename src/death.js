@@ -88,7 +88,11 @@ export function createDeathSystem(ctx,{
   ctx.px=x;ctx.pz=z;ctx.feetY=ctx.terrain.heightAt(x,z);
   ctx.verticalSpeed=0;ctx.onGround=true;ctx.buildMode=false;
   ctx.disposePreview?.();
-  if(ctx.ownAvatar)ctx.ownAvatar.group.position.set(x,ctx.feetY,z);
+  if(ctx.ownAvatar){
+   ctx.ownAvatar.group.position.set(x,ctx.feetY,z);
+   ctx.ownAvatar.group.rotation.set(0,ctx.yaw,0);
+   ctx.ownAvatar.group.updateMatrixWorld?.(true);
+  }
  }
  function onDeath(){
   if(handling||active()||ctx.vitals?.health>0)return false;

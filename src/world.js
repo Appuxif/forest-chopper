@@ -143,6 +143,7 @@ for(const obj of decor.userData.reactivePlants){
    (obj.position.x-area.x)**2+(obj.position.z-area.z)**2<area.radius**2);
 }
 ctx.rockColliders?.set(key,rockColliders);
+ctx.collisionWorld?.invalidate?.();
 ctx.forestResources?.syncDecorChunk?.(decor);
 }
 // Swap procedural visuals and GPU batches while retaining logical tree objects,
@@ -218,6 +219,7 @@ function updateChunks(){
     ctx.scene.remove(group);
     ctx.chunks.delete(key);
     ctx.rockColliders?.delete(key);
+    ctx.collisionWorld?.invalidate?.();
   }
   for(const [key,tree] of ctx.trees){
     if(Math.abs(tree.position.x-ctx.px)<=ctx.chunkSize*(radius+1.5)&&
@@ -225,6 +227,7 @@ function updateChunks(){
     tree.userData.treeBatch?.remove(tree,false);
     ctx.scene.remove(tree);
     ctx.trees.delete(key);
+    ctx.collisionWorld?.invalidate?.();
   }
   // Cheap silhouettes fill the visible horizon, including the far lake shore.
   distantForest.update();

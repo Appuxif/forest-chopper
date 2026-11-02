@@ -1,4 +1,5 @@
 import {tickFallingTrees} from './falling-trees.js';
+import {createPlayerMotionTracker} from './ragdoll-motion.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js';
@@ -15,11 +16,41 @@ export function setRagdollCameraClipping(camera,active,normalNear){
  camera.updateProjectionMatrix();
  return true;
 }
+// One lifecycle for every ragdoll exit (Space, bed wake-up, respawn, or
+// interrupted death setup). Physics never needs to know how the orbit
+// camera, view layers or near clipping plane are implemented.
+export function createRagdollCameraLifecycle(ctx,{toggleView,resetOrbit}){
+ const normalNear=ctx.camera.near;
+ let priorThirdPerson=null;
+ function enter(){
+  if(priorThirdPerson!==null)return false;
+  priorThirdPerson=ctx.thirdPerson;
+  if(!ctx.thirdPerson)toggleView(); // Render the falling character.
+  setRagdollCameraClipping(ctx.camera,true,normalNear);
+  resetOrbit();
+  return true;
+ }
+ function exit(){
+  if(priorThirdPerson===null)return false;
+  const restoreThirdPerson=priorThirdPerson;
+  priorThirdPerson=null;
+  setRagdollCameraClipping(ctx.camera,false,normalNear);
+  if(ctx.thirdPerson!==restoreThirdPerson)toggleView();
+  // Snap the spring-arm pivot to the next player position. Especially
+  // important when respawn teleports from the corpse to the spawn/bed.
+  resetOrbit();
+  return true;
+ }
+ return {enter,exit,get active(){return priorThirdPerson!==null;}};
+}
+
 export function createPlayer(ctx) {
 const limiter=createFrameLimiter();
 const gpuTimer=createGpuFrameTimer(ctx.renderer);
 const orbitCamera=createOrbitCamera(ctx);
-const cameraNormalNear=ctx.camera.near;
+const motionTracker=createPlayerMotionTracker();
+ctx.motionVelocity=motionTracker.reset(ctx.px,ctx.pz,ctx.yaw);
+let wasPosing=false;
 let lastWorldTick=-Infinity;
 function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
  orbitCamera.reset();
@@ -30,6 +61,9 @@ function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
  ctx.axe.visible=!ctx.thirdPerson&&(ctx.inventory?.equipped??true);
  ctx.$('viewtoggle').textContent=ctx.thirdPerson?'👤 Камера: сзади':'👁 Камера: глаза'}
 ctx.$('viewtoggle').onclick=toggleView;ctx.axe.visible=false;
+const ragdollCamera=createRagdollCameraLifecycle(ctx,{
+ toggleView,resetOrbit:()=>orbitCamera.reset(),
+});
 
 function animate(now){
  requestAnimationFrame(animate);
@@ -53,7 +87,6 @@ function animate(now){
  ctx.ragdollControls?.tick();
  const dead=ctx.deathSystem?.active===true;
  const ragdoll=ctx.ragdoll?.active===true;
- setRagdollCameraClipping(ctx.camera,ragdoll,cameraNormalNear);
  const posing=ragdoll||ctx.ragdollControls?.busy===true;
  if(posing||dead)ctx.jumpRequested=false; // no movement while dead
  ctx.wind.tick(now);ctx.treeWindShader?.tick(now,ctx.px,ctx.pz,ctx.settings.windEnabled);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
@@ -90,8 +123,17 @@ function animate(now){
   dx=(-Math.sin(ctx.yaw)*forward+Math.cos(ctx.yaw)*side)*speed*dt;
   dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*speed*dt;
  }
- if(!posing&&!dead)ctx.moveHorizontal(dx,dz);
- else if(ragdoll){ctx.ragdoll.tick(dt);ctx.ragdollControls?.syncPose?.();}
+ if(!posing&&!dead){
+  ctx.moveHorizontal(dx,dz);
+  // Always derive velocity from actual collision-resolved displacement,
+  // including walking, running, strafing and airborne input.
+  ctx.motionVelocity=wasPosing?motionTracker.reset(ctx.px,ctx.pz,ctx.yaw)
+    :motionTracker.sample(ctx.px,ctx.pz,ctx.yaw,dt);
+  wasPosing=false;
+ }else{
+  wasPosing=true; // Don't treat teleport/stand-up as walking velocity.
+  if(ragdoll){ctx.ragdoll.tick(dt);ctx.ragdollControls?.syncPose?.();}
+ }
  ctx.waterSplashes?.tick(dt);
  ctx.microGrass?.tick();
  ctx.worldStreamer?.tick();
@@ -159,5 +201,5 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
  if(profiling)ctx.settings.recordCpuFrame(performance.now()-cpuStart,now);
 }
 
-return {toggleView, animate};
+return {toggleView,ragdollCamera,animate};
 }

@@ -1,4 +1,6 @@
-import {logHalfExtents} from './log-grid.js';
+import {createRagdollEnvironment} from './ragdoll-colliders.js';
+import {captureRagdollMomentum,applyRagdollMomentum} from './ragdoll-motion.js';
+export {makeGroundMesh} from './ragdoll-colliders.js';
 // Shared local-player ragdoll. Uses the same GLB SkinnedMesh/bones as the
 // animated character. Rapier is loaded only when a death or DEBUG trigger occurs.
 const RAPIER_URL='https://esm.sh/@dimforge/rapier3d-compat@0.20.0?bundle';
@@ -46,21 +48,6 @@ export function findRagdollBones(visual){
  }
  return bones;
 }
-export function makeGroundMesh(terrain,x,z,size=14,step=1.5){
- const vertices=[],indices=[],sections=Math.ceil(size*2/step);
- const side=sections+1;
- const start=-sections*step/2;
- for(let ix=0;ix<=sections;ix++)
-   for(let iz=0;iz<=sections;iz++){
-     const dx=start+ix*step,dz=start+iz*step;
-     vertices.push(dx,terrain.heightAt(x+dx,z+dz),dz);
-   }
- for(let ix=0;ix<sections;ix++)for(let iz=0;iz<sections;iz++){
-   const a=ix*side+iz,b=(ix+1)*side+iz,c=a+1,d=b+1;
-   indices.push(a,c,b,b,c,d);
- }
- return {vertices:new Float32Array(vertices),indices:new Uint32Array(indices)};
-}
 function vec(v){return {x:v.x,y:v.y,z:v.z};}
 function quat(q){return {x:q.x,y:q.y,z:q.z,w:q.w};}
 export function createRagdoll(ctx,{loadPhysics=async()=>{
@@ -78,6 +65,9 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
  async function trigger({allowOnline=false,bed=null,restPose=null}={}){
    if(instance)return state();
    if(loading)return loading;
+   // Capture on the input frame, BEFORE loading Rapier asynchronously: a
+   // first-time WASM fetch must not erase the velocity of a jump or sprint.
+   const initialMotion=captureRagdollMomentum(ctx,{bed:!!bed});
    loading=(async()=>{
      const actor=ctx.ownAvatar;
      if(!actor)throw new Error('3D character has not loaded');
@@ -85,7 +75,6 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
      if(!physics)physics=await loadPhysics();
      if(!physics?.World||!physics?.RigidBodyDesc||!physics?.JointData)
        throw new Error('Rapier physics library unavailable');
-     if(!ctx.thirdPerson)ctx.toggleView?.();
      const bones=findRagdollBones(actor.visual);
      actor.visual.updateMatrixWorld(true);
      const originalActorPosition=actor.group.position.clone();
@@ -100,36 +89,15 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
        bone,position:bone.position.clone(),quaternion:bone.quaternion.clone(),
      }));
      const originalRoot=originalActorPosition;
-     const world=new physics.World({x:0,y:-9.81,z:0});
+     const world=new physics.World({x:0,y:-(ctx.GRAVITY??19),z:0});
      // Chain constraints need more iterations than the default 4.
      world.integrationParameters.numSolverIterations=12;
      world.integrationParameters.numInternalPgsIterations=2;
-     const groundBody=world.createRigidBody(physics.RigidBodyDesc.fixed()
-       .setTranslation(ctx.px,0,ctx.pz));
-     const groundMesh=makeGroundMesh(ctx.terrain,ctx.px,ctx.pz);
-     const floorDesc=physics.ColliderDesc.trimesh(groundMesh.vertices,groundMesh.indices)
-       .setFriction(.9).setCollisionGroups((0x0001<<16)|0x0002);
-     world.createCollider(floorDesc,groundBody);
-     // User-built ramps must remain physical while the normal character
-     // controller is suspended. Box proxies match the walking collision tops.
-     for(const log of ctx.placed??[]){
-       if(Math.hypot(log.x-ctx.px,log.z-ctx.pz)>14)continue;
-       const half=logHalfExtents(log,ctx.logRadius??.29);
-       const solid=world.createRigidBody(physics.RigidBodyDesc.fixed()
-         .setTranslation(log.x,log.y,log.z));
-       world.createCollider(physics.ColliderDesc.cuboid(half.x,half.y,half.z)
-         .setFriction(.9).setCollisionGroups((0x0001<<16)|0x0002),solid);
-     }
-     if(bed){
-       // Mattress top is y=.60 in the authored bed mesh.
-       const base=ctx.terrain.heightAt(bed.x,bed.z);
-       const bedBody=world.createRigidBody(physics.RigidBodyDesc.fixed()
-         .setTranslation(bed.x,base+.51,bed.z)
-         .setRotation({x:0,y:Math.sin(bed.orientation*Math.PI/4),
-           z:0,w:Math.cos(bed.orientation*Math.PI/4)}));
-       world.createCollider(physics.ColliderDesc.cuboid(.52,.09,.83)
-         .setFriction(.9).setCollisionGroups((0x0001<<16)|0x0002),bedBody);
-     }
+     // One local set of static colliders for the terrain, logs, live tree
+     // trunks, rock collision volumes and authored building collision boxes.
+     // The region is re-created as the physics body travels, not frozen at
+     // the position where ragdoll was first enabled.
+     const environment=createRagdollEnvironment(world,physics,ctx,{bed});
      const points=new Map(),boneQ=new Map();
      for(const [name,bone] of bones){
        points.set(name,bone.getWorldPosition(new THREE.Vector3()));
@@ -153,7 +121,7 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
        const desc=physics.RigidBodyDesc.dynamic()
          .setTranslation(center.x,center.y,center.z)
          .setRotation({x:bodyRotation.x,y:bodyRotation.y,z:bodyRotation.z,w:bodyRotation.w})
-         .setLinearDamping(.55).setAngularDamping(2.7);
+         .setLinearDamping(1.25).setAngularDamping(2.7);
        const body=world.createRigidBody(desc);
        const capsule=physics.ColliderDesc.capsule(Math.max(.035,length/2-radius*.65),radius)
          .setDensity(name==='Hips'||name==='Spine'?750:450)
@@ -216,6 +184,10 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
          link.configureMotorPosition(0,config.spring,1.6);
        }
      }
+     // Transfer the same world-space linear and yaw velocity to all capsule
+     // bodies. Damping, friction and collisions then dissipate the inherited
+     // momentum naturally, without continuing to apply walking controls.
+     applyRagdollMomentum(parts,initialMotion);
      // A small forward impulse makes the body topple instead of concertina
      // collapsing in place under perfectly symmetrical gravity.
      const facing=new THREE.Vector3(0,0,-1).applyQuaternion(actor.group.quaternion);
@@ -243,7 +215,8 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
        if(node.isSkinnedMesh){culling.push([node,node.frustumCulled]);node.frustumCulled=false;}
      });
      instance={world,parts,actor,snapshot,originalRoot,originalActorQuaternion,
-       standingHipOffset,culling,accumulator:0,elapsed:0};
+       standingHipOffset,culling,environment,initialMotion,accumulator:0,elapsed:0};
+     ctx.ragdollCamera?.enter?.();
      return state();
    })();
    try{await loading;}finally{loading=null;}
@@ -259,6 +232,8 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
      instance.accumulator-=1/60;
      instance.elapsed+=1/60;
    }
+   const hip=parts[0].body.translation();
+   instance.environment.refresh(hip.x,hip.z);
    const q=new THREE.Quaternion(),parentQ=new THREE.Quaternion();
    const target=new THREE.Vector3(),newQ=new THREE.Quaternion();
    // Parent-to-child order: physics drives every bone's joint location and
@@ -292,6 +267,9 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
    instance=null;
    world.free();
    for(const [mesh,enabled] of culling??[])mesh.frustumCulled=enabled;
+   // All exit paths pass through this reset: manual get-up, bed wake-up,
+   // death respawn, restored saves, and late asynchronous death physics.
+   ctx.ragdollCamera?.exit?.();
    // A click on the canvas during physics used to launch Chop2. An action
    // started after ragdoll activation must not outlive the reset: when only
    // the state names were cleared, its animation tracks kept overriding Idle.

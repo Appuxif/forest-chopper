@@ -71,6 +71,16 @@ export function createStorages(ctx,doc=document){
    rack.castShadow=false;rack.frustumCulled=false;rack.count=0;
    group.add(rack);group.userData.logs=rack;
   }
+  // The shared Collision World consumes the exact authored solids, including
+  // storage items. Both ordinary walking and Rapier see these same boxes.
+  group.userData.collisionBoxes=item.kind==='chest'
+   ?[{x:0,y:.48,z:0,w:1.45,h:.75,d:.95},
+     {x:0,y:.97,z:0,w:1.58,h:.20,d:1.03}]
+   :Array.from({length:4},(_,i)=>({
+     x:i<2?-1.25:1.25,y:.55,z:i%2===0?-.56:.56,
+     w:.24,h:1.15,d:.24,
+   }));
+  group.userData.collisionRadius=item.kind==='chest'?1.5:2;
   group.position.set(item.x,ctx.terrain.heightAt(item.x,item.z),item.z);
   group.traverse(node=>{if(node.isMesh)node.castShadow=true;});
   return group;
@@ -87,6 +97,13 @@ export function createStorages(ctx,doc=document){
    dummy.updateMatrix();rack.setMatrixAt(i,dummy.matrix);
   }
   rack.count=item.logs;rack.instanceMatrix.needsUpdate=true;
+  // Stacked logs form a growing obstacle inside the rack. Both adapters
+  // receive the same geometry whenever inventory changes.
+  const base=item.group.userData.collisionBoxes.slice(0,4);
+  if(item.logs>0)base.push({x:0,y:.28+(Math.ceil(item.logs/8)-1)*.17,
+    z:0,w:2.65,h:Math.ceil(item.logs/8)*.34,d:.9});
+  item.group.userData.collisionBoxes=base;
+  ctx.collisionWorld?.invalidate?.();
  }
  function add(raw){
   if(!validStorage(raw))return false;
@@ -108,6 +125,7 @@ export function createStorages(ctx,doc=document){
   if(existing)remove(raw.id);
   const item={...raw,slots:raw.slots?.map(x=>x?{...x}:null),group:null};
   item.group=visual(item);structures.set(item.id,item);scene.add(item.group);
+  ctx.collisionWorld?.invalidate?.();
   if(item.kind==='rack')updateRack(item);
   if(opened===item.id)render();
   return true;
@@ -115,7 +133,7 @@ export function createStorages(ctx,doc=document){
  function remove(id){const item=structures.get(id);if(!item)return false;
   scene.remove(item.group);
   const label=item.group.userData.label;if(label){label.material.map.dispose();label.material.dispose();label.geometry.dispose();}
-  structures.delete(id);if(opened===id)close();return true;
+  structures.delete(id);ctx.collisionWorld?.invalidate?.();if(opened===id)close();return true;
  }
  function clear(){for(const id of [...structures.keys()])remove(id);}
  function snapshot(){return [...structures.values()].map(({group,...item})=>({...item,slots:item.slots?.map(s=>s?{...s}:null)}));}

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createDeathSystem,deathDropPosition,DEATH_MARKER_TTL,validDeathMarker} from '../src/death.js';
 import {createInventoryModel} from '../src/inventory.js';
 import {MAX_GROUND_DROPS} from '../src/ground-boxes.js';
+import {createRagdollCameraLifecycle} from '../src/player.js';
 
 function fixture({online=false,capacity=0}={}){
  let now=1000,nowMs=0;
@@ -168,4 +169,42 @@ test('server-deferred respawn cannot be used until the authoritative packet arri
  assert.equal(f.ctx.px,21);assert.equal(f.ctx.pz,10);
  assert.equal(f.death.phase,'alive');
  assert.equal(f.saved.includes('save'),false,'online respawn must not overwrite offline save');
+});
+
+test('death and respawn share ragdoll camera cleanup with manual get-up',async()=>{
+ const f=fixture();
+ let orbitResets=0;
+ f.ctx.thirdPerson=false;
+ f.ctx.yaw=1.2;
+ f.ctx.camera={near:.1,updateProjectionMatrix(){}};
+ f.ctx.ownAvatar={group:{position:{set(x,y,z){Object.assign(this,{x,y,z});}},
+   rotation:{set(x,y,z){Object.assign(this,{x,y,z});}}}};
+ f.ctx.ragdollCamera=createRagdollCameraLifecycle(f.ctx,{
+   toggleView(){f.ctx.thirdPerson=!f.ctx.thirdPerson;},
+   resetOrbit(){orbitResets++;},
+ });
+ // Emulate the same lifecycle hooks as the real Rapier ragdoll.
+ f.ctx.ragdoll.trigger=async()=>{
+   f.ctx.ragdoll.active=true;
+   f.ctx.ragdollCamera.enter();
+ };
+ f.ctx.ragdoll.reset=()=>{
+   f.ctx.ragdoll.active=false;
+   f.ctx.ragdollCamera.exit();
+   return true;
+ };
+ assert.equal(f.death.onDeath(),true);
+ await new Promise(resolve=>setImmediate(resolve)); // deferred physics setup
+ assert.equal(f.ctx.ragdoll.active,true);
+ assert.equal(f.ctx.thirdPerson,true);
+ assert.equal(f.ctx.camera.near,.01);
+ assert.equal(orbitResets,1);
+ f.death.tick(5000);
+ assert.equal(f.death.respawn(),true);
+ assert.equal(f.ctx.thirdPerson,false,'respawn restores the pre-death view');
+ assert.equal(f.ctx.camera.near,.1);
+ assert.equal(orbitResets,2,'respawn clears the previous orbit pivot');
+ assert.deepEqual(f.ctx.ownAvatar.group.rotation,{x:0,y:1.2,z:0,
+   set:f.ctx.ownAvatar.group.rotation.set});
+ assert.deepEqual([f.ctx.ownAvatar.group.position.x,f.ctx.ownAvatar.group.position.z],[0,0]);
 });
