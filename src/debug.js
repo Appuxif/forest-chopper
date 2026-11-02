@@ -8,9 +8,8 @@ export function installDebug(ctx) {
   ctx.debugFpsCollector=fps;
   const ragdoll=ctx.ragdoll;
   let benchmarkFixture=null,benchmarkRun=null;
-  // Debug launches are deterministic: don't overwrite settings in the
-  // production page. Test tools can still switch presets at runtime.
-  ctx.settings.setPerformancePreset('medium');
+  // Honor the saved/URL-selected graphics preset in regular debug sessions.
+  // Dedicated FPS benchmark fixtures choose their own controlled preset.
   const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight',
     'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
   const activeTimers = new Map();

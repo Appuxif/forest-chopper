@@ -1,10 +1,10 @@
-import {createSettings} from './settings.js?v=20261101-day-clock-checkbox2';
+import {createSettings} from './settings.js?v=20261102-url-launch1';
 import {
   MENU_NAME_KEY,MENU_LAUNCH_KEY,MAX_SEED,parseSeed,readLocalWorld,
-  formatSavedWorld,normalizeServerAddress,serverStatusAddress,
+  formatSavedWorld,normalizeServerAddress,serverStatusAddress,parseLaunchQuery,
   parseServerStatus,formatWorldAge,recentServers,rememberServer,
   favoriteServers,toggleFavoriteServer,
-} from './main-menu-state.js?v=20261101-menu2';
+} from './main-menu-state.js?v=20261102-url-launch1';
 
 const $=id=>document.getElementById(id);
 const storage=(()=>{try{return localStorage;}catch{return null;}})();
@@ -119,13 +119,15 @@ async function checkServer(){
     feedback(error.message+' · можно попробовать подключиться напрямую','error');
   }finally{if(checking===probe)checking=null;}
 }
-async function launch(options){
+async function launch(options,{force=false,auto=false}={}){
   if(launching)return;
   launching=true;
   if(checking){checking.cancel();checking=null;}
   const current=readLocalWorld(storage);
-  if(options.mode==='new'&&current&&!confirm('Создать новый лес? Текущее сохранение будет заменено. Общие достижения и настройки останутся.')){
-    launching=false;return;
+  if(options.mode==='new'&&current&&!force&&!confirm('Создать новый лес? Текущее сохранение будет заменено. Общие достижения и настройки останутся.')){
+    launching=false;
+    if(auto)location.replace(location.pathname+location.hash);
+    return;
   }
   // Same-document dynamic import does not require browser storage. Session
   // storage is a harmless fallback for tools that load main.js directly.
@@ -139,7 +141,7 @@ async function launch(options){
   document.body.classList.add('fc-world-loading');
   menu.hidden=true;game.hidden=false;
   try{
-    await import('./main.js?v=20261102-ragdoll-sleep1');
+    await import('./main.js?v=20261102-ragdoll-clip1');
   }catch(error){
     console.error('Forest Chopper startup failed',error);
     delete globalThis.__forestLaunch;
@@ -161,12 +163,13 @@ $('menu-online').onclick=()=>{view('online');updateRecents();};
 $('menu-help').onclick=()=>view('help');
 for(const button of document.querySelectorAll('.menu-back'))button.onclick=()=>view();
 $('menu-random-seed').onclick=()=>{$('menu-seed').value=String(randomSeed());};
-$('menu-create').onclick=()=>{
+function createNewWorld({force=false,auto=false}={}){
   const seed=parseSeed($('menu-seed').value);
   if(seed===null){$('menu-seed').setCustomValidity('Seed должен быть целым числом от 0 до '+MAX_SEED);$('menu-seed').reportValidity();return;}
   $('menu-seed').setCustomValidity('');
-  launch({mode:'new',seed});
-};
+  launch({mode:'new',seed},{force,auto});
+}
+$('menu-create').onclick=()=>createNewWorld();
 $('menu-seed').oninput=()=>$('menu-seed').setCustomValidity('');
 $('menu-settings').onclick=()=>{
   if(!menuSettings){
@@ -221,3 +224,32 @@ if(savedName)$('menu-player-name').value=savedName.slice(0,22);
 $('menu-server').value=recentServers(storage)[0]??'ws://localhost:8765';
 $('menu-seed').value=String(randomSeed());
 view();
+
+// Apply URL shortcuts after the normal menu listeners exist. The same menu
+// actions validate seeds/servers and save player preferences as manual input.
+function applyLaunchQuery(){
+  const query=parseLaunchQuery(location.search);
+  if(query.name!==null){
+    $('menu-player-name').value=query.name;
+    try{storage?.setItem(MENU_NAME_KEY,query.name);}catch{}
+  }
+  if(query.performance!==null||query.diag!==null){
+    menuSettings??=createSettings(document);
+    menuSettings.setMenuMode(true);
+    if(query.performance!==null)menuSettings.setPerformancePreset(query.performance);
+    if(query.diag!==null)menuSettings.setShowFps(query.diag);
+  }
+  if(query.type==='continue')$('menu-continue').click();
+  else if(query.type==='new'){
+    $('menu-new').click();
+    if(query.seedProvided)$('menu-seed').value=query.seed===null?'invalid':String(query.seed);
+    createNewWorld({force:query.force,auto:true});
+  }else if(query.type==='multiplayer'){
+    $('menu-online').click();
+    $('menu-connection-mode').value='direct';
+    $('menu-connection-mode').onchange();
+    if(query.server!==null)$('menu-server').value=query.server;
+    $('menu-join').click();
+  }
+}
+applyLaunchQuery();

@@ -77,3 +77,11 @@ test('jump charges stamina exactly once, only when grounded, and reports exhaust
  assert.equal(ctx.jumpRequested,false);
  assert.equal(sent.length,2);
 });
+
+test('ragdoll stand-up uses top of log ramp but not overhead logs',()=>{
+ const {ctx,physics}=fixture();
+ ctx.placed.push({x:0,z:0,orientation:0,y:2.29});
+ assert.equal(physics.ragdollStandingSupport(0,0,3.2),2.58);
+ assert.equal(physics.ragdollStandingSupport(0,0,1.0),0);
+ assert.equal(physics.ragdollStandingSupport(6,0,3.2),0);
+});

@@ -763,6 +763,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get cameraDistance(){return state.cameraDistance;},
     get mouseSensitivity(){return state.mouseSensitivity;},
     get showFps(){return state.showFps;},
+    setShowFps(enabled){checkbox.checked=!!enabled;checkbox.onchange();return state.showFps;},
     get spruceFoliageVisible(){return state.spruceFoliageVisible;},
     get spruceFoliageShadows(){return state.spruceFoliageShadows;},
     get spruceFoliageDensity(){return state.spruceFoliageDensity;},

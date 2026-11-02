@@ -132,3 +132,27 @@ test('camera boom prevents underground placement and respects rock/log collision
   ctx.placed.push({x:0,y:1.5,z:1.8,orientation:0});
   assert.ok(springArmFraction(a,b,ctx)<1);
 });
+
+test('ragdoll camera target follows physical fall independently of frozen player coordinates',()=>{
+ const {ctx,rig,camera}=fixture();
+ ctx.feetY=8;ctx.px=0;ctx.pz=0;
+ rig.update(1,{px:3,pz:4,feetY:1});
+ almost(camera.position.x,3.4);
+ almost(camera.position.y,3.3);
+ almost(camera.position.z,5.58);
+ assert.equal(ctx.feetY,8,'camera override cannot mutate authoritative coordinates');
+});
+
+test('ragdoll follows physical position with identical standing-camera geometry',()=>{
+ const {ctx,rig,camera}=fixture();
+ ctx.pitch=-Math.PI*80/180;
+ const follow={px:3,pz:4,feetY:1};
+ rig.reset();rig.update(1,follow);
+ const ragdollCamera={...camera.position};
+ ctx.px=follow.px;ctx.pz=follow.pz;ctx.feetY=follow.feetY;
+ rig.reset();rig.update(1);
+ almost(camera.position.x,ragdollCamera.x);
+ almost(camera.position.y,ragdollCamera.y);
+ almost(camera.position.z,ragdollCamera.z);
+ assert.ok(camera.position.z<follow.pz,'retain original forward orbit on steep downward look');
+});

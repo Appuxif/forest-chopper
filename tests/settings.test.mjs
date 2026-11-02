@@ -278,6 +278,12 @@ test('preset selection applies all graphics properties; manual graphics changes 
   assert.equal(settings.performancePreset,'custom');
   assert.equal(settings.renderScale,75);
   assert.equal(writes.at(-1).performancePreset,'custom');
+  assert.equal(settings.setShowFps(true),true);
+  assert.equal(writes.at(-1).showFps,true);
+  assert.equal(settings.setShowFps(false),false);
+  assert.equal(writes.at(-1).showFps,false);
+  assert.equal(settings.setPerformancePreset('medium').preset,'medium');
+  assert.equal(writes.at(-1).performancePreset,'medium');
   profile.value='ultra';profile.onchange();
   assert.equal(settings.performancePreset,'ultra');
   assert.equal(settings.maxFps,0);

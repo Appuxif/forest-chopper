@@ -1,3 +1,4 @@
+import {logHalfExtents} from './log-grid.js';
 // Shared local-player ragdoll. Uses the same GLB SkinnedMesh/bones as the
 // animated character. Rapier is loaded only when a death or DEBUG trigger occurs.
 const RAPIER_URL='https://esm.sh/@dimforge/rapier3d-compat@0.20.0?bundle';
@@ -109,6 +110,16 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
      const floorDesc=physics.ColliderDesc.trimesh(groundMesh.vertices,groundMesh.indices)
        .setFriction(.9).setCollisionGroups((0x0001<<16)|0x0002);
      world.createCollider(floorDesc,groundBody);
+     // User-built ramps must remain physical while the normal character
+     // controller is suspended. Box proxies match the walking collision tops.
+     for(const log of ctx.placed??[]){
+       if(Math.hypot(log.x-ctx.px,log.z-ctx.pz)>14)continue;
+       const half=logHalfExtents(log,ctx.logRadius??.29);
+       const solid=world.createRigidBody(physics.RigidBodyDesc.fixed()
+         .setTranslation(log.x,log.y,log.z));
+       world.createCollider(physics.ColliderDesc.cuboid(half.x,half.y,half.z)
+         .setFriction(.9).setCollisionGroups((0x0001<<16)|0x0002),solid);
+     }
      if(bed){
        // Mattress top is y=.60 in the authored bed mesh.
        const base=ctx.terrain.heightAt(bed.x,bed.z);
@@ -221,7 +232,18 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
      }
      // Store the animated pose before handing the very same GLB to physics.
      actor.mixer.stopAllAction();
-     instance={world,parts,actor,snapshot,originalRoot,originalActorQuaternion,accumulator:0,elapsed:0};
+     // During physics the actor's Group stays at its old location while the
+     // bones move in world space. Preserve the standing pelvis-to-feet offset
+     // so movement/camera can follow the actual simulated body instead.
+     const standingHipOffset=parts[0].body.translation().y-ctx.feetY;
+     // Ragdoll bones deform outside the GLB's standing bounding spheres.
+     // Don't cull an entire skinned mesh when turning the camera around.
+     const culling=[];
+     actor.visual.traverse(node=>{
+       if(node.isSkinnedMesh){culling.push([node,node.frustumCulled]);node.frustumCulled=false;}
+     });
+     instance={world,parts,actor,snapshot,originalRoot,originalActorQuaternion,
+       standingHipOffset,culling,accumulator:0,elapsed:0};
      return state();
    })();
    try{await loading;}finally{loading=null;}
@@ -256,11 +278,24 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
    }
    actor.visual.updateMatrixWorld(true);
  }
+ function pose(){
+   if(!instance)return null;
+   const hip=instance.parts[0].body;
+   const p=hip.translation(),v=hip.linvel();
+   return {x:p.x,z:p.z,hipsY:p.y,
+     feetY:p.y-instance.standingHipOffset,standingHipOffset:instance.standingHipOffset,
+     vy:v.y};
+ }
  function reset(){
    if(!instance)return false;
-   const {actor,snapshot,originalRoot,originalActorQuaternion,world}=instance;
+   const {actor,snapshot,originalRoot,originalActorQuaternion,world,culling}=instance;
    instance=null;
    world.free();
+   for(const [mesh,enabled] of culling??[])mesh.frustumCulled=enabled;
+   // A click on the canvas during physics used to launch Chop2. An action
+   // started after ragdoll activation must not outlive the reset: when only
+   // the state names were cleared, its animation tracks kept overriding Idle.
+   actor.mixer.stopAllAction();
    for(const {bone,position,quaternion} of snapshot){
      bone.position.copy(position);bone.quaternion.copy(quaternion);
    }
@@ -272,5 +307,5 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
    // Normal actor tick will start Idle next frame.
    return true;
  }
- return {trigger,tick,reset,state,get active(){return !!instance;}};
+ return {trigger,tick,reset,pose,state,get active(){return !!instance;}};
 }

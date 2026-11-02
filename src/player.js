@@ -4,11 +4,22 @@ import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js';
 import {createFrameLimiter} from './frame-limiter.js';
 import {createGpuFrameTimer} from './gpu-frame-timer.js';
-import {createOrbitCamera} from './orbit-camera.js?v=20261030-camera-up-arc1';
+import {createOrbitCamera} from './orbit-camera.js?v=20261102-ragdoll-clip1';
+// Clipping is a rendering property, not a collision between the camera and
+// the character. Keep the established camera orbit untouched; while ragdoll
+// is active, reduce only the near clipping plane so nearby limbs aren't cut.
+export function setRagdollCameraClipping(camera,active,normalNear){
+ const desired=active?Math.min(normalNear,.01):normalNear;
+ if(camera.near===desired)return false;
+ camera.near=desired;
+ camera.updateProjectionMatrix();
+ return true;
+}
 export function createPlayer(ctx) {
 const limiter=createFrameLimiter();
 const gpuTimer=createGpuFrameTimer(ctx.renderer);
 const orbitCamera=createOrbitCamera(ctx);
+const cameraNormalNear=ctx.camera.near;
 let lastWorldTick=-Infinity;
 function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
  orbitCamera.reset();
@@ -42,6 +53,7 @@ function animate(now){
  ctx.ragdollControls?.tick();
  const dead=ctx.deathSystem?.active===true;
  const ragdoll=ctx.ragdoll?.active===true;
+ setRagdollCameraClipping(ctx.camera,ragdoll,cameraNormalNear);
  const posing=ragdoll||ctx.ragdollControls?.busy===true;
  if(posing||dead)ctx.jumpRequested=false; // no movement while dead
  ctx.wind.tick(now);ctx.treeWindShader?.tick(now,ctx.px,ctx.pz,ctx.settings.windEnabled);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
@@ -79,7 +91,7 @@ function animate(now){
   dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*speed*dt;
  }
  if(!posing&&!dead)ctx.moveHorizontal(dx,dz);
- else if(ragdoll)ctx.ragdoll.tick(dt);
+ else if(ragdoll){ctx.ragdoll.tick(dt);ctx.ragdollControls?.syncPose?.();}
  ctx.waterSplashes?.tick(dt);
  ctx.microGrass?.tick();
  ctx.worldStreamer?.tick();
@@ -87,8 +99,15 @@ function animate(now){
  ctx.plantInteraction?.tick(dt);
  if(ctx.ownAvatar&&!posing&&!dead)ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
  if(ctx.thirdPerson){const limit=ctx.settings.cameraPitchLimit*Math.PI/180;ctx.pitch=Math.max(-limit,Math.min(limit,ctx.pitch));}
- ctx.camera.position.set(ctx.px,ctx.feetY+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
- if(ctx.thirdPerson)orbitCamera.update(dt);
+ const fallPose=ragdoll?ctx.ragdoll.pose?.():null;
+ const follow=fallPose?{
+   px:fallPose.x,pz:fallPose.z,hipsY:fallPose.hipsY,
+   feetY:Math.max(ctx.terrain.heightAt(fallPose.x,fallPose.z),fallPose.feetY),
+ }:null;
+ ctx.camera.position.set(follow?.px??ctx.px,
+   (follow?.feetY??ctx.feetY)+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,
+   follow?.pz??ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
+ if(ctx.thirdPerson)orbitCamera.update(dt,follow);
  // The real skinned meshes cast shadows on every rendered frame.
  // The shadow pass runs after both local and remote animation poses update.
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;

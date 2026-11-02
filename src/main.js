@@ -1,5 +1,5 @@
-import {createRagdoll} from './ragdoll.js';
-import {createRagdollControls} from './ragdoll-controls.js';
+import {createRagdoll} from './ragdoll.js?v=20261102-ragdoll-camera1';
+import {createRagdollControls} from './ragdoll-controls.js?v=20261102-ragdoll-camera1';
 import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
 import {createWorld} from './world.js?v=20261101-startup-loader2';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
@@ -14,15 +14,15 @@ import {createGrass} from './grass.js';
 import {createMicroGrass} from './micro-grass.js?v=20261101-startup-loader1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
 import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
-import {createPhysics} from './physics.js?v=20261031-ponds1';
+import {createPhysics} from './physics.js?v=20261102-ragdoll-height1';
 import {createBuilding} from './building.js?v=20261031-ponds1';
-import {createChopping} from './chopping.js?v=20261031-jump-energy1';
+import {createChopping} from './chopping.js?v=20261102-ragdoll-wake1';
 import {createControls} from './controls.js?v=20261102-ragdoll-sleep1';
-import {createPlayer} from './player.js?v=20261102-ragdoll-sleep1';
+import {createPlayer} from './player.js?v=20261102-ragdoll-clip1';
 import {createMultiplayer} from './multiplayer.js?v=20261102-ragdoll-sleep1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261101-main-menu2';
+import {createSettings} from './settings.js?v=20261102-url-launch1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
@@ -223,7 +223,7 @@ let offlineSave=null,progress=null,inventory=null,vitals=null,forestResources=nu
 let pickupInteraction=null,storages=null,campStructures=null;
 let worldStartupGate=null;
 
-let distantForest, replaceTreeModels, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, nudgeLog, rotateLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
+let distantForest, replaceTreeModels, ragdollStandingSupport, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, nudgeLog, rotateLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
  get $(){return $;},
  get chatHistory(){return chatHistory;},
@@ -335,6 +335,7 @@ const ctx={
  get ownAvatar(){return ownAvatar;}, set ownAvatar(value){ownAvatar=value;},
  get ragdoll(){return ragdoll;},
  get ragdollControls(){return ragdollControls;},
+ get ragdollStandingSupport(){return ragdollStandingSupport;},
  get particles(){return particles;},
  get pitch(){return pitch;}, set pitch(value){pitch=value;},
  get placeLog(){return placeLog;},
@@ -530,7 +531,8 @@ refreshPerformance=()=>{
     ctx.updateChunks?.();
   }
 };
-({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump}=createPhysics(ctx));
+({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal,
+ simulateVertical, ragdollStandingSupport, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, placeError, updatePreview, placeLog, removeLog, setMode, disposePreview,nudge:nudgeLog,rotate:rotateLog}=createBuilding(ctx));
 ({aimed, spawnChips, chop}=createChopping(ctx));
 ownAvatar=createLumberjack();if(ownAvatar){
@@ -584,7 +586,9 @@ $('menu-backgame').onclick=()=>{
   offlineSave.save(); // Suspended for multiplayer, so solo saves remain untouched.
   closeNet?.();
   try{sessionStorage.removeItem(MENU_LAUNCH_KEY);}catch{}
-  location.reload();
+  // Don't immediately auto-launch again when returning from a URL shortcut.
+  if(new URLSearchParams(location.search).has('type'))location.replace(location.pathname+location.hash);
+  else location.reload();
 };
 if(menuLaunch.mode==='online'){
   $('netname').value=String(menuLaunch.name??'Лесоруб').slice(0,22);
@@ -603,7 +607,7 @@ if(menuLaunch.mode==='online'){
 }
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261102-ragdoll-sleep1');
+  const { installDebug } = await import('./debug.js?v=20261102-url-launch1');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

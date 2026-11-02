@@ -14,6 +14,25 @@
 - Не управляй чужой вкладкой. Для нескольких агентов заведи отдельную вкладку на каждого и храни `pageId` в контексте своего агента. `pageId` может измениться при пересоздании вкладки: проверяй его через `list_pages`.
 - Не закрывай вкладку агента и не отключай его от игры без команды пользователя. Перед уходом или остановкой вызови `releaseAll()`.
 
+### Быстрый запуск через query-параметры
+
+Агенту **рекомендуется** сразу открывать `index_debug.html?type=continue&performance=low&diag=true`
+(или `?type=new&seed=13579&force=true&performance=low&diag=true` для воспроизводимого пустого мира).
+Оба entrypoint принимают `type=continue|new|multiplayer`, `seed`, `force=true`,
+`performance=low|medium|high`, `name`, `diag=true|false`, `server` (URL-encoded WebSocket).
+Эти значения применяются обычными обработчиками меню и сохраняются в localStorage,
+включая пресет графики, FPS, имя игрока и историю серверов. Пример online:
+
+```text
+index_debug.html?type=multiplayer&server=ws%3A%2F%2Flocalhost%3A8765&name=woodpecker&performance=low&diag=true
+```
+
+Если есть сохранение и `force` не задан, новая игра спрашивает подтверждение; отказ
+возвращает в главное меню без параметров. **Не используйте `force=true` на общем origin**:
+можно уничтожить чужой offline-save. Для тестов используйте изолированный browser context.
+FPS-диагностику (`diag=true`) включайте **по умолчанию**. `performance=low` — по умолчанию
+для функциональных тестов; при проверках графики/FPS выбирайте целевой пресет.
+
 ## 2. Подключение
 
 1. Найди свою вкладку через `chrome_devtools_list_pages`. Если её нет, открой отдельную через `chrome_devtools_new_page` с адресом `http://localhost:63342/forest-chopper/index_debug.html` (пример локального JetBrains-сервера; фактический URL узнай у пользователя/по существующим вкладкам). Можно открыть в фоне.

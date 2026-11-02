@@ -18,13 +18,14 @@ function fixture({fail=false,online=false}={}){
   isOnline:()=>online,sendNet(msg){sent.push(msg);},
   ragdoll:{
    active:false,
+   pose:()=>null,
    async trigger(options){events.push(['trigger',options]);if(fail)throw Error('WASM error');this.active=true;},
    reset(){events.push(['reset']);this.active=false;return true;},
   },
   ownAvatar:{group:{
-   position:{clone:()=>({copy(){}}),copy(){},set(){}},
+   position:{clone:()=>({copy(){}}),copy(){},set(x,y,z){this.x=x;this.y=y;this.z=z;}},
    quaternion:{clone:()=>({copy(){}}),copy(){}},
-   rotation:{set(){}},
+   rotation:{x:0,y:0,z:0,set(x,y,z){this.x=x;this.y=y;this.z=z;}},
   }},
   notify(...args){notices.push(args);},
  };
@@ -44,6 +45,69 @@ test('normal-world Ragdoll enters physics and one Jump input just stands up',asy
  assert.equal(f.ctx.verticalSpeed,0);
  assert.equal(f.controls.getUp(),false,'second Jump should use normal jump logic');
 });
+test('waking from manual ragdoll realigns avatar root with camera yaw after looking around',async()=>{
+ const f=fixture();
+ f.ctx.px=3;f.ctx.pz=-8;f.ctx.feetY=1.5;
+ f.ctx.yaw=.4;
+ assert.equal(await f.controls.ragdoll(),true);
+ // Simulate a mouse click acquiring pointer lock and a subsequent look turn.
+ f.ctx.yaw=2.3;
+ f.ctx.ownAvatar.group.rotation.set(.5,-.7,.8); // stale ragdoll root
+ f.ctx.jumpRequested=true;
+ assert.equal(f.controls.getUp(),true);
+ assert.deepEqual(f.ctx.ownAvatar.group.rotation,{x:0,y:2.3,z:0,set:f.ctx.ownAvatar.group.rotation.set});
+ assert.equal(f.ctx.ownAvatar.group.position.x,3);
+ assert.equal(f.ctx.ownAvatar.group.position.y,1.5);
+ assert.equal(f.ctx.ownAvatar.group.position.z,-8);
+ assert.equal(f.ctx.jumpRequested,false);
+ assert.equal(f.controls.getUp(),false);
+});
+test('physical ragdoll pose follows the real fall, then stands on the ground without falling twice',async()=>{
+ const f=fixture();
+ f.ctx.feetY=9; f.ctx.onGround=false; f.ctx.verticalSpeed=-7;
+ f.ctx.ragdoll.pose=()=>({x:4,z:5,hipsY:.65,feetY:-.35,standingHipOffset:1,vy:-.06});
+ f.ctx.ragdollStandingSupport=()=>0;
+ assert.equal(await f.controls.ragdoll(),true);
+ assert.equal(f.controls.syncPose(),true);
+ assert.deepEqual([f.ctx.px,f.ctx.pz,f.ctx.feetY],[4,5,0]);
+ assert.equal(f.controls.getUp(),true);
+ assert.deepEqual([f.ctx.px,f.ctx.pz,f.ctx.feetY],[4,5,0]);
+ assert.equal(f.ctx.onGround,true);
+ assert.equal(f.ctx.verticalSpeed,0);
+});
+test('releasing ragdoll midair preserves physical altitude and downward velocity',async()=>{
+ const f=fixture();
+ f.ctx.feetY=8;
+ f.ctx.ragdoll.pose=()=>({x:2,z:-4,hipsY:5.2,feetY:4.2,standingHipOffset:1,vy:-9});
+ f.ctx.ragdollStandingSupport=()=>0;
+ await f.controls.ragdoll();
+ f.controls.syncPose();
+ assert.equal(f.ctx.feetY,4.2);
+ f.controls.getUp();
+ assert.deepEqual([f.ctx.px,f.ctx.pz,f.ctx.feetY],[2,-4,4.2]);
+ assert.equal(f.ctx.onGround,false);
+ assert.equal(f.ctx.verticalSpeed,-9);
+});
+test('ragdoll landing on a log ramp returns to its support height',async()=>{
+ const f=fixture();
+ f.ctx.feetY=6;
+ f.ctx.ragdoll.pose=()=>({x:1,z:2,hipsY:3.25,feetY:2.25,standingHipOffset:1,vy:0});
+ f.ctx.ragdollStandingSupport=()=>2.58;
+ await f.controls.ragdoll();
+ f.controls.syncPose();
+ f.controls.getUp();
+ assert.deepEqual([f.ctx.px,f.ctx.pz,f.ctx.feetY],[1,2,2.58]);
+ assert.equal(f.ctx.onGround,true);
+});
+test('online ragdoll does not overwrite authoritative player coordinates',async()=>{
+ const f=fixture({online:true});
+ f.ctx.px=1;f.ctx.pz=2;f.ctx.feetY=8;
+ f.ctx.ragdoll.pose=()=>({x:5,z:6,hipsY:.6,feetY:-.4,standingHipOffset:1,vy:0});
+ await f.controls.ragdoll();
+ assert.equal(f.controls.syncPose(),false);
+ f.controls.getUp();
+ assert.deepEqual([f.ctx.px,f.ctx.pz,f.ctx.feetY],[1,2,8]);
+});
 test('sleep on bed triggers ragdoll before setting respawn; wake moves beside foot',async()=>{
  const f=fixture(),bed={id:9,kind:'bed',x:0,z:-1.6,orientation:2};
  const pose=bedRestPose(bed,0);
@@ -57,6 +121,7 @@ test('sleep on bed triggers ragdoll before setting respawn; wake moves beside fo
  assert.equal(f.ctx.pz,pose.wakeZ);
  assert.equal(f.ctx.verticalSpeed,0);
  assert.equal(f.ctx.onGround,true);
+ assert.equal(f.ctx.ownAvatar.group.rotation.y,f.ctx.yaw);
  assert.equal(f.controls.mode,'none');
 });
 test('failed bed physics never selects a respawn bed or moves player',async()=>{

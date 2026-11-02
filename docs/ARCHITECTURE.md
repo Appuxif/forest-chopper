@@ -75,6 +75,8 @@ index.html / index_debug.html
 | Сеть | `multiplayer.js`, `peer-bridge.js`, `forest_server.py` | Авторитетные изменения общего мира на сервере |
 | Боты | `server_bots.py`, `bot_gateway.py`, `bot_mcp.py`, `bot_cli.py` | Серверные AI-игроки без Three.js и браузера; [SERVER_BOTS.md](SERVER_BOTS.md) |
 
+URL shortcut (`?type=continue|new|multiplayer`, `seed`, `force`, `performance`, `name`, `diag`, `server`) парсится в `main-menu-state.js` и применяется через обычные обработчики `main-menu.js` **до** динамического импорта `main.js`. Пресет/FPS фиксируются в `forest-chopper:settings:v1`, имя/история серверов — в существующих localStorage-ключах. `force=true` отключает подтверждение перезаписи существующего offline-save; меню после отказа и возврат из игры удаляют query URL, чтобы исключить автоперезапуск. Оба HTML entrypoint используют одну реализацию.
+
 Экспериментальный модульный Humanoid Lite живёт отдельно в
 `characters/humanoid/`: игровой runtime **по-прежнему использует**
 `lumberjack/lumberjack.glb` (см. `src/animations.js`). Не смешивать

@@ -78,11 +78,35 @@ export function createRagdollControls(ctx,doc=document){
    return false;
   }finally{busy=false;refresh();}
  }
+ function syncPose(){
+  // Only offline manual falls move the logical player. In multiplayer the
+  // server owns coordinates; bed poses and death have their own controllers.
+  if(mode!=='manual'||ctx.isOnline?.())return false;
+  const pose=ctx.ragdoll?.pose?.();
+  if(!pose)return false;
+  ctx.px=pose.x;ctx.pz=pose.z;
+  ctx.feetY=Math.max(ctx.terrain.heightAt(pose.x,pose.z),pose.feetY);
+  ctx.verticalSpeed=Math.min(0,pose.vy);
+  ctx.onGround=false;
+  return true;
+ }
  function getUp(){
   if(ctx.deathSystem?.active)return false;
   if(busy)return true; // suppress actual jump while physical bodies are initializing
   if(mode==='none'&&!ctx.ragdoll?.active)return false;
+  // Capture the *current* physical position before reset restores the old
+  // animation root. Otherwise jumping from a ramp repeats the same fall.
+  const landing=mode==='manual'&&!ctx.isOnline?.()?ctx.ragdoll?.pose?.():null;
   ctx.ragdoll?.reset?.();
+  if(landing){
+   ctx.px=landing.x;ctx.pz=landing.z;
+   const support=ctx.ragdollStandingSupport?.(landing.x,landing.z,landing.hipsY)
+     ??ctx.terrain.heightAt(landing.x,landing.z);
+   ctx.onGround=landing.hipsY<=support+landing.standingHipOffset+.15;
+   ctx.feetY=ctx.onGround?support:Math.max(support,landing.feetY);
+   // If released midair, keep falling with the body's actual velocity.
+   ctx.verticalSpeed=ctx.onGround?0:Math.min(0,landing.vy);
+  }
   if(mode==='sleep'&&bed){
    const {pose}=bed;
    if(!ctx.isOnline?.()){
@@ -91,11 +115,15 @@ export function createRagdollControls(ctx,doc=document){
      ctx.verticalSpeed=0;ctx.onGround=true;
      ctx.yaw=pose.rotation-Math.PI;
    }
-   ctx.jumpRequested=false;
-   if(ctx.ownAvatar){
-     ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
-     ctx.ownAvatar.group.rotation.set(0,ctx.yaw,0);
-   }
+  }
+  // Ragdoll restores the actor's *old* facing quaternion. Looking around
+  // while lying down updates ctx.yaw, so always align the animated root with
+  // the live camera yaw on wake, including manual falls (not just beds).
+  ctx.jumpRequested=false;
+  if(ctx.ownAvatar){
+   ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
+   ctx.ownAvatar.group.rotation.set(0,ctx.yaw,0);
+   ctx.ownAvatar.group.updateMatrixWorld?.(true);
   }
   mode='none';bed=null;refresh();
   return true;
@@ -103,6 +131,6 @@ export function createRagdollControls(ctx,doc=document){
  function clearForDeath(){mode='none';bed=null;refresh();}
  function tick(){if(button.hidden!==!!(mode!=='none'||ctx.deathSystem?.active))refresh();}
  button.addEventListener('click',()=>{void ragdoll();});
- return {ragdoll,sleepInBed,getUp,tick,clearForDeath,
+ return {ragdoll,sleepInBed,getUp,syncPose,tick,clearForDeath,
   get mode(){return mode},get busy(){return busy},refresh};
 }

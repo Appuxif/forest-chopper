@@ -107,11 +107,13 @@ export function createOrbitCamera(ctx){
   const offset=new THREE.Vector3();
   let initialized=false,armFactor=1;
   function reset(){initialized=false;armFactor=1;}
-  function update(dt){
-    const {px,pz,feetY,yaw,pitch,settings,camera}=ctx;
+  function update(dt,follow=null){
+    const {yaw,pitch,settings,camera}=ctx;
+    const px=follow?.px??ctx.px,pz=follow?.pz??ctx.pz;
+    const feetY=follow?.feetY??ctx.feetY;
     const distance=settings.cameraDistance;
-    // Dynamic pivot tracks the upper torso and gently moves with the look
-    // direction, instead of pitching around the character's feet.
+    // Keep the exact same orbit geometry and collision spring arm for
+    // walking and ragdoll. Only the target position follows ragdoll physics.
     const forward=.12+.10*Math.max(0,-Math.sin(pitch));
     const targetX=px-Math.sin(yaw)*forward;
     const targetZ=pz-Math.cos(yaw)*forward;

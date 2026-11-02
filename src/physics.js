@@ -103,6 +103,21 @@ function simulateVertical(dt){
    if(!hasSupport)ctx.onGround=false;
  }
 }
+// Highest reachable solid surface *beneath the ragdoll pelvis* for standing
+// back up. Use the same log/rock/building footprints as walking physics.
+function ragdollStandingSupport(x,z,hipsY){
+ let floor=ctx.terrain.heightAt(x,z);
+ for(const p of ctx.placed){
+   const top=logTop(p);
+   if(top<=hipsY+.15&&logFootprint(p,x,z,ctx.PLAYER_RADIUS*.65))
+     floor=Math.max(floor,top);
+ }
+ floor=Math.max(floor,highestRockSupport(ctx.rockColliders,ctx.chunkSize,
+   x,z,hipsY+.15,-Infinity,ctx.PLAYER_RADIUS,-Infinity),
+   highestStructureSupport(allStructures(),ctx.terrain,
+     x,z,hipsY+.15,-Infinity,ctx.PLAYER_RADIUS,-Infinity));
+ return floor;
+}
 function requestJump(){
   if(!ctx.onGround||ctx.jumpRequested)return;
   if(ctx.vitals&&!ctx.vitals.jump())return;
@@ -110,5 +125,6 @@ function requestJump(){
   ctx.jumpRequested=true;
 }
 
-return {logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal, simulateVertical, requestJump};
+return {logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal,
+ simulateVertical, ragdollStandingSupport, requestJump};
 }

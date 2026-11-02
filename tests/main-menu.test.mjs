@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MAX_SEED,parseSeed,normalizeServerAddress,serverStatusAddress,
+  MAX_SEED,parseSeed,parseLaunchQuery,normalizeServerAddress,serverStatusAddress,
   parseServerStatus,formatWorldAge,recentServers,rememberServer,
   readLocalWorld,formatSavedWorld,favoriteServers,toggleFavoriteServer,
 } from '../src/main-menu-state.js';
@@ -93,4 +93,23 @@ test('starred servers remain available after recent history eviction',()=>{
   assert.ok(favoriteServers(store).includes('ws://important.example.test/'));
   toggleFavoriteServer(store,'ws://important.example.test');
   assert.deepEqual(favoriteServers(store),[]);
+});
+
+test('URL shortcuts parse valid new/continue/multiplayer inputs and preserve encoded servers',()=>{
+  assert.deepEqual(parseLaunchQuery('?type=new&seed=123&force=true&performance=low&name=woodpecker&diag=true'),{
+    type:'new',seedProvided:true,seed:123,force:true,performance:'low',diag:true,
+    name:'woodpecker',server:null,
+  });
+  assert.equal(parseLaunchQuery('?type=new').seedProvided,false);
+  assert.equal(parseLaunchQuery('?type=continue&diag=false').diag,false);
+  assert.equal(parseLaunchQuery('?type=multiplayer&server=ws%3A%2F%2Flocalhost%3A8765').server,
+    'ws://localhost:8765');
+  const bad=parseLaunchQuery('?type=bogus&seed=999999&force=1&performance=ultra&diag=yes');
+  assert.equal(bad.type,null);
+  assert.equal(bad.seedProvided,true);
+  assert.equal(bad.seed,null);
+  assert.equal(bad.force,false);
+  assert.equal(bad.performance,null);
+  assert.equal(bad.diag,null);
+  assert.equal(parseLaunchQuery('?name='+encodeURIComponent('Z'.repeat(50))).name.length,22);
 });
