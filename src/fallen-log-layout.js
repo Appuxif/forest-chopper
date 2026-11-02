@@ -2,7 +2,9 @@
 // segments. Removing a bit does not recenter any of the remaining segments.
 export const FALLEN_LOG_LENGTH=3;
 export const FALLEN_LOG_GAP=.08;
-export const FALL_DURATION=2.5;
+// Keep synchronized with prepare_chopping_sounds.py and server FALL_DURATION.
+// Original tree fall audio 10–15s, played 1.3x faster = 3.8462s.
+export const FALL_DURATION=5/1.3;
 export const segmentMask=box=>
   Number.isInteger(box.mask)?box.mask:(1<<box.item.count)-1;
 

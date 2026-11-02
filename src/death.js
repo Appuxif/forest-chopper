@@ -23,6 +23,7 @@ export function createDeathSystem(ctx,{
  function begin(){
   if(active())return false;
   phase='falling';startedAt=clock();deathOnline=!!ctx.isOnline?.();
+  ctx.audio?.death?.();
   ctx.fallTracker?.reset?.();
   ctx.ragdollControls?.clearForDeath?.();
   for(const key in ctx.keys??{})ctx.keys[key]=false;

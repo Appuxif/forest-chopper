@@ -26,7 +26,8 @@ MAX_GROUND_DROPS=10_000
 TREE_LOG_COUNT=3
 FALLEN_LOG_LENGTH=3.0
 FALLEN_LOG_GAP=.08
-FALL_DURATION=2.5
+# Matches the shortened 10–15s tree-fall audio accelerated by 1.3x.
+FALL_DURATION=5/1.3
 
 def fallen_log_mask(box):
     return box.get('mask',(1<<box['item']['count'])-1)
@@ -1034,7 +1035,7 @@ class World:
             # cannot discard any resources; pickup is a separate transaction.
             if len(self.boxes)>=MAX_GROUND_DROPS:
                 self.damage[key]=1
-                await self.broadcast({'type':'tree_hit','tree':key,'hp':1})
+                await self.broadcast({'type':'tree_hit','tree':key,'hp':1,'by':player['id']})
                 for ws,client in self.clients.items():
                     if client is player:
                         await self.send(ws,{'type':'action_denied',
@@ -1053,7 +1054,7 @@ class World:
             await self.broadcast({'type':'box_add','box':{'id':ident,**box}})
         else:
             self.damage[key]=hp
-            await self.broadcast({'type':'tree_hit','tree':key,'hp':hp})
+            await self.broadcast({'type':'tree_hit','tree':key,'hp':hp,'by':player['id']})
         self.save()
         return True
 

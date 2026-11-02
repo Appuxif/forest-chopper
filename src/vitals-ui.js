@@ -48,6 +48,7 @@ export function createVitalsUI(ctx,doc=document){
   const beforeHunger=state.hunger;
   const beforeHealth=state.health;
   const changed=state.tick({sprinting});
+  if(state.health>0&&state.health<beforeHealth)ctx.audio?.hurt?.();
   // Online stamina is predicted locally for responsive movement; server
   // confirmations correct it via acceptServer without awarding client authority.
   // (The player loop invokes this each frame.)
@@ -64,6 +65,7 @@ export function createVitalsUI(ctx,doc=document){
  function damage(amount){
   const dealt=state.damage(amount);
   if(!dealt)return 0;
+  if(state.health>0)ctx.audio?.hurt?.();
   render();
   if(!ctx.isOnline?.())ctx.offlineSave?.markDirty?.();
   if(state.health===0)ctx.deathSystem?.onDeath?.();
@@ -103,7 +105,9 @@ export function createVitalsUI(ctx,doc=document){
   if(!item||!isFood(item.id))return false;
   if(ctx.isOnline?.()){ctx.sendNet?.({type:'consume_food',slot:index});return true;}
   if(!ctx.inventory.state.consumeAt(index,item.id))return false;
+  const oldHealth=state.health;
   state.eat(item.id);
+  if(state.health>0&&state.health<oldHealth)ctx.audio?.hurt?.();
   ctx.inventory.render();render();ctx.offlineSave?.markDirty?.();
   if(state.health===0)ctx.deathSystem?.onDeath?.();
   const {health,hunger}=FOOD_EFFECTS[item.id];
@@ -122,8 +126,9 @@ export function createVitalsUI(ctx,doc=document){
   lastVisualStamina=state.stamina;lastVisualHunger=state.hunger;render();return true;
  }
  function acceptServer(snapshot){
-  const wasHungry=state.hunger;
+  const wasHungry=state.hunger,oldHealth=state.health;
   if(!state.restore(snapshot))return false;
+  if(state.health>0&&state.health<oldHealth)ctx.audio?.hurt?.();
   if(wasHungry>0&&state.hunger===0)ctx.notify?.('⚠️ Сильный Голод! Здоровье падает каждые 10 секунд.','warning','starving');
   lastVisualStamina=state.stamina;lastVisualHunger=state.hunger;render();
   if(state.health===0)ctx.deathSystem?.onDeath?.();

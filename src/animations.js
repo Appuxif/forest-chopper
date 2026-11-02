@@ -69,7 +69,7 @@ function createLumberjack(){
   if(clips.upper.tracks.length)upper[name]=mixer.clipAction(clips.upper);
  }
  if(upper.Chop2){upper.Chop2.setLoop(THREE.LoopOnce,1);upper.Chop2.clampWhenFinished=true;}
- const actor={group,visual,shadowMeshes,mixer,lower,upper,lowerState:'',upperState:'',chopEnd:0,rmTimes:{}};
+ const actor={group,visual,shadowMeshes,mixer,lower,upper,lowerState:'',upperState:'',rmTimes:{}};
  actor.actions={...lower,Chop2:upper.Chop2};
  modelActors.add(actor);
  transitionLayer(actor,'lower','Idle');transitionLayer(actor,'upper','Idle');
@@ -78,7 +78,7 @@ function createLumberjack(){
 function transitionLayer(actor,layer,name,rate=1){
  const bank=actor[layer],field=layer+'State';
  if(!bank[name])return;
- const next=bank[name],speed=name==='Chop2'?CHOP_SPEED:rate;
+ const next=bank[name],speed=name==='Chop2'?CHOP_SPEED*Math.max(.1,rate):rate;
  if(actor[field]===name){
   // S plays the same walk/run cycle backwards, giving real backwards steps.
   if(layer==='lower'&&Math.sign(next.getEffectiveTimeScale())!==Math.sign(speed)){
@@ -97,14 +97,13 @@ function transitionLayer(actor,layer,name,rate=1){
  if(previous&&previous!==next)previous.fadeOut(fade);
  actor[field]=name;
 }
-function actorChop(actor){
+function actorChop(actor,axeSpeed=1){
  const action=actor?.upper?.Chop2;
  if(!action)return;
  if(actor.upperState==='Chop2'){
   action.stop();actor.upperState='';
  }
- actor.chopEnd=performance.now()+action.getClip().duration/CHOP_SPEED*1000+30;
- transitionLayer(actor,'upper','Chop2');
+ transitionLayer(actor,'upper','Chop2',axeSpeed);
 }
 function rootStep(info,from,to,backward){
  const start=new THREE.Vector3().fromArray(info.sampler.evaluate(from));
@@ -119,8 +118,10 @@ function tickActor(actor,dt,motion='Idle',jumping=false,rate=1){
  if(!actor)return displacement;
  motion=jumping&&actor.lower.Jump?'Jump':actor.lower[motion]?motion:'Idle';
  transitionLayer(actor,'lower',motion,rate);
- // Never interrupt the full chopping swing; locomotion animates the legs.
- if(actor.upperState!=='Chop2'||performance.now()>=actor.chopEnd){
+ // Keep the upper-body swing alive until its mixer reaches the last frame.
+ // Wall-clock time can advance without mixer time when the tab is throttled.
+ const chopping=actor.upperState==='Chop2'?actor.upper.Chop2:null;
+ if(!chopping || chopping.time>=chopping.getClip().duration-1e-5){
   transitionLayer(actor,'upper',motion);
  }
  actor.mixer.update(dt);

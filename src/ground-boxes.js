@@ -12,6 +12,10 @@ export const ITEM_NAMES=ITEM_DISPLAY_NAMES;
 export function createGroundBoxes(ctx,doc=document){
  const {THREE,scene}=ctx,boxes=new Map();
  const index=new GroundBoxIndex(),batches=new Map(),dirtyChunks=new Set(),pendingTrees=new Map();
+ // A hidden, ready-to-display mesh bridges the 500ms batch rebuild interval.
+ // When the tree lands we reveal this in the SAME frame and merge it into
+ // the regular per-chunk instances at the next scheduled box tick.
+ const stagedLogs=new Map();
  const batched=!!(THREE.InstancedMesh&&THREE.Matrix4&&THREE.CanvasTexture&&THREE.MeshLambertMaterial);
  const cellKey=(x,z)=>Math.floor(x/BOX_CELL_SIZE)+','+Math.floor(z/BOX_CELL_SIZE);
  function markDirty(box){
@@ -82,6 +86,29 @@ export function createGroundBoxes(ctx,doc=document){
      }
    }
    if(meshes.length)batches.set(cell,meshes);
+ }
+ function stagePendingLogs(box){
+   if(!batched||!isFallenLogs(box)||!box.pending)return;
+   const geometry=ctx.fallenLogGeo??ctx.logGeo;
+   if(!geometry)return;
+   const segments=fallenLogSegments(box,FALLEN_LOG_LENGTH);
+   const mesh=new THREE.InstancedMesh(geometry,[ctx.logMat,ctx.endMat,ctx.endMat],segments.length);
+   for(let i=0;i<segments.length;i++){
+     const part=segments[i];
+     dummy.position.set(part.x,ctx.terrain.heightAt(part.x,part.z)+(ctx.logRadius??.29),part.z);
+     dummy.rotation.set(0,Math.PI/2-(box.direction??0),Math.PI/2);
+     dummy.scale.set(1,1,1);dummy.updateMatrix();
+     mesh.setMatrixAt(i,dummy.matrix);
+   }
+   mesh.instanceMatrix.needsUpdate=true;
+   mesh.castShadow=true;mesh.frustumCulled=true;mesh.computeBoundingSphere?.();
+   mesh.visible=false;
+   scene.add(mesh);
+   stagedLogs.set(box.id,mesh);
+ }
+ function disposeStage(id){
+   const mesh=stagedLogs.get(id);if(!mesh)return;
+   scene.remove(mesh);mesh.dispose?.();stagedLogs.delete(id);
  }
  function visibleCells(x,z){
    const cells=new Set(),radius=85+BOX_CELL_SIZE;
@@ -154,6 +181,9 @@ export function createGroundBoxes(ctx,doc=document){
   if(mesh){mesh.visible=!pending;scene.add(mesh);}
   const entry={...box,item:{...box.item},pending:!!pending,mesh};
   boxes.set(box.id,entry);index.set(entry);markDirty(entry);
+  // The falling animation lasts several seconds: prepare log geometry now.
+  // A ready staged mesh can be revealed immediately without waiting 500ms.
+  stagePendingLogs(entry);
   if(pending&&entry.tree){
     if(!pendingTrees.has(entry.tree))pendingTrees.set(entry.tree,new Set());
     pendingTrees.get(entry.tree).add(entry.id);
@@ -163,6 +193,7 @@ export function createGroundBoxes(ctx,doc=document){
  }
  function remove(id){
   const box=boxes.get(id);if(!box)return false;
+  disposeStage(id);
   if(box.mesh){
     scene.remove(box.mesh);
     if(isFallenLogs(box))box.mesh.children[0]?.dispose?.();
@@ -174,6 +205,7 @@ export function createGroundBoxes(ctx,doc=document){
  function set(list){clear();for(const box of list??[])add(box);}
  function clear(){
   for(const id of [...boxes.keys()])remove(id);
+  for(const id of [...stagedLogs.keys()])disposeStage(id);
   index.clear();pendingTrees.clear();
   for(const cell of [...batches.keys()])disposeBatches(cell);
   dirtyChunks.clear();hud.style.display='none';
@@ -221,6 +253,7 @@ export function createGroundBoxes(ctx,doc=document){
     if(!b||!b.pending)continue;
     b.pending=false;
     if(b.mesh)b.mesh.visible=true;
+    if(stagedLogs.has(id))stagedLogs.get(id).visible=true;
     markDirty(b);
   }
   pendingTrees.delete(tree);
@@ -238,6 +271,11 @@ export function createGroundBoxes(ctx,doc=document){
       (!batches.has(cell)||dirtyChunks.has(cell)))rebuildChunk(cell,nowSeconds);
     for(const cell of dirtyChunks)if(!index.cells.has(cell))disposeBatches(cell);
     dirtyChunks.clear();
+    // New batches include newly revealed logs. Drop their temporary meshes
+    // only AFTER rebuilding the batches, so not even one frame goes blank.
+    for(const [id] of stagedLogs){
+      if(!boxes.get(id)?.pending)disposeStage(id);
+    }
   }else{
     // Legacy-compatible mock renderer; real Three.js uses per-chunk instancing.
     for(const b of boxes.values())
@@ -257,7 +295,16 @@ export function createGroundBoxes(ctx,doc=document){
   }else hud.style.display='none';
  }
  function dropSlot(index){
-  if(ctx.isOnline?.()){ctx.sendNet?.({type:'drop_item',slot:index});return true;}
+  // Manual inventory action only; reject empty/invalid slots before sending
+  // anything or playing the reversed pickup sound.
+  if(!ctx.inventory?.state.slots[index])return false;
+  if(ctx.isOnline?.()){
+   // Explicit inventory drop only. Server-spawned/death loot uses add(),
+   // so it never triggers the reverse-pickup effect.
+   ctx.sendNet?.({type:'drop_item',slot:index});
+   ctx.audio?.effect('drop');
+   return true;
+  }
   const item=ctx.inventory?.state.slots[index];
   if(!item||boxes.size>=MAX_GROUND_DROPS)return false;
   const x=ctx.px-Math.sin(ctx.yaw)*1.5,z=ctx.pz-Math.cos(ctx.yaw)*1.5;
@@ -266,7 +313,9 @@ export function createGroundBoxes(ctx,doc=document){
   const removed=ctx.inventory.state.removeSlot(index);
   if(!removed){remove(box.id);return false;}
   ctx.wood=ctx.inventory.state.wood();ctx.inventory.render();
-  ctx.offlineSave?.markDirty?.();return true;
+  ctx.offlineSave?.markDirty?.();
+  ctx.audio?.effect('drop');
+  return true;
  }
  function pickup(id=null,segment=null){
   const selected=id===null?nearest():{id,segment};

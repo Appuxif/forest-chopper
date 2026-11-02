@@ -72,6 +72,7 @@ function requestJump(){
   if(ctx.vitals&&!ctx.vitals.jump())return;
   if(ctx.isOnline?.())ctx.sendNet?.({type:'jump'});
   ctx.jumpRequested=true;
+  ctx.audio?.jump?.();
 }
 
 return {logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal,

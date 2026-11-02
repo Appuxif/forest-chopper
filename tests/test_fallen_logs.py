@@ -12,8 +12,17 @@ from websockets.asyncio.client import connect
 
 from forest_server import (
     World, tree_info, inv_count, inv_weight, fallen_logs_box, is_fallen_logs,
-    fallen_log_mask, fallen_log_segments, BOX_TTL_SECONDS,
+    fallen_log_mask, fallen_log_segments, BOX_TTL_SECONDS, FALL_DURATION,
 )
+
+
+class TreeFallAudioSyncTests(unittest.TestCase):
+    def test_server_fall_wait_matches_selected_audio_duration(self):
+        metadata=json.loads((Path(__file__).resolve().parents[1]/
+                             'assets/audio/metadata/CHOP_CUTS.json').read_text())
+        cut=metadata['cuts']['chopping/tree_fall.mp3']
+        self.assertEqual((cut['start'],cut['end'],cut['speed']),(10,15,1.3))
+        self.assertAlmostEqual(FALL_DURATION,cut['playback_duration'],places=5)
 
 
 class FallenLogTests(unittest.IsolatedAsyncioTestCase):
@@ -76,6 +85,9 @@ class FallenLogTests(unittest.IsolatedAsyncioTestCase):
             self.assertAlmostEqual(box['direction'],self.world.boxes[ident]['direction'])
             self.assertGreater(self.world.boxes[ident]['ready_at'],time.time(),
                                'server locks the pile until tree-fall animation completes')
+            self.assertAlmostEqual(self.world.boxes[ident]['ready_at']-time.time(),
+                                   FALL_DURATION,delta=.3,
+                                   msg='log unlock must match the 3.85s tree-fall audio')
             self.world.boxes[ident]['ready_at']=time.time()-1
             first, middle, last=fallen_log_segments(box)
             self.assertEqual([v[0] for v in (first,middle,last)],[0,1,2])

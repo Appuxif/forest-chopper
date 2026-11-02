@@ -70,7 +70,9 @@ test('tree produces three visible 3D logs and no inventory reward; pickup remove
   const {ctx,state,scene}=fixture();
   const tree={userData:{id:'0,0:1',hp:1,x:0,z:-1},position:{x:0,z:-1},rotation:{x:0,z:0},children:[{}]};
   ctx.trees.set('0,0:1',tree);
-  createChopping(ctx).chop();
+  const chopping=createChopping(ctx);
+  chopping.chop();
+  chopping.tickImpact(ctx.lastHit+1000);
   assert.equal(ctx.cuts,1);
   assert.equal(state.count('log'),0,'falling tree never inserts logs into the bag');
   assert.equal(ctx.wood,0);
@@ -91,11 +93,11 @@ test('tree produces three visible 3D logs and no inventory reward; pickup remove
   assert.ok(initial[0].z>initial[1].z&&initial[1].z>initial[2].z,
     'three cylinders lie end to end along the fall vector');
   assert.ok(Math.abs(initial[0].z-initial[1].z)>3,'separate 3m segments');
-  tickFallingTrees(ctx,2.4);
+  tickFallingTrees(ctx,FALL_DURATION-.11);
   assert.equal([...ctx.groundBoxes.pickupNodes].length,0,'the trunk stays hidden during its fall');
   assert.equal(ctx.falling.length,1);
   assert.equal([...scene].find(x=>x.children?.[0]?.count===3)?.visible,false);
-  tickFallingTrees(ctx,.11);
+  tickFallingTrees(ctx,.12);
   assert.equal(ctx.falling.length,0,'fall finishes before pickup objects appear');
   assert.equal([...ctx.groundBoxes.pickupNodes].length,3);
   assert.equal([...scene].find(x=>x.children?.[0]?.count===3)?.visible,true);
@@ -137,7 +139,9 @@ test('even an already full bag still receives all three ground logs after fellin
   assert.equal(state.weight(),100);
   const tree={userData:{id:'0,0:1',hp:1,x:0,z:-1},position:{x:0,z:-1},rotation:{x:0,z:0},children:[{}]};
   ctx.trees.set('0,0:1',tree);
-  createChopping(ctx).chop();
+  const chopping=createChopping(ctx);
+  chopping.chop();
+  chopping.tickImpact(ctx.lastHit+1000);
   assert.equal(state.freeLogs(),0);
   assert.equal(state.count('log'),3);
   assert.equal(ctx.groundBoxes.snapshot()[0].item.count,TREE_LOG_COUNT);
@@ -242,4 +246,27 @@ test('legacy permanent piles are migrated to one-hour TTL while retaining segmen
   ctx.groundBoxes.add({...ctx.groundBoxes.snapshot()[0],mask:0b01,item:{id:'log',count:1}});
   assert.equal(ctx.groundBoxes.snapshot()[0].expires_at,expiry,
     'the legacy pile gets only one deadline even after partial pickup');
+});
+
+
+test('tree fall progresses through the entire ~3.85s sound instead of tilting in 1.8s',()=>{
+ const rotations=[],revealed=[];
+ const tree={userData:{id:'tree-sync'},rotation:{x:0,z:0},
+   quaternion:{setFromAxisAngle(_axis,angle){rotations.push(angle)}}};
+ class Vector3{constructor(x,y,z){Object.assign(this,{x,y,z})}}
+ const ctx={THREE:{Vector3},falling:[{tree,direction:Math.PI/2,elapsed:0}],
+  scene:{remove(){}},groundBoxes:{revealTree(id){revealed.push(id)}}};
+ assert.ok(FALL_DURATION>3.8 && FALL_DURATION<3.9);
+ tickFallingTrees(ctx,FALL_DURATION/2);
+ assert.equal(ctx.falling.length,1);
+ assert.ok(Math.abs(rotations.at(-1)-Math.PI/8)<.000001,
+   'halfway through audio the ease-in rotation is only 25% complete');
+ assert.deepEqual(revealed,[]);
+ tickFallingTrees(ctx,FALL_DURATION/2-.01);
+ assert.equal(ctx.falling.length,1);
+ assert.ok(rotations.at(-1)<Math.PI/2);
+ tickFallingTrees(ctx,.01);
+ assert.equal(ctx.falling.length,0,'fall ends exactly with audio');
+ assert.ok(Math.abs(rotations.at(-1)-Math.PI/2)<.000001);
+ assert.deepEqual(revealed,['tree-sync']);
 });

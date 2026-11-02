@@ -3,9 +3,12 @@ import {collectDiagnostics, formatDiagnostics, getGpuRendererName} from './diagn
 import {FPS_OPTIONS} from './frame-limiter.js';
 import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js';
 import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS} from './performance-presets.js';
+import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261102-jump-voices1';
 const KEY = 'forest-chopper:settings:v1';
 const CAMERA_80_MIGRATION = 'forest-chopper:camera-80-default:v1';
-const DEFAULT = Object.freeze({...PERFORMANCE_DEFAULTS,performancePreset:'high',mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 30, grassDistance: 70, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 70, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80});
+const AUDIO_REWORK_MIGRATION='forest-chopper:audio-rework-defaults:v2';
+const VOICE_MIGRATION='forest-chopper:voice-samples:v3';
+const DEFAULT = Object.freeze({...PERFORMANCE_DEFAULTS,performancePreset:'high',mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 30, grassDistance: 70, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 70, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80, audio:DEFAULT_AUDIO});
 
 function validCameraNumber(value,min,max,fallback,digits=2){
   if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max)return fallback;
@@ -18,6 +21,7 @@ export function sanitizeSettings(value) {
   const number = Number(source.mouseSensitivity);
   const fov = Number(source.fov);
   const settings = {
+    audio:sanitizeAudioSettings(source.audio),
     performancePreset:['ultra','high','medium','low','custom'].includes(source.performancePreset)
       ?source.performancePreset:(source.quality?'custom':'high'),
     ...Object.fromEntries(PERFORMANCE_KEYS.filter(key=>!(key in {
@@ -105,12 +109,29 @@ export function sanitizeSettings(value) {
   return settings;
 }
 
-export function createSettings(doc = document, storage = null, onFovChange = null, onQualityChange = null, treeModelStats = null, onPerformanceChange = null) {
+export function createSettings(doc = document, storage = null, onFovChange = null, onQualityChange = null, treeModelStats = null, onPerformanceChange = null, onSoundPreview = null) {
   let persisted;
   try {
     const local = storage ?? window.localStorage;
     persisted = JSON.parse(local.getItem(KEY) || 'null');
     storage = local;
+    // Old untouched defaults should adopt the quieter reviewed recordings.
+    // Preserve every custom audio value and run only once per browser profile.
+    if(persisted?.audio && !local.getItem(AUDIO_REWORK_MIGRATION)){
+      const changed={fire:[60,40],water:[38,40],forest:[42,40],hurtFemale:[78,0]};
+      for(const [key,[oldVolume,newVolume]] of Object.entries(changed)){
+        if(persisted.audio[key]===oldVolume)persisted.audio[key]=newVolume;
+      }
+      local.setItem(KEY,JSON.stringify(persisted));
+      local.setItem(AUDIO_REWORK_MIGRATION,'1');
+    }
+    // Female pain recordings were previously unavailable and defaulted to 0.
+    // Enable the newly approved sample set once, preserving all other volumes.
+    if(persisted?.audio && !local.getItem(VOICE_MIGRATION)){
+      if(persisted.audio.hurtFemale===0)persisted.audio.hurtFemale=78;
+      local.setItem(KEY,JSON.stringify(persisted));
+      local.setItem(VOICE_MIGRATION,'1');
+    }
     // The previous third-person default was ±40°. Upgrade existing saved
     // defaults once, without overriding future user choices of ±40°.
     if(persisted?.cameraPitchLimit === 40 && local.getItem(CAMERA_80_MIGRATION) !== '1'){
@@ -143,6 +164,13 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 .fc-settings-page[hidden]{display:none}
 .fc-settings-page{max-width:570px;margin:auto}
 .fc-settings-page[data-category=trees]{max-width:635px}
+.fc-audio-group{margin:12px 0 20px;border:1px solid #ffffff30;border-radius:9px;padding:12px 15px;background:#0e211a}
+.fc-audio-group h3{font-size:14px;margin:0 0 12px;color:#c1eacf}
+.fc-audio-row{display:grid;grid-template-columns:minmax(0,1fr) 42px;gap:10px;align-items:end;margin:12px 0}
+.fc-audio-row label{margin:0!important}.fc-audio-row output{font-variant-numeric:tabular-nums}.fc-audio-preview{height:35px;background:#315d43;color:#fff;border:1px solid #ffffff3f}
+.fc-audio-voice-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(98px,1fr));gap:6px;margin-top:8px}
+.fc-settings .fc-audio-voice-grid button{background:#204636;color:#dcf2e5;border:1px solid #ffffff45;font-size:12px}
+
 .fc-settings-shortcuts{margin-top:18px;padding:12px 14px;border:1px solid #45624c;border-radius:9px;background:#152f24;color:#d8f0df;line-height:1.75}.fc-settings-shortcuts strong{display:block;font-size:14px;margin-bottom:5px}.fc-settings-shortcuts small{display:block;margin-top:7px;opacity:.8}
 .fc-tree-toolbar{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .fc-tree-actions{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
@@ -208,6 +236,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <button type="button" class="fc-settings-tab" data-category="trees" aria-selected="false">🌲 Деревья</button>
       <button type="button" class="fc-settings-tab" data-category="controls" aria-selected="false">🎮 Управление</button>
       <button type="button" class="fc-settings-tab" data-category="camera" aria-selected="false">📷 Камера</button>
+      <button type="button" class="fc-settings-tab" data-category="audio" aria-selected="false">🔊 Звук</button>
       <button type="button" class="fc-settings-tab" data-category="world" aria-selected="false">🌍 Мир</button>
     </nav>
     <div class="fc-settings-content">
@@ -332,6 +361,28 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <input id="fc-camera-pitch-limit" type="range" min="10" max="80" step="1"></label>
     <label>Расстояние от персонажа: <output id="fc-camera-distance-value"></output> м
       <input id="fc-camera-distance" type="range" min="1.2" max="6" step="0.05"></label>
+    </section>
+    <section class="fc-settings-page" data-category="audio" aria-label="Звук" hidden>
+    <small>Каждый звук настраивается отдельно. Громкость меняется сразу, сохраняется автоматически. Кнопка ▶ позволяет послушать запись.</small>
+    ${[
+      ['main','🔊 Общая громкость'],
+      ['effects','🎮 Действия и персонаж'],
+      ['ambience','🌲 Природа и окружение'],
+    ].map(([group,title])=>`<div class="fc-audio-group"><h3>${title}</h3>${SOUND_CONTROLS.filter(s=>s.group===group).map(({key,label})=>`
+      <div class="fc-audio-row"><label for="fc-audio-${key}">${label}: <output id="fc-audio-${key}-value"></output>%
+      <input id="fc-audio-${key}" data-sound="${key}" type="range" min="0" max="100" step="1"></label>
+      ${key==='master'?'<span></span>':`<button type="button" class="fc-audio-preview" data-preview="${key}" aria-label="Прослушать: ${label}">▶</button>`}</div>`).join('')}</div>`).join('')}
+    <details class="fc-audio-group" id="fc-voice-preview-set">
+      <summary>🎙️ Прослушать все варианты голосов</summary>
+      <small>Здесь каждый фрагмент пронумерован. Назови номера неудачных, чтобы удалить их из случайного выбора.</small>
+      ${Object.entries(VOICE_VARIANTS).map(([category,sounds])=>`<h3>${({hurtMale:'Мужчина · боль',hurtFemale:'Женщина · боль',jumpMale:'Мужчина · прыжок',jumpFemale:'Женщина · прыжок',deathMale:'Мужчина · смерть',deathFemale:'Женщина · смерть'})[category]} (${sounds.length})</h3>
+      <div class="fc-audio-voice-grid">${sounds.map((id,i)=>`<button type="button" data-voice-preview="${id}">▶ ${id.match(/_(\d+)$/)?.[1]??i+1}</button>`).join('')}</div>`).join('')}
+    </details>
+    <details class="fc-audio-group" id="fc-axe-preview-set">
+      <summary>🪓 Прослушать варианты ударов топора (${AXE_VARIANTS.length})</summary>
+      <div class="fc-audio-voice-grid">${AXE_VARIANTS.map((id,i)=>`<button type="button" data-voice-preview="${id}">▶ ${i+1}</button>`).join('')}</div>
+    </details>
+    <button type="button" id="fc-audio-defaults">Сбросить только громкости</button>
     </section>
     <section class="fc-settings-page" data-category="world" aria-label="Мир" hidden>
     <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в деревьях</label>
@@ -481,7 +532,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const pages=Array.from(panel.querySelectorAll?.('.fc-settings-page')??[]);
   let activeCategory='graphics';
   function activateCategory(category) {
-    if(!['graphics','grass','trees','controls','camera','world'].includes(category))return;
+    if(!['graphics','grass','trees','controls','camera','audio','world'].includes(category))return;
     activeCategory=category;
     for(const tab of tabButtons)tab.setAttribute('aria-selected',String(tab.dataset.category===category));
     for(const page of pages)page.hidden=page.dataset.category!==category;
@@ -489,6 +540,32 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     if(content)content.scrollTop=0;
   }
   for(const tab of tabButtons)tab.onclick=()=>activateCategory(tab.dataset.category);
+  function reflectAudio(){
+    for(const {key} of SOUND_CONTROLS){
+      const input=panel.querySelector('#fc-audio-'+key);
+      const value=panel.querySelector('#fc-audio-'+key+'-value');
+      if(input)input.value=String(state.audio[key]);
+      if(value)value.textContent=String(state.audio[key]);
+    }
+  }
+  for(const {key} of SOUND_CONTROLS){
+    const slider=panel.querySelector('#fc-audio-'+key);
+    if(!slider)continue;
+    slider.oninput=()=>{
+      state.audio={...state.audio,[key]:Number(slider.value)};
+      reflectAudio();save();
+    };
+  }
+  for(const preview of panel.querySelectorAll?.('[data-voice-preview]')??[]){
+    preview.onclick=()=>onSoundPreview?.(preview.dataset.voicePreview,true);
+  }
+  for(const preview of panel.querySelectorAll?.('[data-preview]')??[]){
+    preview.onclick=()=>onSoundPreview?.(preview.dataset.preview);
+  }
+  panel.querySelector('#fc-audio-defaults').onclick=()=>{
+    state.audio={...DEFAULT_AUDIO};reflectAudio();save();
+  };
+  reflectAudio();
   function close() {
     if(panel.hidden)return;
     panel.hidden=true;
@@ -658,7 +735,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     reload:()=>onPerformanceChange?.(state),
   });
   panel.querySelector('#fc-reset-settings').onclick = () => {
-    Object.assign(state, DEFAULT);treeEditor.resetAll();onFovChange?.(state.fov);onQualityChange?.(state.quality);applyingPreset=true;reflect();save();applyingPreset=false;
+    Object.assign(state, DEFAULT, {audio:{...DEFAULT_AUDIO}});reflectAudio();treeEditor.resetAll();onFovChange?.(state.fov);onQualityChange?.(state.quality);applyingPreset=true;reflect();save();applyingPreset=false;
   };
   reflect();
   onFovChange?.(state.fov);
@@ -773,6 +850,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get fov(){return state.fov;},
     get quality(){return state.quality;},
     get maxFps(){return state.maxFps;},
+    get audio(){return state.audio;},
     get shadowDistance(){return state.shadowDistance;},
     get shadowRefreshSeconds(){return state.shadowRefreshSeconds;},
     get characterShadowsEnabled(){return state.characterShadowsEnabled;},

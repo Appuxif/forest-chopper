@@ -1,4 +1,4 @@
-import {tickFallingTrees} from './falling-trees.js';
+import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
 import {createPlayerMotionTracker} from './ragdoll-motion.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
@@ -145,6 +145,7 @@ function animate(now){
   }
  }
  ctx.waterSplashes?.tick(dt);
+ ctx.audio?.tick(now);
  ctx.microGrass?.tick();
  ctx.worldStreamer?.tick();
  ctx.groundBoxes?.tick(now);ctx.storages?.tick();ctx.campStructures?.tick(now);
@@ -162,6 +163,9 @@ function animate(now){
    (follow?.feetY??ctx.feetY)+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,
    follow?.pz??ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
  if(ctx.thirdPerson)orbitCamera.update(dt,follow);
+ // Animation mixer and camera have both updated: resolve any frame-18 tree
+ // contact using the *current* crosshair, not the mouse-down position.
+ ctx.tickChopImpact?.(now);
  // The real skinned meshes cast shadows on every rendered frame.
  // The shadow pass runs after both local and remote animation poses update.
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;

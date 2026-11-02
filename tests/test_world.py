@@ -862,6 +862,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             await ws.send(json.dumps({'type': 'hit', 'tree': key}))
             hit = await self.receive(ws, 'tree_hit')
             self.assertEqual(hit['hp'], hp - 1)
+            self.assertEqual(hit['by'], player['id'])
             self.assertEqual((await self.receive(ws,'vitals_state'))['vitals']['stamina'],4)
             self.assertEqual(self.world.damage[key], hp - 1)
             await ws.send(json.dumps({'type': 'hit', 'tree': key}))

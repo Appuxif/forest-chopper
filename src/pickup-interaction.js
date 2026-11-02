@@ -119,9 +119,11 @@ export function createPickupInteraction(ctx){
   }
   function pickItem(item){
     if(!item)return false;
-    return item.type==='box'
+    const success=item.type==='box'
       ?(ctx.groundBoxes?.pickup(item.id,item.segment)??false)
       :(ctx.forestResources?.collect(item.id)??false);
+    if(success)ctx.audio?.effect('pickup');
+    return success;
   }
   function pickup(){
     const {focused,selected}=calculate();

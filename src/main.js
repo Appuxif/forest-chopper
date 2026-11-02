@@ -1,6 +1,6 @@
 import {createRagdoll} from './ragdoll.js?v=20261102-bounce-fix1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261102-bounce-fix1';
-import {createAnimations} from './animations.js?v=20261030-character-shadow-12m1';
+import {createAnimations} from './animations.js?v=20261102-chop-frame18';
 import {createWorld} from './world.js?v=20261102-collision-world1';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
@@ -14,17 +14,18 @@ import {createGrass} from './grass.js';
 import {createMicroGrass} from './micro-grass.js?v=20261101-startup-loader1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
 import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
-import {createPhysics} from './physics.js?v=20261102-fall-impact1';
+import {createPhysics} from './physics.js?v=20261102-jump-voices1';
 import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bounce-fix1';
 import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
 import {createBuilding} from './building.js?v=20261102-build-height1';
-import {createChopping} from './chopping.js?v=20261102-collision-world1';
+import {createChopping} from './chopping.js?v=20261102-chop-current-target1';
 import {createControls} from './controls.js?v=20261102-bounce-fix1';
-import {createPlayer} from './player.js?v=20261102-fall-impact1';
-import {createMultiplayer} from './multiplayer.js?v=20261102-fall-impact1';
+import {createPlayer} from './player.js?v=20261102-treefall-sync13';
+import {createMultiplayer} from './multiplayer.js?v=20261102-chop-frame18';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261102-url-launch1';
+import {createSettings} from './settings.js?v=20261102-jump-voices1';
+import {createGameAudio} from './game-audio.js?v=20261102-treefall-sync13';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
@@ -45,14 +46,14 @@ import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-w
 import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
 import {createStorages} from './storages.js?v=20261102-collision-world1';
 import {createCampStructures} from './camp-structures.js?v=20261102-collision-world1';
-import {createVitalsUI} from './vitals-ui.js?v=20261102-fall-impact1';
+import {createVitalsUI} from './vitals-ui.js?v=20261102-voice1';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
-import {createGroundBoxes} from './ground-boxes.js?v=20261102-ragdoll-sleep1';
+import {createGroundBoxes} from './ground-boxes.js?v=20261102-prestage-logs1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 import {WorldTaskScheduler} from './world-task-scheduler.js';
 import {createWorldStartupGate} from './world-startup.js';
-import {createPickupInteraction} from './pickup-interaction.js?v=20261102-ragdoll-sleep1';
-import {createDeathSystem} from './death.js?v=20261102-fall-impact1';
+import {createPickupInteraction} from './pickup-interaction.js?v=20261102-audio1';
+import {createDeathSystem} from './death.js?v=20261102-voice1';
 
 // Read and consume launch mode before touching any saved game data.
 const MENU_LAUNCH_KEY='forest-chopper:launch:v1';
@@ -155,11 +156,13 @@ const PLAYER_RADIUS=.31,PLAYER_HEIGHT=1.7,GRAVITY=19,JUMP_SPEED=7.5;
 // Multiplayer: authoritative server state, client-side rendering.
 let socket=null,myId=null,lastMoveSent=0;const avatars=new Map();
 const notifications=createNotifications();
+let gameAudio=null;
 const settings=createSettings(document,null,
   fov=>{camera.fov=fov;camera.updateProjectionMatrix();},
   quality=>applyQuality(renderer,quality,devicePixelRatio,innerWidth,innerHeight),
   {spruce:spruceParts?.stats,birch:birchParts?.stats},
-  ()=>refreshPerformance());
+  ()=>refreshPerformance(),
+  (category,exact=false)=>exact?gameAudio?.previewClip(category):gameAudio?.preview(category));
 const atmosphere=createAtmosphere({
  THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
  getCharacterShadowCasters(){
@@ -228,7 +231,7 @@ let worldStartupGate=null;
 const fallTracker=createFallTracker();
 let fallImpactSpeed=0;
 let collisionWorld=null;
-let distantForest, replaceTreeModels, ragdollStandingSupport, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, nudgeLog, rotateLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
+let distantForest, replaceTreeModels, ragdollStandingSupport, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, tickChopImpact, acknowledgeLocalChop, resetChop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, nudgeLog, rotateLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
  get $(){return $;},
  get chatHistory(){return chatHistory;},
@@ -275,6 +278,9 @@ const ctx={
  get camera(){return camera;},
  get candidate(){return candidate;},
  get chop(){return chop;},
+ get tickChopImpact(){return tickChopImpact;},
+ get acknowledgeLocalChop(){return acknowledgeLocalChop;},
+ get resetChop(){return resetChop;},
  get chunkSize(){return chunkSize;},
  get chunks(){return chunks;},
  get clearWorld(){return clearWorld;},
@@ -378,6 +384,7 @@ const ctx={
  get rootMotion(){return rootMotion;},
  get scene(){return scene;},
  get settings(){return settings;},
+ get audio(){return gameAudio;},
  get seed(){return seed;}, set seed(value){seed=value;terrain.setSeed(value);},
  get sendNet(){return sendNet;},
  get setMode(){return setMode;},
@@ -545,7 +552,7 @@ collisionWorld=createCollisionWorld(ctx);
 ({logFootprint, logTop, logBottom, blocksPlayerAt, moveHorizontal,
  simulateVertical, ragdollStandingSupport, requestJump}=createPhysics(ctx));
 ({makeLog, overlaps, candidate, placeError, updatePreview, placeLog, removeLog, setMode, disposePreview,nudge:nudgeLog,rotate:rotateLog}=createBuilding(ctx));
-({aimed, spawnChips, chop}=createChopping(ctx));
+({aimed, spawnChips, chop, tickImpact:tickChopImpact,acknowledgeLocalChop,resetChop}=createChopping(ctx));
 ownAvatar=createLumberjack();if(ownAvatar){
  // Layer 3 is local-only (hidden in first person); layer 1 remains enabled
  // for remote players. Both layers are visible to the character shadow light.
@@ -572,6 +579,7 @@ crafting.setMode(false);
 $('mode').style.display='none';
 $('place').style.display='none';
 $('undo').style.display='none';
+gameAudio=createGameAudio(ctx);
 const highlight=createInteractionHighlight(ctx);
 const discoveries=createDiscoveries(ctx);
 const communityGoal=createCommunityGoal(ctx);

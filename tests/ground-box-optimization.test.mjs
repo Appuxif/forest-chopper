@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {GroundBoxIndex} from '../src/ground-box-index.js';
 import {createGroundBoxes,BOX_LIFETIME_SECONDS} from '../src/ground-boxes.js';
+import {tickFallingTrees} from '../src/falling-trees.js';
+import {FALL_DURATION} from '../src/fallen-log-layout.js';
 import {createInventoryModel} from '../src/inventory.js';
 import {pickupCandidates} from '../src/pickup-interaction.js';
 
@@ -160,4 +162,135 @@ test('10,000 crates fit in one spatial batch; crate 10,001 is rejected',()=>{
  assert.equal(f.ground.add(normal(10001,5,5,expiry)),true,
    'a removed box immediately frees one capacity slot');
  f.ground.dispose();
+});
+
+test('reverse pickup plays only on a successful deliberate inventory drop, never automatic death loot',()=>{
+ const f=sceneFixture(),effects=[];
+ f.ctx.audio={effect:name=>effects.push(name)};
+ const empty=f.ctx.inventory.state.slots.findIndex(item=>!item);
+ assert.ok(empty>=0);
+ assert.equal(f.ground.dropSlot(empty),false,'empty slot is not a drop');
+ assert.deepEqual(effects,[]);
+ assert.equal(f.ctx.inventory.state.addItem({id:'stone',count:1}),true);
+ const slot=f.ctx.inventory.state.slots.findIndex(item=>item?.id==='stone');
+ assert.ok(slot>=0);
+ assert.equal(f.ground.dropSlot(slot),true);
+ assert.deepEqual(effects,['drop']);
+ assert.equal(f.ctx.inventory.state.slots[slot],null);
+ const before=f.ground.count;
+ // Death uses groundBoxes.add(), never dropSlot().
+ assert.equal(f.ground.add(normal(1002,1,1)),true);
+ assert.equal(f.ground.count,before+1);
+ assert.deepEqual(effects,['drop'],'death/automatic boxes remain silent');
+ assert.equal(f.ground.dropSlot(slot),false,'repeat on consumed slot is ignored');
+ assert.deepEqual(effects,['drop']);
+ f.ground.dispose();
+});
+
+test('online deliberate inventory drop sends drop_item and plays once; server box events are silent',()=>{
+ const f=sceneFixture(),effects=[],sent=[];
+ f.ctx.audio={effect:name=>effects.push(name)};
+ f.ctx.isOnline=()=>true;
+ f.ctx.sendNet=packet=>sent.push(packet);
+ const slot=f.ctx.inventory.state.slots.findIndex(item=>!item);
+ assert.equal(f.ground.dropSlot(slot),false,'empty online slot is not an action');
+ assert.equal(f.ctx.inventory.state.addItem({id:'stone',count:1}),true);
+ assert.equal(f.ground.dropSlot(slot),true);
+ assert.deepEqual(sent,[{type:'drop_item',slot}]);
+ assert.deepEqual(effects,['drop']);
+ assert.equal(f.ground.add(normal(1200,2,2)),true);
+ assert.deepEqual(effects,['drop'],'replicated spawned boxes do not play drop effect');
+ f.ground.dispose();
+});
+
+test('falling logs are prebuilt hidden, appear immediately on reveal, then join chunk batch',()=>{
+ const f=sceneFixture(),tree='falling-01';
+ const pile={id:510,kind:'fallen_logs',tree,x:0,z:0,direction:.4,
+  mask:0b111,expires_at:seconds()+3600,item:{id:'log',count:3},pending:true};
+ assert.equal(f.ground.add(pile),true);
+ assert.equal(f.ground.count,1);
+ assert.equal(f.meshes.size,1,'all three log instance transforms created during fall');
+ const staged=[...f.meshes][0];
+ assert.equal(staged.count,3);
+ assert.equal(staged.visible,false,'not rendered while standing tree falls');
+ assert.equal(staged.matrices.length,3,'all transforms prepared ahead of time');
+ assert.deepEqual([...f.ground.pickupNodes],[],'logs are not pickable during fall');
+ f.ground.tick(1000);
+ assert.equal(f.ground.batchCount,0,'pending logs are excluded from visible batches');
+ f.ground.revealTree(tree);
+ assert.equal(staged.visible,true,'immediate visibility on exact fall-completion frame');
+ assert.equal(f.meshes.size,1,'no 500ms timeout and no extra draw call at reveal');
+ assert.equal([...f.ground.pickupNodes].length,3,'segments are accessible after landing');
+ f.ground.tick(1200);
+ assert.equal(f.meshes.has(staged),true,'staged mesh remains visible during tick throttle');
+ f.ground.tick(1500);
+ assert.equal(f.meshes.has(staged),false,'temporary object released after chunk rebuilding');
+ assert.equal(f.ground.batchCount,1);
+ assert.equal(f.meshes.size,1,'batched mesh seamlessly replaces temporary mesh');
+ assert.equal([...f.meshes][0].count,3);
+ f.ground.dispose();
+ assert.equal(f.meshes.size,0);
+});
+
+test('pending log mesh is disposed on removal or world reset, even before landing',()=>{
+ const f=sceneFixture(),pile={id:600,kind:'fallen_logs',tree:'tree-600',
+   x:1,z:2,direction:0,mask:0b111,
+   expires_at:seconds()+3600,item:{id:'log',count:3},pending:true};
+ f.ground.add(pile);
+ const first=[...f.meshes][0];
+ assert.equal(first.visible,false);
+ const disposedBefore=f.disposed;
+ assert.equal(f.ground.remove(pile.id),true);
+ assert.equal(f.meshes.size,0);
+ assert.ok(f.disposed>disposedBefore);
+ f.ground.revealTree(pile.tree);
+ assert.equal(f.meshes.size,0,'removed pile must not reappear later');
+ f.ground.add({...pile,id:601});
+ f.ground.add({...pile,id:602});
+ assert.equal(f.meshes.size,2);
+ f.ground.clear();
+ assert.equal(f.meshes.size,0);
+ f.ground.revealTree(pile.tree);
+ f.ground.tick(1000);
+ assert.equal(f.meshes.size,0,'old tree reveal cannot leak into next world');
+ f.ground.dispose();
+});
+
+test('new box_add update during falling replaces staged mesh without showing it early',()=>{
+ const f=sceneFixture(),pile={id:702,kind:'fallen_logs',tree:'tree-702',
+   x:0,z:1,direction:.25,mask:0b111,
+   expires_at:seconds()+3600,item:{id:'log',count:3},pending:true};
+ f.ground.add(pile);
+ const first=[...f.meshes][0];
+ f.ground.add({...pile,pending:false});
+ assert.equal(f.meshes.has(first),false);
+ assert.equal(f.meshes.size,1);
+ const current=[...f.meshes][0];
+ assert.equal(current.visible,false,'the previously pending state must be preserved');
+ f.ground.revealTree(pile.tree);
+ assert.equal(current.visible,true);
+ f.ground.dispose();
+});
+
+test('falling-trees completion reveals prepared logs in the same render frame',()=>{
+ const f=sceneFixture(),tree={userData:{id:'timed-fall'},rotation:{x:0,z:0}};
+ f.ctx.falling=[{tree,direction:.4,elapsed:0}];
+ f.ctx.scene.add(tree);
+ f.ground.add({id:901,kind:'fallen_logs',tree:tree.userData.id,
+  x:0,z:0,direction:.4,mask:0b111,expires_at:seconds()+3600,
+  item:{id:'log',count:3}});
+ const staged=[...f.meshes].find(mesh=>mesh!==tree);
+ assert.ok(staged);
+ assert.equal(staged.visible,false);
+ f.ground.tick(1000); // schedule batch update while original tree is still falling
+ tickFallingTrees(f.ctx,FALL_DURATION-.001);
+ assert.equal(staged.visible,false);
+ assert.equal(f.ctx.falling.length,1);
+ tickFallingTrees(f.ctx,.002);
+ assert.equal(f.ctx.falling.length,0);
+ assert.equal(f.meshes.has(tree),false,'standing/falling tree removed');
+ assert.equal(staged.visible,true,'all logs visible immediately, without groundBoxes.tick');
+ assert.equal(f.ground.batchCount,0);
+ f.ground.dispose();
+ assert.equal(f.meshes.size,0);
 });

@@ -208,3 +208,14 @@ test('death and respawn share ragdoll camera cleanup with manual get-up',async()
    set:f.ctx.ownAvatar.group.rotation.set});
  assert.deepEqual([f.ctx.ownAvatar.group.position.x,f.ctx.ownAvatar.group.position.z],[0,0]);
 });
+
+test('death plays a dedicated voice exactly once and never duplicates on repeat packets',()=>{
+ const f=fixture({online:true});
+ const voices=[];
+ f.ctx.audio={death:()=>voices.push('death'),hurt:()=>voices.push('hurt')};
+ assert.equal(f.death.onDeath(),true);
+ assert.deepEqual(voices,['death']);
+ assert.equal(f.death.onDeath(),false);
+ f.death.receive({x:1,z:2});
+ assert.deepEqual(voices,['death'],'online respawn event may not replay the death sound');
+});

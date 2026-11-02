@@ -53,7 +53,8 @@ test('landing on log surface and head collision', () => {
 
 test('jump charges stamina exactly once, only when grounded, and reports exhaustion',()=>{
  const {ctx,physics}=fixture();
- const sent=[],spent=[];
+ const sent=[],spent=[],heard=[];
+ ctx.audio={jump:()=>heard.push('jump')};
  let energy=2;
  ctx.isOnline=()=>true;
  ctx.sendNet=payload=>sent.push(payload);
@@ -61,6 +62,7 @@ test('jump charges stamina exactly once, only when grounded, and reports exhaust
  physics.requestJump();
  physics.requestJump();
  assert.equal(spent.length,1,'duplicate keyboard/pointer events must not charge twice');
+ assert.deepEqual(heard,['jump'],'successful jump sounds once');
  assert.equal(ctx.jumpRequested,true);
  assert.deepEqual(sent,[{type:'jump'}]);
  physics.simulateVertical(.016);
@@ -70,12 +72,14 @@ test('jump charges stamina exactly once, only when grounded, and reports exhaust
  ctx.feetY=0;ctx.verticalSpeed=0;ctx.onGround=true;
  physics.requestJump();
  assert.equal(spent.length,2);
+ assert.deepEqual(heard,['jump','jump']);
  physics.simulateVertical(.016);
  ctx.feetY=0;ctx.verticalSpeed=0;ctx.onGround=true;
  physics.requestJump();
  assert.equal(spent.length,3,'insufficient energy is checked on grounded jump');
  assert.equal(ctx.jumpRequested,false);
  assert.equal(sent.length,2);
+ assert.deepEqual(heard,['jump','jump'],'exhaustion and airborne input stay silent');
 });
 
 test('ragdoll stand-up uses top of log ramp but not overhead logs',()=>{
