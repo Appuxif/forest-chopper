@@ -134,12 +134,15 @@ export async function createAnimations(THREE){
   return actor;
  }
 
- function actorChop(actor){
+ function actorChop(actor,axeSpeed=1){
   const action=actor?.upper?.Chop2;
   if(!action)return;
   if(actor.upperState==='Chop2'){action.stop();actor.upperState='';}
-  actor.chopEnd=performance.now()+action.getClip().duration/CHOP_SPEED*1000+30;
-  transitionLayer(THREE,actor,'upper','Chop2');
+  const playbackSpeed=CHOP_SPEED*Math.max(.1,axeSpeed);
+  actor.chopEnd=performance.now()+action.getClip().duration/playbackSpeed*1000+30;
+  // Frame-18 tree contact is measured on this same action; the visual
+  // swing must use the equipped axe's rate, not the default 1.6x rate.
+  transitionLayer(THREE,actor,'upper','Chop2',axeSpeed);
  }
 
  function tickActor(actor,dt,motion='Idle',jumping=false,rate=1){

@@ -1,6 +1,9 @@
 import {loadRagdollPhysics} from './rapier-loader.js';
 import {createRagdollEnvironment} from './ragdoll-colliders.js';
 import {ragdollActivationMotion,applyRagdollMomentum} from './ragdoll-motion.js?v=20261102-bounce-fix1';
+import {createRagdollSettling} from './ragdoll-settling.js';
+import {calibrateLimbJoint,RAGDOLL_LIMB_END_BONES} from './ragdoll-anatomy.js';
+import {stepRagdollPhysics} from './ragdoll-step.js';
 export {makeGroundMesh} from './ragdoll-colliders.js';
 // Shared local-player ragdoll. Uses the same GLB SkinnedMesh/bones as the
 // animated character. Rapier is preloaded during world startup.
@@ -32,8 +35,46 @@ const JOINTS={
  'Shin.L':{kind:'hinge',axis:[1,0,0],limits:[-.25,.7],spring:8},
  'Shin.R':{kind:'hinge',axis:[1,0,0],limits:[-.25,.7],spring:8},
 };
+// Classic lumberjack needs its stiffer joints to keep the simple 13-bone rig
+// recognizable. The modular 53-bone bodies have proper elbow/knee geometry:
+// passive joints should *fall*, not be pulled back to the standing pose.
 export const RAGDOLL_JOINTS=JOINTS;
+const HUMANOID_JOINT_OVERRIDES={
+  Head:{limits:[-.45,.45],spring:1.5},
+  'UpperArm.L':{limits:[-1.55,1.55],spring:0},
+  'UpperArm.R':{limits:[-1.55,1.55],spring:0},
+  'Forearm.L':{limits:[-.15,2.35],spring:0},
+  'Forearm.R':{limits:[-2.35,.15],spring:0},
+  'Thigh.L':{limits:[-1.3,1.3],spring:0},
+  'Thigh.R':{limits:[-1.3,1.3],spring:0},
+  'Shin.L':{limits:[-.25,2.15],spring:0},
+  'Shin.R':{limits:[-.25,2.15],spring:0},
+};
+export const RAGDOLL_HUMANOID_JOINTS=Object.fromEntries(
+  Object.entries(JOINTS).map(([name,config])=>[
+    name,{...config,...HUMANOID_JOINT_OVERRIDES[name]},
+  ]),
+);
+export function ragdollJointProfile(model){
+ return model==='male'||model==='female'?RAGDOLL_HUMANOID_JOINTS:RAGDOLL_JOINTS;
+}
 const normal=name=>name.replace(/[._\s-]/g,'').toLowerCase();
+// Both the classic 13-bone lumberjack and the two 53-bone modular humanoids
+// use the same physics chain. Keep the original physics names stable; only the
+// lookup changes. In particular, calf_l/r are the new rigs' shin bones.
+export const RAGDOLL_BONE_ALIASES={
+  Hips:['Hips','pelvis'],
+  Spine:['Spine','spine_03'],
+  Head:['Head','head'],
+  'UpperArm.L':['UpperArm.L','upperarm_l'],
+  'Forearm.L':['Forearm.L','lowerarm_l'],
+  'UpperArm.R':['UpperArm.R','upperarm_r'],
+  'Forearm.R':['Forearm.R','lowerarm_r'],
+  'Thigh.L':['Thigh.L','thigh_l'],
+  'Shin.L':['Shin.L','calf_l'],
+  'Thigh.R':['Thigh.R','thigh_r'],
+  'Shin.R':['Shin.R','calf_r'],
+};
 export const RAGDOLL_BONES=SEGMENTS.map(([name])=>name);
 export function findRagdollBones(visual){
  const all=new Map();
@@ -42,7 +83,7 @@ export function findRagdollBones(visual){
  });
  const bones=new Map();
  for(const name of RAGDOLL_BONES){
-   const bone=all.get(normal(name));
+   const bone=RAGDOLL_BONE_ALIASES[name].map(alias=>all.get(normal(alias))).find(Boolean);
    if(!bone)throw new Error('Ragdoll: missing bone '+name);
    bones.set(name,bone);
  }
@@ -52,13 +93,16 @@ function vec(v){return {x:v.x,y:v.y,z:v.z};}
 function quat(q){return {x:q.x,y:q.y,z:q.z,w:q.w};}
 export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
  const THREE=ctx.THREE;
- let physics=null,instance=null,loading=null;
+ let physics=null,instance=null,loading=null,physicsFailure=null;
  const state=()=>({
    active:!!instance,loading:!!loading,
    bodies:instance?.parts.length??0,
    hipsHeight:instance?.parts[0]?.body.translation().y??null,
+   ...(instance?.settling?.state()??{settled:false,straightening:false,straightenProgress:0}),
+   physicsError:physicsFailure,
  });
  async function trigger({allowOnline=false,bed=null,restPose=null,impactSpeed=0}={}){
+   if(physicsFailure)throw new Error('Ragdoll physics unavailable until reload: '+physicsFailure);
    if(instance)return state();
    if(loading)return loading;
    // Capture on the input frame, BEFORE loading Rapier asynchronously: a
@@ -99,11 +143,30 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
        points.set(name,bone.getWorldPosition(new THREE.Vector3()));
        boneQ.set(name,bone.getWorldQuaternion(new THREE.Quaternion()));
      }
+     const humanoid=actor.model==='male'||actor.model==='female';
+     const jointSettings=ragdollJointProfile(actor.model);
+     const anatomicalEnds=new Map(),alignments=new Map();
+     if(humanoid)for(const [name,boneName] of Object.entries(RAGDOLL_LIMB_END_BONES)){
+       // Unlike the old lumberjack, the 53-bone models have actual wrists
+       // and ankles. Using the parent direction for a terminal segment used
+       // to orient a bent forearm as though the elbow was already straight.
+       const endpoint=actor.human?.bones.get(boneName)?.getWorldPosition(new THREE.Vector3());
+       if(!endpoint)continue;
+       anatomicalEnds.set(name,endpoint);
+       const alignment=calibrateLimbJoint(
+         points.get(PARENTS[name]),points.get(name),endpoint,{
+           // A dead knee must not fold back through ~140° just because the
+           // solver finds that pose stable on terrain. Elbows can bend more.
+           maxBend:name.startsWith('Shin.')?1.55:2.25,
+         });
+       if(alignment)alignments.set(name,alignment);
+     }
      const parts=[],byName=new Map(),up=new THREE.Vector3(0,1,0);
      for(const [name,endName,radius] of SEGMENTS){
        const bone=bones.get(name),start=points.get(name);
        let finish;
        if(endName)finish=points.get(endName).clone();
+       else if(anatomicalEnds.has(name))finish=anatomicalEnds.get(name).clone();
        else if(name==='Head')finish=start.clone().add(new THREE.Vector3(0,.27,0));
        else {
          const parentName=PARENTS[name],direction=start.clone().sub(points.get(parentName)).normalize();
@@ -117,7 +180,7 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
        const desc=physics.RigidBodyDesc.dynamic()
          .setTranslation(center.x,center.y,center.z)
          .setRotation({x:bodyRotation.x,y:bodyRotation.y,z:bodyRotation.z,w:bodyRotation.w})
-         .setLinearDamping(1.25).setAngularDamping(2.7);
+         .setLinearDamping(1.25).setAngularDamping(humanoid?1.4:2.7);
        const body=world.createRigidBody(desc);
        const capsule=physics.ColliderDesc.capsule(Math.max(.035,length/2-radius*.65),radius)
          .setDensity(name==='Hips'||name==='Spine'?750:450)
@@ -132,6 +195,7 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
        const part={name,bone,body,attachment,boneOffset,center,bodyRotation};
        parts.push(part);byName.set(name,part);
      }
+     const jointLinks=new Map();
      for(const part of parts){
        const parentName=PARENTS[part.name];
        const parent=byName.get(parentName);
@@ -141,7 +205,8 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
          .applyQuaternion(parent.bodyRotation.clone().invert());
        const b=joint.clone().sub(part.center)
          .applyQuaternion(part.bodyRotation.clone().invert());
-       const config=JOINTS[part.name];
+       const config=jointSettings[part.name];
+       const alignment=alignments.get(part.name);
        let data;
        if(config.kind==='fixed'){
          // Preserve the bind-pose rotation of the torso instead of letting
@@ -151,33 +216,39 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
          const localB=part.bodyRotation.clone().invert().multiply(worldFrame);
          data=physics.JointData.fixed(vec(a),quat(localA),vec(b),quat(localB));
        }else{
-         const axis=new THREE.Vector3(...config.axis)
-           .applyQuaternion(actor.group.quaternion)
-           .applyQuaternion(actor.visual.quaternion).normalize();
+         const axis=alignment
+           ?new THREE.Vector3(alignment.axis.x,alignment.axis.y,alignment.axis.z)
+           :new THREE.Vector3(...config.axis)
+             .applyQuaternion(actor.group.quaternion)
+             .applyQuaternion(actor.visual.quaternion).normalize();
          const axisA=axis.clone().applyQuaternion(parent.bodyRotation.clone().invert());
          const axisB=axis.clone().applyQuaternion(part.bodyRotation.clone().invert());
          data=physics.JointData.revoluteWithAxes(vec(a),vec(b),vec(axisA),vec(axisB));
        }
        const link=world.createImpulseJoint(data,parent.body,part.body,true);
+       jointLinks.set(part.name,link);
        link.setContactsEnabled(false);
        if(config.kind==='hinge'){
          // Align *both* joint frames to the same world-space reference in the
          // current pose. Otherwise Rapier can interpret the bind pose as a
          // 180-degree rotation and actively fold the knee backward on spawn.
-         const axis=new THREE.Vector3(...config.axis)
-           .applyQuaternion(actor.group.quaternion)
-           .applyQuaternion(actor.visual.quaternion).normalize();
+         const axis=alignment
+           ?new THREE.Vector3(alignment.axis.x,alignment.axis.y,alignment.axis.z)
+           :new THREE.Vector3(...config.axis)
+             .applyQuaternion(actor.group.quaternion)
+             .applyQuaternion(actor.visual.quaternion).normalize();
          const restFrame=new THREE.Quaternion().setFromUnitVectors(
            new THREE.Vector3(1,0,0),axis);
          const localParent=parent.bodyRotation.clone().invert().multiply(restFrame);
          const localChild=part.bodyRotation.clone().invert().multiply(restFrame);
          link.setLocalFrame1(vec(a),quat(localParent));
          link.setLocalFrame2(vec(b),quat(localChild));
-         link.setLimits(...config.limits);
-         // Weak pose-restoring angular motor, not a permanent animation:
-         // keeps knees and elbows from instantly folding flat, while gravity
-         // and collisions still move the limbs naturally.
-         link.configureMotorPosition(0,config.spring,1.6);
+         link.setLimits(...(alignment?.limits??config.limits));
+         // The classic rig keeps its original pose-restoring springs. On the
+         // 53-bone models the limbs are passive: zero motor force lets gravity
+         // and contacts bend them rather than elastically straighten them.
+         if(config.spring>0)
+           link.configureMotorPosition(0,config.spring,humanoid?0.7:1.6);
        }
      }
      // Transfer the same world-space linear and yaw velocity to all capsule
@@ -211,48 +282,55 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
      actor.visual.traverse(node=>{
        if(node.isSkinnedMesh){culling.push([node,node.frustumCulled]);node.frustumCulled=false;}
      });
+     // Only new humanoids relax after the fall; the classic 13-bone
+     // lumberjack and intentionally placed bed/sleep poses are unchanged.
+     const targets=new Map([...alignments].map(([name,config])=>[name,config.target]));
+     const settling=createRagdollSettling(parts,jointLinks,{
+       enabled:humanoid&&!bed,targets,
+     });
      instance={world,parts,actor,snapshot,originalRoot,originalActorQuaternion,
-       standingHipOffset,culling,environment,initialMotion,accumulator:0,elapsed:0};
+       standingHipOffset,culling,environment,initialMotion,settling,accumulator:0,elapsed:0};
      ctx.ragdollCamera?.enter?.();
      return state();
    })();
    try{await loading;}finally{loading=null;}
    return state();
  }
+ // Never call Rapier again after a WASM failure. wasm-bindgen can leave
+ // a borrowed Rust object poisoned, so even world.free() may throw.
+ // Releasing JS state still lets the death screen reach Respawn or the
+ // manual ragdoll controller return to regular player movement.
+ function onPhysicsFailure(error){
+   const failed=instance;
+   if(!failed)return;
+   physicsFailure=String(error?.message??error);
+   console.error('[Forest Chopper] Ragdoll physics failed; gameplay can continue without it.',error);
+   instance=null;
+   const {actor,snapshot,originalActorQuaternion,culling}=failed;
+   for(const [mesh,enabled] of culling??[])mesh.frustumCulled=enabled;
+   actor.mixer.stopAllAction();
+   for(const {bone,position,quaternion} of snapshot){
+     bone.position.copy(position);bone.quaternion.copy(quaternion);
+   }
+   // Use the last valid logical player location, not the simulated pelvis
+   // whose Rapier handles may have become invalid.
+   actor.group.position.set(ctx.px,ctx.feetY,ctx.pz);
+   actor.group.quaternion.copy(originalActorQuaternion);
+   actor.group.rotation.set(0,ctx.yaw,0);
+   actor.visual.updateMatrixWorld(true);
+   actor.lowerState='';actor.upperState='';
+   actor.rmTimes={};actor.chopEnd=0;
+   ctx.ragdollCamera?.exit?.();
+   ctx.ragdollControls?.abort?.();
+   ctx.notify?.('Ошибка физики ragdoll. Можно продолжить игру или возродиться.','warning','ragdoll-physics-failed');
+ }
  function tick(dt){
    if(!instance)return;
-   try{stepSimulation(dt);}
-   catch(error){
-     // A Rapier WASM panic can poison its internal borrow state. Do not
-     // let the same exception escape on every animation frame (including
-     // while restoring a saved death). The save and the world are untouched.
-     console.error('Ragdoll simulation failed; restoring animated player:',error);
-     try{reset();}
-     catch(cleanupError){
-       // The WASM borrow guard can stay poisoned after its first trap.
-       // Never let failed cleanup stop the game's requestAnimationFrame loop.
-       console.warn('Ragdoll cleanup after WASM error failed:',cleanupError);
-       instance=null;
-       physics=null;
-       ctx.ragdollCamera?.exit?.();
-     }finally{
-       ctx.ragdollControls?.abort?.();
-       ctx.notify?.('Ошибка физики Ragdoll: режим отключён, сохранение не затронуто','warning');
-     }
-   }
- }
- function stepSimulation(dt){
-   if(!instance)return;
-   const {world,parts,actor}=instance;
-   instance.accumulator=Math.min(.15,instance.accumulator+Math.max(0,dt));
-   let steps=0;
-   while(instance.accumulator>=1/60&&steps++<7){
-     world.step();
-     instance.accumulator-=1/60;
-     instance.elapsed+=1/60;
-   }
-   const hip=parts[0].body.translation();
-   instance.environment.refresh(hip.x,hip.z);
+   const {parts,actor}=instance;
+   try{
+     stepRagdollPhysics(instance,dt);
+     const hip=parts[0].body.translation();
+     instance.environment.refresh(hip.x,hip.z);
    const q=new THREE.Quaternion(),parentQ=new THREE.Quaternion();
    const target=new THREE.Vector3(),newQ=new THREE.Quaternion();
    // Parent-to-child order: physics drives every bone's joint location and
@@ -271,6 +349,7 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
      part.bone.updateMatrixWorld(true);
    }
    actor.visual.updateMatrixWorld(true);
+   }catch(error){onPhysicsFailure(error);}
  }
  function pose(){
    if(!instance)return null;
@@ -284,11 +363,13 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
    if(!instance)return false;
    const {actor,snapshot,originalRoot,originalActorQuaternion,world,culling}=instance;
    instance=null;
-   try{world.free();}
-   catch(error){
-     // Following a WASM trap a world may no longer be safely freeable.
-     // Local actor/camera restoration must still complete.
-     console.warn('Ragdoll: unable to free Rapier world after physics error:',error);
+   try{
+     world.free();
+   }catch(error){
+     // A WASM failure must not stop a death respawn or manual stand-up.
+     // Mark the physics module unusable for the remainder of this session.
+     physicsFailure=String(error?.message??error);
+     console.warn('[Forest Chopper] Failed to free ragdoll physics world:',error);
      physics=null;
    }
    for(const [mesh,enabled] of culling??[])mesh.frustumCulled=enabled;

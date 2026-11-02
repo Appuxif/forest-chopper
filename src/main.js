@@ -1,7 +1,7 @@
 import {loadRagdollPhysics} from './rapier-loader.js';
 import {createMobs} from './mobs.js?v=20261105-corpse-cursor1';
 import {createMobileHud} from './mobile-hud.js?v=20261104-fps3';
-import {createRagdoll} from './ragdoll.js?v=20261103-ragdoll-save-recovery1';
+import {createRagdoll} from './ragdoll.js?v=20261104-humanoid-ragdoll-merge1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
 import {createAnimations} from './animations.js?v=20261104-unified-chop1';
 import {createWorld} from './world.js?v=20261103-region-default-3';
@@ -377,7 +377,6 @@ const ctx={
  get fallImpactSpeed(){return fallImpactSpeed;},set fallImpactSpeed(v){fallImpactSpeed=v;},
  applyFallImpact(impact,options){return applyFallImpact(ctx,impact,options);},
  get collisionWorld(){return collisionWorld;},
- get humanoidPreview(){return humanoidPreview;},
  get particles(){return particles;},
  get pitch(){return pitch;}, set pitch(value){pitch=value;},
  get placeLog(){return placeLog;},

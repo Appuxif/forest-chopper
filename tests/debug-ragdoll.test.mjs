@@ -1,7 +1,8 @@
 import {bedRestPose} from '../src/ragdoll-controls.js';
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {findRagdollBones,makeGroundMesh,RAGDOLL_BONES,RAGDOLL_JOINTS} from '../src/ragdoll.js';
+import {findRagdollBones,makeGroundMesh,RAGDOLL_BONES,RAGDOLL_JOINTS,RAGDOLL_HUMANOID_JOINTS,ragdollJointProfile} from '../src/ragdoll.js';
 
 test('GLB ragdoll bone lookup tolerates Three.js sanitized names',()=>{
  const names=['Hips','Spine','Head','UpperArm_L','Forearm_L','UpperArm_R','Forearm_R',
@@ -13,6 +14,24 @@ test('GLB ragdoll bone lookup tolerates Three.js sanitized names',()=>{
  assert.equal(bones.get('UpperArm.L'),nodes[3]);
  assert.deepEqual([...bones.keys()],RAGDOLL_BONES);
  assert.throws(()=>findRagdollBones({traverse(fn){fn(nodes[0]);}}),/missing bone/);
+});
+
+test('ragdoll matches the actual male and female 53-bone game GLBs',()=>{
+ for(const gender of ['male','female']){
+   const data=readFileSync(new URL('../characters/humanoid/game/body_'+gender+'.glb',import.meta.url));
+   assert.equal(data.toString('ascii',0,4),'glTF');
+   const length=data.readUInt32LE(12);
+   const gltf=JSON.parse(data.toString('utf8',20,20+length));
+   const joints=new Set(gltf.skins.flatMap(skin=>skin.joints));
+   const nodes=gltf.nodes.map((node,index)=>({name:node.name,isBone:joints.has(index)}));
+   const selected=findRagdollBones({traverse(fn){nodes.forEach(fn);}});
+   assert.equal(selected.size,11,gender);
+   assert.equal(selected.get('Hips').name,'pelvis',gender);
+   assert.equal(selected.get('Spine').name,'spine_03',gender);
+   assert.equal(selected.get('Forearm.L').name,'lowerarm_l',gender);
+   assert.equal(selected.get('Shin.R').name,'calf_r',gender);
+   assert.equal(new Set([...selected.values()]).size,11,'each simulated segment has a unique bone');
+ }
 });
 
 test('ragdoll ground samples live terrain and forms upward-facing triangles',()=>{
@@ -43,6 +62,27 @@ test('ragdoll uses a fixed torso and bounded, softly-restoring anatomical hinges
  }
 });
 
+
+test('modular humanoid ragdolls have passive, anatomically bounded arms and legs',()=>{
+ assert.equal(ragdollJointProfile('legacy'),RAGDOLL_JOINTS);
+ assert.equal(ragdollJointProfile('male'),RAGDOLL_HUMANOID_JOINTS);
+ assert.equal(ragdollJointProfile('female'),RAGDOLL_HUMANOID_JOINTS);
+ for(const name of ['UpperArm.L','UpperArm.R','Forearm.L','Forearm.R',
+   'Thigh.L','Thigh.R','Shin.L','Shin.R']){
+   const modern=RAGDOLL_HUMANOID_JOINTS[name];
+   const classic=RAGDOLL_JOINTS[name];
+   assert.equal(modern.kind,'hinge');
+   assert.equal(modern.spring,0, name+' must not straighten under motor force');
+   assert.ok(classic.spring>0,'classic pose assistance is unchanged');
+   assert.ok(modern.limits[0]<=classic.limits[0]);
+   assert.ok(modern.limits[1]>=classic.limits[1]);
+   assert.ok(modern.limits[1]-modern.limits[0]<Math.PI,
+     'the joint is still anatomically bounded');
+ }
+ assert.equal(RAGDOLL_HUMANOID_JOINTS.Spine.kind,'fixed');
+ assert.ok(RAGDOLL_HUMANOID_JOINTS.Head.spring<RAGDOLL_JOINTS.Head.spring);
+ assert.ok(RAGDOLL_HUMANOID_JOINTS.Head.spring>0);
+});
 
 test('bed resting pose aligns the head toward the pillow for each orientation',()=>{
  for(const orientation of [0,1,2,3]){

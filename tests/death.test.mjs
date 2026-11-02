@@ -176,6 +176,29 @@ test('pending death saved in offline world resumes without restarting Rapier',as
  assert.deepEqual(f.physics,['reset'],'respawn uses only a harmless cleanup, no Rapier trigger');
 });
 
+test('offline reload can respawn even if recovered death ragdoll physics fails',async()=>{
+ const f=fixture();
+ f.death.onDeath();
+ const saved=f.death.snapshot();
+ const g=fixture();
+ // Death gameplay must not depend on a working WASM world. The physics
+ // adapter catches a step panic and marks ragdoll inactive, while the
+ // original death transition remains in control of the UI.
+ g.ctx.ragdoll.trigger=async()=>{
+   g.ctx.ragdoll.active=false;
+   throw new Error('recursive use of an object detected which would lead to unsafe aliasing in rust');
+ };
+ g.death.restore(saved);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(g.death.active,true);
+ g.death.tick(5000);
+ assert.deepEqual(g.screenEvents.at(-1),['show',true]);
+ assert.equal(g.death.respawn(),true);
+ assert.equal(g.death.active,false);
+ assert.equal(g.ctx.vitals.health,5);
+ assert.equal(g.ctx.px,0);
+});
+
 test('server-deferred respawn cannot be used until the authoritative packet arrives',()=>{
  const f=fixture({online:true});
  assert.equal(f.death.onDeath(),true);
