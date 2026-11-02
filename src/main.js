@@ -19,8 +19,8 @@ import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bou
 import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
 import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261102-chop-current-target1';
-import {createControls} from './controls.js?v=20261102-bounce-fix1';
-import {createPlayer} from './player.js?v=20261102-treefall-sync13';
+import {createControls} from './controls.js?v=20261102-view-flight1';
+import {createPlayer} from './player.js?v=20261102-flight-distance1';
 import {createMultiplayer} from './multiplayer.js?v=20261102-chop-frame18';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
@@ -28,11 +28,11 @@ import {createSettings} from './settings.js?v=20261102-jump-voices1';
 import {createGameAudio} from './game-audio.js?v=20261102-treefall-sync13';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
-import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
+import {createLandmarks} from './landmarks.js?v=20261102-centered-outer-flame1';
 import {createPlantInteraction} from './plant-interaction.js?v=20261031-collectible-plants1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
-import {createDayCycle} from './day-cycle.js?v=20261102-16min-day';
-import {createAtmosphere} from './atmosphere.js?v=20261102-sky-far-clip1';
+import {createDayCycle} from './day-cycle.js?v=20261102-darker-night1';
+import {createAtmosphere} from './atmosphere.js?v=20261102-darker-night1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
@@ -45,8 +45,8 @@ import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
 import {createStorages} from './storages.js?v=20261102-collision-world1';
-import {createCampStructures} from './camp-structures.js?v=20261102-collision-world1';
-import {createVitalsUI} from './vitals-ui.js?v=20261102-16min-hunger';
+import {createCampStructures} from './camp-structures.js?v=20261102-centered-outer-flame1';
+import {createVitalsUI} from './vitals-ui.js?v=20261102-debug-cheats';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261102-prestage-logs1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
@@ -626,7 +626,7 @@ if(menuLaunch.mode==='online'){
 }
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261102-url-launch1');
+  const { installDebug } = await import('./debug.js?v=20261102-debug-lightfix1');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

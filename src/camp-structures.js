@@ -1,5 +1,5 @@
 import {createCampfireModel,attachAnimatedFire,animateCampfireModel,presentCampfireModel,disposeCampfireEffects} from './campfire-model.js';
-import {createFireVisibilityTester} from './fire-effects.js';
+import {createFireVisibilityTester} from './fire-effects.js?v=20261102-centered-outer-flame1';
 import {CAMP_RECIPES,MAX_CAMP_STRUCTURES,validCampStructure,isFireKind} from './camp-rules.js';
 
 // Procedural campsite with bounded lights, offline snapshots and online authority.

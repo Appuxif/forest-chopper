@@ -126,6 +126,24 @@ test('torch uses reduced particle counts, 20cm flames and source spark scaling',
  fx.dispose();
 });
 
+test('primary outer flame is centred for campfire and torch at every tier',()=>{
+ for(const kind of ['campfire','torch']){
+  const {THREE,root}=gpuFixture();
+  const fx=createFireEffects(THREE,root,kind);
+  for(const tier of ['ultra','high','medium']){
+   fx.setTier(tier);
+   const primary=fx.flames.matrices[0].position;
+   assert.equal(primary.x,0,kind+' '+tier+' outer x');
+   assert.equal(primary.z,0,kind+' '+tier+' outer z');
+   if(fx.flames.count>1){
+    const secondary=fx.flames.matrices[1].position;
+    assert.ok(Math.hypot(secondary.x,secondary.z)>0,kind+' secondary tongues keep their variation');
+   }
+  }
+  fx.dispose();
+ }
+});
+
 test('existing low-poly meshes remain default and are reused after downshifting',()=>{
  const {THREE,root,meshes}=gpuFixture();
  const legacy=()=>({visible:false,scale:{set(){}}});
@@ -204,8 +222,8 @@ test('instanced flames and initial smoke/embers reproduce HTML generator seeded 
  for(let i=0;i<7;i++){
   const expected=originalFlames[i],actual=fx.flames.matrices[i];
   const factor=expected.total;
-  approx(actual.position.x,expected.x);
-  approx(actual.position.z,expected.z);
+  approx(actual.position.x,i===0?0:expected.x);
+  approx(actual.position.z,i===0?0:expected.z);
   approx(actual.rotation.y,expected.rot);
   approx(actual.scale.x*fx.visualScale,.35*factor*expected.width);
   approx(actual.scale.y*fx.visualScale,1.00*factor*expected.height);

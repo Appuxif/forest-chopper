@@ -47,7 +47,23 @@ export function createVitalsUI(ctx,doc=document){
  function tick(sprinting=false){
   const beforeHunger=state.hunger;
   const beforeHealth=state.health;
-  const changed=state.tick({sprinting});
+  const cheats=!ctx.isOnline?.()?ctx.debugCheats:null;
+  if(cheats?.immortal||cheats?.hunger||cheats?.stamina){
+   const v=state.snapshot();
+   state.restore({...v,
+    health:cheats.immortal?5:v.health,hunger:cheats.hunger?5:v.hunger,
+    stamina:cheats.stamina?5:v.stamina,staminaLocked:cheats.stamina?false:v.staminaLocked,
+    hungerProgress:cheats.hunger?0:v.hungerProgress,
+    starvationProgress:cheats.hunger?0:v.starvationProgress});
+  }
+  const changed=state.tick({sprinting:!!sprinting&&!cheats?.stamina});
+  if(cheats?.hunger||cheats?.immortal||cheats?.stamina){
+   const v=state.snapshot();
+   state.restore({...v,health:cheats.immortal?5:v.health,hunger:cheats.hunger?5:v.hunger,
+    stamina:cheats.stamina?5:v.stamina,staminaLocked:cheats.stamina?false:v.staminaLocked,
+    hungerProgress:cheats.hunger?0:v.hungerProgress,
+    starvationProgress:cheats.hunger?0:v.starvationProgress});
+  }
   if(state.health>0&&state.health<beforeHealth)ctx.audio?.hurt?.();
   // Online stamina is predicted locally for responsive movement; server
   // confirmations correct it via acceptServer without awarding client authority.
@@ -63,6 +79,7 @@ export function createVitalsUI(ctx,doc=document){
   return changed;
  }
  function damage(amount){
+  if(ctx.debugCheats?.immortal&&!ctx.isOnline?.())return 0;
   const dealt=state.damage(amount);
   if(!dealt)return 0;
   if(state.health>0)ctx.audio?.hurt?.();

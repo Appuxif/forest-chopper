@@ -1,4 +1,4 @@
-import {createFireEffects,resolveFireTier,firePreset} from './fire-effects.js';
+import {createFireEffects,resolveFireTier,firePreset} from './fire-effects.js?v=20261102-centered-outer-flame1';
 
 // Shared upgraded crafting campfire: identical at spawn, in player structures,
 // and in inventory thumbnails. Logs converge upward in the centre, while

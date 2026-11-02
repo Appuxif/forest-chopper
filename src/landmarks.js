@@ -1,5 +1,5 @@
 import {createCampfireModel,animateCampfireModel,presentCampfireModel,disposeCampfireEffects} from './campfire-model.js';
-import {createFireVisibilityTester} from './fire-effects.js';
+import {createFireVisibilityTester} from './fire-effects.js?v=20261102-centered-outer-flame1';
 import {createTrailTexture} from './trail-texture.js';
 // Shared low-poly navigation cues. The trail is purely visual:
 // tree spawn coordinates, collision, server and save state remain unchanged.

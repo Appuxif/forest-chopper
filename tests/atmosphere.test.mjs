@@ -286,3 +286,14 @@ test('trees and nearby skinned players use independent shadow maps',()=>{
   assert.ok(f.trees.values().every(t=>t.children.every(c=>!c.castShadow)));
   assert.equal(f.atmosphere.dome.material.disposed,true);
 });
+
+test('night sky zenith uses darker palette while daytime keeps its usual blue',()=>{
+ const f=fixture();
+ const sky=f.atmosphere.dome.material.uniforms;
+ const day={...sky.zenith.value};
+ f.atmosphere.setPhase(.5);
+ const expected={r:8/255,g:13/255,b:27/255};
+ for(const channel of ['r','g','b'])assert.ok(Math.abs(sky.zenith.value[channel]-expected[channel])<1e-12);
+ f.atmosphere.setPhase(0);
+ assert.deepEqual({r:sky.zenith.value.r,g:sky.zenith.value.g,b:sky.zenith.value.b},day);
+});

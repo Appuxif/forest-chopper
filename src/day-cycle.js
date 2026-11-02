@@ -12,8 +12,8 @@ export function extrapolateDayPhase(phase,elapsedMs,cycleMs=DAY_CYCLE_MS){
 const PHASES = Object.freeze([
   {at:0,    sky:0xa4c8be, ambient:2.1, sun:2.3, sunlight:0xffe4a6},
   {at:.23,  sky:0xc18d80, ambient:1.85,sun:1.5, sunlight:0xffba86},
-  {at:.43,  sky:0x242c44, ambient:.49,sun:.30, sunlight:0xb5ceef},
-  {at:.57,  sky:0x242c44, ambient:.49,sun:.30, sunlight:0xb5ceef},
+  {at:.43,  sky:0x101626, ambient:.18,sun:.08, sunlight:0xb5ceef},
+  {at:.57,  sky:0x101626, ambient:.18,sun:.08, sunlight:0xb5ceef},
   {at:.77,  sky:0xa3acb9, ambient:1.78,sun:1.4, sunlight:0xffcda0},
   {at:1,    sky:0xa4c8be, ambient:2.1, sun:2.3, sunlight:0xffe4a6},
 ]);
@@ -58,6 +58,7 @@ export function createDayCycle(ctx, {
   let startedAt=null,lastSample=-Infinity,active=false;
   let offlineBase=0,displayPhase=0;
   let serverPhase=null,serverSampleAt=0;
+  let debugOverride=false;
   function restore(){
     if(active){
       scene.background.copy(original.sky);
@@ -99,6 +100,13 @@ export function createDayCycle(ctx, {
     return true;
   }
   function resetOffline(){setOfflinePhase(0);}
+  // Explicit debug-only override: the day-cycle receives a compact render context,
+  // not the full game ctx. Do not read debugCheats from that context.
+  function setDebugOverride(enabled){
+    debugOverride=enabled===true;
+    lastSample=-Infinity;
+    return debugOverride;
+  }
   function syncServerPhase(phase,now=performance.now()){
     if(!Number.isFinite(phase)||phase<0||phase>=1||!Number.isFinite(now))
       return false;
@@ -129,7 +137,7 @@ export function createDayCycle(ctx, {
   }
   function tick(now){
     const online=serverPhase!==null;
-    if((!online&&!settings.dayCycleEnabled)||motionQuery?.matches){
+    if((!online&&!settings.dayCycleEnabled&&!debugOverride)||(motionQuery?.matches&&!debugOverride)){
       if(active)restore();
       return;
     }
@@ -139,7 +147,7 @@ export function createDayCycle(ctx, {
     lastSample=now;
     applyPhase(phaseAt(now));
   }
-  return {tick,restore,applyPhase,setOfflinePhase,resetOffline,
+  return {tick,restore,applyPhase,setOfflinePhase,resetOffline,setDebugOverride,
     syncServerPhase,leaveServer,phaseAt,
     get offlinePhase(){return serverPhase===null&&active?displayPhase:offlineBase;},
     get online(){return serverPhase!==null;},

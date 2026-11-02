@@ -37,14 +37,18 @@ test('phase interpolation is continuous, cyclic and keeps a readable light floor
   assert.equal(DAY_CYCLE_MS,960000);
   for(const point of [0,.1,.22,.23,.3,.43,.5,.57,.7,.77,.95,.9999,1,2,-.5,NaN]){
     const v=dayPhaseValues(point);
-    assert.ok(v.ambient>=.49 && v.ambient<=2.1);
-    assert.ok(v.sun>=.30 && v.sun<=2.3);
+    assert.ok(v.ambient>=.18 && v.ambient<=2.1);
+    assert.ok(v.sun>=.08 && v.sun<=2.3);
     assert.ok(v.t>=0&&v.t<=1);
   }
   assert.deepEqual(dayPhaseValues(0),dayPhaseValues(1));
   assert.deepEqual(dayPhaseValues(.5),dayPhaseValues(1.5));
-  assert.equal(dayPhaseValues(.5).sun,.30);
-  assert.equal(dayPhaseValues(.5).ambient,.49);
+  assert.equal(dayPhaseValues(.5).sun,.08);
+  assert.equal(dayPhaseValues(.5).ambient,.18);
+  const midpointSky=fixture();
+  midpointSky.cycle.applyPhase(.5);
+  assert.deepEqual(midpointSky.scene.background.rgb(),new Color(0x101626).rgb());
+  assert.deepEqual(midpointSky.scene.fog.color.rgb(),new Color(0x101626).rgb());
   assert.ok(dayPhaseValues(.23).sun>dayPhaseValues(.5).sun);
 });
 
@@ -61,8 +65,8 @@ test('opt-in visual cycle throttles color changes and fully restores baseline on
   f.cycle.tick(1000+DAY_CYCLE_MS*.5);
   const night=snapshot(f);
   assert.notDeepEqual(night,original);
-  assert.equal(night.ambient,.49);
-  assert.ok(Math.abs(night.sun-.30)<1e-10);
+  assert.equal(night.ambient,.18);
+  assert.ok(Math.abs(night.sun-.08)<1e-10);
   assert.deepEqual(night.sky,night.fog,'sky and fog must match to avoid horizon seam');
   f.cycle.tick(1000+DAY_CYCLE_MS*.5+100);
   assert.deepEqual(snapshot(f),night,'throttled call must not change render state');
@@ -154,7 +158,7 @@ test('shadow contrast is not applied twice when toggling the day cycle',()=>{
   f.settings.dayCycleEnabled=true;
   cycle.tick(100);
   cycle.tick(100+DAY_CYCLE_MS*.5);
-  assert.ok(Math.abs(f.hemisphere.intensity-.49*contrast)<1e-10);
+  assert.ok(Math.abs(f.hemisphere.intensity-.18*contrast)<1e-10);
   f.settings.dayCycleEnabled=false;
   cycle.tick(101+DAY_CYCLE_MS*.5);
   assert.equal(atmosphere.ambientIntensity,2.1);
@@ -237,10 +241,10 @@ test('closing a failed connection does not reset an active offline clock',()=>{
 
 test('night vision brightens darkness without changing daytime lighting or the sky',()=>{
  assert.deepEqual(nightVisionLighting(2.1,2.3,true),{ambient:2.1,sun:2.3});
- const night=nightVisionLighting(.49,.3,true);
- assert.ok(night.ambient>1.4);
- assert.ok(night.sun>.3);
- assert.deepEqual(nightVisionLighting(.49,.3,false),{ambient:.49,sun:.3});
+ const night=nightVisionLighting(.18,.08,true);
+ assert.ok(night.ambient>1.1,'night vision remains brighter than dark night');
+ assert.ok(night.sun>.08);
+ assert.deepEqual(nightVisionLighting(.18,.08,false),{ambient:.18,sun:.08});
  const state={hasNightVision:false};
  const f=fixture(state);
  f.settings.dayCycleEnabled=true;
@@ -257,4 +261,37 @@ test('night vision brightens darkness without changing daytime lighting or the s
  f.cycle.applyPhase(.5);
  assert.equal(f.hemisphere.intensity,original.ambient,'night vision ends without leaking brightness');
  f.cycle.restore();
+});
+
+test('debug time override applies actual night lighting even with visual cycle disabled',()=>{
+ const f=fixture();
+ const daylight=snapshot(f);
+ assert.equal(f.settings.dayCycleEnabled,false);
+ assert.equal(f.cycle.setOfflinePhase(.5),true);
+ f.cycle.tick(200);
+ assert.deepEqual(snapshot(f),daylight,'normal disabled cycle leaves lighting alone');
+ assert.equal(f.cycle.setDebugOverride(true),true);
+ f.cycle.tick(200);
+ assert.equal(f.cycle.active,true);
+ assert.ok(f.hemisphere.intensity<daylight.ambient*.5);
+ assert.ok(f.sun.intensity<daylight.sun*.5);
+ assert.notDeepEqual(f.scene.background.rgb(),daylight.sky);
+ assert.deepEqual(f.scene.background.rgb(),f.scene.fog.color.rgb());
+ // An explicit change from night to day must apply immediately (same timestamp).
+ f.cycle.setOfflinePhase(0);
+ f.cycle.tick(200);
+ assert.deepEqual(snapshot(f),daylight);
+ // The requested phase must continue to drive the light on future frames.
+ f.cycle.setOfflinePhase(.5);
+ f.cycle.tick(200);
+ f.cycle.tick(800);
+ assert.ok(f.sun.intensity<daylight.sun*.5);
+ // Enabling debug visual time is independent of OS reduced-motion preference.
+ f.motionQuery.matches=true;
+ f.cycle.tick(1100);
+ assert.equal(f.cycle.active,true);
+ f.cycle.setDebugOverride(false);
+ f.cycle.tick(1101);
+ assert.equal(f.cycle.active,false);
+ assert.deepEqual(snapshot(f),daylight);
 });

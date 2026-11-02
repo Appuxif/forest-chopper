@@ -1,9 +1,11 @@
+import {installDebugCheats} from './debug-cheats.js?v=20261102-debug-lightfix1';
 import {createDebugFps} from './debug-fps.js';
 import {parseOfflineSave} from './offline-save.js';
 import {BOX_LIFETIME_SECONDS,MAX_GROUND_DROPS} from './ground-boxes.js';
 import {isFood} from './vitals.js';
 // Only loaded by index_debug.html. Never expose these controls on the normal page.
 export function installDebug(ctx) {
+  installDebugCheats(ctx);
   const fps=createDebugFps();
   ctx.debugFpsCollector=fps;
   const ragdoll=ctx.ragdoll;

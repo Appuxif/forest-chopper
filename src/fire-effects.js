@@ -194,7 +194,8 @@ const flameDescriptors=SOURCE_LAYOUT.flames;
   if(config.flames){
    for(let i=0;i<config.flames;i++){
     const f=flameDescriptors[i],s=f.total;
-    dummy.position.set(f.x,.41-(torch?0:.20/scale),f.z);
+    // The primary outer flame is anchored to the fire centre; only secondary tongues spread randomly.
+    dummy.position.set(i===0?0:f.x,.41-(torch?0:.20/scale),i===0?0:f.z);
     dummy.rotation.set(0,f.rot,0);
     // Preserve the requested campfire/torch cone-base widths inside a uniform VFX scale.
     const width=(baseRadius/scale)*s*f.width*(tier==='medium'?1.45:1);

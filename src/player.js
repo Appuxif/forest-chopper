@@ -1,3 +1,4 @@
+import {debugFlightDelta} from './debug-flight-motion.js';
 import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
 import {createPlayerMotionTracker} from './ragdoll-motion.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
@@ -5,7 +6,7 @@ import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js';
 import {createFrameLimiter} from './frame-limiter.js';
 import {createGpuFrameTimer} from './gpu-frame-timer.js';
-import {createOrbitCamera} from './orbit-camera.js?v=20261102-ragdoll-clip1';
+import {createOrbitCamera} from './orbit-camera.js?v=20261102-flight-distance1';
 // Clipping is a rendering property, not a collision between the camera and
 // the character. Keep the established camera orbit untouched; while ragdoll
 // is active, reduce only the near clipping plane so nearby limbs aren't cut.
@@ -83,6 +84,7 @@ function animate(now){
  ctx.settings.tickPhysics(now);
  const dt=Math.max(0,Math.min(.05,(now-ctx.lastTime)/1000));
  ctx.lastTime=now;
+ ctx.debugCheatsController?.tick?.();
  ctx.deathSystem?.tick(now);
  ctx.ragdollControls?.tick();
  const dead=ctx.deathSystem?.active===true;
@@ -95,13 +97,14 @@ function animate(now){
  const len=Math.max(1,Math.hypot(forward,side));forward/=len;side/=len;
  const moving=Math.hypot(forward,side)>.1;
  const wantsSprint=shouldSprint(ctx.keys,ctx.settings.autoSprint,moving);
- const sprint=moving&&wantsSprint&&(!ctx.vitals||ctx.vitals.canSprint());
+ const flying=ctx.debugCheats?.flying===true&&!ctx.isOnline?.();
+ const sprint=!flying&&moving&&wantsSprint&&(!ctx.vitals||ctx.vitals.canSprint());
  if(!dead)ctx.vitals?.tick(sprint);
  ctx.sprinting=sprint;
  const motion=!moving?'Idle':Math.abs(forward)>.1?(sprint?'Run':'Walk'):(side<0?'StrafeLeft':'StrafeRight');
  // Playback rate also scales Root Motion distance: faster feet = faster travel.
  const rate=motion==='Idle'?1:(motion==='StrafeLeft'||motion==='StrafeRight')?(sprint?5:4):(motion==='Run'?(forward<0?-2.35:2.35):(forward<0?-2.25:2.25));
- if(!posing&&!dead)ctx.simulateVertical(dt);
+ if(!posing&&!dead&&!flying)ctx.simulateVertical(dt);
  let dx=0,dz=0;
  if(ctx.ownAvatar&&!posing&&!dead){
   ctx.ownAvatar.group.rotation.y=ctx.yaw;
@@ -118,13 +121,20 @@ function animate(now){
  // Jump movement remains physics/input-driven, not extracted from Root.
  // Also keep a fallback when testing against an old GLB without Root Motion.
  const noRoot=motion!=='Idle'&&(!ctx.rootMotion[motion]||ctx.rootMotion[motion].travel.lengthSq()<1e-5);
- if(!dead&&!posing&&(!ctx.onGround||!ctx.ownAvatar||noRoot)){
+ if(!dead&&!posing&&!flying&&(!ctx.onGround||!ctx.ownAvatar||noRoot)){
   const speed=sprint?4.6:2.5;
   dx=(-Math.sin(ctx.yaw)*forward+Math.cos(ctx.yaw)*side)*speed*dt;
   dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*speed*dt;
  }
  if(!posing&&!dead){
-  ctx.moveHorizontal(dx,dz);
+  if(flying){
+   const up=Number(!!(ctx.keys.Space||ctx.keys.ShiftLeft||ctx.keys.ShiftRight||ctx.debugCheats?.mobileUp));
+   const down=Number(!!(ctx.keys.ControlLeft||ctx.keys.ControlRight||ctx.debugCheats?.mobileDown));
+   const delta=debugFlightDelta({forward,side,yaw:ctx.yaw,pitch:ctx.pitch,vertical:up-down,dt});
+   ctx.px+=delta.x;ctx.pz+=delta.z;
+   ctx.feetY=Math.max(ctx.terrain.heightAt(ctx.px,ctx.pz)+.2,ctx.feetY+delta.y);
+   ctx.onGround=false;ctx.verticalSpeed=0;ctx.jumpRequested=false;
+  }else ctx.moveHorizontal(dx,dz);
   // Always derive velocity from actual collision-resolved displacement,
   // including walking, running, strafing and airborne input.
   ctx.motionVelocity=wasPosing?motionTracker.reset(ctx.px,ctx.pz,ctx.yaw)
@@ -162,7 +172,7 @@ function animate(now){
  ctx.camera.position.set(follow?.px??ctx.px,
    (follow?.feetY??ctx.feetY)+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,
    follow?.pz??ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
- if(ctx.thirdPerson)orbitCamera.update(dt,follow);
+ if(ctx.thirdPerson)orbitCamera.update(dt,follow,flying?2:0);
  // Animation mixer and camera have both updated: resolve any frame-18 tree
  // contact using the *current* crosshair, not the mouse-down position.
  ctx.tickChopImpact?.(now);

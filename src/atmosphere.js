@@ -206,7 +206,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   const activeTrees=new Set();
   const activeDecor=new Set();
   const zenithDay=new THREE.Color(0x78b0d0);
-  const zenithNight=new THREE.Color(0x101a34);
+  const zenithNight=new THREE.Color(0x080d1b);
   const targetPosition=new THREE.Vector3();
   const lightDir=new THREE.Vector3();
   const sunVector=new THREE.Vector3();
