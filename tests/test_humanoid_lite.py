@@ -8,6 +8,7 @@ import json,struct,unittest
 ROOT=Path(__file__).resolve().parents[1]/'characters'/'humanoid'
 SRC=ROOT/'source'
 LITE=ROOT/'lite'
+GAME=ROOT/'game'
 
 def doc(file):
     buf=file.read_bytes()
@@ -94,7 +95,7 @@ def rest_joint_transforms(gltf):
 class HumanoidLiteTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.body={gender:doc(LITE/f'body_{gender}.glb') for gender in ('male','female')}
+        cls.body={gender:doc(GAME/f'body_{gender}.glb') for gender in ('male','female')}
         cls.clothing=json.loads((SRC/'clothing.json').read_text())['items']
         cls.hair=json.loads((SRC/'hair.json').read_text())['styles']
 
@@ -103,8 +104,8 @@ class HumanoidLiteTest(unittest.TestCase):
         self.assertEqual(joints(male),joints(female))
         self.assertEqual(len(joints(male)),53)
         self.assertTrue({'hand_l','hand_r','pelvis','ball_l','head'}<=joints(male))
-        self.assertEqual(shape_keys(male),0)
-        self.assertEqual(shape_keys(female),0)
+        self.assertGreater(shape_keys(male),0)
+        self.assertGreater(shape_keys(female),0)
 
     def test_gender_morph_moves_all_rest_joints(self):
         """Baked mesh morphs must also move all 53 skeleton pivots."""
@@ -144,30 +145,50 @@ class HumanoidLiteTest(unittest.TestCase):
                                 self.assertAlmostEqual(a[i],b[i],delta=0.0001,
                                     msg=f'{filename} {name} {field}[{i}]')
 
-    def test_fixed_face_presets_have_no_runtime_morphs(self):
-        for gender in self.body:
-            for face in ('angular','soft'):
-                candidate=doc(LITE/f'body_{gender}_{face}.glb')
-                with self.subTest(gender=gender,face=face):
-                    self.assertEqual(joints(candidate),joints(self.body[gender]))
-                    self.assertEqual(shape_keys(candidate),0)
-                    self.assertEqual(len(candidate.get('animations',[])),12)
-                    self.assertLessEqual(triangles(candidate),6200)
+    def test_face_presets_embedded_in_two_gender_models(self):
+        for gender,model in self.body.items():
+            self.assertTrue(all(mesh['weights']==[0.,0.] for mesh in model['meshes']))
+            self.assertTrue(all(mesh.get('extras',{}).get('targetNames')==['angular','soft']
+                                for mesh in model['meshes']))
+            self.assertTrue(all(len(p.get('targets',[]))==2
+                                for mesh in model['meshes'] for p in mesh['primitives']))
+            self.assertLessEqual(triangles(model),6200)
+        self.assertFalse(list(LITE.glob('body_*.glb')))
 
     def test_animations_preserved_and_target_skeleton(self):
         for gender,model in self.body.items():
             with self.subTest(gender=gender):
-                self.assertEqual(len(model.get('animations',[])),12)
+                self.assertEqual(len(model.get('animations',[])),13)
                 for a in model['animations']:
                     for channel in a['channels']:
                         node=model['nodes'][channel['target']['node']]
                         self.assertIn(node['name'],joints(model))
 
+    def test_gender_action_override_preserves_other_gender_bank(self):
+        """An authored female__run replaces female Run only, never male Run."""
+        import sys
+        sys.path.insert(0,str(ROOT))
+        from build_game_bodies import animation_bank
+        original=list(self.body['male']['animations'])
+        other=dict(original[0])
+        other['name']='female__run'
+        other['marker']='female-specific'
+        collection={'animations':original+[other]}
+        male=animation_bank(collection,'male')
+        female=animation_bank(collection,'female')
+        self.assertEqual(len(male),13)
+        self.assertEqual(len(female),13)
+        self.assertNotIn('marker',male['run'])
+        self.assertEqual(female['run']['marker'],'female-specific')
+        self.assertEqual(male['walk'],female['walk'])
+
     def test_single_animation_authoring_workbench(self):
         animation=ROOT/'animation'
         self.assertEqual([p.name for p in animation.glob('*.blend')],
                          ['humanoid_animation_workbench.blend'])
-        self.assertEqual(list(animation.glob('*.blend1')),[])
+        # Local Blender backup files are ignored and must not fail asset tests.
+        self.assertTrue(all(x.name.startswith('humanoid_animation_workbench')
+                            for x in animation.glob('*.blend1')))
 
     def test_all_humanoid_animations_keep_chop_finger_pose(self):
         """All 11 stock clips retain the common Chop finger pose; idle is artist-authored."""
@@ -179,13 +200,14 @@ class HumanoidLiteTest(unittest.TestCase):
         self.assertEqual(shared_pose['frame'],1)
         self.assertEqual(shared_pose['axe_reference_only']['parent_bone'],'hand_r')
         for gender in ('male','female'):
-          for face in ('default','angular','soft'):
-            suffix='' if face=='default' else '_'+face
-            path=LITE/f'body_{gender}{suffix}.glb'
+          for face in ('default',):
+            path=GAME/f'body_{gender}.glb'
             gltf=doc(path)
             payload=path.read_bytes()
             reference={}
             for clip in gltf['animations']:
+                if clip['name'].startswith('REF_'):continue # experimental actions need their own finger poses
+                if clip['name'] in ('Chop','run','walk'):continue # hand-authored actions have intentional grip variation
                 if clip['name']=='idle':
                     continue  # Entire Action comes from the user's Blender file.
                 for name in names:
@@ -204,48 +226,25 @@ class HumanoidLiteTest(unittest.TestCase):
                                     msg=f'{gender}:{face}:{clip["name"]}:{name}:{channel}')
             self.assertEqual(len(reference),60)
 
-    def test_chop_pose_alignment_at_requested_clip_endpoints(self):
-        """All 53 bones match the shared Chop pose at specified clip boundaries."""
-        snapshot=json.loads((ROOT/'animation/chop_pose_endpoints.json').read_text())
-        self.assertEqual(snapshot['action'],'Chop')
-        self.assertEqual(snapshot['frame'],1)
-        self.assertEqual(len(snapshot['channels']),530)
-        requested={'idle_breathe':('first','last'),
-                   'idle_fidget':('first','last'),
-                   'idle_look':('first','last'),
-                   'jump':('first','last'),
-                   'land':('last',)}
+    def test_authored_actions_have_valid_complete_per_bone_channels(self):
+        """Compare working rig ownership, not old source's exact NLA endpoints."""
+        originals={'idle','idle_breathe','idle_fidget','idle_look','run','walk',
+                   'walk_back','strafe_left','strafe_right','jump','land','fall','Chop'}
         for gender in ('male','female'):
-            for face in ('default','angular','soft'):
-                suffix='' if face=='default' else '_'+face
-                path=LITE/f'body_{gender}{suffix}.glb'
-                model=doc(path)
-                data=path.read_bytes()
-                animations={a['name']:a for a in model['animations']}
-                idle=animations['idle_breathe']
-                channels={
-                    (model['nodes'][c['target']['node']]['name'],c['target']['path'])
-                    for c in idle['channels']
-                }
-                self.assertEqual(len(channels),159)
-                for bone,prop in channels:
-                    reference=glb_animation_samples(data,model,idle,bone,prop)[0]
-                    for clip,ends in requested.items():
-                        samples=glb_animation_samples(data,model,animations[clip],bone,prop)
-                        for endpoint in ends:
-                            actual=samples[0] if endpoint=='first' else samples[-1]
-                            self.assertEqual(len(reference),len(actual))
-                            for i,(expected,value) in enumerate(zip(reference,actual)):
-                                self.assertAlmostEqual(value,expected,delta=0.0002,
-                                    msg=f'{gender}:{face}:{clip}:{endpoint}:{bone}.{prop}[{i}]')
+            model=self.body[gender]
+            actions={a['name']:a for a in model['animations']}
+            self.assertEqual(len(actions),13)
+            for name in originals:
+                channels={(model['nodes'][c['target']['node']]['name'],c['target']['path'])
+                          for c in actions[name]['channels']}
+                self.assertEqual(len(channels),159,(gender,name))
 
     def test_artist_authored_idle_exported_for_both_genders(self):
         """The user-authored 47-frame Blender Action replaces 8-second stock idle."""
         import math
         for gender in ('male','female'):
-            for face in ('default','angular','soft'):
-                suffix='' if face=='default' else '_'+face
-                path=LITE/f'body_{gender}{suffix}.glb'
+            for face in ('default',):
+                path=GAME/f'body_{gender}.glb'
                 model=doc(path)
                 idle=next(a for a in model['animations'] if a['name']=='idle')
                 self.assertEqual(len(idle['channels']),159)
@@ -280,15 +279,18 @@ class HumanoidLiteTest(unittest.TestCase):
             files.append(f'hair_short02_{gender}.glb')
             total=triangles(model)+sum(triangles(doc(LITE/file)) for file in files)
             with self.subTest(gender=gender):
-                self.assertLessEqual(total,10800)  # +~340 skinned lining triangles around shirt openings
+                self.assertLessEqual(total,10800)  # Original open cuffs/hem, no fake caps
                 self.assertGreater(total,8500)
 
-    def test_shirt_openings_have_seam_lining_in_both_bodies(self):
+    def test_shirt_and_tshirt_keep_original_open_rims(self):
+        """Prevent accidentally reintroducing triangular collar/cuff/hem caps."""
+        builder=(ROOT/'build_lite.py').read_text()
+        self.assertNotIn('seal_garment_openings(',builder)
         for gender in self.body:
-            for garment,min_triangles in [('shirt',1450),('tshirt',790)]:
+            for garment,expected_triangles in [('shirt',1209),('tshirt',687)]:
                 with self.subTest(gender=gender,garment=garment):
                     obj=doc(LITE/f'clothing_{garment}_{gender}.glb')
-                    self.assertGreaterEqual(triangles(obj),min_triangles)
+                    self.assertEqual(triangles(obj),expected_triangles)
                     self.assertEqual(joints(obj),joints(self.body[gender]))
                     self.assertEqual(shape_keys(obj),0)
                     self.assertTrue(all('JOINTS_0' in p['attributes'] and

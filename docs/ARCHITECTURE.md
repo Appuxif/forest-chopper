@@ -85,12 +85,24 @@ URL shortcut (`?type=continue|new|multiplayer`, `seed`, `force`, `performance`, 
 Классический персонаж остаётся отдельным вариантом и использует собственный
 `lumberjack/lumberjack.glb` — тоже без второй модели-драйвера.
 
-Пайплайн обновления анимации: сохранить `characters/humanoid/animation/humanoid_animation_workbench.blend`,
-экспортировать `humanoid-game.glb` через `characters/humanoid/export_game_glb.py`,
-затем запустить `python3 characters/humanoid/build_game_bodies.py`.
-Последняя команда переносит авторские Run/Chop в модульные модели каждого пола,
-с поправкой на размеры костей женского рига; `.blend` и исходные `lite/body_*.glb`
-не перезаписываются. В браузере не загружается промежуточный `humanoid-game.glb`.
+Пайплайн: `python3 characters/humanoid/build_all_lite.py --bodies-only --jobs 3`.
+Скрипт временно генерирует базовые геометрии/варианты лица, экспортирует **все
+Actions** из общего `humanoid_animation_workbench.blend` в временный банк,
+строит два GLB и удаляет промежуточные body-файлы. Только конечные
+`game/body_male.glb` и `game/body_female.glb` находятся в репозитории.
+Каждый включает 53 кости, 13 игровых Actions и `angular/soft` как morph targets.
+`preview-lite.html` использует эти же два файла, без дополнительного
+`reference-motion-preview.glb`; игровые клипы не подменяются ссылочными.
+Для независимой редакции можно создавать Actions с префиксом пола,
+например `female__run` / `male__run`. Они переопределят одноимённый базовый
+Action только при сборке своего GLB. Экипировка имеет общий каталог, а
+skinned GLB одежды/волос подгоняются под соответствующий риг.
+
+**Скрытие кожи:** единственный источник — PNG из characters/humanoid/masks/
+и masks/clothing-matrix.json. Игра и редактор используют общий
+skin-mask-matrix.js. Процедурные body-zone insets и cloth-on-cloth
+mask projections удалены. В текущих файлах проекта female-маски отсутствуют,
+поэтому женские участки кожи автоматически не скрываются.
 
 ## 4. Процедурный мир и GPU
 

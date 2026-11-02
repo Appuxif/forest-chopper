@@ -107,31 +107,32 @@ presence of the editable Blender workbench.
 ## Lite modular system — intended indie-game version (post-checkpoint)
 
 The original system above is retained verbatim under Git checkpoint **f055736**.
-The lightweight system is separate, with pre-baked meshes and **zero runtime morph targets**.
+The lightweight system has **two** canonical body model files; each owns its
+own production action bank (13 clips currently imported from one shared workbench). The face presets
+are tiny, integrated morph targets; there are no separate face GLBs.
 
-- `humanoid-lite-workbench.blend`: editable Blender inspection scene, with one male
-  humanoid and independently removable shirt, jeans, shoes, hair on a single 53-bone rig.
-  This is currently also open in the connected Blender in scene
-  **Forest Chopper | HUMANOID LITE**. The earlier WIP scene remains in the blend.
-- `lite/body_male.glb`, `lite/body_female.glb`: fixed anatomy + face,
-  no morph targets, but all 12 original clips and the full 53-bone humanoid rig.
-- `lite/body_{gender}_{angular,soft}.glb`: two optional **pre-baked face presets**
-  for each body, sharing the same rig/animations. Three face variants per body total.
-- `lite/clothing_*_{gender}.glb`, `lite/hair_*_{gender}.glb`: skinned gear
-  exported individually for both genders (44 files).
-- `humanoid-lite.js`: asset composer and attachment API. All equipped SkinnedMeshes
-  share the actual avatar's 53 bones; no runtime shape keys or independent cloth rigs.
-- `preview-lite.html`: 3D test page for body, face, skin tone, hair, hair color,
-  clothes, animations and skeleton overlay.
-- `build_lite.py`, `build_all_lite.py`: reproducible source-driven CC0 asset
-  processing. The original upstream assets remain untouched in `source/`.
+- `game/body_male.glb` and `game/body_female.glb`: sole canonical 53-bone body
+  files for **both the game and `preview-lite.html`**. Each contains 13 production Actions. The 19 `REF_*` reference clips remain in the Blender workbench and are **not exported**.
+- Future per-gender Actions use the names `male__<clip>` and `female__<clip>`
+  in `animation/humanoid_animation_workbench.blend` and override the shared
+  default clip when exported into the corresponding gender GLB.
+- Faces `default/angular/soft` are morph targets on these models, not new rigs.
+- `lite/clothing_*_{gender}.glb` and `lite/hair_*_{gender}.glb`: one shared
+  catalog and generator, geometry fitted for each sex and rebound onto the
+  avatar's active skinned skeleton.
+- `humanoid-lite.js`: common character builder for preview and gameplay.
+- `build_all_lite.py --bodies-only`: rebuild just two body models from the
+  Blender workbench, temporarily creating then deleting six source geometry
+  presets. `--force` rebuilds clothing/hair too.
+- `preview-lite.html`: 3D character/outfit/face/animation preview.
 
 From the project root:
 
 ```bash
 python3 -m http.server 8790
 # open http://127.0.0.1:8790/characters/humanoid/preview-lite.html
-python3 characters/humanoid/build_all_lite.py --jobs 4 # cached skips existing
+python3 characters/humanoid/build_all_lite.py --jobs 4 # skips existing
+python3 characters/humanoid/build_all_lite.py --bodies-only --jobs 3 # rebuild animation/body GLBs
 # optionally: --force
 python3 -m unittest discover -s tests -p test_humanoid_lite.py -v
 ```
@@ -159,61 +160,35 @@ const axe=player.attach('handRight',axeObject,{position:[0,0,0]});
 | --- | ---: |
 | Male default base (body, eyes, eyebrows, eyelashes) | 5,891 |
 | Female default base | 5,892 |
-| Long-sleeve shirt (male, with skinned opening linings) | 1,553 |
+| Long-sleeve shirt (male, original open rims) | 1,209 |
 | Jeans (male) | 821 |
 | Shoes (male) | 1,062 |
 | Short hair 02 (male) | 1,069 |
-| **Dressed default male** | **10,396** |
-| **Dressed default female** | **10,373** |
+| **Dressed default male** | **10,052** |
+| **Dressed default female** | **10,051** |
 
 Actual counts depend on equipped items; a second jacket, long hair or other
 layers can push beyond 10k. The 10k target refers to one ordinary clothed
 avatar without extra layers. A two-layer outfit can reach ~11–12k.
 
-### Continuous skin under clothing (replaces coarse triangle culling)
+### Единственная система скрытия кожи: PNG и матрица
 
-Earlier versions removed entire body triangles beneath clothes. This created
-genuine open holes: empty interiors when looking from below shirts, along the
-neck opening, cuffs, and the edges of shorts and trousers.
+Only the author-created PNGs in masks/male and masks/female and the assignments
+in masks/clothing-matrix.json control visible body skin. skin-mask-matrix.js
+resolves item IDs to mask names; body-mask-runtime.js composites the masks as
+cached alphaMaps. No body vertex displacement, bone-zone masks, garment
+projections, procedural shoulder corrections or triangular sealing caps.
+The preview uses the same matrix resolver with skin-paint.js for interactive
+painting. Editor-only localStorage overrides must be exported to files to be
+used by the game. Female mask assignments are currently empty in the repository.
 
-`body-zones.js` now classifies the body by skinning weights once, and computes
-a gentle *inward offset* (maximum 3.2 cm) of the **covered skin vertices** when
-equipment changes. It blends to zero at neck/face/hands, shirt collar/hem, and
-the boundary of short trousers. The body remains a continuous, closed mesh:
-**no triangle or index is removed, no bone or morph is changed**. The two
-genders and all presets share this process; each actor owns its geometry.
-
-Cloth materials render both front and back sides, so you can see the fabric's
-interior from under a shirt or inside a sleeve. Basic shirt/T-shirt torso
-geometry is also drawn roughly 1 cm closer, without tightening the shoulders.
-Removing items restores the original unmodified skin geometry and normals.
-
-The ordinary dressed male has **10,052 rendered triangles** again (versus
-7,484 with the previous hole-producing culling). This is a deliberate quality
-trade-off: no new SkinnedMesh or draw call, just the original body surface.
-This operation runs only when changing clothes, not every animation frame.
-
-```bash
-node --test tests/body-zones.test.mjs
-```
-
-The body is continuous, but the imported MakeHuman garments also have
-**open cloth edges**. For long-sleeve shirts and T-shirts, `seal_openings.py`
-now **bakes skinned inside fabric bridges** from the collar, wrist cuffs and
-bottom hem to the nearest body surface. These additions are UV-textured,
-weighted to the same 53-bone skeleton and baked into each gender-specific
-clothing GLB. The long shirt gains ~320–344 triangles, without new mesh draw
-calls. On the runtime material, very subtle textured emissive bounce light
-prevents the interior bridge from looking like an unlit black void.
-
-To regenerate, build `body_male.glb` and `body_female.glb` first, since the
-seam baker projects toward their body surfaces. `build_all_lite.py --force`
-respects this dependency by staging the builds. The source CC0 GLBs are not
-modified.
-
-This is still an indie-game fix rather than a hand-tailored garment. These
-open models may need topology corrections for exact watertightness around all
-UV seams, and layering two garments may still intersect.
+The MakeHuman garments deliberately keep their original **open cuffs,
+collars, and hems**. Do not use the obsolete seam-bridge generator: it adds
+visible triangular plugs at sleeve openings and conflicts with the later skin
+mask library. Rebuild shirts/T-shirts through `build_lite.py` or
+`build_all_lite.py --force` if old sealed assets are present. The runtime uses
+`THREE.DoubleSide` for the inside surfaces, and the independent skin-mask
+system handles covered body regions.
 
 Notes: The Blender process first bakes the selected body/face profile to mesh,
 then **removes all 92 shape keys**, then selectively decimates the source
@@ -243,38 +218,6 @@ remain in the exported GLB. All source GLBs are retained as a quality fallback.
   animation playback is paused, preventing cumulative shoulder drift.
 - Not yet integrated into the production player / multiplayer code. The old
   `lumberjack.glb` loader is unchanged.
-
-## Experimental skin-mask checkboxes (isolated clothing worktree)
-
-The standalone `preview-lite.html` contains a **skin mask debug panel** below
-Equipment. You can hide/show nine anatomical regions (torso/pelvis, head, neck,
-upper arms/shoulders, forearms, hands including fingers, thighs, calves and feet)
-without changing clothing or the 53-bone armature. The head option also hides
-separately skinned eye parts and the currently equipped hair to avoid floating
-facial meshes. A separate checkbox temporarily hides garments to inspect the
-cut boundaries on the naked body, without unequipping anything.
-
-`skin-mask-debug.js` classifies the original body triangles once using the
-weights of their bones, and rebuilds the **body index buffer only**. It clones
-the body geometry for every actor before doing so: no GLB source asset or
-another avatar is modified. There is no new mesh and no runtime morphing.
-
-This is an intentionally **coarse visualization tool**. The bone-region edges
-may be jagged or remove too much/little skin at collars, elbows and cuffs.
-Do NOT interpret it as a finished clothing mask. Fine-grained triangle or
-coordinate overrides can be added after reviewing visible results.
-
-- **Показать всё** / **Скрыть всё**: clear/select all mask zones.
-- **Скрыть одежду для проверки маски**: inspect cut edges with garments
-  temporarily invisible, but keep the actual outfit selected.
-- **Запомнить для комплекта**: store the selected mask in this browser's
-  `localStorage`, keyed by gender, face, top, bottom, shoes, and outerwear.
-  Saved masks restore on selecting the same combination later.
-- **Копировать JSON**: copy a portable record of outfit + hidden skin regions
-  for later conversion into a per-item clothing mask matrix.
-
-Run `node --test tests/skin-mask-debug.test.mjs` for the mask classification,
-reversibility, and head-attachment regression tests.
 
 ## UV skin-mask painting in the standalone editor
 
@@ -334,38 +277,6 @@ JSON from the project. Likewise, edited/new masks must be exported via
 `masks/manifest.json`, `masks/clothing-matrix.json`, and mask PNGs by gender.
 No backend or direct browser write access to the project is assumed.
 
-## Automatic clothing-on-clothing layer masks (experimental)
-
-`clothing-layer-mask.js` generates UV alpha masks for **lower clothing meshes**
-from the actual triangles of the higher clothing meshes in their bind pose.
-It projects the higher garment surface to cylindrical silhouette atlases for
-**torso, left arm, right arm**, then rasterizes the coverage onto the lower
-item's own UV texture. Coverage is slightly dilated in the atlas to suppress
-small protrusions; transparent pixels (black in alphaMap) hide lower clothing.
-The generated mask is attached to a cloned material via `alphaMap`, with
-`alphaTest=0.5` and `alphaToCoverage=true`. Geometry and skin weights remain
-unchanged. The lower cloth follows the common 53-bone skeleton during animation.
-No manually authored mask per clothing *pair* is needed.
-
-The runtime `LiteHumanoid` automatically rebuilds these masks on `equip()` and
-`unequip()`. Exposed controls:
-- `actor.setClothingLayerMaskEnabled(boolean)`
-- `actor.setClothingLayerPadding(0..6)`
-- `actor.layerMaskStats` (per-slot number of masked UV texels)
-
-Layer precedence: outerwear covers top/underwear; top covers underwear; bottom
-covers underwear; shoes cover bottom/underwear. The clothes-on-clothes system
-is separate from the named **skin** PNG matrix and does not modify those files.
-
-Use the **Автомаска слоёв одежды** section of `preview-lite.html` to toggle the
-feature and tune coverage padding. Start with T-shirt plus jacket, then try a
-hoodie and the remaining combinations; this is a heuristic, and seams, open
-fronts, extreme animation poses, or an outer garment physically too tight may
-still need geometry fitting or item-specific coverage overrides. Atlas generation
-happens when equipment changes, not on each animation frame. This initial
-prototype has **not been visually verified or regression-tested**; per project
-vibe-coding agreement the user will perform the first acceptance test.
-
 ## Reusable fabric and color variants (experimental)
 
 `source/clothing-variants.json` defines material variations for the existing
@@ -400,12 +311,8 @@ these can be equipped at a time. It retains the existing mesh, fabric variants,
 and per-item skin mask assignments. The experimental outerwear expansion
 slider was removed; no new overlap-baking work is needed.
 
-Hoodie-specific visibility rule: the `top` slot (shirt or T-shirt) stays
-fully equipped and keeps its chosen fabric, but its entire mesh is hidden
-while `outerwear=hoodie`. Removing the hoodie or changing outerwear to a
-jacket/trenchcoat restores the top immediately. The rule applies in both
-`LiteHumanoid` runtime and the preview, including when exiting mask-paint mode.
-No new alpha masks or skin changes are involved.
+Garments are no longer forcibly hidden based on type. Body-skin visibility is
+managed solely through the named mask matrix.
 
 ## Permanent morph-aligned skeleton (2026-11-01)
 

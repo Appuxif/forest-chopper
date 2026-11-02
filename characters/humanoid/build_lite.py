@@ -99,14 +99,10 @@ for ob in list(meshes):
  ob['lod_level']=1
  ob['gender']=args.gender
 
-# Seal the open shirt cuffs, collar and hem at build time so you cannot see
-# through the garment shell when looking from below or along the arms.
-if args.kind=='gear' and args.asset in ('clothing_shirt.glb','clothing_tshirt.glb'):
- sys.path.insert(0,str(P))
- from seal_openings import seal_garment_openings
- for garment in list(bpy.context.scene.objects):
-  if garment.type=='MESH' and garment.name.startswith('Cloth_'):
-   seal_garment_openings(garment,args.gender,args.asset,P)
+# Shirt sleeves, collar and hem deliberately remain open. Earlier revisions
+# generated fabric-to-body bridges here, introducing obvious triangulated caps
+# and hiding the anatomy under the sleeves. The skin masking library handles
+# covered body regions without closing garment openings.
 # Make the baked male/female silhouette and its skeleton agree. Shape keys
 # deform mesh vertices but do not automatically move armature joints. Apply
 # matching morph offsets to all 53 rest-pose pivots for body and equipment,

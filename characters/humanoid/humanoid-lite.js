@@ -1,13 +1,13 @@
 /**
  * Forest Chopper: simple, game-oriented modular humanoid.
  * One 53-bone skinned armature per character, two fixed bodies, CC0 outfit library.
- * No morph targets at runtime. Blender-build assets stored in ./lite/*.glb.
+ * One game/body_{gender}.glb per gender, each with its own Action bank and face morph targets.
+ * Outfit and hair GLBs remain separately skinned onto the active character rig.
  */
 import * as THREE from 'https://esm.sh/three@0.170.0';
 import {GLTFLoader} from 'https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'https://esm.sh/three@0.170.0/examples/jsm/utils/SkeletonUtils.js';
-import {makeBodySkinZones,insetBodyPositions} from './body-zones.js';
-import {applyClothingLayerMask,clearClothingLayerMask,CLOTHING_LAYER_RANK} from './clothing-layer-mask.js';
+import {applyBodyMaskFromOutfit} from './body-mask-runtime.js?v=20261102-matrix1';
 
 const BASE=new URL('./',import.meta.url);
 const loader=new GLTFLoader();
@@ -65,7 +65,7 @@ export async function getHumanoidCatalog(){
  ]);
  return {clothing,hair,variants};
 }
-const gearName=(file,gender)=>'lite/'+file.replace(/\.glb$/,'')+'_'+gender+'.glb'+(file==='clothing_shirt.glb'||file==='clothing_tshirt.glb'?'?sealed=1':'');
+const gearName=(file,gender)=>'lite/'+file.replace(/\.glb$/,'')+'_'+gender+'.glb'+(file==='clothing_shirt.glb'||file==='clothing_tshirt.glb'?'?open-cuffs=20261102':'');
 
 export class LiteHumanoid {
   constructor(scene,clips,appearance,catalog){
@@ -81,31 +81,21 @@ export class LiteHumanoid {
     if(this.bones.size!==53)throw Error('Expected exactly 53 humanoid joints');
     this.body=this.meshes.find(o=>o.name==='Body')||this.meshes[0];
     this.skeleton=this.body.skeleton;
-    // Every avatar gets its own body geometry: garments may inset skin without
-    // changing other players' bodies or the cached GLB templates.
-    this.body.geometry=this.body.geometry.clone();
-    this._bodySkinZones=makeBodySkinZones(this.body);
+    // The only skin visibility rule is an authored UV PNG mask matrix.
+    // Materials must be per-avatar, but the precomposed PNG atlas is shared.
+    this.body.material=this.body.material.clone();
+    const originalTint=this.body.material.userData.originalColor;
+    if(originalTint!==undefined)
+      this.body.material.userData.originalColor=originalTint?.isColor
+        ?originalTint.clone():new THREE.Color(originalTint);
+    this.maskEditor=appearance.maskEditor===true;
+    this._bodyMaskRevision=0;
     this.mixer=new THREE.AnimationMixer(this.root);
     this.clips=clips;
     this.action=null;
-    // The stock unisex idle clip was authored on a wider male silhouette.
-    // On the narrower female body, it brings hands through the hips. Apply a
-    // small, rig-space shoulder abduction *after* the mixer without morphs.
-    this._femaleArmOutset=0;
-    this._armAxis=new THREE.Vector3(0,0,1);
-    this._armWorldAxis=new THREE.Vector3();
-    this._armQuat=new THREE.Quaternion();
-    this._armParentQuat=new THREE.Quaternion();
-    this._armLocalQuat=new THREE.Quaternion();
-    this._rootWorldQuat=new THREE.Quaternion();
-    this._unadjustedArmRotations=new Map();
     this.parts=new Map();this.sockets=new Map();
     // Not reliable for open jackets: the projection cuts visible undershirts.
     // Only enable this legacy experiment when the caller explicitly opts in.
-    this.layerMaskEnabled=appearance.layerMaskEnabled===true;
-    this.layerMaskPadding=appearance.layerMaskPadding??2;
-    this.layerMaskStats={};
-    this._layerMaskBatch=false;
     for(const [name,boneName] of Object.entries(SOCKET_BONES)){
       const parent=this.bones.get(boneName);
       if(!parent)throw Error('Missing socket bone: '+boneName);
@@ -113,6 +103,19 @@ export class LiteHumanoid {
       parent.add(socket);this.sockets.set(name,socket);
     }
     this.setSkinColor(appearance.skin);
+    this.setFacePreset(appearance.face);
+  }
+  setFacePreset(face='default'){
+    if(!FACE_PRESETS.includes(face))throw Error('Unknown face preset: '+face);
+    for(const mesh of this.meshes){
+      const dict=mesh.morphTargetDictionary||{};
+      const values=mesh.morphTargetInfluences;
+      if(!values)continue;
+      if(dict.angular!==undefined)values[dict.angular]=face==='angular'?1:0;
+      if(dict.soft!==undefined)values[dict.soft]=face==='soft'?1:0;
+    }
+    this.appearance.face=face;
+    return this;
   }
   setSkinColor(color){
     const tint=COLORS.skin[color]||color||'#ffffff';
@@ -138,7 +141,7 @@ export class LiteHumanoid {
   }
   /**
    * Switch a clothing material without replacing the skinned mesh.
-   * Existing body/garment masks and animations remain untouched.
+   * Authored body UV masks and animations remain untouched.
    */
   async setClothingVariant(slot,variantId='default'){
     const mesh=this.parts.get(slot);
@@ -210,40 +213,12 @@ export class LiteHumanoid {
     mesh.bind(skeleton,mesh.bindMatrix.clone());
     mesh.frustumCulled=false;mesh.castShadow=true;mesh.receiveShadow=true;
     mesh.name='Equip.'+slot+'.'+id;
-    // The stock MakeHuman shirts flare away from the abdomen; a restrained
-    // torso-only fit (~1 cm) makes them less hollow while keeping free arms.
-    // Clone the geometry before editing: other players share the source GLB.
-    if(slot==='top'&&(id==='shirt'||id==='tshirt')){
-      const geo=mesh.geometry=mesh.geometry.clone();
-      const position=geo.getAttribute('position');
-      const smooth=(a,b,x)=>{
-        const t=Math.min(1,Math.max(0,(x-a)/(b-a)));
-        return t*t*(3-2*t);
-      };
-      for(let i=0;i<position.count;i++){
-        const x=position.getX(i),y=position.getY(i),z=position.getZ(i);
-        const center=1-smooth(.23,.32,Math.abs(x));
-        const shoulderFade=1-smooth(1.30,1.40,y);
-        const fit=.055*center*shoulderFade;
-        position.setXYZ(i,x*(1-fit),y,z*(1-fit));
-      }
-      position.needsUpdate=true;
-      geo.computeVertexNormals();
-    }
     mesh.material=mesh.material.clone();
     // Garments are thin shells; their inside must remain visible when viewed
     // through collars, open sleeves, or from beneath the shirt/coat.
     if(slot!=='hair'){
       for(const material of (Array.isArray(mesh.material)?mesh.material:[mesh.material])){
         material.side=THREE.DoubleSide;
-        // Low-key textured bounce light: otherwise the inward-facing collar,
-        // wrist and hem linings appear as a featureless black hole when seen
-        // from below, even though there is real skinned fabric geometry.
-        if(slot==='top'&&(id==='shirt'||id==='tshirt')&&material.map){
-          material.emissive.set(0xffffff);
-          material.emissiveMap=material.map;
-          material.emissiveIntensity=.14;
-        }
         material.needsUpdate=true;
       }
     }
@@ -251,90 +226,28 @@ export class LiteHumanoid {
     this.unequip(slot,{refresh:false});
     this.parts.set(slot,mesh);
     mesh.userData.catalogId=id;
-    this.updateBodyVisibility();
     if(slot==='hair')this.setHairColor(this.appearance.hairColor);
     else await this.setClothingVariant(slot,this.appearance.clothingVariants?.[slot]||'default');
     this.appearance[slot]=id;
     this.refreshOutfitVisibility();
-    if(!this._layerMaskBatch&&slot!=='hair')this.refreshClothingLayers();
+    if(!this._maskBatch&&!this.maskEditor)await applyBodyMaskFromOutfit(this);
     return this;
   }
   unequip(slot,{refresh=true}={}){
     const previous=this.parts.get(slot);
     if(previous){
-      clearClothingLayerMask(previous);
       previous.removeFromParent();previous.skeleton.dispose();this.parts.delete(slot);
     }
     this.appearance[slot]=null;
-    this.updateBodyVisibility();
     this.refreshOutfitVisibility();
-    if(refresh&&!this._layerMaskBatch&&slot!=='hair')this.refreshClothingLayers();
+    if(refresh&&!this._maskBatch&&!this.maskEditor)void applyBodyMaskFromOutfit(this)
+      .catch(error=>console.error('[Humanoid] Skin mask reload failed',error));
     return this;
   }
-  // Hoodie replaces the visible top layer but does not unequip it.
-  // Taking hoodie off (or replacing it with a jacket) restores the top.
+  // No garment visibility shortcuts: the PNG body masks only control skin.
   refreshOutfitVisibility(){
-    const hideTop=this.parts.get('outerwear')?.userData.assetId==='hoodie';
-    for(const [slot,mesh] of this.parts){
-      if(slot!=='hair')mesh.visible=!(slot==='top'&&hideTop);
-    }
+    for(const [slot,mesh] of this.parts)if(slot!=='hair')mesh.visible=true;
     return this;
-  }
-  setClothingLayerMaskEnabled(enabled){
-    this.layerMaskEnabled=Boolean(enabled);
-    this.refreshClothingLayers();
-    return this;
-  }
-  setClothingLayerPadding(padding){
-    this.layerMaskPadding=Math.min(6,Math.max(0,Number(padding)||0));
-    this.refreshClothingLayers();
-    return this;
-  }
-  refreshClothingLayers(){
-    // No per-combination assets or hand-painted clothing-to-clothing masks:
-    // the higher garment is projected onto each lower garment's UVs.
-    for(const mesh of this.parts.values())clearClothingLayerMask(mesh);
-    this.layerMaskStats={};
-    if(!this.layerMaskEnabled)return this;
-    const order=Object.entries(CLOTHING_LAYER_RANK)
-      .filter(([slot])=>this.parts.has(slot));
-    const canCover=(outer,inner)=>(
-      outer==='outerwear'&&['top','underwear','bra'].includes(inner)||
-      outer==='top'&&['underwear','bra'].includes(inner)||
-      // Pants and footwear need separate leg-aware coverage. The current
-      // cylindrical atlas groups both legs into 'torso', and projecting boots
-      // onto trousers cuts long, incorrect holes around the ankles.
-      outer==='bottom'&&['underwear'].includes(inner)
-    );
-    for(const [slot] of order){
-      const mesh=this.parts.get(slot);
-      const outerMeshes=order.filter(([o])=>canCover(o,slot))
-        .map(([o])=>this.parts.get(o)).filter(Boolean);
-      if(!outerMeshes.length)continue;
-      const result=applyClothingLayerMask(mesh,outerMeshes,
-        {padding:this.layerMaskPadding});
-      if(result)this.layerMaskStats[slot]=result;
-    }
-    return this;
-  }
-  updateBodyVisibility(){
-    const equipped=[...this.parts.values()]
-      .map(p=>this.catalog.clothing.items.find(i=>i.id===p.userData.catalogId))
-      .filter(Boolean);
-    const coordinates=insetBodyPositions(this._bodySkinZones,equipped);
-    const geometry=this.body.geometry;
-    const position=geometry.getAttribute('position');
-    position.array.set(coordinates);
-    position.needsUpdate=true;
-    if(equipped.some(item=>item.hidesBodyZones?.length)){
-      geometry.computeVertexNormals();
-    }else{
-      const normal=geometry.getAttribute('normal');
-      normal.array.set(this._bodySkinZones.normals);
-      normal.needsUpdate=true;
-    }
-    // Full index buffer stays in place: collar, wrists, hems and underside
-    // always have a continuous skin surface. No holes, no additional meshes.
   }
   attach(slot,object,{position,rotation,scale}={}){
     const socket=this.sockets.get(slot);
@@ -358,39 +271,7 @@ export class LiteHumanoid {
     this.action=next;return this;
   }
   update(dt){
-    const delta=Math.min(.10,Math.max(0,dt));
-    // Undo last frame's procedural adjustment before the mixer evaluates.
-    // In particular, paused clips must never accumulate shoulder rotation.
-    for(const [name,rotation] of this._unadjustedArmRotations){
-      this.bones.get(name).quaternion.copy(rotation);
-    }
-    this.mixer.update(delta);
-    if(this.appearance.body!=='female')return;
-
-    // Keep the arms relaxed but visibly clear of the narrower torso.
-    // Gentle correction for locomotion; none for dramatic fall/jump poses.
-    const name=this.motionName??this.action?.getClip()?.name??'idle';
-    const target=name.startsWith('idle')?0.17
-      : name==='walk'||name==='walk_back'||name.startsWith('strafe_')?0.12
-      : name==='run'?0.085 : 0;
-    this._femaleArmOutset+=(target-this._femaleArmOutset)*(1-Math.exp(-12*delta));
-    if(this._femaleArmOutset<0.0001)return;
-
-    // A body-relative forward axis ensures this works when players turn.
-    this.root.getWorldQuaternion(this._rootWorldQuat);
-    this._armWorldAxis.copy(this._armAxis).applyQuaternion(this._rootWorldQuat);
-    for(const [boneName,sign] of [['upperarm_l',1],['upperarm_r',-1]]){
-      const bone=this.bones.get(boneName);
-      if(!this._unadjustedArmRotations.has(boneName)){
-        this._unadjustedArmRotations.set(boneName,new THREE.Quaternion());
-      }
-      this._unadjustedArmRotations.get(boneName).copy(bone.quaternion);
-      bone.parent.getWorldQuaternion(this._armParentQuat);
-      this._armQuat.setFromAxisAngle(this._armWorldAxis,sign*this._femaleArmOutset);
-      this._armLocalQuat.copy(this._armParentQuat).invert()
-        .multiply(this._armQuat).multiply(this._armParentQuat);
-      bone.quaternion.premultiply(this._armLocalQuat);
-    }
+    this.mixer.update(Math.min(.10,Math.max(0,dt)));
   }
   stats(){
     let triangles=0,drawables=0;
@@ -403,7 +284,8 @@ export class LiteHumanoid {
     return {
       triangles:Math.round(triangles),bones:this.bones.size,
       skinnedMeshes:drawables,
-      morphs:0,
+      morphs:this.body.morphTargetInfluences?.length||0,
+      facePresets:FACE_PRESETS,
       gear:[...this.parts.keys()],
       animationClips:this.clips.length
     };
@@ -414,19 +296,19 @@ export async function createLiteHumanoid(options={}){
  if(!BODIES.includes(appearance.body))throw Error('Unknown body: '+appearance.body);
  if(!FACE_PRESETS.includes(appearance.face))throw Error('Unknown face preset: '+appearance.face);
  const [glb,catalog]=await Promise.all([
-   loadGLTF(appearance.game?'game/body_'+appearance.body+'.glb?v=fc-unified-1':'lite/body_'+appearance.body+(appearance.face==='default'?'':'_'+appearance.face)+'.glb'),getHumanoidCatalog()
+   loadGLTF('game/body_'+appearance.body+'.glb?v=fc-production-13-1'),getHumanoidCatalog()
  ]);
  const model=cloneSkinned(glb.scene);
  const actor=new LiteHumanoid(model,glb.animations,appearance,catalog);
- actor._layerMaskBatch=true;
+ actor._maskBatch=true;
  try{
    for(const slot of ['underwear','bra','top','bottom','shoes','outerwear','hair']){
      if(appearance[slot])await actor.equip(slot,appearance[slot]);
    }
  }finally{
-   actor._layerMaskBatch=false;
-   actor.refreshClothingLayers();
+   actor._maskBatch=false;
  }
+ if(!actor.maskEditor)await applyBodyMaskFromOutfit(actor);
  actor.play('idle',{fade:0});
  return actor;
 }

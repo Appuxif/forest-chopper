@@ -1,3 +1,16 @@
+# Current model architecture (2026-11-02)
+
+**Important: later supersedes the legacy notes below.** There are precisely
+2 canonical body model GLBs, `game/body_male.glb` and `game/body_female.glb`,
+for both gameplay and `preview-lite.html`. Both have an independent Action
+bank (13 production Actions initially from the same Blender workbench), 53 bones and
+integrated face morphs. There are no `lite/body_*.glb` or animation-only GLBs
+in the project. Clothes and hair stay in the shared equipment catalog.
+Rebuild: `python3 characters/humanoid/build_all_lite.py --bodies-only --jobs 3`.
+To override by sex use the Blender Action prefix `male__` or `female__`.
+
+---
+
 # Forest Chopper — Humanoid Lite: handoff для следующего агента
 
 > Статус на 2026-10-31. Этот документ — **описание уже работающей системы, инструкции по воспроизведению и дальнейший план**. Не принимать всё за production-ready: есть визуальные и игровые ограничения.

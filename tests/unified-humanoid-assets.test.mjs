@@ -9,7 +9,7 @@ function glb(name){
  return JSON.parse(data.toString('utf8',20,20+size));
 }
 
-test('runtime male and female GLBs contain exactly one rig and the same authored Run clip',()=>{
+test('two independent runtime gender GLBs each contain 13 production Actions, one rig and face presets',()=>{
  const male=glb('body_male'),female=glb('body_female');
  for(const asset of [male,female]){
   assert.equal(asset.skins.length,1);
@@ -18,6 +18,11 @@ test('runtime male and female GLBs contain exactly one rig and the same authored
   assert.ok(clips.has('run'));
   assert.ok(clips.has('Chop'));
   assert.ok(clips.has('idle'));
+  assert.equal(asset.animations.length,13);
+  assert.equal(clips.size,13);
+  assert.equal([...clips.keys()].filter(name=>name.startsWith('REF_')).length,0);
+  assert.ok(asset.meshes.every(mesh=>mesh.extras?.targetNames?.join(',')==='angular,soft'));
+  assert.ok(asset.meshes.every(mesh=>mesh.primitives.every(primitive=>primitive.targets?.length===2)));
   const run=clips.get('run');
   assert.equal(run.channels.length,159);
   const root=run.channels.find(c=>asset.nodes[c.target.node].name==='Root'&&c.target.path==='translation');

@@ -69,7 +69,7 @@ function rootStep(THREE,info,from,to,backward){
 
 export async function createAnimations(THREE){
  const modelActors=new Set();
- const {createLiteHumanoid}=await import('../characters/humanoid/humanoid-lite.js?v=fc-game-unified-1');
+ const {createLiteHumanoid}=await import('../characters/humanoid/humanoid-lite.js?v=20261102-production-13-1');
  let legacyTemplatePromise=null,axeAssetPromise=null;
  const clipNames={idle:'Idle',walk:'Walk',run:'Run',strafe_left:'StrafeLeft',strafe_right:'StrafeRight',jump:'Jump',fall:'Fall',Chop:'Chop2'};
  const {GLTFLoader}=await import('https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js');
@@ -90,7 +90,7 @@ export async function createAnimations(THREE){
    rawClips=gltf.animations;
   }else{
    if(model!=='male'&&model!=='female')throw Error('Unknown character model: '+model);
-   human=await createLiteHumanoid({body:model,game:true,face:'default',hair:'short02',top:'shirt',bottom:'jeans',shoes:'shoes',outerwear:null});
+   human=await createLiteHumanoid({body:model,face:'default',hair:'short02',top:'shirt',bottom:'jeans',shoes:'shoes',outerwear:null});
    human.mixer.stopAllAction();
    human.action=null;
    visual=human.root;
@@ -106,7 +106,9 @@ export async function createAnimations(THREE){
   visual.rotation.y=Math.PI;
   visual.traverse(node=>{if(node.isMesh){node.castShadow=true;node.layers.set(layer);}});
   group.add(visual);
-  const clips=rawClips.map(clip=>{
+  // REF_* Actions live in the same model but the game needn't allocate
+  // animation masks/actions until they are selected for actual gameplay.
+  const clips=rawClips.filter(clip=>!clip.name.startsWith('REF_')).map(clip=>{
    const cloned=clip.clone();
    cloned.name=clipNames[cloned.name]??cloned.name;
    return cloned;

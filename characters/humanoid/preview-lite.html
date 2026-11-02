@@ -77,13 +77,6 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <p class="mask-note" id="maskCount">Сохранено: 0</p>
 <div class="mask-actions"><button id="maskSelectAll">Включить все</button><button id="maskSelectNone">Выключить все</button></div>
 <label class="mask-row"><span>Скрыть одежду для осмотра</span><input type="checkbox" id="maskHideClothes"/></label>
-<h2>Автомаска слоёв · эксперимент</h2>
-<p class="mask-note">По умолчанию выключена: текущий алгоритм ошибочно вырезает видимую ткань под расстёгнутой курткой.</p>
-<label class="mask-row"><span>Включить экспериментальную маску</span><input type="checkbox" id="autoClothingLayers"/></label>
-<div class="control"><label>Запас покрытия</label><input type="range" id="clothingLayerPadding" min="0" max="6" step="1" value="2"/></div>
-<p class="mask-note" id="clothingLayerInfo">Геометрия верхнего слоя определяет, какие пиксели нижней одежды скрыть. 2 — базовый запас.</p>
-<p class="mask-note" id="clothingLayerStats"></p>
-
 <h2>Матрица одежды</h2>
 <p class="mask-note">Выбери предмет — редактор наденет его и покажет, какие базовые маски нужно применять. Назначения сохраняются автоматически в браузере.</p>
 <div class="control"><label>Предмет</label><select id="matrixItem"></select></div>
@@ -109,6 +102,8 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <p class="mask-note" id="paintStatus">Создай маску или выбери ✎ для редактирования. Белое — кожа видна, чёрное — скрыта.</p>
 <h2>Анимация</h2>
 <div class="control"><label>Клип</label><select id="animation"></select></div>
+<div class="control"><label>Просмотр</label><button id="replayAnimation" type="button">↻ Повторить анимацию</button></div>
+<p class="mask-note" id="animationInfo">В игровые GLB экспортируются 13 основных анимаций. REF_* остаются в Blender.</p>
 <div class="control"><label>Скорость</label><input id="speed" type="range" min="0" max="3" step=".1" value="1"/></div>
 <div class="control"><label>Скелет</label><input type="checkbox" id="skeleton"/></div>
 <h2>Статистика</h2><pre id="stats"></pre>
@@ -117,8 +112,10 @@ pre{font:12px/1.65 ui-monospace,monospace;white-space:pre-wrap;color:#c8e4d8}
 <script type="module">
 import * as THREE from 'three';
 import {OrbitControls} from 'https://esm.sh/three@0.170.0/examples/jsm/controls/OrbitControls.js';
-import {createLiteHumanoid,getHumanoidCatalog,DEFAULT_APPEARANCE} from './humanoid-lite.js?v=clothing-fabrics-1';
+import {REFERENCE_MOTION_GROUPS,shouldLoopPreviewClip,referenceClipInfo} from './reference-motion-ui.js?v=20261102-one-body1';
+import {createLiteHumanoid,getHumanoidCatalog,DEFAULT_APPEARANCE} from './humanoid-lite.js?v=20261102-production-13-1';
 import {createSkinPainter,interpolateScreenPoints} from './skin-paint.js';
+import {outfitMaskNames} from './skin-mask-matrix.js?v=20261102-matrix1';
 const $=id=>document.getElementById(id);
 const renderer=new THREE.WebGLRenderer({canvas:$('view'),antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -138,6 +135,52 @@ const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.02,50);camer
 const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.target.set(0,.98,0);orbit.minDistance=.65;orbit.maxDistance=7;orbit.enableDamping=true;orbit.update();
 let actor,helper,skinPainter;
+function fillAnimationChoices(){
+  const select=$('animation');
+  const current=select.value;
+  const authored=document.createElement('optgroup');authored.label='Оригинальные · Humanoid';
+  for(const clip of actor.clips.filter(clip=>!clip.name.startsWith('REF_'))){
+    const option=document.createElement('option');
+    option.value=clip.name;option.textContent=clip.name;
+    authored.append(option);
+  }
+  const groups=[authored];
+  const known=new Set(actor.clips.map(clip=>clip.name));
+  for(const group of REFERENCE_MOTION_GROUPS){
+    const section=document.createElement('optgroup');section.label=group.label;
+    for(const [id,label] of group.actions){
+      if(!known.has(id))continue;
+      const option=document.createElement('option');
+      option.value=id;option.textContent=label;
+      section.append(option);
+    }
+    if(section.children.length)groups.push(section);
+  }
+  select.replaceChildren(...groups);
+  select.value=known.has(current)?current:'idle';
+  updateAnimationInfo();
+}
+function updateAnimationInfo(){
+  const clip=actor?.clips.find(a=>a.name===$('animation').value);
+  if(!clip)return;
+  const details=referenceClipInfo(clip.name);
+  const duration=`${clip.duration.toFixed(2)} с`;
+  $('animationInfo').textContent=(details||'Оригинальная анимация Humanoid.')+
+    ` · ${duration} · ${shouldLoopPreviewClip(clip.name)?'цикл':'однократная'}`;
+}
+function playSelectedAnimation({restart=false}={}){
+  if(!actor)return;
+  const name=$('animation').value;
+  if(!actor.clips.some(a=>a.name===name))return;
+  if(restart&&actor.action){
+    // LiteHumanoid.play intentionally no-ops on the same Action: clear its
+    // selection so one-shot attacks/eating can be replayed on demand.
+    actor.action.stop();actor.action=null;
+  }
+  actor.play(name,{loop:shouldLoopPreviewClip(name),fade:restart?0:.12});
+  updateAnimationInfo();
+}
+
 const cfg={...DEFAULT_APPEARANCE,clothingVariants:{}};
 const clothingVariantSlots=['top','bottom','shoes','outerwear','underwear'];
 const clothingVariantStorageKey='forest-chopper:humanoid-lite:clothing-variants:v1';
@@ -183,23 +226,6 @@ for(const slot of clothingVariantSlots){
   catch(error){setStatus('Ошибка текстуры: '+error.message);console.error(error)}
  };
 }
-const clothingLayers={enabled:false,padding:2};
-function showClothingLayerStats(){
- const parts=Object.entries(actor?.layerMaskStats||{});
- $('clothingLayerStats').textContent=parts.length
-  ?'Маска слоёв: '+parts.map(([slot,data])=>slot+' — '+data.maskedPixels+' пикс.').join('; ')
-  :'Нет перекрывающихся слоёв одежды.';
-}
-$('autoClothingLayers').onchange=e=>{
- clothingLayers.enabled=e.target.checked;
- if(actor){actor.setClothingLayerMaskEnabled(clothingLayers.enabled);showClothingLayerStats()}
-};
-$('clothingLayerPadding').oninput=e=>{
- clothingLayers.padding=Number(e.target.value);
- $('clothingLayerInfo').textContent='Запас покрытия: '+clothingLayers.padding+
-  ' · увеличь, если из-под верхней одежды выглядывают края.';
- if(actor){actor.setClothingLayerPadding(clothingLayers.padding);showClothingLayerStats()}
-};
 let painting=false,paintPointer=null,editing=null,editDraft=null,clothesHidden=false;
 let library={male:{},female:{}};
 const enabled={male:new Set(),female:new Set()};
@@ -314,13 +340,10 @@ function saveMatrix(){
 }
 function activeMaskNames(){
  if(!$('matrixAuto').checked)return new Set(enabledForBody());
- const active=new Set();
- for(const slot of ['top','bottom','shoes','outerwear','underwear','bra']){
-  const id=cfg[slot];
-  if(!id)continue;
-  for(const mask of matrix[cfg.body]?.[id]||[])if(collection()[mask])active.add(mask);
- }
- return active;
+ const outfit=Object.fromEntries(['underwear','bra','top','bottom','shoes','outerwear']
+   .map(slot=>[slot,cfg[slot]]));
+ return new Set(outfitMaskNames(matrix,cfg.body,outfit)
+   .filter(name=>collection()[name]));
 }
 function renderMatrixOptions(){
  const list=clothingItems.filter(item=>!item.sex||item.sex===cfg.body);
@@ -602,7 +625,7 @@ $('matrixItem').onchange=async()=>{
   try{
    await actor.equip(item.slot,item.id);
    syncPreviewClothingVisibility();
-   drawStats();showClothingLayerStats();
+   drawStats();
    setStatus('Готово');
   }catch(error){setStatus('Ошибка: '+error.message)}
  }
@@ -681,7 +704,7 @@ async function reload(){
  setStatus('Загружаю '+cfg.body+'…');
  try{
    refreshClothingVariantChoosers();
-   const fresh=await createLiteHumanoid({...cfg,layerMaskEnabled:clothingLayers.enabled,layerMaskPadding:clothingLayers.padding});
+   const fresh=await createLiteHumanoid({...cfg,maskEditor:true});
    if(actor){scene.remove(actor.root);actor.mixer.stopAllAction();}
    if(skinPainter)skinPainter.dispose();
    painting=false;editing=null;editDraft=null;
@@ -692,14 +715,17 @@ async function reload(){
    skinPainterCanvas();
    renderMatrixOptions();
    await reloadMaskEditor();
-   $('animation').replaceChildren(...actor.clips.map(a=>{const el=document.createElement('option');el.value=el.textContent=a.name;return el}));
-   $('animation').value='idle';actor.mixer.timeScale=+$('speed').value;
-   drawStats();showClothingLayerStats();setStatus('Готово');
+   const selected=$('animation').value;
+   fillAnimationChoices();
+   $('animation').value=actor.clips.some(c=>c.name===selected)?selected:'idle';
+   playSelectedAnimation();
+   actor.mixer.timeScale=+$('speed').value;
+   drawStats();setStatus('Готово · единый игровой GLB');
    window.humanoidLitePreview={actor,cfg,skinPainter,library,enabled,matrix,camera,orbit,composeEnabledMasks};
  }catch(err){setStatus('Ошибка: '+err.message);console.error(err);}
 }
 $('body').onchange=e=>{cfg.body=e.target.value;void reload()};
-$('face').onchange=e=>{cfg.face=e.target.value;void reload()};
+$('face').onchange=e=>{cfg.face=e.target.value;actor?.setFacePreset(cfg.face);drawStats()};
 $('skin').onchange=e=>{cfg.skin=e.target.value;actor.setSkinColor(cfg.skin);drawStats()};
 $('hairColor').oninput=e=>{cfg.hairColor=e.target.value;actor.setHairColor(cfg.hairColor)};
 for(const slot of ['hair','top','bottom','shoes','outerwear','underwear']){
@@ -710,11 +736,12 @@ for(const slot of ['hair','top','bottom','shoes','outerwear','underwear']){
   try{await actor.equip(slot,cfg[slot]);
     syncPreviewClothingVisibility();
     if(!painting)await composeEnabledMasks();
-    drawStats();showClothingLayerStats();setStatus('Готово')}
+    drawStats();setStatus('Готово')}
   catch(err){setStatus('Ошибка: '+err.message);console.error(err)}
  };
 }
-$('animation').onchange=e=>actor.play(e.target.value,{loop:!['fall','jump','land'].includes(e.target.value)});
+$('animation').onchange=()=>playSelectedAnimation();
+$('replayAnimation').onclick=()=>playSelectedAnimation({restart:true});
 $('speed').oninput=e=>{if(actor&&!painting)actor.mixer.timeScale=Number(e.target.value)};
 $('skeleton').onchange=e=>{if(helper)helper.visible=e.target.checked};
 $('copy').onclick=()=>navigator.clipboard.writeText(JSON.stringify({...cfg,activeMasks:[...enabledForBody()]},null,2));
