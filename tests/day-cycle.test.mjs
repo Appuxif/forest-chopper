@@ -34,7 +34,7 @@ function snapshot(f){
 }
 
 test('phase interpolation is continuous, cyclic and keeps a readable light floor',()=>{
-  assert.equal(DAY_CYCLE_MS,480000);
+  assert.equal(DAY_CYCLE_MS,960000);
   for(const point of [0,.1,.22,.23,.3,.43,.5,.57,.7,.77,.95,.9999,1,2,-.5,NaN]){
     const v=dayPhaseValues(point);
     assert.ok(v.ambient>=.49 && v.ambient<=2.1);

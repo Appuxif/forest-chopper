@@ -6,7 +6,7 @@ import {
   CHARACTER_SHADOW_RADIUS,CHARACTER_SHADOW_MAP_SIZES,
 } from '../src/atmosphere.js';
 
-test('celestial positions follow the 8-minute cycle: sun by day, moon by night',()=>{
+test('celestial positions follow the 16-minute cycle: sun by day, moon by night',()=>{
   const noon=celestialDirections(0);
   const dusk=celestialDirections(.25);
   const midnight=celestialDirections(.5);

@@ -619,19 +619,19 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(loaded.felled)
 
     async def test_vitals_are_bounded_and_server_hunger_is_time_based(self):
-        self.assertEqual(HUNGER_INTERVAL_SECONDS,300)
+        self.assertEqual(HUNGER_INTERVAL_SECONDS,192)
         self.assertEqual(LOW_VITALS_THRESHOLD,1)
         self.assertEqual(len(FOOD_EFFECTS),15)
         player={'health':5,'hunger':5,'hunger_progress':0,
                 'last_hunger_at':100.0}
-        self.assertFalse(advance_hunger(player,399))
+        self.assertFalse(advance_hunger(player,291))
         self.assertEqual(player['hunger'],5)
-        self.assertTrue(advance_hunger(player,400))
+        self.assertTrue(advance_hunger(player,292))
         self.assertEqual(player['hunger'],4)
         self.assertEqual(player['hunger_progress'],0)
-        self.assertTrue(advance_hunger(player,1000))
+        self.assertTrue(advance_hunger(player,676))
         self.assertEqual(player['hunger'],2)
-        self.assertTrue(advance_hunger(player,1300))
+        self.assertTrue(advance_hunger(player,868))
         self.assertEqual(player['hunger'],1)
         self.assertFalse(apply_food(player,'branch'))
         self.assertTrue(apply_food(player,'mushroom:boletus'))

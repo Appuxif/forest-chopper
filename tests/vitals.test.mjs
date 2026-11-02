@@ -11,16 +11,16 @@ test('health and hunger have five slots; at one or zero cannot chop',()=>{
  for(const health of [0,1])assert.equal(canChop({health,hunger:5}),false);
  for(const hunger of [0,1])assert.equal(canChop({health:5,hunger}),false);
 });
-test('hunger loses one slot every five minutes; empty hunger causes starvation damage every ten seconds',()=>{
+test('hunger loses one slot every 192 seconds; empty hunger causes starvation damage every ten seconds',()=>{
  let now=0;
  const x=createVitals({now:()=>now});
- assert.equal(HUNGER_INTERVAL_SECONDS,300);
- now=299;assert.equal(x.tick(),false);assert.equal(x.hunger,5);
- now=300;assert.equal(x.tick(),true);assert.equal(x.hunger,4);
- now=900;assert.equal(x.tick(),true);assert.equal(x.hunger,2);
- now=1200;assert.equal(x.tick(),true);assert.equal(x.hunger,1);assert.equal(x.canChop,false);
- now=1800;assert.equal(x.tick(),true);assert.equal(x.hunger,0);assert.equal(x.health,5);
- now=2100;assert.equal(x.tick(),true);assert.equal(x.hunger,0);assert.equal(x.health,0);
+ assert.equal(HUNGER_INTERVAL_SECONDS,192);
+ now=191;assert.equal(x.tick(),false);assert.equal(x.hunger,5);
+ now=192;assert.equal(x.tick(),true);assert.equal(x.hunger,4);
+ now=576;assert.equal(x.tick(),true);assert.equal(x.hunger,2);
+ now=768;assert.equal(x.tick(),true);assert.equal(x.hunger,1);assert.equal(x.canChop,false);
+ now=960;assert.equal(x.tick(),true);assert.equal(x.hunger,0);assert.equal(x.health,5);
+ now=1260;assert.equal(x.tick(),true);assert.equal(x.hunger,0);assert.equal(x.health,0);
 });
 test('poison mushrooms subtract a life; edible milkcap and boletus restore hunger',()=>{
  const x=createVitals({now:()=>0});
@@ -65,16 +65,16 @@ test('consumption always decrements the exact selected stack and does not touch 
 test('saving vitals preserves countdown progress but does not reduce hunger while offline',()=>{
  let now=0;
  const x=createVitals({now:()=>now});
- now=200;x.tick();
+ now=56;x.tick();
  x.eat('mushroom:fly_agaric');
  const saved=x.snapshot();
- assert.deepEqual(saved,{health:4,hunger:5,stamina:5,staminaLocked:false,hungerProgress:200,starvationProgress:0});
+ assert.deepEqual(saved,{health:4,hunger:5,stamina:5,staminaLocked:false,hungerProgress:56,starvationProgress:0});
  now=1400;
  const y=createVitals({now:()=>now});
  assert.equal(y.restore(saved),true);
  assert.equal(y.hunger,5);
- now=1499;y.tick();assert.equal(y.hunger,5);
- now=1500;y.tick();assert.equal(y.hunger,4);
+ now=1535;y.tick();assert.equal(y.hunger,5);
+ now=1536;y.tick();assert.equal(y.hunger,4);
  assert.equal(y.restore({health:6,hunger:5,hungerProgress:0}),false);
  assert.equal(y.restore({health:0,hunger:-1,hungerProgress:0}),false);
  assert.equal(y.restore({health:1,hunger:2,hungerProgress:300}),false);
@@ -189,7 +189,7 @@ test('starvation damages exactly one health each ten seconds and stops immediate
  assert.equal(resumed.eat('mushroom:boletus'),true);
  assert.equal(resumed.hunger,1);
  assert.equal(resumed.snapshot().starvationProgress,0);
- now=300;resumed.tick();assert.equal(resumed.health,3);
+ now=100;resumed.tick();assert.equal(resumed.health,3);
  assert.equal(resumed.hunger,1);
  assert.equal(resumed.restore({...saved,starvationProgress:10}),false);
 });

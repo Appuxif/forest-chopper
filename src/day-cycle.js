@@ -1,6 +1,6 @@
 // Optional offline day/night lighting; multiplayer uses an authoritative
 // server clock, extrapolated locally between periodic synchronizations.
-export const DAY_CYCLE_MS = 8 * 60 * 1000;
+export const DAY_CYCLE_MS = 16 * 60 * 1000;
 export function normalizeDayPhase(phase){
   return Number.isFinite(phase)?((phase%1)+1)%1:0;
 }

@@ -130,7 +130,7 @@ def tree_info(key,seed):
 
 MAX_VITALS=5
 LOW_VITALS_THRESHOLD=1
-HUNGER_INTERVAL_SECONDS=300
+HUNGER_INTERVAL_SECONDS=192
 STAMINA_SPRINT_DRAIN=0.8
 STAMINA_REGEN=0.65
 STAMINA_HIT_COST=1.0
@@ -687,7 +687,7 @@ def inventory_view(player):
 
 # Client and server use an eight-minute day, with an absolute server epoch
 # persisted alongside the world. No client may set or advance the server clock.
-DAY_CYCLE_SECONDS = 8 * 60
+DAY_CYCLE_SECONDS = 16 * 60
 DAY_SYNC_SECONDS = 10
 
 class World:

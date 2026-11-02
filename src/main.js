@@ -31,7 +31,7 @@ import {createWind} from './wind.js?v=20261031-spruce-sway1';
 import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
 import {createPlantInteraction} from './plant-interaction.js?v=20261031-collectible-plants1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
-import {createDayCycle} from './day-cycle.js?v=20261101-synced-time2';
+import {createDayCycle} from './day-cycle.js?v=20261102-16min-day';
 import {createAtmosphere} from './atmosphere.js?v=20261102-sky-far-clip1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
@@ -46,7 +46,7 @@ import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-w
 import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
 import {createStorages} from './storages.js?v=20261102-collision-world1';
 import {createCampStructures} from './camp-structures.js?v=20261102-collision-world1';
-import {createVitalsUI} from './vitals-ui.js?v=20261102-voice1';
+import {createVitalsUI} from './vitals-ui.js?v=20261102-16min-hunger';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261102-prestage-logs1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';

@@ -2,7 +2,7 @@ import {sanitizeEffects,applyTimedEffect,staminaRegenMultiplier,hasStatusEffect,
 // Pure player survival state, including starvation damage.
 export const MAX_VITALS=5;
 export const LOW_VITALS_THRESHOLD=1;
-export const HUNGER_INTERVAL_SECONDS=300;
+export const HUNGER_INTERVAL_SECONDS=192;
 export const STARVATION_DAMAGE_INTERVAL=10;
 export const STAMINA_SPRINT_DRAIN=0.8; // slots per second of sprinting
 export const STAMINA_REGEN=0.65; // slots per second walking/resting

@@ -387,7 +387,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <section class="fc-settings-page" data-category="world" aria-label="Мир" hidden>
     <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в деревьях</label>
     <label><input id="fc-day-cycle" type="checkbox"> Локальная смена дня и ночи</label>
-    <small>Цикл 8 минут. В сетевой игре время суток общее и управляется сервером.</small>
+    <small>Полные сутки 16 минут (8 минут день и 8 минут ночь). В сетевой игре время суток общее и управляется сервером.</small>
     </section></div>
     <footer class="fc-settings-footer"><small>Изменения сохраняются автоматически</small>
       <button id="fc-reset-settings" type="button">Сбросить всё</button></footer>`;
