@@ -1,5 +1,5 @@
 // One procedural birch template per page; all world birches instance its meshes.
-import {createBirch,BIRCH_PRESET} from './birch-foliage-cards.js?v=20261031-birch1';
+import {createBirch,BIRCH_PRESET} from './birch-foliage-cards.js?v=20261103-shared-birch-all1';
 import {trimSpruceFoliageGeometry} from './spruce-foliage-opt.js?v=20261031-procedural-spruce1';
 export function generateBirchParts(params=null){
   try{

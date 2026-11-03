@@ -20,7 +20,7 @@ export function createDeathSystem(ctx,{
  let marker=null,bedId=null,handling=false,phase='alive',startedAt=0;
  let pendingRespawn=null,deathOnline=false;
  const active=()=>phase!=='alive';
- function begin(){
+ function begin({skipPhysics=false}={}){
   if(active())return false;
   phase='falling';startedAt=clock();deathOnline=!!ctx.isOnline?.();
   ctx.audio?.death?.();
@@ -34,7 +34,8 @@ export function createDeathSystem(ctx,{
   screen?.begin?.(()=>respawn());
   // If Rapier/CDN fails, the death screen and manual respawn still work.
   const impactSpeed=ctx.fallImpactSpeed??0;
-  Promise.resolve().then(()=>ctx.ragdoll?.trigger?.({allowOnline:true,impactSpeed}))
+  if(!skipPhysics)Promise.resolve()
+   .then(()=>ctx.ragdoll?.trigger?.({allowOnline:true,impactSpeed}))
    .then(()=>{if(!active())ctx.ragdoll?.reset?.();})
    .catch(error=>console.warn('Death ragdoll unavailable:',error));
   return true;
@@ -151,7 +152,11 @@ export function createDeathSystem(ctx,{
    // Restore an interrupted death without dropping the inventory twice.
    ctx.ownAvatar?.group?.position?.set(ctx.px,ctx.feetY,ctx.pz);
    if(ctx.ownAvatar)ctx.ownAvatar.group.rotation.y=ctx.yaw;
-   begin();
+   // Never instantiate Rapier while restoring a previously pending death:
+   // the save already contains its inventory drop and death marker. We need
+   // only the death/respawn UI, not a second physics simulation. A poisoned
+   // ragdoll world must never prevent access to a valid offline save.
+   begin({skipPhysics:true});
   }
  }
  function snapshot(){

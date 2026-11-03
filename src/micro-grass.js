@@ -8,10 +8,36 @@ export const MICRO_GRASS_CELL = 1.1;
 export const MICRO_GRASS_RADIUS = 26;
 export const MICRO_GRASS_PER_CELL = 9;
 export const MICRO_GRASS_MAX_RADIUS = 100;
+export const MICRO_GRASS_NIGHT_RADIUS = 30;
+// Blend the night cap smoothly across dusk/dawn. Quantization prevents
+// thousands of near-identical streaming radii during a lighting transition.
+export function effectiveGrassRadius(dayRadius,nightBlend=0){
+  const day=Math.max(12,Math.min(MICRO_GRASS_MAX_RADIUS,dayRadius));
+  const t=Math.max(0,Math.min(1,nightBlend));
+  return Math.round(day+(Math.min(day,MICRO_GRASS_NIGHT_RADIUS)-day)*t);
+}
+
 export const MICRO_GRASS_MAX_DENSITY = 50;
 const NEAR_TILE = 12;
 const FAR_TILE = 24;
 const NEAR_END = 26;
+// Stable instance priorities and a smooth per-blade distance profile; the CPU
+// still skips distant instances using conservative page-level bounds.
+const FAR_DENSITY_MIN = .38;
+const GRASS_CULL_MARGIN = 2.5;
+const GRASS_DENSITY_BLEND = .045;
+export function grassDistanceDensity(distance,radius,{nearEnd=NEAR_END,minDensity=FAR_DENSITY_MIN,sharpness=.005,coefficient=.25,offset=1}={}){
+  if(radius<=nearEnd||distance<=nearEnd)return 1;
+  const end=Math.max(nearEnd+1,radius-2);
+  const t=Math.max(0,Math.min(1,(distance-nearEnd)/(end-nearEnd)));
+  // Three independently tunable coefficients, matching the vertex shader.
+  // Offset < 1 can produce a non-monotonic curve; CPU culling handles that
+  // by conservatively submitting entire tiles (see updateVisibility).
+  const near=t*t*t,far=(offset-t)*(offset-t);
+  const denominator=near+(coefficient+sharpness)*far;
+  const falloff=denominator>0?Math.max(0,Math.min(1,near/denominator)):0;
+  return minDensity+(1-minDensity)*(1-falloff);
+}
 const REBUILD_DISTANCE = 4;
 const MAX_UNUSED_TILES = 8;
 const GRASS_ACTOR_SLOTS = 6; // local player, two fading footprints, three nearby guests
@@ -148,6 +174,9 @@ function makeMaterial(THREE, player, near, simple=false) {
     fcGrassFade:{value:new THREE.Vector4(-2,-1,19,26)},
     fcGrassSizeRange:{value:new THREE.Vector2(1,7)},
     fcGrassWidth:{value:1},
+    fcGrassDensityLod:{value:new THREE.Vector4(NEAR_END,50,.30,.005)},
+    fcGrassDensityShape:{value:new THREE.Vector2(.25,1)},
+    fcGrassMinDensity:{value:FAR_DENSITY_MIN},
     fcGrassTurnRange:{value:new THREE.Vector2(-Math.PI/6,Math.PI/6)},
     fcGrassClearings:{value:Array.from({length:GRASS_CLEARING_SLOTS},
       ()=>new THREE.Vector4(0,0,0,0))},
@@ -158,7 +187,42 @@ function makeMaterial(THREE, player, near, simple=false) {
     color:0xffffff,vertexColors:true,side:THREE.DoubleSide,depthWrite:true,
   });
   if(simple){
-    // Cheap unmodified Lambert shader: no actor, clearing or glade loops.
+    // Lightweight shader for low-end devices: only width correction.
+    // No actor, clearing, biome or glade loops from the full shader.
+    material.onBeforeCompile=shader=>{
+      shader.uniforms.fcGrassPlayer=uniforms.fcGrassPlayer;
+      shader.uniforms.fcGrassWidth=uniforms.fcGrassWidth;
+      shader.uniforms.fcGrassDensityLod=uniforms.fcGrassDensityLod;
+      shader.uniforms.fcGrassDensityShape=uniforms.fcGrassDensityShape;
+      shader.uniforms.fcGrassMinDensity=uniforms.fcGrassMinDensity;
+      shader.vertexShader=shader.vertexShader.replace(
+        '#include <common>',
+        `#include <common>
+uniform vec2 fcGrassPlayer;
+uniform float fcGrassWidth;
+uniform vec4 fcGrassDensityLod;
+uniform vec2 fcGrassDensityShape;
+uniform float fcGrassMinDensity;
+attribute float fcGrassCenterX;
+attribute float fcGrassPriority;`,
+      ).replace('#include <begin_vertex>',`#include <begin_vertex>
+#ifdef USE_INSTANCING
+  float fcDistance = length(instanceMatrix[3].xz - fcGrassPlayer);
+  float fcDistanceT = clamp((fcDistance-fcGrassDensityLod.x) /
+    max(fcGrassDensityLod.y-fcGrassDensityLod.x,0.001),0.0,1.0);
+  float fcNear = fcDistanceT*fcDistanceT*fcDistanceT;
+  float fcFar = (fcGrassDensityShape.y-fcDistanceT)*(fcGrassDensityShape.y-fcDistanceT);
+  float fcDenominator = fcNear + (fcGrassDensityShape.x+fcGrassDensityLod.w)*fcFar;
+  float fcWidthT = fcDenominator > 0.0 ?
+    clamp(fcNear / fcDenominator,0.0,1.0) : 0.0;
+  float fcWidthLod = 1.0 + fcWidthT * fcGrassDensityLod.z;
+  float fcCoverage = mix(1.0,fcGrassMinDensity,fcWidthT);
+  float fcBladeFade = smoothstep(fcGrassPriority-0.045,fcGrassPriority,fcCoverage);
+  transformed.x = fcGrassCenterX +
+    (transformed.x - fcGrassCenterX) * fcGrassWidth * fcWidthLod;
+  transformed *= fcBladeFade;
+#endif`);
+    };
     material.userData.grassUniforms=uniforms;
     return material;
   }
@@ -166,7 +230,7 @@ function makeMaterial(THREE, player, near, simple=false) {
     Object.assign(shader.uniforms,uniforms);
     shader.vertexShader=shader.vertexShader.replace(
       '#include <common>',
-      '#include <common>\nuniform vec2 fcGrassPlayer;\nuniform vec4 fcGrassFade;\nuniform vec2 fcGrassSizeRange;\nuniform float fcGrassWidth;\nuniform vec2 fcGrassTurnRange;\nattribute float fcGrassCenterX;\nattribute vec2 fcGrassProfile;\nuniform vec4 fcGrassClearings[24];'
+      `#include <common>\nuniform vec2 fcGrassPlayer;\nuniform vec4 fcGrassFade;\nuniform vec2 fcGrassSizeRange;\nuniform float fcGrassWidth;\nuniform vec4 fcGrassDensityLod;\nuniform vec2 fcGrassDensityShape;\nuniform float fcGrassMinDensity;\nuniform vec2 fcGrassTurnRange;\nattribute float fcGrassCenterX;\nattribute float fcGrassPriority;\nattribute vec2 fcGrassProfile;\nuniform vec4 fcGrassClearings[24];`
       + (near ? '\nuniform vec4 fcGrassActors[6];' : ''),
     ).replace('#include <color_vertex>', `#include <color_vertex>
     // Height-based ambient occlusion: dark roots, open illuminated tips.
@@ -188,7 +252,19 @@ function makeMaterial(THREE, player, near, simple=false) {
       ? mix(5.0,7.0,fcRandom) : mix(1.0,4.0,fcRandom);
     fcSize=mix(fcSize,fcGladeSize,fcGrassProfile.y);
   }
-  transformed.x = fcGrassCenterX + (transformed.x - fcGrassCenterX) * fcGrassWidth;
+  // Distance LOD lowers the actual instance count on the CPU. Widen only
+  // the remaining ribbons, never their height; same transition in both tiers.
+  float fcDistanceT = clamp((fcDistance-fcGrassDensityLod.x) /
+    max(fcGrassDensityLod.y-fcGrassDensityLod.x,0.001),0.0,1.0);
+  float fcNear = fcDistanceT*fcDistanceT*fcDistanceT;
+  float fcFar = (fcGrassDensityShape.y-fcDistanceT)*(fcGrassDensityShape.y-fcDistanceT);
+  float fcDenominator = fcNear + (fcGrassDensityShape.x+fcGrassDensityLod.w)*fcFar;
+  float fcDensityT = fcDenominator > 0.0 ?
+    clamp(fcNear / fcDenominator,0.0,1.0) : 0.0;
+  float fcWidthLod = 1.0 + fcDensityT * fcGrassDensityLod.z;
+  float fcCoverage = mix(1.0,fcGrassMinDensity,fcDensityT);
+  float fcBladeFade = smoothstep(fcGrassPriority-0.045,fcGrassPriority,fcCoverage);
+  transformed.x = fcGrassCenterX + (transformed.x - fcGrassCenterX) * fcGrassWidth * fcWidthLod;
   float fcTurnRandom = fract(21.12345 * fract(dot(
     instanceMatrix[3].xz,vec2(0.1031,0.11369))));
   float fcTurn = mix(fcGrassTurnRange.x, fcGrassTurnRange.y, fcTurnRandom);
@@ -209,7 +285,7 @@ function makeMaterial(THREE, player, near, simple=false) {
       fcVisibility=0.0;
     }
   }
-  transformed *= fcVisibility * fcSize;
+  transformed *= fcVisibility * fcSize * fcBladeFade;
   ${near ? `
   // Shader-only interaction: push blade tips away from a nearby character.
   // All instances keep their original bases, without physics or tile rebuilds.
@@ -246,6 +322,10 @@ function makeMaterial(THREE, player, near, simple=false) {
 
 export function createMicroGrass(ctx) {
   const THREE=ctx.THREE,playerUniform=new THREE.Vector2();
+  // Built once per camera render. Axis-aligned tile bounds are noticeably
+  // tighter than Three.js's enclosing InstancedMesh bounding spheres.
+  const cameraFrustum=THREE.Frustum&&THREE.Matrix4?new THREE.Frustum():null;
+  const clipMatrix=cameraFrustum?new THREE.Matrix4():null;
   const dummy=new THREE.Object3D(),tint=new THREE.Color();
   const near={
     tier:'near',size:NEAR_TILE,geometry:makeTuftGeometry(THREE,'near'),
@@ -264,7 +344,7 @@ export function createMicroGrass(ctx) {
     layer.pending=new Set();layer.desired=new Set();
   }
   let currentTriangles=6,currentInteraction=true;
-  let generatedTiles=0;
+  let generatedTiles=0,cacheHits=0;
   const grassTrail=[];
   let lastTrailX=ctx.px,lastTrailZ=ctx.pz,lastTrailAt=-Infinity;
   const nearbyGuests=[];
@@ -361,47 +441,74 @@ export function createMicroGrass(ctx) {
     }
     if(!mesh){
       const capacity=Math.ceil(count*1.08);
-      // Single draw call per tile; just two extra floats per grass instance.
+      // One draw per tile; the priority is static and sorted once per page.
       const geometry=layer.geometry.clone();
       geometry.setAttribute('fcGrassProfile',
         new THREE.InstancedBufferAttribute(new Float32Array(capacity*2),2));
+      geometry.setAttribute('fcGrassPriority',
+        new THREE.InstancedBufferAttribute(new Float32Array(capacity),1));
       mesh=new THREE.InstancedMesh(geometry,layer.material,capacity);
     }
     mesh.count=count;
+    mesh.visible=true; // A pooled page may have been culled last frame.
     const profile=mesh.geometry.getAttribute('fcGrassProfile');
+    const priorities=mesh.geometry.getAttribute('fcGrassPriority');
+    // A deterministic, seed-based shuffle: each prefix has a stable, evenly
+    // distributed collection of positions instead of a moving random subset.
+    const sampleOrder=new Uint32Array(count);
+    const sortKeys=new Float64Array(count);
+    for(let i=0;i<count;i++){
+      sampleOrder[i]=i;
+      sortKeys[i]=hash(seed,x,z,i+7391);
+    }
+    sampleOrder.sort((a,b)=>sortKeys[a]-sortKeys[b]);
     mesh.frustumCulled=true; // Cull entire fixed world-space page.
     mesh.userData.microGrass=true;
     mesh.userData.grassTier=layer.tier;
+    let minY=Infinity,maxY=-Infinity;
     for(let i=0;i<count;i++){
-      const j=i*9;
-      const x=packed?samples[j]:samples[i].x;
-      const z=packed?samples[j+2]:samples[i].z;
+      const source=sampleOrder[i],j=source*9;
+      const x=packed?samples[j]:samples[source].x;
+      const z=packed?samples[j+2]:samples[source].z;
       const y=packed?samples[j+1]:ctx.terrain.heightAt(x,z);
-      const angle=packed?samples[j+3]:samples[i].angle;
-      const scale=packed?samples[j+4]:samples[i].scale;
-      const tintValue=packed?samples[j+5]:samples[i].tint;
-      const biome=packed?samples[j+6]:samples[i].biome;
-      const patchKind=packed?samples[j+7]:samples[i].patchKind;
-      const patchWeight=packed?samples[j+8]:samples[i].patchWeight;
+      minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+      const angle=packed?samples[j+3]:samples[source].angle;
+      const scale=packed?samples[j+4]:samples[source].scale;
+      const tintValue=packed?samples[j+5]:samples[source].tint;
+      const biome=packed?samples[j+6]:samples[source].biome;
+      const patchKind=packed?samples[j+7]:samples[source].patchKind;
+      const patchWeight=packed?samples[j+8]:samples[source].patchWeight;
       dummy.position.set(x,y,z);
       dummy.rotation.set(0,angle,0);
-      dummy.scale.setScalar(scale*(ctx.settings?.grassInteraction===false?3.7:1));
+      const simple=ctx.settings?.grassInteraction===false;
+      dummy.scale.setScalar(scale*(simple?3.7:1));
       dummy.updateMatrix();
       mesh.setMatrixAt(i,dummy.matrix);
       profile.setXY(i,patchKind,patchWeight);
+      priorities.array[i]=(i+.5)/count;
       tint.setHSL(.278+biome*.034,.39+tintValue*.13,
         .355+tintValue*.067);
       mesh.setColorAt(i,tint);
     }
     mesh.instanceMatrix.needsUpdate=true;
     profile.needsUpdate=true;
+    priorities.needsUpdate=true;
     if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
     mesh.computeBoundingSphere();
     // Leave culling margin for the experimental 8x shader scaling.
     if(mesh.boundingSphere)mesh.boundingSphere.radius += 2;
+    // The shader can stretch blades up to 8×. Expand y bounds enough for
+    // the tallest setting and interaction bending, without the very large
+    // height radius of an enclosing sphere.
+    const bounds=THREE.Box3&&THREE.Vector3
+      ?new THREE.Box3(new THREE.Vector3(x*layer.size-GRASS_CULL_MARGIN,
+        minY-.5,z*layer.size-GRASS_CULL_MARGIN),
+        new THREE.Vector3((x+1)*layer.size+GRASS_CULL_MARGIN,
+          maxY+3.5,(z+1)*layer.size+GRASS_CULL_MARGIN)):null;
     ctx.scene.add(mesh);
     generatedTiles++;
-    return {mesh};
+    return {mesh,bounds,tileX:x,tileZ:z,
+      fullCount:count};
   }
   function intersects(tileX,tileZ,size,x,z,radius) {
     const a=tileX*size,b=tileZ*size;
@@ -439,12 +546,17 @@ export function createMicroGrass(ctx) {
       const cacheKey=[seed,layer.tier,tx,tz,density].join('/');
       const cached=sampleCache.get(cacheKey);
       if(cached){
+        cacheHits++;
         const page=createPage(layer,tx,tz,seed,density,cached);
         if(page)layer.active.set(key,page);
         continue;
       }
       if(!ctx.worldStreamer){
-        const page=createPage(layer,tx,tz,seed,density);
+        // The sync fallback should also reuse tile samples on dawn instead
+        // of regenerating grass locations after a night-time cull.
+        const samples=generateGrassTile(seed,tx,tz,layer.size,density,layer.tier);
+        sampleCache.put(cacheKey,samples,samples.length*80);
+        const page=createPage(layer,tx,tz,seed,density,samples);
         if(page)layer.active.set(key,page);
         continue;
       }
@@ -465,6 +577,47 @@ export function createMicroGrass(ctx) {
           if(page)layer.active.set(key,page);
         },
       });
+    }
+  }
+  function updateVisibility(){
+    const camera=ctx.camera;
+    const useFrustum=!!(cameraFrustum&&camera?.projectionMatrix&&camera?.matrixWorldInverse);
+    if(useFrustum){
+      camera.updateMatrixWorld?.();
+      clipMatrix.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+      cameraFrustum.setFromProjectionMatrix(clipMatrix);
+    }
+    const radius=lastRadius??MICRO_GRASS_RADIUS;
+    const nearEnd=ctx.settings?.grassFullDensityDistance??NEAR_END;
+    const minDensity=(ctx.settings?.grassFarDensityPercent??38)/100;
+    const sharpness=ctx.settings?.grassDensitySharpness??.005;
+    const coefficient=ctx.settings?.grassDensityCoefficient??.25;
+    const offset=ctx.settings?.grassDensityOffset??1;
+    for(const layer of [near,far]){
+      for(const record of layer.active.values()){
+        const {mesh,bounds}=record;
+        // Each blade makes its own stable world-space density decision.
+        // Draw a safe superset using the *nearest* point of this page,
+        // never its centre: crossing the edge cannot suddenly reveal a
+        // whole chunk. Instance priority is ordered, so prefixes are stable.
+        const size=layer.size;
+        const dx=Math.max(record.tileX*size-ctx.px,0,ctx.px-(record.tileX+1)*size);
+        const dz=Math.max(record.tileZ*size-ctx.pz,0,ctx.pz-(record.tileZ+1)*size);
+        // Nonmonotonic curves cannot use page-nearest conservative culling.
+        // Negative coefficient sums may also reverse the curve, so keep all
+        // instances in the CPU draw and let each blade handle its visibility.
+        const maxCoverage=offset<1||coefficient+sharpness<0 ? 1 :
+          grassDistanceDensity(Math.hypot(dx,dz),radius,{
+            nearEnd,minDensity,sharpness,coefficient,offset,
+          });
+        mesh.count=Math.min(record.fullCount,
+          Math.ceil(record.fullCount*(maxCoverage+GRASS_DENSITY_BLEND)));
+        // Only the camera's visible page subset is sent to the renderer.
+        mesh.visible=mesh.count>0&&(!useFrustum||!bounds||cameraFrustum.intersectsBox(bounds));
+        // Profiler scene inventory should still count resident tiles even
+        // though these are explicitly hidden from the current camera.
+        mesh.userData.microGrassFrustumHidden=!mesh.visible;
+      }
     }
   }
   function tick() {
@@ -494,14 +647,29 @@ export function createMicroGrass(ctx) {
     const width=Math.max(.25,Math.min(4,ctx.settings?.grassWidth ?? 1));
     const minTurn=Math.max(-90,Math.min(0,ctx.settings?.grassTurnMin ?? -30));
     const maxTurn=Math.max(0,Math.min(90,ctx.settings?.grassTurnMax ?? 30));
+    const lodNear=ctx.settings?.grassFullDensityDistance??NEAR_END;
+    const lodWidth=(ctx.settings?.grassFarWidthBonus??30)/100;
+    const lodSharpness=ctx.settings?.grassDensitySharpness??.005;
+    const lodRadius=effectiveGrassRadius(
+      ctx.settings?.grassDistance??MICRO_GRASS_RADIUS,
+      ctx.terrain?.nightBlend??0);
     for(const layer of [near,far]){
       const u=layer.material.userData.grassUniforms;
       u.fcGrassSizeRange.value.set(minSize,maxSize);
       u.fcGrassWidth.value=width;
       u.fcGrassTurnRange.value.set(minTurn*Math.PI/180,maxTurn*Math.PI/180);
+      u.fcGrassDensityLod.value.set(
+        lodNear,Math.max(lodNear+1,lodRadius-2),lodWidth,lodSharpness);
+      u.fcGrassDensityShape.value.set(
+        ctx.settings?.grassDensityCoefficient??.25,
+        ctx.settings?.grassDensityOffset??1);
+      u.fcGrassMinDensity.value=(ctx.settings?.grassFarDensityPercent??38)/100;
     }
-    const radius=Math.max(12,Math.min(MICRO_GRASS_MAX_RADIUS,
-      ctx.settings?.grassDistance??MICRO_GRASS_RADIUS));
+    // Do not generate/draw pages hidden by the 30m deep-night fog. The
+    // ordinary grass slider remains a daytime setting; no GPU-only fade.
+    const radius=effectiveGrassRadius(
+      ctx.settings?.grassDistance??MICRO_GRASS_RADIUS,
+      ctx.terrain?.nightBlend??0);
     const density=Math.max(1,Math.min(MICRO_GRASS_MAX_DENSITY,
       ctx.settings?.grassDensity??MICRO_GRASS_PER_CELL));
     if(ctx.ground?.material?.userData?.grassDensityUniforms)
@@ -511,27 +679,31 @@ export function createMicroGrass(ctx) {
       -2,-1,Math.max(3,cutoff-7),cutoff);
     far.material.userData.grassUniforms.fcGrassFade.value.set(
       NEAR_END-7,NEAR_END,Math.max(NEAR_END,radius-5),radius);
-    const changed=lastSeed!==ctx.seed||lastDensity!==density||lastRadius!==radius;
-    if(changed)streamingEpoch++;
-    if(!changed&&Math.abs(x-lastX)<REBUILD_DISTANCE&&
+    const refreshData=lastSeed!==ctx.seed||lastDensity!==density;
+    const radiusChanged=lastRadius!==radius;
+    if(refreshData)streamingEpoch++;
+    if(!refreshData&&!radiusChanged&&Math.abs(x-lastX)<REBUILD_DISTANCE&&
       Math.abs(z-lastZ)<REBUILD_DISTANCE)return false;
     lastX=x;lastZ=z;lastSeed=ctx.seed;lastDensity=density;lastRadius=radius;
-    // Small hysteresis buffer keeps page boundaries outside visible fade ends.
-    syncLayer(near,x,z,cutoff+REBUILD_DISTANCE,ctx.seed,density,changed);
+    // Radius-only changes reuse existing InstancedMeshes and cached tiles.
+    // Rebuild their instance matrices only if seed/density/geometry changes.
+    syncLayer(near,x,z,cutoff+REBUILD_DISTANCE,ctx.seed,density,refreshData);
     syncLayer(far,x,z,radius>NEAR_END?radius+REBUILD_DISTANCE:0,
-      ctx.seed,density,changed);
+      ctx.seed,density,refreshData);
     return true;
   }
   tick();
   return {
-    tick,
+    tick,updateVisibility,
     get count(){let sum=0;for(const layer of [near,far])
       for(const record of layer.active.values())sum+=record.mesh.count;
       return sum;},
     get tiles(){return near.active.size+far.active.size;},
+    get visibleRadius(){return lastRadius;},
     get nearPending(){return near.pending.size;},
     get nearDesired(){return near.desired.size;},
     get generatedTiles(){return generatedTiles;},
+    get cacheHits(){return cacheHits;},
     get mesh(){return near.active.values().next().value?.mesh??null;},
     dispose(){
       streamingEpoch++;

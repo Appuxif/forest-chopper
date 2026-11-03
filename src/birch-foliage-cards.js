@@ -8,7 +8,7 @@
  * Does not add anything to the game scene by itself.
  */
 import * as THREE from 'https://esm.sh/three@0.170.0';
-import {BIRCH_PRESET} from './tree-model-presets.js';
+import {BIRCH_PRESET} from './tree-model-presets.js?v=20261103-shared-birch-all1';
 export {BIRCH_PRESET};
 
 const clamp = THREE.MathUtils.clamp;
@@ -363,7 +363,7 @@ export function createBirch(data = BIRCH_PRESET) {
     const foliage = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
       map: leafMap,
       alphaTest: clamp(+p.cardAlphaTest, 0.05, 0.9),
-      alphaToCoverage: true,
+      alphaToCoverage: false,
       transparent: false,
       side: THREE.DoubleSide,
       roughness: 1,

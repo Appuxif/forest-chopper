@@ -1,4 +1,4 @@
-import {createSettings} from './settings.js?v=20261102-jump-voices1';
+import {createSettings} from './settings.js?v=20261103-grass-presets-tuned1';
 import {
   MENU_NAME_KEY,MENU_LAUNCH_KEY,MAX_SEED,parseSeed,readLocalWorld,
   formatSavedWorld,normalizeServerAddress,serverStatusAddress,parseLaunchQuery,
@@ -141,7 +141,7 @@ async function launch(options,{force=false,auto=false}={}){
   document.body.classList.add('fc-world-loading');
   menu.hidden=true;game.hidden=false;
   try{
-    await import('./main.js?v=20261102-prestage-logs1');
+    await import('./main.js?v=20261103-grass-presets-tuned1');
   }catch(error){
     console.error('Forest Chopper startup failed',error);
     delete globalThis.__forestLaunch;

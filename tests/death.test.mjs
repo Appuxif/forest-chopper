@@ -156,6 +156,26 @@ test('offline reload while dead resumes death screen without duplicating drops',
  assert.equal(g.death.active,false);
 });
 
+test('pending death saved in offline world resumes without restarting Rapier',async()=>{
+ const saved={pending:true,bedId:-12,marker:{x:8,z:9,expires_at:4600}};
+ const f=fixture();
+ f.death.restore(saved);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.death.active,true);
+ assert.equal(f.death.phase,'falling');
+ assert.deepEqual(f.physics,[],'restoring pending death never starts another ragdoll');
+ assert.equal(f.death.marker.x,8);
+ assert.equal(f.death.bedId,-12);
+ assert.equal(f.records.size,0,'old item drops are not repeated');
+ f.death.tick(5000);
+ assert.equal(f.death.respawn(),true);
+ assert.equal(f.ctx.px,42.5);
+ assert.equal(f.ctx.pz,-11);
+ assert.equal(f.ctx.vitals.health,5);
+ assert.equal(f.death.active,false);
+ assert.deepEqual(f.physics,['reset'],'respawn uses only a harmless cleanup, no Rapier trigger');
+});
+
 test('server-deferred respawn cannot be used until the authoritative packet arrives',()=>{
  const f=fixture({online:true});
  assert.equal(f.death.onDeath(),true);

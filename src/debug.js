@@ -1,11 +1,18 @@
+import {installDebugCheats} from './debug-cheats.js?v=20261103-debug-player1';
 import {createDebugFps} from './debug-fps.js';
+import {createRenderProfiler} from './render-profiler.js?v=20261103-grass-culling1';
+import {installProfilerPanel} from './debug-profiler-ui.js?v=20261103-region-default-3';
 import {parseOfflineSave} from './offline-save.js';
 import {BOX_LIFETIME_SECONDS,MAX_GROUND_DROPS} from './ground-boxes.js';
 import {isFood} from './vitals.js';
 // Only loaded by index_debug.html. Never expose these controls on the normal page.
 export function installDebug(ctx) {
+  installDebugCheats(ctx);
   const fps=createDebugFps();
   ctx.debugFpsCollector=fps;
+  const profiler=createRenderProfiler(ctx.renderer);
+  ctx.renderProfiler=profiler;
+  const profilerPanel=installProfilerPanel(ctx,profiler);
   const ragdoll=ctx.ragdoll;
   let benchmarkFixture=null,benchmarkRun=null;
   // Honor the saved/URL-selected graphics preset in regular debug sessions.
@@ -386,6 +393,9 @@ export function installDebug(ctx) {
     fpsClear(){fps.reset();return api.fpsStats();},
     fpsPhase(name){fps.setPhase(name);return {phase:fps.phase};},
     fpsSamples(){return fps.samples;},
+    profileStart(){profilerPanel.show();return profiler.snapshot();},
+    profileStop(){profilerPanel.hide();return profiler.snapshot();},
+    profileSnapshot(){return profiler.snapshot(ctx.scene);},
     fpsStats(phase=null){return fps.stats({phase});},
     grantLog(){
       if(ctx.isOnline())throw new Error('Offline debug helper only');
@@ -495,7 +505,7 @@ export function installDebug(ctx) {
     get atmosphere() { return ctx.atmosphere; },
     get player() { return ctx.ownAvatar; },
     get rootMotion() { return ctx.rootMotion; },
-    help: 'die(), ragdoll(), resetRagdoll(), ragdollState(), loadBenchmarkSave(), benchmarkBoxes(enabled), startBoxBenchmark(options), benchmarkStatus(), exitBenchmark(), setPreset(name), getPreset(), fpsStart({clear,phase}), fpsStats(phase), fpsSamples(), fpsPhase(name), fpsStop(), grantLog(), dropLog(), bulkLogs(count,{intervalMs,phase}), startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
+    help: 'die(), ragdoll(), resetRagdoll(), ragdollState(), loadBenchmarkSave(), benchmarkBoxes(enabled), startBoxBenchmark(options), benchmarkStatus(), exitBenchmark(), setPreset(name), getPreset(), fpsStart({clear,phase}), fpsStats(phase), fpsSamples(), fpsPhase(name), fpsStop(), profileStart(), profileStop(), profileSnapshot(), grantLog(), dropLog(), bulkLogs(count,{intervalMs,phase}), startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
   };
   window.__gameDebug = api;
   window.addEventListener('blur', releaseAll);

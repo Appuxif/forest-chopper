@@ -1,38 +1,38 @@
-import {createRagdoll} from './ragdoll.js?v=20261102-bounce-fix1';
-import {createRagdollControls} from './ragdoll-controls.js?v=20261102-bounce-fix1';
+import {createRagdoll} from './ragdoll.js?v=20261103-ragdoll-save-recovery1';
+import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
 import {createAnimations} from './animations.js?v=20261102-chop-frame18';
-import {createWorld} from './world.js?v=20261102-collision-world1';
-import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
-import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
+import {createWorld} from './world.js?v=20261103-region-default-3';
+import {generateSpruceParts} from './spruce-model.js?v=20261103-shared-birch-all1';
+import {generateBirchParts} from './birch-model.js?v=20261103-shared-birch-all1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
-import {readActiveTreeConfig} from './tree-model-config.js?v=20261031-tree-editor1';
+import {readActiveTreeConfig,limitTreeModelTriangles} from './tree-model-config.js?v=20261103-shared-birch-all1';
 import {createSpruceDiagnostics} from './spruce-diagnostics.js?v=20261031-spruce-bark1';
 import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
-import {createMicroGrass} from './micro-grass.js?v=20261101-startup-loader1';
+import {createMicroGrass} from './micro-grass.js?v=20261103-grass-unbounded1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
-import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
-import {createPhysics} from './physics.js?v=20261102-jump-voices1';
+import {TerrainSystem} from './terrain.js?v=20261102-night-grass30';
+import {createPhysics} from './physics.js?v=20261103-debug-player1';
 import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bounce-fix1';
 import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
 import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261102-chop-current-target1';
-import {createControls} from './controls.js?v=20261102-bounce-fix1';
-import {createPlayer} from './player.js?v=20261102-treefall-sync13';
-import {createMultiplayer} from './multiplayer.js?v=20261102-chop-frame18';
+import {createControls} from './controls.js?v=20261103-decor-region2';
+import {createPlayer} from './player.js?v=20261103-grass-culling1';
+import {createMultiplayer} from './multiplayer.js?v=20261103-decor-region2';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261102-jump-voices1';
+import {createSettings} from './settings.js?v=20261103-grass-presets-tuned1';
 import {createGameAudio} from './game-audio.js?v=20261102-treefall-sync13';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
-import {createLandmarks} from './landmarks.js?v=20261030-grass-clearings1';
-import {createPlantInteraction} from './plant-interaction.js?v=20261031-collectible-plants1';
-import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
-import {createDayCycle} from './day-cycle.js?v=20261101-synced-time2';
-import {createAtmosphere} from './atmosphere.js?v=20261102-sky-far-clip1';
+import {createLandmarks} from './landmarks.js?v=20261103-distant-fire-billboard20';
+import {createPlantInteraction} from './plant-interaction.js?v=20261103-decor-region2';
+import {selectDecorShadowCasters} from './decor-shadows.js?v=20261103-decor-region2';
+import {createDayCycle} from './day-cycle.js?v=20261103-night-horizon-black1';
+import {createAtmosphere} from './atmosphere.js?v=20261103-render-profiler1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
@@ -45,15 +45,16 @@ import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
 import {createStorages} from './storages.js?v=20261102-collision-world1';
-import {createCampStructures} from './camp-structures.js?v=20261102-collision-world1';
-import {createVitalsUI} from './vitals-ui.js?v=20261102-voice1';
-import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
-import {createGroundBoxes} from './ground-boxes.js?v=20261102-prestage-logs1';
+import {createCampStructures} from './camp-structures.js?v=20261103-distant-fire-billboard20';
+import {createVitalsUI} from './vitals-ui.js?v=20261102-debug-cheats';
+import {createForestResources} from './forest-resources.js?v=20261103-decor-region2';
+import {createGroundBoxes} from './ground-boxes.js?v=20261103-render-profiler1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 import {WorldTaskScheduler} from './world-task-scheduler.js';
 import {createWorldStartupGate} from './world-startup.js';
+import {installGameLeaveGuard} from './leave-guard.js?v=20261103-guard1';
 import {createPickupInteraction} from './pickup-interaction.js?v=20261102-audio1';
-import {createDeathSystem} from './death.js?v=20261102-voice1';
+import {createDeathSystem} from './death.js?v=20261103-ragdoll-save-recovery1';
 
 // Read and consume launch mode before touching any saved game data.
 const MENU_LAUNCH_KEY='forest-chopper:launch:v1';
@@ -102,7 +103,7 @@ try{
   if(typeof saved?.antialias==='boolean')initialAntialias=saved.antialias;
 }catch{}
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,280);camera.rotation.order='YXZ';const renderer=new THREE.WebGLRenderer({antialias:initialAntialias,powerPreference:'default'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;host.prepend(renderer.domElement);
-const hemisphere=new THREE.HemisphereLight(0xe1efff,0x45552b,2.1);scene.add(hemisphere);const sun=new THREE.DirectionalLight(0xffe4a6,2.3);sun.position.set(35,75,20);scene.add(sun);
+const hemisphere=new THREE.HemisphereLight(0xe1efff,0x45552b,1.2);scene.add(hemisphere);const sun=new THREE.DirectionalLight(0xffe4a6,2);sun.position.set(35,75,20);scene.add(sun);
 const groundTexture=createGroundTexture(THREE,document,renderer);
 const groundMaterial=new THREE.MeshLambertMaterial({map:groundTexture});
 enableGrassDensityShadows(THREE,groundMaterial);
@@ -170,7 +171,7 @@ const atmosphere=createAtmosphere({
     {near:settings.characterShadowDistance});
  },
  getDecorShadowCasters(x,z,radius,limit){
-  return selectDecorShadowCasters(chunks,x,z,radius,limit);
+  return selectDecorShadowCasters(chunks,x,z,radius,limit,ctx.decorBatchRegions);
  },
  getBuiltShadowCasters(x,z,radius){
   const result=[];
@@ -186,36 +187,48 @@ const atmosphere=createAtmosphere({
   }
   return result;
  },
+ getDistantShadowCasters(x,z,minRadius,maxRadius){
+  return ctx.distantForest?.getShadowCasters?.(x,z,minRadius,maxRadius,18)??[];
+ },
  getPointShadowCasters(light){
-  const fire=light.parent;
-  if(!fire)return [];
-  const x=fire.position.x,z=fire.position.z,r=light.distance;
-  const casters=selectDecorShadowCasters(chunks,x,z,r,36);
-  const batches=new Set();
-  for(const tree of trees.values()){
-   if(Math.hypot(tree.position.x-x,tree.position.z-z)>=r+3 || casters.length>=52)continue;
-   if(tree.userData.treeBatch){
-    for(const mesh of tree.userData.treeBatch.meshes)batches.add(mesh);
-   }else casters.push(tree);
-  }
-  casters.push(...batches);
-  if(Math.hypot(px-x,pz-z)<r+2 && ownAvatar?.shadowMeshes)
-   casters.push(...ownAvatar.shadowMeshes);
-  for(const avatar of avatars.values()){
-   if(Math.hypot(avatar.group.position.x-x,avatar.group.position.z-z)<r+2)
-    casters.push(...(avatar.actor?.shadowMeshes??avatar.shadowMeshes??[]));
-  }
-  for(const item of crafting?.items?.values()??[]){
-   if(Math.hypot(item.x-x,item.z-z)<r+3)casters.push(item.group);
-  }
-  for(const log of placed){
-   if(Math.hypot(log.x-x,log.z-z)<r+2 && log.mesh?.castShadow)
-    casters.push(log.mesh);
+  if(!light.parent)return [];
+  const pos=light.getWorldPosition(new THREE.Vector3());
+  const x=pos.x,z=pos.z,r=Math.min(light.distance,
+    light.userData?.shadowCasterRange??light.distance);
+  const casters=[];
+   casters.push(...selectDecorShadowCasters(chunks,x,z,r,36,ctx.decorBatchRegions));
+   const batches=new Set();
+   for(const tree of trees.values()){
+    if(Math.hypot(tree.position.x-x,tree.position.z-z)>=r+3 || casters.length>=52)continue;
+    if(tree.userData.treeBatch){
+     for(const mesh of tree.userData.treeBatch.meshes)batches.add(mesh);
+    }else casters.push(tree);
+   }
+   casters.push(...batches);
+   for(const item of crafting?.items?.values()??[]){
+    if(Math.hypot(item.x-x,item.z-z)<r+3)casters.push(item.group);
+   }
+   for(const item of campStructures?.items?.values()??[]){
+    if(Math.hypot(item.x-x,item.z-z)<r+3)casters.push(item.group);
+   }
+   for(const log of placed){
+    if(Math.hypot(log.x-x,log.z-z)<r+2 && log.mesh?.castShadow)
+     casters.push(log.mesh);
+   }
+  // A freshly built cached map may omit characters, while previously
+  // rendered moving silhouettes are deliberately preserved when frozen.
+  if(!light.userData?.shadowFrozen){
+   if(Math.hypot(px-x,pz-z)<r+2 && ownAvatar?.shadowMeshes)
+    casters.push(...ownAvatar.shadowMeshes);
+   for(const avatar of avatars.values()){
+    if(Math.hypot(avatar.group.position.x-x,avatar.group.position.z-z)<r+2)
+     casters.push(...(avatar.actor?.shadowMeshes??avatar.shadowMeshes??[]));
+   }
   }
   return casters;
  },
 });
-const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere});
+const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere,terrain});
 if(menuLaunch.mode==='new'){
   try{
     // Reset only after the render engine has successfully initialized.
@@ -468,8 +481,10 @@ function disposeProceduralParts(parts){
 function geometryProfile(){
   const latest=readActiveTreeConfig();
   return {
-    spruce:{...latest.models.spruce,maxTriangles:settings.treeTrianglesSpruce},
-    birch:{...latest.models.birch,maxTriangles:settings.treeTrianglesBirch},
+    // The editor's per-model maximum must remain effective. The graphics
+    // preset's triangle budget is an additional cap, not a replacement.
+    spruce:limitTreeModelTriangles(latest.models.spruce,settings.treeTrianglesSpruce),
+    birch:limitTreeModelTriangles(latest.models.birch,settings.treeTrianglesBirch),
   };
 }
 function distantProfile(spruce,birch){
@@ -556,6 +571,7 @@ collisionWorld=createCollisionWorld(ctx);
 ownAvatar=createLumberjack();if(ownAvatar){
  // Layer 3 is local-only (hidden in first person); layer 1 remains enabled
  // for remote players. Both layers are visible to the character shadow light.
+ (ownAvatar.group.userData??={}).profileCategory='players';
  ownAvatar.visual.traverse(node=>{if(node.isMesh)node.layers.set(3);});
  camera.layers.enable(1);
  camera.layers.enable(3);
@@ -591,6 +607,7 @@ progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}})
 ({toggleView, ragdollCamera, animate}=createPlayer(ctx));
 ({showMapPing,clearMapPings}=createMinimap(ctx));
 ({look}=createControls(ctx));
+const leaveGuard=installGameLeaveGuard(window);
 worldStartupGate=createWorldStartupGate({
   loading,online:menuLaunch.mode==='online',
   onComplete:()=>document.body.classList.remove('fc-world-loading'),
@@ -605,6 +622,7 @@ $('menu-backgame').onclick=()=>{
   offlineSave.save(); // Suspended for multiplayer, so solo saves remain untouched.
   closeNet?.();
   try{sessionStorage.removeItem(MENU_LAUNCH_KEY);}catch{}
+  leaveGuard.allowIntentionalExit(); // Menu button already asked for confirmation.
   // Don't immediately auto-launch again when returning from a URL shortcut.
   if(new URLSearchParams(location.search).has('type'))location.replace(location.pathname+location.hash);
   else location.reload();
@@ -626,7 +644,7 @@ if(menuLaunch.mode==='online'){
 }
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261102-url-launch1');
+  const { installDebug } = await import('./debug.js?v=20261103-region-default-3');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

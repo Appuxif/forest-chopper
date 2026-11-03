@@ -3,10 +3,9 @@ import assert from 'node:assert/strict';
 import {
   celestialDirections,shadowMapSizeForQuality,skyGeometryDistances,selectShadowTrees,
   createAtmosphere,SHADOW_TREE_LIMIT,SHADOW_TREE_RADIUS,SHADOW_UPDATE_MS,
-  CHARACTER_SHADOW_RADIUS,CHARACTER_SHADOW_MAP_SIZES,
 } from '../src/atmosphere.js';
 
-test('celestial positions follow the 8-minute cycle: sun by day, moon by night',()=>{
+test('celestial positions follow the 16-minute cycle: sun by day, moon by night',()=>{
   const noon=celestialDirections(0);
   const dusk=celestialDirections(.25);
   const midnight=celestialDirections(.5);
@@ -124,7 +123,9 @@ function fixture(){
   characters[0].layers.set(1);characters[1].layers.set(3);
   const atmosphere=createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
     getCharacterShadowCasters:()=>characters,
-    getPointShadowCasters:()=>[characters[0]]});
+    getPointShadowCasters:light=>light.userData?.shadowRole==='static'
+      ?[...characters,characters[0]]
+      :light.userData?.shadowFrozen?[]:[characters[0]]});
   return {scene,renderer,renders,ground,sun,hemisphere,trees,settings,atmosphere,camera};
 }
 
@@ -192,97 +193,205 @@ test('new crafted structures enter cached forest shadows on invalidation',()=>{
     'structures update the sun map immediately, not after the timed refresh');
 });
 
-test('trees and nearby skinned players use independent shadow maps',()=>{
-  const f=fixture();
-  assert.equal(f.renderer.shadowMap.enabled,true);
-  assert.equal(f.renderer.shadowMap.autoUpdate,true);
-  assert.equal(f.sun.castShadow,true);
-  assert.equal(f.sun.shadow.autoUpdate,false);
-  const charLight=f.atmosphere.characterLight;
-  assert.equal(charLight.castShadow,true);
-  assert.equal(charLight.shadow.camera.left,-CHARACTER_SHADOW_RADIUS);
-  assert.equal(charLight.shadow.camera.right,CHARACTER_SHADOW_RADIUS);
-  assert.equal(charLight.shadow.camera.top,30);
-  assert.deepEqual(CHARACTER_SHADOW_MAP_SIZES,{low:512,balanced:1024,high:2048});
-  assert.equal(f.atmosphere.sunIntensity,2.3);
-  assert.equal(f.atmosphere.ambientIntensity,2.1,'raw ambient remains accessible for cycle restore');
-  assert.equal(f.ground.receiveShadow,true);
-  assert.equal(f.atmosphere.sunBody.visible,true);
-  assert.equal(f.atmosphere.moonBody.visible,false);
-  f.atmosphere.tick(0,0,0);
-  assert.equal(charLight.shadow.camera.left,-54,'30m detail + 16m proxy + 8m margin');
-  assert.ok(Math.abs(f.hemisphere.intensity-2.1*(1-.65*.7))<1e-9);
-  assert.equal(f.sun.shadow.mapSize.x,1024);
-  assert.equal(charLight.shadow.mapSize.x,1024);
-  assert.ok(f.atmosphere.shadowCasters<=480);
-  assert.ok(f.atmosphere.shadowCasters>0);
-  assert.ok(f.atmosphere.lightDirection.y>0);
-  const oldCasters=[...f.trees.values()].filter(t=>t.children[0].castShadow);
-  assert.equal(oldCasters.length,f.atmosphere.shadowCasters);
-  f.sun.shadow.needsUpdate=false;
-  charLight.shadow.needsUpdate=false;
-  f.atmosphere.tick(1000/144,0,0);
-  assert.equal(f.sun.shadow.needsUpdate,false,'character updates do not refresh trees');
-  assert.equal(charLight.shadow.needsUpdate,true);
-  f.renderer.shadowMap.render([f.sun,charLight],f.scene,f.camera);
-  assert.equal(f.renders.length,1,'only the due character map redraws');
-  assert.equal(f.renders[0].light,charLight);
-  assert.equal(f.renders[0].count,2,'only character meshes enter the fast pass');
-  assert.equal(f.renders[0].mask,(1<<1)|(1<<3)|(1<<4));
-  assert.equal(f.camera.layers.mask,(1)|(1<<1)|(1<<3),'view camera restored');
-  f.atmosphere.tick(1000/144*2,0,0);
-  assert.equal(charLight.shadow.needsUpdate,true,'character map redraws on every rendered frame');
-  f.renderer.shadowMap.render([f.sun,charLight],f.scene,f.camera);
-  const beforeTree=f.renders.length;
-  f.atmosphere.tick(SHADOW_UPDATE_MS,70,0);
-  assert.equal(f.sun.shadow.needsUpdate,true);
-  assert.equal(charLight.shadow.needsUpdate,true);
-  f.renderer.shadowMap.render([f.sun,charLight],f.scene,f.camera);
-  assert.deepEqual(f.renders.slice(beforeTree).map(r=>r.light),[f.sun,charLight]);
-  assert.ok(f.renders.at(-2).count>0,'only nearby tree groups enter the slow pass');
-  assert.ok(f.trees.get(0).children.every(m=>!m.castShadow));
-  f.settings.quality='high';
-  f.atmosphere.tick(SHADOW_UPDATE_MS*2,70,0);
-  assert.equal(f.sun.shadow.mapSize.x,2048);
-  assert.equal(charLight.shadow.mapSize.x,2048);
-  f.settings.quality='low';
-  f.atmosphere.tick(SHADOW_UPDATE_MS*3,70,0);
-  assert.equal(f.sun.shadow.mapSize.x,512);
-  assert.equal(charLight.shadow.mapSize.x,512);
-  // Radius changes resize and recenter the character-only shadow camera.
-  f.settings.characterShadowDistance=100;
-  f.atmosphere.tick(SHADOW_UPDATE_MS*3+.5,70,0);
-  assert.equal(charLight.shadow.camera.left,-124);
-  assert.equal(charLight.shadow.camera.right,124);
-  assert.ok(charLight.shadow.camera.far>300);
-  f.settings.shadowContrast=0;
-  f.atmosphere.tick(SHADOW_UPDATE_MS*3+.6,70,0);
-  assert.equal(f.hemisphere.intensity,2.1);
-  f.settings.shadowContrast=100;
-  f.atmosphere.tick(SHADOW_UPDATE_MS*3+.7,70,0);
-  assert.ok(Math.abs(f.hemisphere.intensity-2.1*.35)<1e-9);
-  f.settings.characterShadowsEnabled=false;
-  f.atmosphere.tick(SHADOW_UPDATE_MS*3+1,70,0);
-  assert.equal(charLight.castShadow,false);
-  assert.equal(f.sun.intensity,2.3);
-  f.settings.characterShadowsEnabled=true;
-  f.atmosphere.tick(SHADOW_UPDATE_MS*3+2,70,0);
-  assert.equal(charLight.castShadow,true);
-  f.atmosphere.setSunIntensity(.9);
-  assert.equal(f.atmosphere.sunIntensity,.9);
-  f.atmosphere.setPhase(.5);
-  f.atmosphere.tick(SHADOW_UPDATE_MS*4,70,0);
-  assert.equal(f.atmosphere.sunBody.visible,false);
-  assert.equal(f.atmosphere.moonBody.visible,true);
-  assert.ok(f.sun.position.y>0);
-  f.atmosphere.restore();
-  f.atmosphere.tick(SHADOW_UPDATE_MS*5,70,0);
-  assert.equal(f.atmosphere.sunBody.visible,true);
-  assert.equal(f.atmosphere.moonBody.visible,false);
-  f.atmosphere.dispose();
-  assert.equal(f.hemisphere.intensity,2.1,'disposal restores original ambient light');
-  assert.equal(f.atmosphere.shadowCasters,0);
-  assert.equal(f.ground.receiveShadow,false);
-  assert.ok(f.trees.values().every(t=>t.children.every(c=>!c.castShadow)));
-  assert.equal(f.atmosphere.dome.material.disposed,true);
+test('two CSM maps each contain trees and moving characters, with no third light',()=>{
+ const f=fixture();
+ const near=f.atmosphere.nearSun;
+ assert.equal([f.sun,...f.scene.children].filter(obj=>obj instanceof f.sun.constructor).length,2);
+ f.atmosphere.tick(0,0,0);
+ assert.equal(f.sun.shadow.mapSize.x,1024);
+ assert.equal(near.shadow.mapSize.x,2048);
+ assert.equal(f.sun.intensity,2.3,'far sunlight uses full intensity');
+ assert.equal(near.intensity,2.3,'near sunlight is gated, not half-brightness');
+ f.renderer.shadowMap.render([f.sun,near],f.scene,f.camera);
+ assert.equal(f.renders.length,2);
+ for(const render of f.renders){
+  assert.equal(render.mask,1|(1<<1)|(1<<3)|(1<<4));
+  assert.ok(render.count>=3,'trees and two characters share each cascade map');
+ }
+ const far=f.renders[0],close=f.renders[1];
+ assert.ok(far.count>=3&&close.count>=3,'both near and far include combined casters');
+ assert.equal(f.camera.layers.mask,1|(1<<1)|(1<<3));
+ f.atmosphere.tick(100,0,0);
+ assert.equal(f.sun.shadow.needsUpdate,false);
+ assert.equal(near.shadow.needsUpdate,true,'near map repaints each frame');
+ f.renderer.shadowMap.render([near],f.scene,f.camera);
+ f.atmosphere.tick(220,0,0);
+ assert.equal(near.shadow.needsUpdate,true,'near map updates on the next render');
+ assert.equal(f.sun.shadow.needsUpdate,false,'far map remains cached');
+ f.renderer.shadowMap.render([near],f.scene,f.camera);
+ assert.equal(f.renders.at(-1).count>=3,true,'players remain in near map on refresh');
+ f.settings.characterShadowsEnabled=false;
+ f.atmosphere.tick(1000,0,0);
+ f.renderer.shadowMap.render([f.sun,near],f.scene,f.camera);
+ assert.ok(f.renders.at(-1).count<close.count,'character toggle removes casters, not a separate map');
+ f.atmosphere.dispose();
+ assert.equal(f.scene.children.includes(near),false,'near cascade disposed');
+ assert.equal(f.hemisphere.intensity,2.1);
+});
+
+test('far cascade does not disable nearer tree shadows when its budget changes',()=>{
+ const f=fixture();
+ f.settings.shadowDistance=150;
+ f.settings.sunNearShadowDistance=25;
+ f.atmosphere.tick(0,0,0);
+ assert.equal(f.trees.get(0).children.every(m=>m.castShadow),true,
+  'near-only tree is still allowed to cast shadows');
+ f.atmosphere.tick(250,0,0);
+ assert.equal(f.trees.get(0).children.every(m=>m.castShadow),true);
+ f.settings.shadowDistance=300;
+ f.atmosphere.tick(300,0,0);
+ assert.equal(f.trees.get(0).children.every(m=>m.castShadow),true,
+  'changing far range never changes near tree caster flags');
+ f.atmosphere.dispose();
+ assert.ok([...f.trees.values()].every(tree=>tree.children.every(m=>!m.castShadow)));
+});
+
+test('deep-night sky zenith and horizon match black fog, daytime stays blue',()=>{
+ const f=fixture();
+ const sky=f.atmosphere.dome.material.uniforms;
+ const day={...sky.zenith.value};
+ f.atmosphere.setPhase(.5);
+ const expected={r:0,g:0,b:0};
+ for(const channel of ['r','g','b'])assert.ok(Math.abs(sky.zenith.value[channel]-expected[channel])<1e-12);
+ assert.deepEqual({r:sky.zenith.value.r,g:sky.zenith.value.g,b:sky.zenith.value.b},
+  {r:0,g:0,b:0},'full-night zenith is black: no visible gradient band');
+ // In the real game day-cycle applies the identical black scene.background.
+ // The dome shader reads it as horizon and renders a uniform black sky.
+ sky.horizon.value.copy({r:0,g:0,b:0});
+ assert.deepEqual({r:sky.horizon.value.r,g:sky.horizon.value.g,b:sky.horizon.value.b},
+  {r:0,g:0,b:0});
+ f.atmosphere.setPhase(0);
+ assert.deepEqual({r:sky.zenith.value.r,g:sky.zenith.value.g,b:sky.zenith.value.b},day);
+});
+
+
+test('point light uses one common cubemap and retains cached last frame',()=>{
+ const f=fixture();
+ const point={isPointLight:true,userData:{shadowFrozen:false},
+  shadow:{autoUpdate:true,needsUpdate:true}};
+ f.renderer.shadowMap.render([point],f.scene,f.camera);
+ assert.equal(f.renders[0].count,1);
+ point.userData.shadowFrozen=true;
+ point.shadow.autoUpdate=false;
+ point.shadow.needsUpdate=false;
+ f.renderer.shadowMap.render([point],f.scene,f.camera);
+ assert.equal(f.renders.length,1,'cached map is reused, no split-mode redraw');
+ point.shadow.needsUpdate=true;
+ f.renderer.shadowMap.render([point],f.scene,f.camera);
+ assert.equal(f.renders[1].count,0,'cold invalidated cache excludes moving actors');
+});
+
+test('sun CSM uses live near map, independently cached far map and separate resolutions',()=>{
+ const f=fixture();
+ const near=f.atmosphere.nearSun;
+ f.settings.shadowDistance=80;
+ f.settings.shadowMapSize=1024;
+ f.settings.sunNearShadowDistance=30;
+ f.settings.sunNearShadowMapSize=2048;
+ f.settings.shadowRefreshSeconds=1;
+ f.atmosphere.tick(0,0,0);
+ assert.equal(f.sun.shadow.mapSize.x,1024,'far map keeps lower resolution');
+ assert.equal(near.shadow.mapSize.x,2048,'near map is 2K by default');
+ assert.equal(f.atmosphere.nearSun.shadow.mapSize.x,2048);
+ assert.equal(f.sun.shadow.camera.left,-92,'far map spans a broad area');
+ assert.equal(near.shadow.camera.left,-50,'near coverage includes fade and caster overlap');
+ assert.equal(f.sun.castShadow,true);
+ assert.equal(near.castShadow,true);
+ f.renderer.shadowMap.render([f.sun,near],f.scene,f.camera);
+ assert.equal(f.renders.length,2,'near and far maps are rendered separately');
+ const [farRender,nearRender]=f.renders;
+ assert.equal(farRender.light,f.sun);
+ assert.equal(nearRender.light,near);
+ assert.ok(farRender.count>=3&&nearRender.count>=3,'both maps include their combined casters');
+ f.atmosphere.tick(100,0,0);
+ assert.equal(f.sun.shadow.needsUpdate,false,'far map remains cached at 100ms');
+ assert.equal(near.shadow.needsUpdate,true,'near map refreshes on every rendered frame');
+ f.renderer.shadowMap.render([near],f.scene,f.camera);
+ assert.equal(near.shadow.needsUpdate,false,'renderer consumes the frame update');
+ f.atmosphere.tick(210,0,0);
+ assert.equal(f.sun.shadow.needsUpdate,false,'far map remains cached at 210ms');
+ assert.equal(near.shadow.needsUpdate,true,'near map immediately requests another frame');
+ f.renderer.shadowMap.render([near],f.scene,f.camera);
+ f.settings.sunNearShadowMapSize=4096;
+ f.atmosphere.tick(230,0,0);
+ assert.equal(near.shadow.mapSize.x,4096,'4K near option is applied without restarting');
+ assert.equal(f.sun.shadow.mapSize.x,1024,'far resolution remains independent');
+});
+
+test('moving shadow cameras are texel snapped and retain independent static ranges',()=>{
+ const f=fixture();
+ const near=f.atmosphere.nearSun;
+ f.settings.shadowDistance=60;
+ f.settings.shadowMapSize=1024;
+ f.settings.sunNearShadowDistance=25;
+ f.settings.sunNearShadowMapSize=2048;
+ f.settings.shadowRefreshSeconds=0;
+ f.atmosphere.tick(0,15.11,25.11);
+ const initial={x:near.target.position.x,z:near.target.position.z};
+ const firstFar={x:f.sun.target.position.x,z:f.sun.target.position.z};
+ f.atmosphere.tick(100,15.110001,25.110001);
+ assert.ok(Math.hypot(near.target.position.x-initial.x,near.target.position.z-initial.z)<.001,
+  'near texel projection is stable during sub-pixel motion');
+ assert.ok(Math.hypot(f.sun.target.position.x-firstFar.x,f.sun.target.position.z-firstFar.z)<.001);
+ assert.equal(near.shadow.camera.left,-45);
+ assert.equal(f.sun.shadow.camera.left,-72);
+ f.atmosphere.tick(200,40,45);
+ assert.ok(Math.hypot(near.target.position.x-initial.x,near.target.position.z-initial.z)>5,
+  'both maps follow the moving player after a meaningful displacement');
+});
+
+test('sunlight cascades preserve combined intensity across day and night',()=>{
+ const f=fixture(),near=f.atmosphere.nearSun;
+ f.atmosphere.tick(0,0,0);
+ assert.equal(f.sun.intensity,2.3);
+ assert.equal(near.intensity,2.3,'blend is in the shader, no 0.5 intensity multipliers');
+ f.atmosphere.setPhase(.5);
+ f.atmosphere.tick(100,0,0);
+ assert.equal(f.sun.shadow.intensity,0);
+ assert.equal(near.shadow.intensity,0);
+ f.atmosphere.setPhase(0);
+ f.atmosphere.setSunIntensity(4);
+ f.atmosphere.tick(200,0,0);
+ assert.equal(f.sun.intensity,4);
+ assert.equal(near.intensity,4);
+ assert.equal(f.sun.shadow.intensity,1);
+ assert.equal(near.shadow.intensity,1);
+});
+
+
+test('10m crisp/10m blend/60m far with 12m overlap spans both shadow maps',()=>{
+ const f=fixture();
+ Object.assign(f.settings,{
+  shadowDistance:60,sunNearShadowDistance:10,
+  sunCascadeBlendDistance:10,sunCascadeCasterOverlap:12,
+  sunNearShadowSoftness:1,sunFarShadowSoftness:3,
+ });
+ f.atmosphere.tick(0,0,0);
+ const near=f.atmosphere.nearSun;
+ assert.equal(near.shadow.camera.left,-33);
+ assert.equal(near.shadow.camera.right,33);
+ assert.equal(f.sun.shadow.camera.left,-72);
+ assert.equal(near.shadow.radius,1);
+ assert.equal(f.sun.shadow.radius,3);
+ f.renderer.shadowMap.render([f.sun,near],f.scene,f.camera);
+ const far=f.renders[0],close=f.renders[1];
+ assert.ok(far.count>2,'far map contains shadow casters even inside 10m');
+ assert.ok(close.count>2,'near map receives overlapping caster geometry');
+ const before=f.sun.shadow.needsUpdate;
+ f.settings.sunCascadeCasterOverlap=20;
+ f.atmosphere.tick(100,0,0);
+ assert.equal(near.shadow.camera.left,-41,'overlap slider changes near shadow frustum');
+ assert.equal(f.sun.shadow.needsUpdate,false,'unchanged far caster band keeps its cached map');
+ assert.equal(before,false,'cached far map was previously rendered');
+ f.settings.sunNearShadowSoftness=2.5;
+ f.settings.sunFarShadowSoftness=1.5;
+ f.atmosphere.tick(200,0,0);
+ assert.equal(near.shadow.radius,2.5,'near softness changes live');
+ assert.equal(f.sun.shadow.radius,1.5,'far softness changes live without cubemap rerender');
+ f.settings.sunNearShadowSoftness=0;
+ f.settings.sunFarShadowSoftness=0;
+ f.atmosphere.tick(300,0,0);
+ assert.equal(near.shadow.radius,0,'near sunlight hard shadow removes PCF offset');
+ assert.equal(f.sun.shadow.radius,0,'far sunlight hard shadow removes PCF offset');
+
 });

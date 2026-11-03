@@ -1,7 +1,7 @@
 // Runtime forest spruce. Generate a single shared template once per page load:
 // all placed spruces use its geometry/material via per-chunk GPU instancing.
 // No saved GLB or mesh regeneration while moving/chopping.
-import {createSpruce, SPRUCE_PRESET} from './spruce-foliage-cards.js?v=20261031-spruce-bark1';
+import {createSpruce, SPRUCE_PRESET} from './spruce-foliage-cards.js?v=20261103-shared-birch-all1';
 import {trimSpruceFoliageGeometry} from './spruce-foliage-opt.js?v=20261031-procedural-spruce1';
 
 export function generateSpruceParts(params=null) {

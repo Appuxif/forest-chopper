@@ -1,3 +1,4 @@
+import {debugFlightDelta} from './debug-flight-motion.js';
 import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
 import {createPlayerMotionTracker} from './ragdoll-motion.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
@@ -5,7 +6,7 @@ import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js';
 import {createFrameLimiter} from './frame-limiter.js';
 import {createGpuFrameTimer} from './gpu-frame-timer.js';
-import {createOrbitCamera} from './orbit-camera.js?v=20261102-ragdoll-clip1';
+import {createOrbitCamera} from './orbit-camera.js?v=20261102-flight-distance1';
 // Clipping is a rendering property, not a collision between the camera and
 // the character. Keep the established camera orbit untouched; while ragdoll
 // is active, reduce only the near clipping plane so nearby limbs aren't cut.
@@ -70,7 +71,7 @@ function animate(now){
  // Physics, Root Motion and animation mixers run on every display tick,
  // independently of the user-selected render FPS cap.
  if(!Number.isFinite(now))return;
- const profiling=ctx.settings.showFps;
+ const profiling=ctx.settings.showFps||ctx.settings.profilerSampling;
  const cpuStart=profiling?performance.now():0;
  if(profiling){
    const sample=gpuTimer.poll(now);
@@ -83,6 +84,7 @@ function animate(now){
  ctx.settings.tickPhysics(now);
  const dt=Math.max(0,Math.min(.05,(now-ctx.lastTime)/1000));
  ctx.lastTime=now;
+ ctx.debugCheatsController?.tick?.();
  ctx.deathSystem?.tick(now);
  ctx.ragdollControls?.tick();
  const dead=ctx.deathSystem?.active===true;
@@ -95,13 +97,14 @@ function animate(now){
  const len=Math.max(1,Math.hypot(forward,side));forward/=len;side/=len;
  const moving=Math.hypot(forward,side)>.1;
  const wantsSprint=shouldSprint(ctx.keys,ctx.settings.autoSprint,moving);
- const sprint=moving&&wantsSprint&&(!ctx.vitals||ctx.vitals.canSprint());
+ const flying=ctx.debugCheats?.flying===true&&!ctx.isOnline?.();
+ const sprint=!flying&&moving&&wantsSprint&&(!ctx.vitals||ctx.vitals.canSprint());
  if(!dead)ctx.vitals?.tick(sprint);
  ctx.sprinting=sprint;
  const motion=!moving?'Idle':Math.abs(forward)>.1?(sprint?'Run':'Walk'):(side<0?'StrafeLeft':'StrafeRight');
  // Playback rate also scales Root Motion distance: faster feet = faster travel.
  const rate=motion==='Idle'?1:(motion==='StrafeLeft'||motion==='StrafeRight')?(sprint?5:4):(motion==='Run'?(forward<0?-2.35:2.35):(forward<0?-2.25:2.25));
- if(!posing&&!dead)ctx.simulateVertical(dt);
+ if(!posing&&!dead&&!flying)ctx.simulateVertical(dt);
  let dx=0,dz=0;
  if(ctx.ownAvatar&&!posing&&!dead){
   ctx.ownAvatar.group.rotation.y=ctx.yaw;
@@ -118,13 +121,20 @@ function animate(now){
  // Jump movement remains physics/input-driven, not extracted from Root.
  // Also keep a fallback when testing against an old GLB without Root Motion.
  const noRoot=motion!=='Idle'&&(!ctx.rootMotion[motion]||ctx.rootMotion[motion].travel.lengthSq()<1e-5);
- if(!dead&&!posing&&(!ctx.onGround||!ctx.ownAvatar||noRoot)){
+ if(!dead&&!posing&&!flying&&(!ctx.onGround||!ctx.ownAvatar||noRoot)){
   const speed=sprint?4.6:2.5;
   dx=(-Math.sin(ctx.yaw)*forward+Math.cos(ctx.yaw)*side)*speed*dt;
   dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*speed*dt;
  }
  if(!posing&&!dead){
-  ctx.moveHorizontal(dx,dz);
+  if(flying){
+   const up=Number(!!(ctx.keys.Space||ctx.keys.ShiftLeft||ctx.keys.ShiftRight||ctx.debugCheats?.mobileUp));
+   const down=Number(!!(ctx.keys.ControlLeft||ctx.keys.ControlRight||ctx.debugCheats?.mobileDown));
+   const delta=debugFlightDelta({forward,side,yaw:ctx.yaw,pitch:ctx.pitch,vertical:up-down,dt});
+   ctx.px+=delta.x;ctx.pz+=delta.z;
+   ctx.feetY=Math.max(ctx.terrain.heightAt(ctx.px,ctx.pz)+.2,ctx.feetY+delta.y);
+   ctx.onGround=false;ctx.verticalSpeed=0;ctx.jumpRequested=false;
+  }else ctx.moveHorizontal(dx,dz);
   // Always derive velocity from actual collision-resolved displacement,
   // including walking, running, strafing and airborne input.
   ctx.motionVelocity=wasPosing?motionTracker.reset(ctx.px,ctx.pz,ctx.yaw)
@@ -162,7 +172,7 @@ function animate(now){
  ctx.camera.position.set(follow?.px??ctx.px,
    (follow?.feetY??ctx.feetY)+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,
    follow?.pz??ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
- if(ctx.thirdPerson)orbitCamera.update(dt,follow);
+ if(ctx.thirdPerson)orbitCamera.update(dt,follow,flying?2:0);
  // Animation mixer and camera have both updated: resolve any frame-18 tree
  // contact using the *current* crosshair, not the mouse-down position.
  ctx.tickChopImpact?.(now);
@@ -172,7 +182,9 @@ function animate(now){
 tickFallingTrees(ctx,dt);
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}
 ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx.offlineSave.tick(now);ctx.progress.trackPosition(ctx.px,ctx.pz,ctx.seed);ctx.discoveries.check(now);ctx.updateChunks();ctx.forestResources?.tick(now);ctx.inventory?.tickBook?.();ctx.updatePreview();const t=ctx.buildMode?null:ctx.aimed();ctx.pickupInteraction?.update?.();const interaction=ctx.pickupInteraction?.current;ctx.highlight.update(t);if(t)ctx.tutorial.complete('tree-aimed');updateCrosshair(ctx.$('crosshair'),aimState(ctx.buildMode,t,ctx.buildMode?(ctx.inventory?.selected==='bench'?ctx.crafting?.placeError?.(ctx.placement):(ctx.preview?.userData?.previewError??ctx.placeError(ctx.placement))):'',interaction));ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`${u.species==='birch'?'🌳 Берёза':'🌲 Дерево'} · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':
-   interaction?interaction.label+' · '+(interaction.verb??(interaction.type==='box'||interaction.type==='resource'?'Подобрать':'Открыть')):''}if(ctx.isOnline()&&!dead&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}for(const avatar of ctx.avatars.values()){
+   interaction?interaction.label+' · '+(interaction.verb??(interaction.type==='box'||interaction.type==='resource'?'Подобрать':'Открыть')):''}if(ctx.isOnline()&&!dead&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}ctx.debugPlayers?.tick?.(now,dt);
+for(const avatar of ctx.avatars.values()){
+ if(avatar.debugDead)continue;
  const previousX=avatar.group.position.x,previousZ=avatar.group.position.z;
  avatar.group.position.lerp(avatar.goal,Math.min(1,dt*10));
  avatar.group.rotation.y+=Math.atan2(Math.sin(avatar.angle-avatar.group.rotation.y),Math.cos(avatar.angle-avatar.group.rotation.y))*Math.min(1,dt*8);
@@ -204,7 +216,10 @@ ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx
    ctx.terrain?.tick(now);
    ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
    ctx.distantForest?.updateVisibility?.(ctx.yaw);
-   ctx.renderer.render(ctx.scene,ctx.camera);
+   ctx.microGrass?.updateVisibility?.();
+   ctx.renderProfiler?.beginFrame();
+   try{ctx.renderer.render(ctx.scene,ctx.camera);}
+   finally{ctx.renderProfiler?.endFrame();}
    ctx.debugFpsCollector?.frame(now,{
      drawCalls:ctx.renderer.info.render.calls,
      triangles:ctx.renderer.info.render.triangles,

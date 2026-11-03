@@ -156,3 +156,15 @@ test('ragdoll follows physical position with identical standing-camera geometry'
  almost(camera.position.z,ragdollCamera.z);
  assert.ok(camera.position.z<follow.pz,'retain original forward orbit on steep downward look');
 });
+
+// Debug flight camera extra distance must not persist in the user settings.
+test('flight adds two meters to third-person camera without changing normal distance',()=>{
+ const {ctx,rig,camera}=fixture();
+ rig.update(1/60);
+ const normal=camera.position.z;
+ rig.update(1/60,null,2);
+ almost(camera.position.z,normal+2);
+ assert.equal(ctx.settings.cameraDistance,1.7);
+ rig.update(1/60,null,0);
+ almost(camera.position.z,normal);
+});
