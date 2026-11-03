@@ -1,10 +1,17 @@
 import {decorResourceId} from './collectible-decor.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {treeCandidate,treeCanSpawn} from './tree-spacing.js?v=20261030-spacing-4m1';
-import {createTreeBatch} from './tree-instancing.js?v=20261031-spruce-sway1';
+import {createTreeBatch} from './tree-instancing.js?v=20261103-render-profiler1';
+import {createDecorRegionManager} from './decor-region-batches.js?v=20261103-region-default-3';
 import {createDistantForest} from './distant-forest.js?v=20261103-unified-sun-cascades1';
 export function createWorld(ctx) {
 let distantForest=createDistantForest(ctx);
+const decorManager=createDecorRegionManager(ctx.THREE,ctx.scene,{
+  onChange:()=>ctx.atmosphere?.invalidateStaticShadows?.(),
+});
+ctx.decorBatchRegions=decorManager.regions;
+ctx.decorBatchManager=decorManager;
+ctx.clearDecorBatches=decorManager.clear;
 function rand(x,z,n=0){let v=Math.sin(x*127.1+z*311.7+n*78.233+ctx.seed)*43758.5453;return v-Math.floor(v)}
 // Shared white-tinted materials are reused across chunks and never disposed
 // while another batch may still reference them.
@@ -81,6 +88,8 @@ function enableDecorShadow(node){
 }
 function build(cx,cz){const key=cx+','+cz;if(ctx.chunks.has(key))return;const decor=new ctx.THREE.Group();ctx.scene.add(decor);ctx.chunks.set(key,decor);
 decor.userData.shadowDecor=[];decor.userData.reactivePlants=[];decor.userData.grassClearings=[];decor.userData.collectibles=[];
+decor.userData.decorChunk={x:(cx+.5)*ctx.chunkSize,z:(cz+.5)*ctx.chunkSize,
+  radius:ctx.chunkSize*Math.SQRT2*.5};
 const rockColliders=[];
 const newTrees=[];
 for(let i=0;i<8;i++){
@@ -145,6 +154,9 @@ for(const obj of decor.userData.reactivePlants){
 ctx.rockColliders?.set(key,rockColliders);
 ctx.collisionWorld?.invalidate?.();
 ctx.forestResources?.syncDecorChunk?.(decor);
+// Logical objects retain their IDs and physics; visual parts batch across
+// neighbouring chunks and can change independently through batch.sync().
+decorManager.add(cx,cz,decor);
 }
 // Swap procedural visuals and GPU batches while retaining logical tree objects,
 // IDs, HP, hit proxies, and saved/network state.
@@ -215,6 +227,7 @@ function updateChunks(){
     const [x,z]=key.split(',').map(Number);
     if(Math.abs(x-cx)<=radius+1&&Math.abs(z-cz)<=radius+1)continue;
     group.userData.treeBatch?.dispose();
+    decorManager.remove(group);
     for(const geo of group.userData.terrainGeometries??[])geo.dispose();
     ctx.scene.remove(group);
     ctx.chunks.delete(key);

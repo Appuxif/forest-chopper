@@ -288,6 +288,8 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   }
   const state = sanitizeSettings(persisted);
   let connected = false, latency = null, lastRate = null, lastPhysicsRate = null, lastCpuMs = null, lastGpuMs = null, gpuTimingSupported = null, lastDiagnostics = '', lastPosition = '', lastGpu = null;
+  let profilerSampling=false;
+  const performanceSampling=()=>state.showFps||profilerSampling;
   const css = doc.createElement('style');
   css.textContent = `
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
@@ -978,7 +980,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   // CPU: wall-clock JavaScript time per rAF callback, including render submit
   // on rendered frames. GPU: asynchronous elapsed GPU time of the render path.
   function recordCpuFrame(durationMs,now){
-    if(!state.showFps||!Number.isFinite(now)||!Number.isFinite(durationMs)||
+    if(!performanceSampling()||!Number.isFinite(now)||!Number.isFinite(durationMs)||
       durationMs<0)return;
     if(cpuSampleStart===null)cpuSampleStart=now;
     cpuTotalMs+=durationMs;
@@ -990,7 +992,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     }
   }
   function setGpuFrameTime(ms,supported){
-    if(!state.showFps)return;
+    if(!performanceSampling())return;
     const nextSupported=!!supported;
     const nextMs=nextSupported&&Number.isFinite(ms)&&ms>=0?ms:null;
     if(gpuTimingSupported===nextSupported&&lastGpuMs===nextMs)return;
@@ -1001,7 +1003,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   // Called on EVERY rAF callback, independent of the render-only FPS limiter.
   // This measures variable-timestep simulation frequency, not fixed steps.
   function tickPhysics(now) {
-    if(!state.showFps){
+    if(!performanceSampling()){
       lastPhysicsSample=null;physicsFrames=0;lastPhysicsRate=null;
       return;
     }
@@ -1028,7 +1030,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     renderFps();
   }
   function tick(now, gameCtx = null) {
-    if (!state.showFps) {lastSample = null;frames = 0;lastRate=null;lastDiagnostics='';return;}
+    if (!performanceSampling()) {lastSample = null;frames = 0;lastRate=null;lastDiagnostics='';return;}
     if (lastGpu===null && gameCtx?.renderer)
       lastGpu=getGpuRendererName(gameCtx.renderer);
     if (lastSample === null) {lastSample = now;frames = 0;renderFps();return;}
@@ -1071,6 +1073,18 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get cameraDistance(){return state.cameraDistance;},
     get mouseSensitivity(){return state.mouseSensitivity;},
     get showFps(){return state.showFps;},
+    get profilerSampling(){return profilerSampling;},
+    get fpsReport(){return fps.textContent;},
+    setProfilerSampling(enabled){
+      profilerSampling=!!enabled;
+      if(profilerSampling){
+        lastSample=null;frames=0;lastRate=null;
+        lastPhysicsSample=null;physicsFrames=0;lastPhysicsRate=null;
+        cpuSampleStart=null;cpuSamples=0;cpuTotalMs=0;lastCpuMs=null;
+        lastGpuMs=null;gpuTimingSupported=null;
+        renderFps();
+      }
+    },
     setShowFps(enabled){checkbox.checked=!!enabled;checkbox.onchange();return state.showFps;},
     get spruceFoliageVisible(){return state.spruceFoliageVisible;},
     get spruceFoliageShadows(){return state.spruceFoliageShadows;},

@@ -287,6 +287,27 @@ test('preset selection applies all graphics properties; manual graphics changes 
   assert.equal(writes.at(-1).showFps,true);
   assert.equal(settings.setShowFps(false),false);
   assert.equal(writes.at(-1).showFps,false);
+  // Debug profiling samples the same FPS/CPU/GPU HUD without changing
+  // the saved Show FPS preference or displaying another overlay.
+  const beforeProfilerWrites=writes.length;
+  settings.setProfilerSampling(true);
+  assert.equal(settings.profilerSampling,true);
+  assert.equal(settings.showFps,false);
+  settings.tick(1000);
+  settings.tick(2000);
+  settings.tickPhysics(1000);
+  settings.tickPhysics(2000);
+  settings.recordCpuFrame(4,1000);
+  settings.recordCpuFrame(6,2000);
+  settings.setGpuFrameTime(7.5,true);
+  assert.match(settings.fpsReport,/Render FPS 1/);
+  assert.match(settings.fpsReport,/Physics FPS 1/);
+  assert.match(settings.fpsReport,/CPU Frame Time 5\.00 ms/);
+  assert.match(settings.fpsReport,/GPU Frame Time 7\.50 ms/);
+  settings.setProfilerSampling(false);
+  assert.equal(settings.profilerSampling,false);
+  assert.equal(settings.showFps,false);
+  assert.equal(writes.length,beforeProfilerWrites,'temporary profiler sampling must not persist settings');
   assert.equal(settings.setPerformancePreset('medium').preset,'medium');
   assert.equal(writes.at(-1).performancePreset,'medium');
   profile.value='ultra';profile.onchange();

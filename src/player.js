@@ -71,7 +71,7 @@ function animate(now){
  // Physics, Root Motion and animation mixers run on every display tick,
  // independently of the user-selected render FPS cap.
  if(!Number.isFinite(now))return;
- const profiling=ctx.settings.showFps;
+ const profiling=ctx.settings.showFps||ctx.settings.profilerSampling;
  const cpuStart=profiling?performance.now():0;
  if(profiling){
    const sample=gpuTimer.poll(now);
@@ -216,7 +216,9 @@ for(const avatar of ctx.avatars.values()){
    ctx.terrain?.tick(now);
    ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
    ctx.distantForest?.updateVisibility?.(ctx.yaw);
-   ctx.renderer.render(ctx.scene,ctx.camera);
+   ctx.renderProfiler?.beginFrame();
+   try{ctx.renderer.render(ctx.scene,ctx.camera);}
+   finally{ctx.renderProfiler?.endFrame();}
    ctx.debugFpsCollector?.frame(now,{
      drawCalls:ctx.renderer.info.render.calls,
      triangles:ctx.renderer.info.render.triangles,

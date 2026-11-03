@@ -45,6 +45,7 @@ export function createTreeBatch(THREE, parent, trees, sharedMaterials=new Map(),
   for (const materials of groups.values()) for (const group of materials.values()) {
     const mesh = new THREE.InstancedMesh(group.geometry, group.material, group.originals.length);
     mesh.castShadow = true;
+    (mesh.userData??={}).profileCategory='trees';
     const procedural=group.originals[0]?.tree?.userData;
     if(treeWindShader && (procedural?.spruceModel||procedural?.birchModel)){
       const height=procedural.proceduralModelHeight??(procedural.spruceModel?6:8);

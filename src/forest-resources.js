@@ -17,6 +17,7 @@ export function createForestResources(ctx){
  for(const [kind,{geo,mat}] of Object.entries(models)){
   const mesh=new THREE.InstancedMesh(geo,mat,RESOURCE_LIMIT);
   mesh.count=0;mesh.frustumCulled=false;mesh.castShadow=false;
+  (mesh.userData??={}).profileCategory='resources';
   scene.add(mesh);meshes[kind]=mesh;
  }
  function showDecor(id){
@@ -35,6 +36,7 @@ export function createForestResources(ctx){
    if(obj.userData.collectedResource)obj.visible=false;
    else obj.visible=!(chunk.userData.grassClearings??[]).some(area=>
      (obj.position.x-area.x)**2+(obj.position.z-area.z)**2<area.radius**2);
+   if(obj.userData?.decorBatch?.sync(obj))ctx.atmosphere?.invalidateStaticShadows?.();
   }
  }
  function syncDecor(){for(const chunk of ctx.chunks.values())syncDecorChunk(chunk);}

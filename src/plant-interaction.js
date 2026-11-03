@@ -20,8 +20,16 @@ export function createPlantInteraction(ctx) {
           (plant.position.x-area.x)**2+(plant.position.z-area.z)**2<area.radius**2)
           || [...(ctx.crafting?.items?.values?.()??[])].some(bench=>
             (plant.position.x-bench.x)**2+(plant.position.z-bench.z)**2<1.55**2);
+        const oldVisible=plant.visible;
         plant.visible=!excluded&&!plant.userData.collectedResource;
-        if(excluded||plant.userData.collectedResource){active.delete(plant);plant.rotation.x=plant.rotation.z=0;continue;}
+        if(excluded||plant.userData.collectedResource){
+          active.delete(plant);plant.rotation.x=plant.rotation.z=0;
+          if(oldVisible!==plant.visible&&plant.userData?.decorBatch?.sync(plant))
+            ctx.atmosphere?.invalidateStaticShadows?.();
+          continue;
+        }
+        if(oldVisible!==plant.visible&&plant.userData?.decorBatch?.sync(plant))
+          ctx.atmosphere?.invalidateStaticShadows?.();
         const radius=plant.userData.decorType==='flower'?1.15:1.5;
         let closest=radius*radius,px=0,pz=0;
         for(const player of players){
@@ -40,6 +48,7 @@ export function createPlantInteraction(ctx) {
         const zTilt=-Math.cos(angle)*strength;
         plant.rotation.x+=(xTilt-plant.rotation.x)*alpha;
         plant.rotation.z+=(zTilt-plant.rotation.z)*alpha;
+        plant.userData?.decorBatch?.sync(plant,{transform:true});
       }
     }
     for(const plant of active){
@@ -49,10 +58,14 @@ export function createPlantInteraction(ctx) {
       if(Math.abs(plant.rotation.x)+Math.abs(plant.rotation.z)<.002){
         plant.rotation.x=0;plant.rotation.z=0;active.delete(plant);
       }
+      plant.userData?.decorBatch?.sync(plant,{transform:true});
     }
   }
   function clear(){
-    for(const plant of active){plant.rotation.x=0;plant.rotation.z=0;}
+    for(const plant of active){
+      plant.rotation.x=0;plant.rotation.z=0;
+      plant.userData?.decorBatch?.sync(plant,{transform:true});
+    }
     active.clear();
   }
   return {tick,clear};

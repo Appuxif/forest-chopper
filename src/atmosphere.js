@@ -144,6 +144,10 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     try{
       for(const light of lights){
         if(light.shadow?.autoUpdate===false && !light.shadow.needsUpdate)continue;
+        const profiler=renderer.__forestProfiler;
+        profiler?.beginShadow(light,
+          light===nearSun?'sunNear':light===sun?'sunFar':light.isPointLight?'point':'other');
+        try {
         if(light===nearSun){
           viewCamera.layers.mask=1|(1<<1)|(1<<3)|(1<<4);
           originalShadowRender.call(this,[light],nearShadowScene,viewCamera);
@@ -160,6 +164,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
           viewCamera.layers.mask=oldMask;
           originalShadowRender.call(this,[light],shadowScene,viewCamera);
         }
+        }finally{profiler?.endShadow();}
       }
     }finally{
       viewCamera.layers.mask=oldMask;

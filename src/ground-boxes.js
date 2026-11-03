@@ -68,7 +68,7 @@ export function createGroundBoxes(ctx,doc=document){
        inst.setMatrixAt(i,dummy.matrix);
      }
      inst.instanceMatrix.needsUpdate=true;inst.castShadow=true;
-     inst.frustumCulled=true;inst.computeBoundingSphere?.();scene.add(inst);meshes.push(inst);
+     inst.frustumCulled=true;inst.computeBoundingSphere?.();(inst.userData??={}).profileCategory='items';scene.add(inst);meshes.push(inst);
    }
    if(logs.length){
      const geometry=ctx.fallenLogGeo??ctx.logGeo;
@@ -82,7 +82,7 @@ export function createGroundBoxes(ctx,doc=document){
          inst.setMatrixAt(i,dummy.matrix);
        }
        inst.instanceMatrix.needsUpdate=true;inst.castShadow=true;
-       inst.frustumCulled=true;inst.computeBoundingSphere?.();scene.add(inst);meshes.push(inst);
+       inst.frustumCulled=true;inst.computeBoundingSphere?.();(inst.userData??={}).profileCategory='items';scene.add(inst);meshes.push(inst);
      }
    }
    if(meshes.length)batches.set(cell,meshes);
@@ -103,7 +103,7 @@ export function createGroundBoxes(ctx,doc=document){
    mesh.instanceMatrix.needsUpdate=true;
    mesh.castShadow=true;mesh.frustumCulled=true;mesh.computeBoundingSphere?.();
    mesh.visible=false;
-   scene.add(mesh);
+   (mesh.userData??={}).profileCategory='items';scene.add(mesh);
    stagedLogs.set(box.id,mesh);
  }
  function disposeStage(id){
@@ -178,7 +178,7 @@ export function createGroundBoxes(ctx,doc=document){
   const pending=isFallenLogs(box)&&
     (box.pending===true || (prior?prior.pending:
       ctx.falling?.some(f=>f.tree?.userData?.id===box.tree)));
-  if(mesh){mesh.visible=!pending;scene.add(mesh);}
+  if(mesh){mesh.visible=!pending;(mesh.userData??={}).profileCategory='items';scene.add(mesh);}
   const entry={...box,item:{...box.item},pending:!!pending,mesh};
   boxes.set(box.id,entry);index.set(entry);markDirty(entry);
   // The falling animation lasts several seconds: prepare log geometry now.
