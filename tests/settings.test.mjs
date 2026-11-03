@@ -226,6 +226,17 @@ test('grass defaults, saved ranges, clamps and reset use new preset only for reg
     grassMinSize:0,grassMaxSize:9,grassWidth:10,grassTurnMin:1,grassTurnMax:-1});
   for(const key of ['grassDensity','grassDistance','grassMinSize','grassMaxSize',
     'grassWidth','grassTurnMin','grassTurnMax'])assert.equal(invalid[key],defaults[key]);
+  const lod=sanitizeSettings({grassFullDensityDistance:0,grassFarDensityPercent:0,grassFarWidthBonus:100});
+  assert.equal(lod.grassFullDensityDistance,0);
+  assert.equal(lod.grassFarDensityPercent,0);
+  assert.equal(lod.grassFarWidthBonus,100);
+  const lodMax=sanitizeSettings({grassFullDensityDistance:30,grassFarDensityPercent:100,grassFarWidthBonus:0});
+  assert.equal(lodMax.grassFullDensityDistance,30);
+  assert.equal(lodMax.grassFarDensityPercent,100);
+  assert.equal(lodMax.grassFarWidthBonus,0);
+  const bad=sanitizeSettings({grassFullDensityDistance:-1,grassFarDensityPercent:101,grassFarWidthBonus:-1});
+  for(const key of ['grassFullDensityDistance','grassFarDensityPercent','grassFarWidthBonus'])
+    assert.equal(bad[key],defaults[key]);
 });
 
 
@@ -948,8 +959,9 @@ test('reviewed High preset applies every submitted FPS-affecting graphics/light/
   flameShader:true,flameBillboard:false,fireShadows:true,nightDisableMoonShadows:true,
   quality:'high',maxFps:0,shadowDistance:60,shadowRefreshSeconds:20,
   characterShadowsEnabled:true,characterShadowDistance:62,shadowContrast:100,
-  grassDensity:25,grassDistance:50,grassMinSize:2.5,grassMaxSize:5.5,
-  grassWidth:1,grassTurnMin:-30,grassTurnMax:30,
+  grassDensity:30,grassDistance:100,grassMinSize:2.5,grassMaxSize:5.5,
+  grassWidth:1,grassFullDensityDistance:10,grassFarDensityPercent:0,
+  grassFarWidthBonus:30,grassDensitySharpness:.000001,grassDensityCoefficient:0,grassDensityOffset:30,grassTurnMin:-30,grassTurnMax:30,
  };
  const combined={...PERFORMANCE_PRESETS.high,...PERFORMANCE_LIGHTING_PRESETS.high};
  assert.deepEqual(combined,reviewed,'high preset matches all requested render-impacting settings');
@@ -1019,4 +1031,85 @@ test('initial High moon darkness and 60m night view survive legacy migrations',(
  const second=createSettings(doc,storage);
  assert.equal(second.nightMoon,0,'old moon migration must not override new High moon=0');
  assert.equal(second.nightViewDistance,60,'old 30m migration must not override High night view=60');
+});
+
+
+test('grass LOD controls save live floats, mark custom preset, and restore values',()=>{
+  const nodes=new Map(),saved=[];
+  const floatInputs=new Set(['#fc-grass-density-sharpness',
+    '#fc-grass-density-coefficient','#fc-grass-density-offset']);
+  const element=id=>{
+    if(!nodes.has(id))nodes.set(id,{
+      value:'',type:floatInputs.has(id)?'number':'range',
+      checked:false,textContent:'',style:{},setAttribute(){},querySelector:element,
+    });
+    return nodes.get(id);
+  };
+  const doc={
+    createElement:()=>({hidden:false,textContent:'',style:{},setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}},
+  };
+  let lastSaved=null;
+  const storage={
+    getItem:()=>lastSaved,
+    setItem(k,v){lastSaved=v;saved.push(JSON.parse(v));},
+  };
+  const settings=createSettings(doc,storage);
+  const config=[
+    ['#fc-grass-full-density-distance','grassFullDensityDistance',10],
+    ['#fc-grass-far-density-percent','grassFarDensityPercent',65],
+    ['#fc-grass-density-sharpness','grassDensitySharpness',.004505],
+    ['#fc-grass-density-coefficient','grassDensityCoefficient',1.2375],
+    ['#fc-grass-density-offset','grassDensityOffset',2.125],
+    ['#fc-grass-far-width-bonus','grassFarWidthBonus',55],
+  ];
+  for(const [selector,key,value] of config){
+    const slider=element(selector);
+    slider.value=String(value);
+    if(['grassDensitySharpness','grassDensityCoefficient','grassDensityOffset'].includes(key)){
+      slider.onchange();
+    }else slider.oninput();
+    assert.equal(settings[key],value);
+    if(!floatInputs.has(selector))
+      assert.equal(element(selector+'-value').textContent,String(value));
+    assert.equal(saved.at(-1)[key],value);
+  }
+  assert.equal(settings.performancePreset,'custom');
+  const reloaded=createSettings(doc,storage);
+  for(const [,key,value] of config)assert.equal(reloaded[key],value);
+});
+
+test('grass formula float coefficients accept arbitrary finite numbers',()=>{
+  const vals={grassDensitySharpness:-7.1234567,grassDensityCoefficient:1234.98765,grassDensityOffset:-8.25};
+  const settings=sanitizeSettings(vals);
+  for(const [k,v] of Object.entries(vals))assert.equal(settings[k],v);
+  for(const key of Object.keys(vals)){
+    assert.equal(sanitizeSettings({[key]:Infinity})[key],defaults[key]);
+    assert.equal(sanitizeSettings({[key]:NaN})[key],defaults[key]);
+  }
+  assert.equal(sanitizeSettings({grassDensitySharpness:.010005}).grassDensitySharpness,.010005);
+});
+
+
+test('grass performance presets retain tuned formula and density/distance tiers',()=>{
+  const tiers={
+    ultra:[30,100,.0001],
+    high:[30,100,.000001],
+    medium:[25,60,.000001],
+    low:[20,30,.000001],
+  };
+  for(const [tier,[density,distance,k]] of Object.entries(tiers)){
+    const preset=PERFORMANCE_PRESETS[tier];
+    assert.equal(preset.grassDensity,density,tier);
+    assert.equal(preset.grassDistance,distance,tier);
+    assert.equal(preset.grassFullDensityDistance,10,tier);
+    assert.equal(preset.grassFarDensityPercent,0,tier);
+    assert.equal(preset.grassDensitySharpness,k,tier);
+    assert.equal(preset.grassDensityCoefficient,0,tier);
+    assert.equal(preset.grassDensityOffset,30,tier);
+    const validated=sanitizeSettings({...preset,performancePreset:tier});
+    for(const key of ['grassDensity','grassDistance','grassFullDensityDistance',
+      'grassFarDensityPercent','grassDensitySharpness','grassDensityCoefficient','grassDensityOffset'])
+      assert.equal(validated[key],preset[key],tier+' validates '+key);
+  }
 });

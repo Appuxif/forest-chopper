@@ -57,7 +57,9 @@ function countGeometryTriangles(geometry){
 export function scanSceneGeometry(scene){
   const groups=new Map();
   const visit=node=>{
-    if(node.visible===false)return;
+    // Manual camera-frustum culling is not a world/scene visibility toggle.
+    // Keep those resident grass pages in the "before camera culling" inventory.
+    if(node.visible===false&&!node.userData?.microGrassFrustumHidden)return;
     if(node.userData?.decorBatchSource)return;
     if(node.isMesh||node.isLine||node.isPoints||node.isSprite){
       const category=classifyRenderable(node);

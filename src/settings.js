@@ -2,7 +2,7 @@
 import {collectDiagnostics, formatDiagnostics, getGpuRendererName} from './diagnostics.js?v=20261101-gpu-renderer1';
 import {FPS_OPTIONS} from './frame-limiter.js';
 import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js?v=20261103-shared-birch-all1';
-import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS,PERFORMANCE_LIGHTING_PRESETS} from './performance-presets.js?v=20261103-shared-spruce-all1';
+import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS,PERFORMANCE_LIGHTING_PRESETS} from './performance-presets.js?v=20261103-grass-presets-tuned1';
 import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261102-jump-voices1';
 const KEY = 'forest-chopper:settings:v1';
 export const LIGHTING_FIELDS=Object.freeze({
@@ -82,6 +82,8 @@ export function sanitizeSettings(value) {
       quality:1,maxFps:1,windEnabled:1,shadowDistance:1,shadowRefreshSeconds:1,
       characterShadowsEnabled:1,characterShadowDistance:1,spruceFoliageDensity:1,
       grassDensity:1,grassDistance:1,grassMinSize:1,grassMaxSize:1,grassWidth:1,
+      grassFullDensityDistance:1,grassFarDensityPercent:1,grassFarWidthBonus:1,
+      grassDensitySharpness:1,grassDensityCoefficient:1,grassDensityOffset:1,
       grassTurnMin:1,grassTurnMax:1,shadowContrast:1,
     })).map(key=>[key,
       typeof PERFORMANCE_DEFAULTS[key]==='number'
@@ -136,6 +138,22 @@ export function sanitizeSettings(value) {
       && source.grassMaxSize <= 8 ? Math.round(source.grassMaxSize * 4) / 4 : DEFAULT.grassMaxSize,
     grassWidth: Number.isFinite(source.grassWidth) && source.grassWidth >= .25
       && source.grassWidth <= 4 ? Math.round(source.grassWidth * 4) / 4 : DEFAULT.grassWidth,
+    grassFullDensityDistance: Number.isInteger(source.grassFullDensityDistance)
+      && source.grassFullDensityDistance >= 0 && source.grassFullDensityDistance <= 30
+      ? source.grassFullDensityDistance : DEFAULT.grassFullDensityDistance,
+    grassFarDensityPercent: Number.isInteger(source.grassFarDensityPercent)
+      && source.grassFarDensityPercent >= 0 && source.grassFarDensityPercent <= 100
+      ? source.grassFarDensityPercent : DEFAULT.grassFarDensityPercent,
+    grassFarWidthBonus: Number.isInteger(source.grassFarWidthBonus)
+      && source.grassFarWidthBonus >= 0 && source.grassFarWidthBonus <= 100
+      ? source.grassFarWidthBonus : DEFAULT.grassFarWidthBonus,
+    // Experimental shape parameters accept any finite floating-point value.
+    grassDensitySharpness: Number.isFinite(source.grassDensitySharpness)
+      ? source.grassDensitySharpness : DEFAULT.grassDensitySharpness,
+    grassDensityCoefficient: Number.isFinite(source.grassDensityCoefficient)
+      ? source.grassDensityCoefficient : DEFAULT.grassDensityCoefficient,
+    grassDensityOffset: Number.isFinite(source.grassDensityOffset)
+      ? source.grassDensityOffset : DEFAULT.grassDensityOffset,
     grassTurnMin: Number.isInteger(source.grassTurnMin) && source.grassTurnMin >= -90
       && source.grassTurnMin <= 0 ? source.grassTurnMin : DEFAULT.grassTurnMin,
     grassTurnMax: Number.isInteger(source.grassTurnMax) && source.grassTurnMax >= 0
@@ -451,6 +469,25 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <input id="fc-grass-density" type="range" min="1" max="50" step="1"></label>
     <label>Дальность мелкой травы: <output id="fc-grass-distance-value"></output> м
       <input id="fc-grass-distance" type="range" min="12" max="100" step="1"></label>
+    <h3>Оптимизация травы на расстоянии</h3>
+    <label>Полная плотность до: <output id="fc-grass-full-density-distance-value"></output> м
+      <input id="fc-grass-full-density-distance" type="range" min="0" max="30" step="1"></label>
+    <label>Остаточная плотность вдали: <output id="fc-grass-far-density-percent-value"></output>%
+      <input id="fc-grass-far-density-percent" type="range" min="0" max="100" step="1"></label>
+    <h3>Формула плотности</h3>
+    <small>f(t) = t³ / (t³ + (c + k) × (a − t)²), где t — относительное расстояние.
+      Применение — после ввода числа и Enter или потери фокуса.</small>
+    <label>k — добавка к коэффициенту:
+      <input id="fc-grass-density-sharpness" type="number" step="any" inputmode="decimal"></label>
+    <label>c — коэффициент (ранее 0.25):
+      <input id="fc-grass-density-coefficient" type="number" step="any" inputmode="decimal"></label>
+    <label>a — смещение в (a − t) (ранее 1):
+      <input id="fc-grass-density-offset" type="number" step="any" inputmode="decimal"></label>
+    <small>Можно вводить любые конечные числа, в том числе отрицательные. Если кривая немонотонна, CPU не прореживает плитки; итоговая плотность ограничена диапазоном 0–100%.</small>
+    <label>Дополнительная ширина вдали: +<output id="fc-grass-far-width-bonus-value"></output>%
+      <input id="fc-grass-far-width-bonus" type="range" min="0" max="100" step="1"></label>
+    <small>После указанного расстояния плотность плавно снижается до выбранного процента,
+      а ширина оставшихся травинок постепенно увеличивается. 100% плотности и +0% ширины отключают эффект.</small>
     <label>Размер травинок: <output id="fc-grass-size-range-value"></output>
       <span class="fc-angle-pair" id="fc-grass-size-pair">
         <span class="fc-angle-track" id="fc-grass-size-track"></span>
@@ -628,6 +665,14 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const grassMinSizeInput = panel.querySelector('#fc-grass-min-size');
   const grassMaxSizeInput = panel.querySelector('#fc-grass-max-size');
   const grassWidthInput = panel.querySelector('#fc-grass-width');
+  const grassLodFields=[
+    ['grassFullDensityDistance','grass-full-density-distance'],
+    ['grassFarDensityPercent','grass-far-density-percent'],
+    ['grassDensitySharpness','grass-density-sharpness'],
+    ['grassDensityCoefficient','grass-density-coefficient'],
+    ['grassDensityOffset','grass-density-offset'],
+    ['grassFarWidthBonus','grass-far-width-bonus'],
+  ];
   const grassSizeRangeValue = panel.querySelector('#fc-grass-size-range-value');
   const grassSizeTrack = panel.querySelector('#fc-grass-size-track');
   const grassWidthValue = panel.querySelector('#fc-grass-width-value');
@@ -702,6 +747,11 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     grassMinSizeInput.value = String(state.grassMinSize);
     grassMaxSizeInput.value = String(state.grassMaxSize);
     grassWidthInput.value = String(state.grassWidth);
+    for(const [key,id] of grassLodFields){
+      panel.querySelector('#fc-'+id).value=String(state[key]);
+      const output=panel.querySelector('#fc-'+id+'-value');
+      if(output)output.textContent=String(state[key]);
+    }
     grassSizeRangeValue.textContent = state.grassMinSize + '× … ' + state.grassMaxSize + '×';
     const sizeLeft = (state.grassMinSize - 1) / 7 * 100;
     const sizeRight = (state.grassMaxSize - 1) / 7 * 100;
@@ -927,6 +977,21 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     state.grassWidth = sanitizeSettings({...state,grassWidth:Number(grassWidthInput.value)}).grassWidth;
     reflect();save();
   };
+  for(const [key,id] of grassLodFields){
+    const input=panel.querySelector('#fc-'+id);
+    const update=()=>{
+      // Don't apply a temporarily blank/incomplete float during editing.
+      const raw=input.value.trim();
+      const value=raw===''?NaN:Number(raw);
+      if(Number.isFinite(value)){
+        state[key]=sanitizeSettings({...state,[key]:value})[key];
+        save();
+      }
+      reflect();
+    };
+    if(input.type==='number')input.onchange=update;
+    else input.oninput=update;
+  }
   grassTurnMinInput.oninput = () => {
     state.grassTurnMin = Math.max(-90,Math.min(0,Number(grassTurnMinInput.value)));
     reflect();save();
@@ -1140,6 +1205,12 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get grassMinSize(){return state.grassMinSize;},
     get grassMaxSize(){return state.grassMaxSize;},
     get grassWidth(){return state.grassWidth;},
+    get grassFullDensityDistance(){return state.grassFullDensityDistance;},
+    get grassFarDensityPercent(){return state.grassFarDensityPercent;},
+    get grassDensitySharpness(){return state.grassDensitySharpness;},
+    get grassDensityCoefficient(){return state.grassDensityCoefficient;},
+    get grassDensityOffset(){return state.grassDensityOffset;},
+    get grassFarWidthBonus(){return state.grassFarWidthBonus;},
     get grassTurnMin(){return state.grassTurnMin;},
     get grassTurnMax(){return state.grassTurnMax;},
     tick, tickPhysics, recordCpuFrame, setGpuFrameTime, close, setConnected, setLatency,

@@ -46,6 +46,18 @@ test('inventory separates unique geometry from instanced potential triangles',()
     trianglesPotential:72,uniqueGeometries:1});
 });
 
+test('inventory counts resident grass pages even if precise frustum culling hides them',()=>{
+  const root=scene();
+  const grass=mesh(root,'grass',null,30);
+  grass.visible=false;
+  grass.userData.microGrassFrustumHidden=true;
+  const culled=mesh(root,'grass',null,20);
+  culled.visible=false; // Explicit gameplay hide should still be excluded.
+  const row=scanSceneGeometry(root).find(v=>v.category==='grass');
+  assert.equal(row.instances,30);
+  assert.equal(row.meshes,1);
+});
+
 test('collects real draw deltas and separate shadow updates, restores renderer on stop',()=>{
   let time=100;
   const info={render:{calls:0,triangles:0}};

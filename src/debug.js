@@ -1,6 +1,6 @@
 import {installDebugCheats} from './debug-cheats.js?v=20261103-debug-player1';
 import {createDebugFps} from './debug-fps.js';
-import {createRenderProfiler} from './render-profiler.js?v=20261103-profile1';
+import {createRenderProfiler} from './render-profiler.js?v=20261103-grass-culling1';
 import {installProfilerPanel} from './debug-profiler-ui.js?v=20261103-region-default-3';
 import {parseOfflineSave} from './offline-save.js';
 import {BOX_LIFETIME_SECONDS,MAX_GROUND_DROPS} from './ground-boxes.js';

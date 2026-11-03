@@ -2,7 +2,8 @@ import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {gladesForTile,gladeAtPoint,gladeDensity,GLADE_CELL} from '../src/grass-glades.js';
-import {generateGrassTile,createMicroGrass,effectiveGrassRadius,MICRO_GRASS_NIGHT_RADIUS} from '../src/micro-grass.js';
+import {generateGrassTile,createMicroGrass,effectiveGrassRadius,
+  grassDistanceDensity,MICRO_GRASS_NIGHT_RADIUS} from '../src/micro-grass.js';
 
 function fixture({radius=12,density=2}={}) {
   const sceneItems=new Set(),geometries=new Set(),materials=new Set(),meshes=new Set();
@@ -35,6 +36,20 @@ function fixture({radius=12,density=2}={}) {
     constructor(x=0,y=0,z=0,w=0){this.set(x,y,z,w);}
     set(x,y,z,w){this.x=x;this.y=y;this.z=z;this.w=w;return this;}
   }
+  class Vector3 {
+    constructor(x=0,y=0,z=0){this.set(x,y,z);}
+    set(x,y,z){Object.assign(this,{x,y,z});return this;}
+  }
+  class Box3 {
+    constructor(min,max){this.min=min;this.max=max;}
+  }
+  class Matrix4 {
+    multiplyMatrices(){return this;}
+  }
+  class Frustum {
+    setFromProjectionMatrix(){return this;}
+    intersectsBox(box){return box.min.x<ctx.cullX;}
+  }
   class Object3D {
     constructor(){
       this.position={x:0,y:0,z:0,set:(x,y,z)=>Object.assign(this.position,{x,y,z})};
@@ -63,10 +78,11 @@ function fixture({radius=12,density=2}={}) {
   const THREE={
     BufferGeometry:Geometry,Float32BufferAttribute:Attribute,
     InstancedBufferAttribute:Attribute,MeshLambertMaterial:Material,
-    Vector2,Vector4,Object3D,Color,InstancedMesh,DoubleSide:2,
+    Vector2,Vector3,Vector4,Box3,Matrix4,Frustum,Object3D,Color,InstancedMesh,DoubleSide:2,
   };
   const ctx={THREE,terrain:flatTerrain(),scene:{add(mesh){sceneItems.add(mesh);},remove(mesh){sceneItems.delete(mesh);}},
-    px:5,pz:6,seed:7812,avatars:new Map(),settings:{
+    px:5,pz:6,seed:7812,avatars:new Map(),cullX:Infinity,
+    camera:{projectionMatrix:{},matrixWorldInverse:{},updateMatrixWorld(){this.updated=(this.updated??0)+1;}},settings:{
       grassDensity:density,grassDistance:radius,grassMinSize:2.5,grassMaxSize:5.5,
       grassWidth:1,grassTurnMin:-30,grassTurnMax:30,
     },
@@ -306,4 +322,263 @@ test('night grass cap never increases an already shorter daytime setting',()=>{
  assert.equal(grass.visibleRadius,20);
  assert.equal(grass.tiles,tiles);
  grass.dispose();
+});
+
+
+test('distant density falls smoothly with distance but nearby density stays intact',()=>{
+  assert.equal(grassDistanceDensity(0,50),1);
+  assert.equal(grassDistanceDensity(26,50),1);
+  assert.equal(grassDistanceDensity(50,50),.38);
+  assert.equal(grassDistanceDensity(12,24),1);
+  assert.ok(grassDistanceDensity(32,50)>grassDistanceDensity(40,50));
+  assert.ok(grassDistanceDensity(40,50)>grassDistanceDensity(47,50));
+  assert.equal(grassDistanceDensity(500,50),.38);
+});
+
+test('renderer culls whole grass tiles by tighter AABBs and draws fewer far instances',()=>{
+  const {ctx,sceneItems,meshes}=fixture({radius:65,density:5});
+  const grass=createMicroGrass(ctx);
+  const near=[...sceneItems].filter(mesh=>mesh.userData.grassTier==='near');
+  const far=[...sceneItems].filter(mesh=>mesh.userData.grassTier==='far');
+  assert.ok(near.length>0&&far.length>0);
+  const fullCount=new Map([...sceneItems].map(mesh=>[mesh,mesh.count]));
+  const generated=grass.generatedTiles;
+  // Simulate instance buffers already uploaded; changing draw counts must
+  // never re-upload the entire page.
+  for(const mesh of sceneItems)mesh.instanceMatrix.needsUpdate=false;
+  grass.updateVisibility();
+  assert.ok(far.some(mesh=>mesh.count<fullCount.get(mesh)),
+    'far geometry really submits fewer instances, not invisible vertices');
+  assert.ok(near.every(mesh=>mesh.count<=fullCount.get(mesh)),
+    'near tile selection respects conservative per-blade culling');
+  const reduced=far.filter(mesh=>mesh.count<fullCount.get(mesh));
+  for(const mesh of reduced)assert.equal(mesh.instanceMatrix.needsUpdate,false,
+    'density changes never upload new matrices');
+  ctx.cullX=0;
+  grass.updateVisibility();
+  assert.ok([...sceneItems].some(mesh=>!mesh.visible&&mesh.userData.microGrassFrustumHidden),
+    'tiles outside the axis-aligned frustum are entirely excluded');
+  assert.ok([...sceneItems].some(mesh=>mesh.visible));
+  ctx.cullX=Infinity;
+  grass.updateVisibility();
+  assert.ok([...sceneItems].every(mesh=>mesh.visible),
+    'camera rotation re-enables original tile meshes without regenerating them');
+  assert.equal(grass.generatedTiles,generated);
+  assert.equal(ctx.camera.updated,3);
+  grass.dispose();
+  assert.ok([...meshes].every(mesh=>mesh.disposed===1));
+});
+
+test('distance width correction is shared by both grass geometry LODs',()=>{
+  const {ctx,sceneItems}=fixture({radius:50,density:4});
+  const grass=createMicroGrass(ctx);
+  const far=[...sceneItems].find(mesh=>mesh.userData.grassTier==='far');
+  const near=[...sceneItems].find(mesh=>mesh.userData.grassTier==='near');
+  const compile=material=>{
+    const shader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>'};
+    material.onBeforeCompile(shader);return shader;
+  };
+  const farShader=compile(far.material),nearShader=compile(near.material);
+  assert.match(farShader.vertexShader,/uniform vec4 fcGrassDensityLod/);
+  assert.match(farShader.vertexShader,/fcWidthLod = 1\.0 \+ fcDensityT \* fcGrassDensityLod\.z/);
+  assert.match(nearShader.vertexShader,/fcWidthLod = 1\.0 \+ fcDensityT \* fcGrassDensityLod\.z/);
+  assert.match(farShader.vertexShader,/fcGrassPriority/);
+  assert.match(farShader.vertexShader,/fcBladeFade/);
+  assert.equal(farShader.uniforms.fcGrassDensityLod.value.z,.30);
+  assert.equal(farShader.uniforms.fcGrassDensityLod.value.w,.005);
+  assert.equal(nearShader.uniforms.fcGrassDensityLod.value.z,.30);
+  grass.dispose();
+});
+
+
+test('cheap grass mode still reduces distant instance counts without a costly shader',()=>{
+  const {ctx,sceneItems}=fixture({radius:60,density:6});
+  ctx.settings.grassInteraction=false;
+  const grass=createMicroGrass(ctx);
+  const far=[...sceneItems].filter(mesh=>mesh.userData.grassTier==='far');
+  const before=far.map(mesh=>mesh.count);
+  grass.updateVisibility();
+  assert.ok(far.some((mesh,i)=>mesh.count<before[i]));
+  for(const mesh of far){
+    const shader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>'};
+    mesh.material.onBeforeCompile(shader);
+    assert.match(shader.vertexShader,/fcGrassDensityLod/);
+    assert.doesNotMatch(shader.vertexShader,/fcGrassActors|fcGrassClearings|fcGrassProfile/);
+  }
+  grass.dispose();
+});
+
+
+test('three distance LOD parameters update existing instances and both shader tiers live',()=>{
+  const {ctx,sceneItems}=fixture({radius:65,density:5});
+  ctx.settings.grassFullDensityDistance=26;
+  ctx.settings.grassFarDensityPercent=38;
+  ctx.settings.grassFarWidthBonus=30;
+  const grass=createMicroGrass(ctx);
+  grass.updateVisibility();
+  const tiles=[...sceneItems];
+  const originalCount=new Map(tiles.map(mesh=>[mesh,mesh.count]));
+  const generated=grass.generatedTiles;
+  for(const mesh of tiles)mesh.instanceMatrix.needsUpdate=false;
+
+  ctx.settings.grassFarDensityPercent=100;
+  ctx.settings.grassFarWidthBonus=0;
+  grass.tick();
+  grass.updateVisibility();
+  assert.ok(tiles.every(mesh=>mesh.count>=originalCount.get(mesh)));
+  assert.ok(tiles.every(mesh=>mesh.instanceMatrix.needsUpdate===false));
+  const shaderUniform=tiles[0].material.userData.grassUniforms.fcGrassDensityLod.value;
+  assert.equal(shaderUniform.x,26);
+  assert.equal(shaderUniform.z,0);
+
+  ctx.settings.grassFullDensityDistance=10;
+  ctx.settings.grassFarDensityPercent=0;
+  ctx.settings.grassFarWidthBonus=100;
+  ctx.settings.grassDensitySharpness=.4;
+  grass.tick();
+  grass.updateVisibility();
+  assert.equal(shaderUniform.x,10);
+  assert.equal(shaderUniform.z,1);
+  assert.equal(shaderUniform.w,.4);
+  const near=tiles.filter(mesh=>mesh.userData.grassTier==='near');
+  const far=tiles.filter(mesh=>mesh.userData.grassTier==='far');
+  assert.ok(near.every(mesh=>mesh.count<=originalCount.get(mesh)),
+    'reducing the full-density radius does not increase near page draws');
+  assert.ok(far.some(mesh=>mesh.count<originalCount.get(mesh)),
+    'distant density decreases as the minimum percent approaches zero');
+  assert.equal(grass.generatedTiles,generated,'LOD slider changes reuse existing pages');
+  assert.ok(tiles.every(mesh=>mesh.instanceMatrix.needsUpdate===false),
+    'no instance buffer upload for slider changes');
+  grass.dispose();
+});
+
+test('distance LOD full-density radius can exceed grass render radius',()=>{
+  assert.equal(grassDistanceDensity(13,12,{nearEnd:30,minDensity:0}),1);
+  assert.equal(grassDistanceDensity(30,50,{nearEnd:30,minDensity:.25}),1);
+  assert.equal(grassDistanceDensity(48,50,{nearEnd:30,minDensity:.25}),.25);
+  assert.equal(grassDistanceDensity(48,50,{nearEnd:30,minDensity:1}),1);
+  assert.equal(grassDistanceDensity(48,50,{nearEnd:30,minDensity:0}),0);
+});
+
+test('rational density sharpness retains grass until the far boundary',()=>{
+  const opts={nearEnd:26,minDensity:.38};
+  const at=distance=>grassDistanceDensity(distance,50,{...opts,sharpness:8});
+  assert.equal(at(26),1);
+  assert.equal(at(48),.38);
+  assert.ok(at(38)>.5,'high k keeps considerable density halfway');
+  assert.ok(at(46)>at(47),'density drops most sharply near cutoff');
+  const linear=grassDistanceDensity(38,50,{...opts,sharpness:1});
+  assert.ok(at(38)>linear);
+});
+
+test('k=0 keeps coefficient independent and small k behaves normally',()=>{
+  assert.equal(grassDistanceDensity(50,50,{sharpness:0,minDensity:.38}),.38);
+  assert.ok(grassDistanceDensity(30,50,{sharpness:.005,minDensity:.38}) > .95,
+    'small k should preserve grass just after the full-density zone');
+  assert.ok(grassDistanceDensity(42,50,{sharpness:.005,minDensity:.38}) < .8,
+    'small k still thins the grass toward the far boundary');
+  assert.ok(grassDistanceDensity(30,50,{sharpness:5,minDensity:.38}) > .99);
+});
+
+test('grass can start reducing from the player position at 0m',()=>{
+  assert.equal(grassDistanceDensity(0,50,{nearEnd:0}),1);
+  assert.ok(grassDistanceDensity(10,50,{nearEnd:0})<1);
+});
+
+
+test('stable priorities and conservative bounds do not exclude potentially visible blades',()=>{
+  const {ctx,sceneItems}=fixture({radius:60,density:5});
+  ctx.settings.grassFullDensityDistance=0;
+  ctx.settings.grassDensitySharpness=.3;
+  ctx.settings.grassFarDensityPercent=18;
+  const grass=createMicroGrass(ctx);
+  const pages=[...sceneItems];
+  const original=pages.map(mesh=>[mesh,[...mesh.matrices.values()].map(m=>
+    [m.position.x,m.position.z])]);
+  grass.updateVisibility();
+  for(const [mesh,positions] of original){
+    const priorities=mesh.geometry.getAttribute('fcGrassPriority').array;
+    let previous=-1;
+    for(let i=0;i<positions.length;i++){
+      const rank=priorities[i];
+      assert.ok(rank>previous,'static deterministic priority ordering');
+      previous=rank;
+      const [x,z]=positions[i];
+      const coverage=grassDistanceDensity(Math.hypot(x-ctx.px,z-ctx.pz),60,{
+        nearEnd:0,minDensity:.18,sharpness:.3,
+      });
+      if(i>=mesh.count)assert.ok(coverage<=rank-.045+1e-6,
+        'CPU may omit only instances already fully hidden by shader');
+    }
+  }
+  ctx.px+=.8;
+  ctx.pz+=.5;
+  grass.tick();
+  grass.updateVisibility();
+  for(const [mesh,positions] of original){
+    assert.deepEqual([...mesh.matrices.values()].map(m=>[m.position.x,m.position.z]),
+      positions,'player movement never swaps or regenerates grass positions');
+  }
+  grass.dispose();
+});
+
+test('small k retains nearby grass while smoothly reaching far density',()=>{
+  const config={nearEnd:0,minDensity:.38,sharpness:.05};
+  const density=d=>grassDistanceDensity(d,50,config);
+  assert.equal(density(0),1);
+  assert.ok(density(2)>.999,'first few meters must remain fully covered');
+  assert.ok(density(5)>.99,'near foliage should not disappear at k=0.05');
+  assert.ok(density(10)>.96,'fades gradually without a near-density cliff');
+  assert.ok(density(25)<density(10),'thinning remains useful in mid-distance');
+  assert.equal(density(48),.38);
+  assert.ok(density(5)>grassDistanceDensity(5,50,{...config,sharpness:.005})-0.01);
+  assert.ok(grassDistanceDensity(25,50,{...config,sharpness:.5})>density(25),
+    'higher k preserves more grass farther out');
+});
+
+test('shader and CPU share the same cubic/quadratic stable falloff',()=>{
+  const {ctx,sceneItems}=fixture({radius:50,density:4});
+  const grass=createMicroGrass(ctx);
+  for(const material of new Set([...sceneItems].map(mesh=>mesh.material))){
+    const shader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>'};
+    material.onBeforeCompile(shader);
+    assert.match(shader.vertexShader,/fcNear = fcDistanceT\*fcDistanceT\*fcDistanceT/);
+    assert.match(shader.vertexShader,/fcGrassDensityShape\.x\+fcGrassDensityLod\.w/);
+    assert.match(shader.vertexShader,/fcGrassDensityShape\.y-fcDistanceT/);
+    assert.doesNotMatch(shader.vertexShader,/pow\(fcDistanceT/);
+  }
+  grass.dispose();
+});
+
+test('independent formula parameters change density and remain finite at zero',()=>{
+  const opts={nearEnd:0,minDensity:.38,sharpness:.005};
+  const at=(d,extra={})=>grassDistanceDensity(d,50,{...opts,...extra});
+  const near=t=>t*t*t,far=(a,t)=>(a-t)*(a-t);
+  for(const a of [0,.5,1,2,3])
+    for(const c of [0,.25,2,3]){
+      const t=25/48,denom=near(t)+(c+.005)*far(a,t);
+      const wanted=.38+.62*(1-near(t)/denom);
+      assert.ok(Math.abs(at(25,{coefficient:c,offset:a})-wanted)<1e-12);
+    }
+  assert.ok(at(25,{coefficient:0})<at(25,{coefficient:1}));
+  assert.ok(at(25,{offset:0})>at(25,{offset:1}));
+  assert.equal(at(0,{coefficient:0,offset:0,sharpness:0}),1);
+  assert.ok(Number.isFinite(at(25,{coefficient:0,offset:0,sharpness:0})));
+  assert.equal(at(25,{coefficient:0,offset:0,sharpness:0}),.38);
+});
+
+test('for nonmonotonic offset below 1 CPU renders full tiles for safe shader LOD',()=>{
+  const {ctx,sceneItems}=fixture({radius:50,density:5});
+  ctx.settings.grassFullDensityDistance=0;
+  ctx.settings.grassDensitySharpness=.005;
+  ctx.settings.grassDensityCoefficient=.25;
+  ctx.settings.grassDensityOffset=.5;
+  const grass=createMicroGrass(ctx);
+  grass.updateVisibility();
+  assert.ok([...sceneItems].every(mesh=>mesh.count===mesh.geometry.getAttribute('fcGrassPriority').array.filter(x=>x>0).length),
+    'non-monotonic settings may not remove tiles from the CPU side');
+  const uniform=[...sceneItems][0].material.userData.grassUniforms.fcGrassDensityShape.value;
+  assert.equal(uniform.x,.25);
+  assert.equal(uniform.y,.5);
+  grass.dispose();
 });

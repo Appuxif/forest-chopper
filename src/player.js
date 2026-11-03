@@ -216,6 +216,7 @@ for(const avatar of ctx.avatars.values()){
    ctx.terrain?.tick(now);
    ctx.atmosphere?.tick(now,ctx.px,ctx.pz);
    ctx.distantForest?.updateVisibility?.(ctx.yaw);
+   ctx.microGrass?.updateVisibility?.();
    ctx.renderProfiler?.beginFrame();
    try{ctx.renderer.render(ctx.scene,ctx.camera);}
    finally{ctx.renderProfiler?.endFrame();}
