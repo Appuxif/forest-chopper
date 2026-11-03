@@ -231,3 +231,14 @@ test('camera rotation keeps sector instance buffers unchanged (frustum handled b
   assert.ok(instances.every(m=>m.instanceMatrix.needsUpdate===false));
   f.distant.dispose();
 });
+
+
+test('distant forest ignores lakes during deep night and limits draw range',()=>{
+ const terrain={visibility:1,visibilityTarget:1,nightBlend:1,nightViewDistance:100};
+ const lake=lakeAt(123456,0,-1);
+ assert.equal(distantForestRange(terrain,[lake],lake.x,lake.z,
+   {lakeForestMode:'full',farForestDistance:165,lakeViewDistance:450}),100);
+ terrain.nightBlend=0;
+ assert.equal(distantForestRange(terrain,[lake],lake.x,lake.z,
+   {lakeForestMode:'full',farForestDistance:165,lakeViewDistance:450}),450);
+});

@@ -148,7 +148,7 @@ test('existing low-poly meshes remain default and are reused after downshifting'
  const {THREE,root,meshes}=gpuFixture();
  const legacy=()=>({visible:false,scale:{set(){}}});
  root.userData={flame:legacy(),innerFlame:legacy(),sparks:[legacy()],fireKind:'campfire'};
- const ctx={THREE,settings:{performancePreset:'low'}};
+ const ctx={THREE,settings:{performancePreset:'low',flameBillboard:false}};
  assert.equal(presentCampfireModel(ctx,root,{lit:true,distance:5}),'low');
  assert.equal(root.userData.flame.visible,true);
  assert.equal(meshes.length,0,'legacy path allocates no new particle batches');

@@ -159,7 +159,7 @@ test('one decorative campfire at the trailhead reuses assets and never changes w
   assert.equal(fires.length,1);
   const fire=fires[0];
   assert.deepEqual([fire.position.x,fire.position.y,fire.position.z],[5,0,5]);
-  assert.equal(fire.children.length,24,'nine stones, nine angled logs, two flames, three sparks, one light; no glowing coals');
+  assert.equal(fire.children.length,25,'nine stones, nine angled logs, two flames, three sparks, two switchable shadow lights; no glowing coals');
   const rocks=fire.children.slice(0,9),logs=fire.children.slice(9,18);
   assert.ok(rocks.every(x=>x.geometry?.args[0]===.24),'original crafted dodecahedron stone ring');
   assert.ok(logs.every(x=>x.geometry?.args[0]===1),'crafted rectangular logs');
@@ -194,12 +194,12 @@ test('one decorative campfire at the trailhead reuses assets and never changes w
   assert.equal(fire.children[18].geometry.args[0],.435,'outer flame is 50% wider');
   assert.equal(fire.children[19].geometry.args[0],.225,'inner flame is 50% wider');
   assert.equal(fire.children.filter(x=>x.geometry).length,23);
-  assert.equal(fire.children.filter(x=>x.intensity!==undefined).length,1,'one low-radius point light');
+  assert.equal(fire.children.filter(x=>x.intensity!==undefined).length,2,'two alternative point lights for split-shadow mode');
   const point=fire.children[23];
-  assert.equal(point.castShadow,true,'fire point light has genuine depth-cube shadows');
+  assert.equal(point.castShadow,false,'campfire casts no shadows in daylight');
   assert.deepEqual([point.shadow.mapSize.x,point.shadow.mapSize.y],[256,256]);
   assert.equal(point.shadow.camera.near,.2);
-  assert.equal(point.shadow.camera.far,9);
+  assert.equal(point.shadow.camera.far,10);
   assert.equal(point.shadow.autoUpdate,false);
   assert.deepEqual(point.layers.enabled,[1,3]);
   const seed=f.ctx.seed,treeCount=f.ctx.trees.size,assetCount=f.assets.length;
@@ -226,28 +226,145 @@ test('campfire flicker is bounded and reduced-motion stops all fire movement imm
     f.landmarks.tick(2000);
     assert.equal(flame.scale.y,1);
     assert.equal(inner.scale.y,1);
-    assert.equal(light.intensity,1.8);
+    assert.ok(Math.abs(light.intensity+fire.children[24].intensity-1.3)<1e-10);
     reduced.matches=false;
     f.landmarks.tick(2150);
     assert.ok(Math.abs(flame.scale.y-1)>.001);
-    assert.ok(light.intensity>1.5&&light.intensity<2.1);
+    assert.ok(light.intensity+fire.children[24].intensity>1.2&&light.intensity+fire.children[24].intensity<1.5);
     const yBefore=flame.scale.y;
     const sparksBefore=sparks.map(s=>s.position.y);
     light.shadow.needsUpdate=false;
-    f.landmarks.tick(2200);
-    assert.equal(light.shadow.needsUpdate,true,'point shadow refreshes near the player despite flame flicker throttle');
-    assert.notDeepEqual(sparks.map(s=>s.position.y),sparksBefore,'sparks move every frame, independent of the flame throttle');
+    f.landmarks.tick(2180);
     assert.equal(flame.scale.y,yBefore,'fire updates are rate-limited');
+    f.landmarks.tick(2450);
+    assert.equal(light.shadow.needsUpdate,false,'daytime flames do not render cubemap shadows');
+    assert.equal(light.shadow.autoUpdate,false);
+    assert.notDeepEqual(sparks.map(s=>s.position.y),sparksBefore,'sparks move every frame, independent of the flame throttle');
     // Point-light shadow updates stop when the local avatar is far away.
     f.ctx.px=100;f.ctx.pz=100;
     light.shadow.needsUpdate=false;
-    f.landmarks.tick(2201);
+    f.landmarks.tick(2451);
     assert.equal(light.shadow.needsUpdate,false);
     reduced.matches=true;
-    f.landmarks.tick(2202);
+    f.landmarks.tick(2452);
     assert.equal(flame.scale.y,1);
     assert.equal(inner.scale.y,1);
-    assert.equal(light.intensity,1.8);
+    assert.ok(Math.abs(light.intensity+fire.children[24].intensity-1.3)<1e-10);
     assert.deepEqual(sparks.map(s=>Number(s.position.y.toFixed(2))),[1.05,1.18,1.31]);
   }finally{globalThis.matchMedia=old;}
+});
+
+test('trailhead campfire has no daytime shadows and refreshes its cubemap each night frame',()=>{
+ const f=fixture();
+ f.ctx.settings={fireShadows:true,performancePreset:'high'};
+ f.world.build(0,0);
+ const group=f.ctx.chunks.get('0,0').children.find(x=>x.userData.landmark==='campfire');
+ const light=group.children.find(x=>x.intensity!==undefined);
+ f.ctx.terrain.nightBlend=0;
+ f.landmarks.tick(1000);
+ assert.equal(light.castShadow,false);
+ assert.equal(light.shadow.autoUpdate,false);
+ f.ctx.terrain.nightBlend=1;
+ f.landmarks.tick(1001);
+ assert.equal(light.castShadow,true);
+ assert.equal(light.shadow.autoUpdate,false,'static cubemap is cached');
+ assert.equal(group.userData.dynamicLight.shadow.autoUpdate,true,'dynamic cubemap updates each rendered frame');
+ f.ctx.terrain.nightBlend=0;
+ f.landmarks.tick(1002);
+ assert.equal(light.castShadow,false);
+ assert.equal(light.shadow.autoUpdate,false);
+});
+
+
+test('starter campfire shares the global two-light night shadow budget with built fires',()=>{
+ const f=fixture();
+ f.ctx.settings={fireShadows:true,performancePreset:'high'};
+ f.world.build(0,0);
+ const group=f.ctx.chunks.get('0,0').children.find(x=>x.userData.landmark==='campfire');
+ const light=group.children.find(x=>x.intensity!==undefined);
+ f.ctx.terrain.nightBlend=1;
+ // Two built sources are nearer to the avatar than the campfire at (5,5).
+ const built=new Map([
+  [1,{id:1,lit:true,kind:'torch',x:1,z:1}],
+  [2,{id:2,lit:true,kind:'campfire',x:2,z:2}],
+ ]);
+ f.ctx.campStructures={items:built};
+ f.landmarks.tick(1000);
+ assert.equal(light.castShadow,true,'starter keeps cached shadows even without a live slot');
+ assert.equal(group.userData.dynamicLight.shadow.autoUpdate,false,
+   'third-nearest starter does not update its dynamic cubemap');
+ built.get(2).lit=false;
+ f.landmarks.tick(1001);
+ assert.equal(light.castShadow,true,'starter receives the second slot when built fire is extinguished');
+ assert.equal(light.shadow.autoUpdate,false,'static cubemap is cached');
+ assert.equal(group.userData.dynamicLight.shadow.autoUpdate,true,'dynamic cubemap updates each rendered frame');
+ built.get(1).lit=false;
+ f.landmarks.tick(1002);
+ assert.equal(light.castShadow,true,'starter can be the only shadow source');
+ f.ctx.settings.fireShadows=false;
+ f.landmarks.tick(1003);
+ assert.equal(light.castShadow,false,'user can disable fire shadows');
+});
+
+test('starter fire uses visibility and decay sliders independent of 9m shadow range',()=>{
+ const f=fixture();
+ f.world.build(0,0);
+ const group=f.ctx.chunks.get('0,0').children.find(x=>x.userData.landmark==='campfire');
+ const light=group.userData.light,dynamic=group.userData.dynamicLight;
+ f.ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:2,
+   performancePreset:'high',campfireVisibilityDistance:90,campfireDecay:.5,
+   campfireNightRadius:9,fireStaticShadowRadius:9};
+ f.ctx.terrain.nightBlend=1;
+ f.ctx.px=65;f.ctx.pz=5;
+ f.landmarks.tick(1000);
+ assert.equal(light.distance,90);
+ assert.equal(dynamic.distance,90);
+ assert.equal(light.decay,.5);
+ assert.equal(dynamic.decay,.5);
+ assert.equal(light.userData.shadowCasterRange,9);
+ assert.equal(dynamic.userData.shadowCasterRange,9);
+ assert.equal(light.visible,true,'starter fire still illuminates 60m away');
+ assert.equal(dynamic.visible,true,'dynamic lamp keeps full light range without shadows');
+ assert.equal(light.castShadow,false,'shadows stop beyond shadow-caster range');
+ assert.equal(dynamic.castShadow,false);
+ f.ctx.px=150;
+ f.landmarks.tick(1200);
+ assert.equal(light.visible,false,'starter light deactivates beyond visibility slider');
+ f.ctx.px=10;
+ f.landmarks.tick(1400);
+ assert.equal(light.visible,true);
+ assert.equal(group.userData.light,light,'starter PointLight reused after deactivation');
+ assert.equal(group.userData.dynamicLight,dynamic);
+ assert.equal(dynamic.castShadow,true,'dynamic shadows return when player is near');
+});
+
+test('starter fire activation is independent from PointLight illumination distance',()=>{
+ const f=fixture();
+ f.world.build(0,0);
+ const group=f.ctx.chunks.get('0,0').children.find(x=>x.userData.landmark==='campfire');
+ const light=group.userData.light,dynamic=group.userData.dynamicLight;
+ f.ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:2,
+  performancePreset:'high',campfireVisibilityDistance:30,campfireActivationDistance:150,
+  campfireNightRadius:9,fireStaticShadowRadius:9};
+ f.ctx.terrain.nightBlend=1;
+ f.ctx.px=80;f.ctx.pz=5;
+ f.landmarks.tick(1000);
+ assert.equal(light.distance,30,'starter lamp illumination is bounded at 30m');
+ assert.equal(dynamic.distance,30);
+ assert.equal(light.visible,true,'starter light is not deactivated until 150m');
+ assert.equal(dynamic.visible,true);
+ assert.equal(light.castShadow,false,'short shadows stay disabled at this distance');
+ f.ctx.settings.campfireActivationDistance=25;
+ f.landmarks.tick(1200);
+ assert.equal(light.visible,false,'activation distance changes independently');
+ assert.equal(light.distance,30);
+ f.ctx.settings.campfireVisibilityDistance=200;
+ f.landmarks.tick(1400);
+ assert.equal(light.visible,false,'longer light reach does not force lamp on');
+ assert.equal(light.distance,200);
+ f.ctx.settings.campfireActivationDistance=150;
+ f.landmarks.tick(1600);
+ assert.equal(light.visible,true);
+ assert.equal(light.distance,200);
+ assert.equal(group.userData.light,light,'original source is reused');
 });

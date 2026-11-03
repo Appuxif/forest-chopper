@@ -2,13 +2,52 @@
 import {collectDiagnostics, formatDiagnostics, getGpuRendererName} from './diagnostics.js?v=20261101-gpu-renderer1';
 import {FPS_OPTIONS} from './frame-limiter.js';
 import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js';
-import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS} from './performance-presets.js';
+import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS} from './performance-presets.js?v=20261102-deep-night1';
 import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261102-jump-voices1';
 const KEY = 'forest-chopper:settings:v1';
+export const LIGHTING_FIELDS=Object.freeze({
+ dayAmbient:[0,3,.05,1.2,'☀️ Рассеянный свет дня'],
+ daySun:[0,5,.05,2,'☀️ Солнечный свет'],
+ nightAmbient:[0,1,.005,0,'🌙 Рассеянный свет ночи'],
+ nightMoon:[0,1,.005,.2,'🌙 Лунный свет'],
+ nightViewDistance:[30,160,5,30,'🌑 Дальность ночной видимости, м'],
+ fireShadowLimit:[0,4,1,2,'Количество источников с обновляемыми тенями'],
+ fireStaticShadowRadius:[1,100,1,100,'Радиус статических теней, м'],
+ campfireDayIntensity:[1,100,.1,1.3,'День · яркость'],
+ campfireNightIntensity:[1,100,.1,30,'Ночь · яркость'],
+ campfireDayRadius:[1,30,1,7,'День · радиус расчёта динамических теней, м'],
+ campfireNightRadius:[1,30,1,30,'Ночь · радиус расчёта динамических теней, м'],
+ campfireShadowVisibilityDistance:[1,100,1,30,'Дальность видимости теней, м'],
+ campfireVisibilityDistance:[10,250,5,100,'Радиус освещения (PointLight.distance), м'],
+ campfireActivationDistance:[10,250,5,100,'Дальность видимости лампы (от игрока), м'],
+ campfireDecay:[0,3,.1,2,'Затухание света (decay)'],
+ campfireLightHeight:[.2,4,.05,1.5,'Высота света над основанием, м'],
+ torchDayIntensity:[1,100,.1,1.1,'День · яркость'],
+ torchNightIntensity:[1,100,.1,30,'Ночь · яркость'],
+ torchDayRadius:[1,30,1,6,'День · радиус расчёта динамических теней, м'],
+ torchNightRadius:[1,30,1,30,'Ночь · радиус расчёта динамических теней, м'],
+ torchShadowVisibilityDistance:[1,100,1,30,'Дальность видимости теней, м'],
+ torchVisibilityDistance:[10,250,5,100,'Радиус освещения (PointLight.distance), м'],
+ torchActivationDistance:[10,250,5,100,'Дальность видимости лампы (от игрока), м'],
+ torchDecay:[0,3,.1,2,'Затухание света (decay)'],
+ torchLightHeight:[.2,4,.05,2.23,'Высота света над основанием, м'],
+});
+export const LIGHTING_FLAGS=Object.freeze({
+ flameShader:true,flameBillboard:true,fireShadows:true,nightDisableMoonShadows:true,splitShadowMaps:true,
+});
 const CAMERA_80_MIGRATION = 'forest-chopper:camera-80-default:v1';
 const AUDIO_REWORK_MIGRATION='forest-chopper:audio-rework-defaults:v2';
 const VOICE_MIGRATION='forest-chopper:voice-samples:v3';
-const DEFAULT = Object.freeze({...PERFORMANCE_DEFAULTS,performancePreset:'high',mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 30, grassDistance: 70, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 70, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80, audio:DEFAULT_AUDIO});
+const NIGHT_PROFILE_MIGRATION='forest-chopper:night-profile-defaults:v1';
+const MOONLIGHT_MIGRATION='forest-chopper:night-moon-default:v1';
+const NIGHT_VISIBILITY_30_MIGRATION='forest-chopper:night-visibility-30-default:v1';
+const FIRE_ACTIVATION_MIGRATION='forest-chopper:fire-activation-distance:v1';
+const PREVIOUS_LIGHTING_DEFAULTS=Object.freeze({
+ shadowContrast:70,dayAmbient:2.1,daySun:2.3,nightAmbient:.06,nightMoon:.025,
+ nightViewDistance:100,campfireNightIntensity:4,campfireNightRadius:20,
+ torchNightIntensity:3.3,torchNightRadius:16,
+});
+const DEFAULT = Object.freeze({...PERFORMANCE_DEFAULTS,performancePreset:'high',mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 30, grassDistance: 70, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 100, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80, audio:DEFAULT_AUDIO,...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,val])=>[key,val[3]])),...LIGHTING_FLAGS});
 
 function validCameraNumber(value,min,max,fallback,digits=2){
   if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max)return fallback;
@@ -46,6 +85,13 @@ export function sanitizeSettings(value) {
       ? source.spruceFoliageDensity : DEFAULT.spruceFoliageDensity,
     windEnabled: source.windEnabled !== false,
     dayCycleEnabled: source.dayCycleEnabled === true,
+    ...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,[min,max,step,fallback]])=>{
+      const value=source[key];
+      return [key,typeof value==='number'&&Number.isFinite(value)&&value>=min&&value<=max
+        ?Number((Math.round(value/step)*step).toFixed(4)):fallback];
+    })),
+    ...Object.fromEntries(Object.entries(LIGHTING_FLAGS).map(([key,fallback])=>
+      [key,typeof source[key]==='boolean'?source[key]:fallback])),
     autoSprint: source.autoSprint === true,
     quality: ['low','balanced','high'].includes(source.quality) ? source.quality : DEFAULT.quality,
     maxFps: FPS_OPTIONS.includes(source.maxFps) ? source.maxFps : DEFAULT.maxFps,
@@ -85,7 +131,7 @@ export function sanitizeSettings(value) {
     cameraPitchLimit: validCameraNumber(source.cameraPitchLimit,10,80,DEFAULT.cameraPitchLimit,0),
   };
   const ranges={
-    renderScale:[50,125,5],shadowMapSize:[512,2048,512],treeTrianglesSpruce:[2000,40000,500],
+    renderScale:[50,125,5],shadowMapSize:[512,4096,512],treeTrianglesSpruce:[2000,40000,500],
     treeTrianglesBirch:[1200,25000,100],
     grassTriangles:[1,6,1],detailedTreeRadius:[2,5,1],
     farForestDistance:[90,450,5],viewDistance:[160,500,10],
@@ -99,7 +145,7 @@ export function sanitizeSettings(value) {
       &&value<=max ?Math.round(value/step)*step:PERFORMANCE_DEFAULTS[key];
   }
   if(![1,3,6].includes(settings.grassTriangles))settings.grassTriangles=6;
-  if(![512,1024,2048].includes(settings.shadowMapSize))settings.shadowMapSize=1024;
+  if(![512,1024,2048,4096].includes(settings.shadowMapSize))settings.shadowMapSize=1024;
   if(!['off','shore','full'].includes(settings.lakeForestMode))
     settings.lakeForestMode=PERFORMANCE_DEFAULTS.lakeForestMode;
   if(!['simple','high'].includes(settings.waterQuality))
@@ -131,6 +177,47 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       if(persisted.audio.hurtFemale===0)persisted.audio.hurtFemale=78;
       local.setItem(KEY,JSON.stringify(persisted));
       local.setItem(VOICE_MIGRATION,'1');
+    }
+    // One-time adoption of the new defaults without overwriting custom values.
+    if(persisted&&!local.getItem(NIGHT_PROFILE_MIGRATION)){
+      for(const [key,oldValue] of Object.entries(PREVIOUS_LIGHTING_DEFAULTS)){
+        if(persisted[key]===oldValue)persisted[key]=
+          key==='shadowContrast'?100:LIGHTING_FIELDS[key]?.[3];
+      }
+      local.setItem(KEY,JSON.stringify(persisted));
+      local.setItem(NIGHT_PROFILE_MIGRATION,'1');
+    }
+    // A saved 0 was the previous moonlight default. Upgrade that default
+    // once, while leaving custom nonzero values untouched.
+    if(persisted&&!local.getItem(MOONLIGHT_MIGRATION)){
+      if(persisted.nightMoon===0){
+        persisted.nightMoon=LIGHTING_FIELDS.nightMoon[3];
+        local.setItem(KEY,JSON.stringify(persisted));
+      }
+      local.setItem(MOONLIGHT_MIGRATION,'1');
+    }
+    // Replace only the last night-visibility default (60 m) with 30 m.
+    // A deliberately customized range other than 60 m is preserved.
+    if(persisted&&!local.getItem(NIGHT_VISIBILITY_30_MIGRATION)){
+      if(persisted.nightViewDistance===60){
+        persisted.nightViewDistance=LIGHTING_FIELDS.nightViewDistance[3];
+        local.setItem(KEY,JSON.stringify(persisted));
+      }
+      local.setItem(NIGHT_VISIBILITY_30_MIGRATION,'1');
+    }
+    // A former single slider controlled both light attenuation and the
+    // distance at which the game hid its PointLight. Preserve that culling
+    // distance for existing saves; from now on the values are independent.
+    if(persisted&&!local.getItem(FIRE_ACTIVATION_MIGRATION)){
+      for(const kind of ['campfire','torch']){
+        const key=kind+'ActivationDistance';
+        const previous=persisted[kind+'VisibilityDistance'];
+        if(persisted[key]===undefined&&Number.isFinite(previous)&&previous>=10&&previous<=250){
+          persisted[key]=previous;
+        }
+      }
+      local.setItem(KEY,JSON.stringify(persisted));
+      local.setItem(FIRE_ACTIVATION_MIGRATION,'1');
     }
     // The previous third-person default was ±40°. Upgrade existing saved
     // defaults once, without overriding future user choices of ±40°.
@@ -164,6 +251,10 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 .fc-settings-page[hidden]{display:none}
 .fc-settings-page{max-width:570px;margin:auto}
 .fc-settings-page[data-category=trees]{max-width:635px}
+.fc-light-group{border:1px solid #43634d;border-radius:10px;margin:12px 0;padding:12px 15px;background:#112b21}
+.fc-light-group h3{margin:0 0 8px;font-size:14px;color:#c0edd0}
+.fc-light-group label{margin:12px 0!important}
+.fc-light-switches{display:flex;flex-wrap:wrap;gap:7px 20px}
 .fc-audio-group{margin:12px 0 20px;border:1px solid #ffffff30;border-radius:9px;padding:12px 15px;background:#0e211a}
 .fc-audio-group h3{font-size:14px;margin:0 0 12px;color:#c1eacf}
 .fc-audio-row{display:grid;grid-template-columns:minmax(0,1fr) 42px;gap:10px;align-items:end;margin:12px 0}
@@ -237,6 +328,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <button type="button" class="fc-settings-tab" data-category="controls" aria-selected="false">🎮 Управление</button>
       <button type="button" class="fc-settings-tab" data-category="camera" aria-selected="false">📷 Камера</button>
       <button type="button" class="fc-settings-tab" data-category="audio" aria-selected="false">🔊 Звук</button>
+      <button type="button" class="fc-settings-tab" data-category="lighting" aria-selected="false">💡 Освещение</button>
       <button type="button" class="fc-settings-tab" data-category="world" aria-selected="false">🌍 Мир</button>
     </nav>
     <div class="fc-settings-content">
@@ -257,7 +349,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <label>Дальность теней от деревьев: <output id="fc-shadow-distance-value"></output> м
       <input id="fc-shadow-distance" type="range" min="20" max="100" step="1"></label>
     <label>Разрешение карты теней
-      <select id="fc-shadow-map-size"><option value="512">512 × 512</option><option value="1024">1024 × 1024</option><option value="2048">2048 × 2048</option></select></label>
+      <select id="fc-shadow-map-size"><option value="512">512 × 512</option><option value="1024">1024 × 1024</option><option value="2048">2048 × 2048</option><option value="4096">4096 × 4096 (4K)</option></select></label>
     <label>Обновлять тени деревьев: <output id="fc-shadow-refresh-value"></output>
       <input id="fc-shadow-refresh" type="range" min="0" max="5" step="0.5"></label>
     <label><input id="fc-character-shadows" type="checkbox"> Динамические тени персонажей</label>
@@ -384,6 +476,32 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     </details>
     <button type="button" id="fc-audio-defaults">Сбросить только громкости</button>
     </section>
+    <section class="fc-settings-page" data-category="lighting" aria-label="Освещение" hidden>
+      <small>Часы 6–10 — глубокая ночь. С 4 до 6 плавный закат, с 10 до 12 рассвет. Дневные и ночные значения интерполируются. Настройки сохраняются автоматически.</small>
+      ${[
+        ['day','☀️ Дневное освещение',['dayAmbient','daySun']],
+        ['night','🌙 Ночное освещение',['nightAmbient','nightMoon','nightViewDistance']],
+        ['campfire','🔥 Костёр',['campfireDayIntensity','campfireDayRadius','campfireNightIntensity','campfireNightRadius','campfireShadowVisibilityDistance','campfireVisibilityDistance','campfireActivationDistance','campfireDecay','campfireLightHeight']],
+        ['torch','🕯️ Факел',['torchDayIntensity','torchDayRadius','torchNightIntensity','torchNightRadius','torchShadowVisibilityDistance','torchVisibilityDistance','torchActivationDistance','torchDecay','torchLightHeight']],
+      ].map(([,title,keys])=>`<div class="fc-light-group"><h3>${title}</h3>${keys.map(key=>{
+        const [min,max,step,,label]=LIGHTING_FIELDS[key];
+        return `<label>${label}: <output id="fc-light-${key}-value"></output>
+          <input id="fc-light-${key}" type="range" min="${min}" max="${max}" step="${step}"></label>`;
+      }).join('')}</div>`).join('')}
+      <div class="fc-light-group"><h3>✨ Эффекты и тени</h3>
+        <label>${LIGHTING_FIELDS.fireShadowLimit[4]}: <output id="fc-light-fireShadowLimit-value"></output>
+        <input id="fc-light-fireShadowLimit" type="range" min="0" max="4" step="1"></label>
+        <label>${LIGHTING_FIELDS.fireStaticShadowRadius[4]}: <output id="fc-light-fireStaticShadowRadius-value"></output>
+        <input id="fc-light-fireStaticShadowRadius" type="range" min="1" max="100" step="1"></label>
+        ${[['flameShader','Шейдерное пламя (вместо простых конусов)'],
+           ['flameBillboard','Billboard-свечение вокруг пламени'],
+           ['fireShadows','Включить тени от огня (дороже на GPU)'],
+           ['splitShadowMaps','Раздельные лампы: статические и динамические тени (солнце, костёр, факел)'],
+           ['nightDisableMoonShadows','Ночью отключать тени от луны: деревья, объекты, персонаж']].map(([key,label])=>
+          `<label><input id="fc-light-${key}" type="checkbox"> ${label}</label>`).join('')}
+        <small>Радиус освещения (10–250 м) задаёт PointLight.distance, а дальность видимости лампы (10–250 м) независимо определяет, как далеко игрок может отойти, прежде чем игра поставит лампе visible=false. Радиусы расчёта теней задают, какие объекты попадают в карту: динамика/одна лампа — дневной и ночной ползунки, статика — общий ползунок 1–100 м. Отдельная дальность видимости теней (1–100 м) определяет, насколько далеко игрок может отойти, прежде чем карты теней перестанут использоваться. За пределами динамического радиуса и при отсутствии свободного слота карта перестаёт обновляться, но последний её снимок остаётся видимым. В раздельном режиме две лампы светят с яркостью 50% каждая, а тени обновляются отдельно. decay=2 — физическое затухание, ближе к 0 — более равномерный свет. Изменение этих параметров не затрагивает солнце. Лимит 0–4 ограничивает только число **покадрово обновляемых** карт ближайших огней; кэшированные тени всех активных источников остаются видимы независимо от этого лимита, даже вблизи и при значении 0. Когда источник теряет слот, его последняя карта сохраняется без пересчёта (возможна замороженная тень персонажа). Для полного выключения теней используй отдельный чекбокс «Включить тени от огня». На Low тени огня отключены.</small>
+      </div>
+    </section>
     <section class="fc-settings-page" data-category="world" aria-label="Мир" hidden>
     <label><input id="fc-wind-enabled" type="checkbox"> Лёгкий ветер в деревьях</label>
     <label><input id="fc-day-cycle" type="checkbox"> Локальная смена дня и ночи</label>
@@ -456,6 +574,13 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   };
   const renderFps = () => {fps.textContent = `Render FPS ${lastRate === null ? '—' : lastRate} · Physics FPS ${lastPhysicsRate === null ? '—' : lastPhysicsRate} · ${networkLabel()}\nCPU Frame Time ${lastCpuMs === null ? '—' : lastCpuMs.toFixed(2)+' ms'} · GPU Frame Time ${gpuTimingSupported===false?'н/д':lastGpuMs === null?'—':lastGpuMs.toFixed(2)+' ms'}${lastGpu ? '\nGPU: '+lastGpu : ''}${lastPosition ? '\n'+lastPosition : ''}${lastDiagnostics ? '\n'+lastDiagnostics : ''}`;};
   function reflect() {
+    for(const key of Object.keys(LIGHTING_FIELDS)){
+      const el=panel.querySelector('#fc-light-'+key);
+      if(el){el.value=String(state[key]);panel.querySelector('#fc-light-'+key+'-value').textContent=String(state[key]);}
+    }
+    for(const key of Object.keys(LIGHTING_FLAGS)){
+      const el=panel.querySelector('#fc-light-'+key);if(el)el.checked=state[key];
+    }
     for(const [key,id,digits] of cameraControls){
       panel.querySelector('#fc-'+id).value=String(state[key]);
       panel.querySelector('#fc-'+id+'-value').textContent=state[key].toFixed(digits);
@@ -532,7 +657,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const pages=Array.from(panel.querySelectorAll?.('.fc-settings-page')??[]);
   let activeCategory='graphics';
   function activateCategory(category) {
-    if(!['graphics','grass','trees','controls','camera','audio','world'].includes(category))return;
+    if(!['graphics','grass','trees','controls','camera','audio','lighting','world'].includes(category))return;
     activeCategory=category;
     for(const tab of tabButtons)tab.setAttribute('aria-selected',String(tab.dataset.category===category));
     for(const page of pages)page.hidden=page.dataset.category!==category;
@@ -540,6 +665,18 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     if(content)content.scrollTop=0;
   }
   for(const tab of tabButtons)tab.onclick=()=>activateCategory(tab.dataset.category);
+  for(const key of Object.keys(LIGHTING_FIELDS)){
+    const el=panel.querySelector('#fc-light-'+key);
+    el.oninput=()=>{
+      state[key]=Number(el.value);
+      panel.querySelector('#fc-light-'+key+'-value').textContent=String(state[key]);
+      save();
+    };
+  }
+  for(const key of Object.keys(LIGHTING_FLAGS)){
+    const el=panel.querySelector('#fc-light-'+key);
+    el.onchange=()=>{state[key]=el.checked;save();};
+  }
   function reflectAudio(){
     for(const {key} of SOUND_CONTROLS){
       const input=panel.querySelector('#fc-audio-'+key);
@@ -846,6 +983,36 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get spruceFoliageDensity(){return state.spruceFoliageDensity;},
     get windEnabled(){return state.windEnabled;},
     get dayCycleEnabled(){return state.dayCycleEnabled;},
+    get dayAmbient(){return state.dayAmbient;},
+    get daySun(){return state.daySun;},
+    get nightAmbient(){return state.nightAmbient;},
+    get nightMoon(){return state.nightMoon;},
+    get nightViewDistance(){return state.nightViewDistance;},
+    get campfireDayIntensity(){return state.campfireDayIntensity;},
+    get campfireNightIntensity(){return state.campfireNightIntensity;},
+    get campfireDayRadius(){return state.campfireDayRadius;},
+    get campfireNightRadius(){return state.campfireNightRadius;},
+    get campfireShadowVisibilityDistance(){return state.campfireShadowVisibilityDistance;},
+    get campfireLightHeight(){return state.campfireLightHeight;},
+    get campfireVisibilityDistance(){return state.campfireVisibilityDistance;},
+    get campfireActivationDistance(){return state.campfireActivationDistance;},
+    get campfireDecay(){return state.campfireDecay;},
+    get torchDayIntensity(){return state.torchDayIntensity;},
+    get torchNightIntensity(){return state.torchNightIntensity;},
+    get torchDayRadius(){return state.torchDayRadius;},
+    get torchNightRadius(){return state.torchNightRadius;},
+    get torchShadowVisibilityDistance(){return state.torchShadowVisibilityDistance;},
+    get torchLightHeight(){return state.torchLightHeight;},
+    get torchVisibilityDistance(){return state.torchVisibilityDistance;},
+    get torchActivationDistance(){return state.torchActivationDistance;},
+    get torchDecay(){return state.torchDecay;},
+    get fireStaticShadowRadius(){return state.fireStaticShadowRadius;},
+    get flameShader(){return state.flameShader;},
+    get flameBillboard(){return state.flameBillboard;},
+    get fireShadows(){return state.fireShadows;},
+    get splitShadowMaps(){return state.splitShadowMaps;},
+    get fireShadowLimit(){return state.fireShadowLimit;},
+    get nightDisableMoonShadows(){return state.nightDisableMoonShadows;},
     get autoSprint(){return state.autoSprint;},
     get fov(){return state.fov;},
     get quality(){return state.quality;},

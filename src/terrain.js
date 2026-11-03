@@ -53,6 +53,7 @@ export class TerrainSystem {
     this.waterQuality='high';
     this.lakeVisibility=true;
     this.viewDistance=this.baseCameraFar;
+    this.nightBlend=0;this.nightViewDistance=30;
     this.lakeViewDistance=380;
     this.waterMaterial.onBeforeCompile=shader=>{
       shader.uniforms.fcWaterTime=this.waterTime;
@@ -250,6 +251,14 @@ export class TerrainSystem {
     this.visibilityTarget=this.lakeVisibility?this.visibilityTarget:0;
   }
 
+  setNightBlend(blend,distance=30){
+    this.nightBlend=Math.max(0,Math.min(1,blend));
+    this.nightViewDistance=Math.max(30,Math.min(160,distance));
+  }
+  get effectiveViewDistance(){
+    return this.viewDistance+(Math.min(this.viewDistance,this.nightViewDistance)-this.viewDistance)*this.nightBlend;
+  }
+
   // Lake panorama: dissolve the fog and move the far clipping plane as the
   // shore approaches. Preserve the existing misty forest away from lakes.
   updateVisibilityTarget(x,z){
@@ -267,11 +276,12 @@ export class TerrainSystem {
       influence=Math.max(influence,smooth);
     }
     this.visibilityTarget=this.lakeVisibility?influence:0;
-    influence=this.visibilityTarget;
+    influence=this.visibilityTarget*(1-this.nightBlend);
     // Extra terrain needed before the fog clears; avoid exposing a hard
     // square edge of the heightfield across the far shore.
-    this.radius=Math.max(influence,this.visibility)>.06
-      ?this.baseRadius+1:this.baseRadius;
+    const rangeRadius=Math.max(2,Math.ceil(this.effectiveViewDistance/this.chunkSize));
+    this.radius=Math.max(influence,this.visibility*(1-this.nightBlend))>.06
+      ?rangeRadius+1:rangeRadius;
   }
 
   tick(now){
@@ -279,15 +289,15 @@ export class TerrainSystem {
     const dt=this.lastVisibilityTick===null?0:Math.max(0,Math.min(.1,(now-this.lastVisibilityTick)*.001));
     this.lastVisibilityTick=now;
     const t=1-Math.exp(-dt*2.6);
-    this.visibility+=(this.visibilityTarget-this.visibility)*t;
+    this.visibility+=(this.visibilityTarget*(1-this.nightBlend)-this.visibility)*t;
     if(Math.abs(this.visibilityTarget-this.visibility)<.001)
       this.visibility=this.visibilityTarget;
     if(this.fog)
       this.fog.density=this.baseFogDensity+
-        (.0032-this.baseFogDensity)*this.visibility;
+        (.0032-this.baseFogDensity)*this.visibility+.028*this.nightBlend;
     if(this.camera){
-      const targetFar=this.viewDistance+
-        Math.max(0,this.lakeViewDistance-this.viewDistance)*this.visibility;
+      const targetFar=this.effectiveViewDistance+
+        Math.max(0,this.lakeViewDistance-this.viewDistance)*this.visibility*(1-this.nightBlend);
       if(Math.abs(this.camera.far-targetFar)>1){
         this.camera.far=targetFar;
         this.camera.updateProjectionMatrix();

@@ -1,3 +1,4 @@
+import {nightBlend} from './lighting-profile.js?v=20261102-deep-night1';
 // Lightweight local atmosphere and a bounded shadow budget for trees.
 // Everything is cosmetic: no network state, world generation, or time sync.
 import {snapCharacterShadowCenter,CHARACTER_SHADOW_PROXY_EXTRA} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
@@ -141,6 +142,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   // not the shadow camera layers. We give each light only its actual casters.
   // This avoids traversing the forest on every character shadow update.
   const treeShadowScene=new THREE.Group();
+  const combinedSunShadowScene=new THREE.Group();
   const characterShadowScene=new THREE.Group();
   const localPointShadowScene=new THREE.Group();
   const originalShadowRender=renderer.shadowMap.render;
@@ -150,8 +152,18 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
       for(const light of lights){
         if(light.shadow?.autoUpdate===false && !light.shadow.needsUpdate)continue;
         if(light===sun){
-          viewCamera.layers.mask=1; // tree meshes only
-          originalShadowRender.call(this,[light],treeShadowScene,viewCamera);
+          if(settings.splitShadowMaps===false){
+            combinedSunShadowScene.children=[
+              ...(settings.treeShadowsEnabled!==false?treeShadowScene.children:[]),
+              ...(settings.characterShadowsEnabled!==false
+                ? getCharacterShadowCasters(CHARACTER_SHADOW_RADIUS):[]),
+            ];
+            viewCamera.layers.mask=1|(1<<1)|(1<<3)|(1<<4);
+            originalShadowRender.call(this,[light],combinedSunShadowScene,viewCamera);
+          }else{
+            viewCamera.layers.mask=1; // tree meshes only
+            originalShadowRender.call(this,[light],treeShadowScene,viewCamera);
+          }
         }else if(light===characterLight){
           characterShadowScene.children=getCharacterShadowCasters(CHARACTER_SHADOW_RADIUS);
           viewCamera.layers.mask=(1<<1)|(1<<3)|(1<<4); // remote, local, shadow-only LOD
@@ -186,7 +198,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   let quality=null,shadowResolution=null,phase=0,lastUpdate=-Infinity,
     centerX=Infinity,centerZ=Infinity;
   let shadowRadius=null, refreshInterval=null, characterShadowExtent=null;
-  let builtShadowsDirty=true;
+  let builtShadowsDirty=true,staticShadowRevision=0;
   let totalSunIntensity=initialSunIntensity;
   let baseAmbientIntensity=initialAmbientIntensity;
   function setAmbientIntensity(value){
@@ -202,11 +214,11 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     characterLight.intensity=characterShadowsEnabled?total*.5:0;
   }
   setSunIntensity(initialSunIntensity);
-  let lightingChanged=true;
+  let lightingChanged=true,moonShadowsDisabled=false;
   const activeTrees=new Set();
   const activeDecor=new Set();
   const zenithDay=new THREE.Color(0x78b0d0);
-  const zenithNight=new THREE.Color(0x080d1b);
+  const zenithNight=new THREE.Color(0x000101);
   const targetPosition=new THREE.Vector3();
   const lightDir=new THREE.Vector3();
   const sunVector=new THREE.Vector3();
@@ -232,6 +244,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   }
   function setPhase(value=0) {
     phase=Number.isFinite(value)?((value%1)+1)%1:0;
+    moonShadowsDisabled=settings.nightDisableMoonShadows!==false&&nightBlend(phase)>=.999;
     const dirs=celestialDirections(phase);
     sunVector.set(dirs.sun.x,dirs.sun.y,dirs.sun.z);
     moonVector.set(dirs.moon.x,dirs.moon.y,dirs.moon.z);
@@ -289,18 +302,28 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     const settingsChanged=radius!==shadowRadius || interval!==refreshInterval ||
       quality!==settings.quality ||
       shadowResolution!==(settings.shadowMapSize??shadowMapSizeForQuality(settings.quality));
-    const shadowsEnabled=settings.treeShadowsEnabled!==false;
+    const split=settings.splitShadowMaps!==false;
+    const staticEnabled=settings.treeShadowsEnabled!==false&&!moonShadowsDisabled;
+    const dynamicEnabled=settings.characterShadowsEnabled!==false&&!moonShadowsDisabled;
+    const shadowsEnabled=split?staticEnabled:staticEnabled||dynamicEnabled;
     if(sun.castShadow!==shadowsEnabled){
       sun.castShadow=shadowsEnabled;
       sun.shadow.needsUpdate=shadowsEnabled;
     }
+    // Single mode deliberately redraws all sun casters every rendered frame.
     const treeDue=shadowsEnabled &&
-      (settingsChanged || builtShadowsDirty || now-lastUpdate>=interval);
+      (!split || settingsChanged || builtShadowsDirty || now-lastUpdate>=interval);
+    // No directional shadow maps are needed in deep night; local fire lights
+    // retain independent shadows and are budgeted separately.
+    if(moonShadowsDisabled){
+      characterLight.shadow.needsUpdate=false;
+      sun.shadow.needsUpdate=false;
+    }
     // Apply the map size before snapping its centre to texels.
     if(quality!==settings.quality ||
       shadowResolution!==(settings.shadowMapSize??shadowMapSizeForQuality(settings.quality)))
       applyQuality();
-    const wantCharacters=settings.characterShadowsEnabled!==false;
+    const wantCharacters=split&&dynamicEnabled;
     if(characterShadowsEnabled!==wantCharacters){
       characterShadowsEnabled=wantCharacters;
       characterLight.castShadow=wantCharacters;
@@ -369,6 +392,7 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
     activeTrees.clear();
     activeDecor.clear();
     treeShadowScene.children=[];
+    combinedSunShadowScene.children=[];
     characterShadowScene.children=[];
     localPointShadowScene.children=[];
     renderer.shadowMap.render=originalShadowRender;
@@ -386,7 +410,8 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   }
   setPhase(0);
   return {tick,setPhase,restore,dispose,setSunIntensity,setAmbientIntensity,dome,sunBody,moonBody,characterLight,
-    invalidateStaticShadows(){builtShadowsDirty=true;},
+    invalidateStaticShadows(){builtShadowsDirty=true;staticShadowRevision++;},
+    get staticShadowRevision(){return staticShadowRevision;},
     get lightDirection(){return lightDir;},
     get sunIntensity(){return totalSunIntensity;},
     get ambientIntensity(){return baseAmbientIntensity;},

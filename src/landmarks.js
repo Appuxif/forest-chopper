@@ -1,5 +1,7 @@
-import {createCampfireModel,animateCampfireModel,presentCampfireModel,disposeCampfireEffects} from './campfire-model.js';
-import {createFireVisibilityTester} from './fire-effects.js?v=20261102-centered-outer-flame1';
+import {fireLighting} from './lighting-profile.js?v=20261103-shadow-visibility-cache1';
+import {fireShadowPolicy,selectFireShadowSources,STARTER_FIRE_ID} from './fire-shadow-policy.js?v=20261103-all-cached-shadows1';
+import {createCampfireModel,animateCampfireModel,presentCampfireModel,disposeCampfireEffects,applyFireLightSettings,applyFireShadowMode} from './campfire-model.js?v=20261103-all-cached-shadows1';
+import {createFireVisibilityTester} from './fire-effects.js?v=20261102-night-lighting1';
 import {createTrailTexture} from './trail-texture.js';
 // Shared low-poly navigation cues. The trail is purely visual:
 // tree spawn coordinates, collision, server and save state remain unchanged.
@@ -48,7 +50,11 @@ export function createLandmarks(ctx,doc=document) {
   }
 
   function createCampfire(parent) {
-    if(activeFire)disposeCampfireEffects(activeFire.group);
+    if(activeFire){
+      disposeCampfireEffects(activeFire.group);
+      activeFire.light?.shadow?.dispose?.();
+      activeFire.dynamicLight?.shadow?.dispose?.();
+    }
     const visual=createCampfireModel(ctx,{shadows:true});
     const fire=visual.group;
     fire.position.set(5,ctx.terrain.heightAt(5,5),5);
@@ -64,6 +70,8 @@ export function createLandmarks(ctx,doc=document) {
     if(!activeFire)return;
     if(ctx.chunks.get('0,0')!==activeFire.parent){
       disposeCampfireEffects(activeFire.group);
+      activeFire.light?.shadow?.dispose?.();
+      activeFire.dynamicLight?.shadow?.dispose?.();
       activeFire=null;return;
     }
     if(!Number.isFinite(now))return;
@@ -73,28 +81,60 @@ export function createLandmarks(ctx,doc=document) {
       lastVisibility=now;fireVisibility.begin();
       const onScreen=fireVisibility.visible(5,group.position.y,5,'campfire',distance);
       presentCampfireModel(ctx,group,{lit:true,distance,onScreen});
-      light.visible=distance<25;
+      const lighting=applyFireLightSettings(ctx,group,'campfire',ctx.terrain?.nightBlend??0);
+      light.visible=distance<lighting.activationDistance+2;
     }
+    // This runs each game tick; autoUpdate lets WebGL refresh the selected
+    // fire's cubemap on every rendered frame even without a VFX update.
+    const night=ctx.terrain?.nightBlend??0;
+    const built=[...(ctx.campStructures?.items?.values()??[])]
+      .filter(item=>item.lit&&(item.kind==='torch'||item.kind==='campfire'))
+      .map(item=>{
+        const profile=fireLighting(ctx.settings??{},item.kind,night);
+        return {
+          id:item.id,distance:Math.hypot(item.x-ctx.px,item.z-ctx.pz),
+          radius:profile.radius,
+          activationDistance:profile.activationDistance,
+        };
+      })
+      .filter(item=>item.distance<item.activationDistance+2)
+      .sort((a,b)=>a.distance-b.distance);
+    const candidates=built.map(item=>({
+      ...item,visible:true,
+    }));
+    const shadowVisibility=fireLighting(ctx.settings??{},'campfire',night).shadowVisibilityDistance;
+    const casterRadius=fireLighting(ctx.settings??{},'campfire',night).radius;
+    candidates.push({id:STARTER_FIRE_ID,distance,
+      radius:casterRadius,visible:light.visible});
+    const shadowSources=selectFireShadowSources(candidates,
+      ctx.settings?.fireShadowLimit??2,100);
+    applyFireShadowMode(ctx,group,fireShadowPolicy({
+      night,settings:ctx.settings,selected:shadowSources.has(STARTER_FIRE_ID),
+      visible:light.visible,distance,
+      radius:shadowVisibility,maxRange:100,
+    }),now,distance);
     const tier=group.userData.fireEffects?.tier;
     if(tier==='off'||tier==='glow'||distance>=100){
       if(reduceMotion.matches){
         animateCampfireModel(group,now,true,true,ctx);
-        light.intensity=1.8;
+        applyFireLightSettings(ctx,group,'campfire',ctx.terrain?.nightBlend??0);
       }
       return;
     }
     if(reduceMotion.matches){
       animateCampfireModel(group,now,true,true,ctx);
-      light.intensity=1.8;
+      applyFireLightSettings(ctx,group,'campfire',ctx.terrain?.nightBlend??0);
       return;
     }
     // Spark motion stays independent of the legacy low-poly flame throttle.
     animateCampfireModel(group,now,false,false,ctx);
-    if(distance<11)light.shadow.needsUpdate=true;
     if(now-lastFireTick<150)return;
     lastFireTick=now;
     animateCampfireModel(group,now,false,true,ctx);
-    light.intensity=1.8+Math.sin(now*.007)*.20;
+    applyFireLightSettings(ctx,group,'campfire',ctx.terrain?.nightBlend??0);
+    const flicker=1+Math.sin(now*.007)*.06;
+    light.intensity*=flicker;
+    if(group.userData.dynamicLight)group.userData.dynamicLight.intensity*=flicker;
   }
 
   function decorate(group,cx,cz) {
@@ -139,5 +179,6 @@ export function createLandmarks(ctx,doc=document) {
     group.add(board);
     group.userData?.shadowDecor?.push(board);
   }
-  return {decorate,signPosition,tick};
+  return {decorate,signPosition,tick,
+    get fireDistance(){return activeFire?Math.hypot(ctx.px-5,ctx.pz-5):Infinity;}};
 }

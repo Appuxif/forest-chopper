@@ -1,4 +1,4 @@
-import {installDebugCheats} from './debug-cheats.js?v=20261102-debug-lightfix1';
+import {installDebugCheats} from './debug-cheats.js?v=20261102-freeze-time1';
 import {createDebugFps} from './debug-fps.js';
 import {parseOfflineSave} from './offline-save.js';
 import {BOX_LIFETIME_SECONDS,MAX_GROUND_DROPS} from './ground-boxes.js';

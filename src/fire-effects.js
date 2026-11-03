@@ -178,19 +178,19 @@ const flameDescriptors=SOURCE_LAYOUT.flames;
   map:a.glowTexture,color:0xffb36d,transparent:true,depthWrite:false,
   blending:THREE.AdditiveBlending})):null;
  if(glow){
-  glow.position.y=torch?.10:.45;
+  glow.position.y=torch?1.4:.85;
   const size=torch?.55:1.55;
   glow.scale.set(size,size,1);
   glow.visible=false;anchor.add(glow);
  }
- let tier='off',lastUpdate=null;
+ let tier='off',lastUpdate=null,billboardEnabled=true;
  function setTier(next){
   if(next===tier)return;
   tier=next;
   const config=(torch?TORCH_TIERS:FIRE_TIERS)[tier]??FIRE_TIERS.off;
   flames.count=config.flames;smoke.count=config.smoke;sparks.count=config.sparks;
   flames.visible=config.flames>0;smoke.visible=config.smoke>0;sparks.visible=config.sparks>0;
-  if(glow)glow.visible=tier==='glow';
+  if(glow)glow.visible=tier!=='off' && billboardEnabled;
   if(config.flames){
    for(let i=0;i<config.flames;i++){
     const f=flameDescriptors[i],s=f.total;
@@ -204,6 +204,10 @@ const flameDescriptors=SOURCE_LAYOUT.flames;
    }
    flames.instanceMatrix.needsUpdate=true;
   }
+ }
+ function setBillboardEnabled(enabled){
+  billboardEnabled=enabled===true;
+  if(glow)glow.visible=tier!=='off'&&billboardEnabled;
  }
  function tick(now,cameraPos,worldPos,reducedMotion=false){
   if(!Number.isFinite(now))return;
@@ -277,7 +281,7 @@ const flameDescriptors=SOURCE_LAYOUT.flames;
   glow?.material?.dispose?.();
   parent.remove?.(anchor);
  }
- return {anchor,flames,smoke,sparks,glow,setTier,tick,dispose,get visualScale(){return scale;},get tier(){return tier;}};
+ return {anchor,flames,smoke,sparks,glow,setTier,setBillboardEnabled,tick,dispose,get visualScale(){return scale;},get tier(){return tier;}};
 }
 
 // A single frustum is reused across all fires in a tick (not one per fire).

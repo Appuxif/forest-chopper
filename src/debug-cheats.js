@@ -22,12 +22,13 @@ export function safeTeleportPoint(ctx,x,z,{step=1,maxRadius=40}={}){
 }
 
 export function installDebugCheats(ctx){
- const state={hunger:false,immortal:false,stamina:false,flying:false,timeOverride:false,mobileUp:false,mobileDown:false};
+ const state={hunger:false,immortal:false,stamina:false,flying:false,freezeTime:false,timeOverride:false,mobileUp:false,mobileDown:false};
  let downButton=null;
  function updateFlightButtons(){if(downButton)downButton.hidden=!state.flying||ctx.isOnline();}
  ctx.debugCheats=state;
  const onlyOffline=()=>{if(ctx.isOnline())throw Error('Читы недоступны в сетевой игре');};
  function reset(){
+  ctx.dayCycle.setFrozen(false);
   ctx.dayCycle.setDebugOverride(false);
   for(const key of Object.keys(state))state[key]=false;
   ctx.verticalSpeed=0;updateFlightButtons();
@@ -49,7 +50,14 @@ export function installDebugCheats(ctx){
   },
   toggle(key,enabled){
    onlyOffline();
-   if(!['hunger','immortal','stamina','flying'].includes(key))throw Error('Неизвестный чит');
+   if(!['hunger','immortal','stamina','flying','freezeTime'].includes(key))throw Error('Неизвестный чит');
+   if(key==='freezeTime'){
+    if(!ctx.dayCycle.setFrozen(!!enabled))throw Error('Нельзя заморозить сетевое время');
+    state.freezeTime=!!enabled;
+    ctx.dayCycle.setDebugOverride(state.freezeTime||state.timeOverride);
+    ctx.dayCycle.tick(performance.now());
+    return state.freezeTime;
+   }
    state[key]=!!enabled;
    if(key==='flying'){
     state.mobileUp=false;state.mobileDown=false;updateFlightButtons();
@@ -145,7 +153,7 @@ export function installDebugCheats(ctx){
  const notice=(message,error=false)=>{const node=$('fc-cheat-msg');node.textContent=message;node.style.color=error?'#ff9c8c':'#c7e8b5';};
  const perform=fn=>{try{notice(String(fn()));}catch(e){notice(e.message,true);}};
  const flags=$('fc-cheat-flags');
- for(const [key,label] of [['hunger','Отключить голод'],['immortal','Бессмертие'],['stamina','Бесконечная выносливость'],['flying','Полёт по взгляду (WASD, Space/Shift ↑, Ctrl ↓)']]){
+ for(const [key,label] of [['hunger','Отключить голод'],['immortal','Бессмертие'],['stamina','Бесконечная выносливость'],['flying','Полёт по взгляду (WASD, Space/Shift ↑, Ctrl ↓)'],['freezeTime','⏸ Заморозить время суток']]){
   const line=document.createElement('label'),checkbox=document.createElement('input');
   checkbox.type='checkbox';line.append(checkbox,document.createTextNode(label));flags.append(line);
   checkbox.onchange=()=>{try{cheats.toggle(key,checkbox.checked);notice(label);}catch(e){checkbox.checked=false;notice(e.message,true);}};

@@ -1,5 +1,7 @@
-import {createCampfireModel,attachAnimatedFire,animateCampfireModel,presentCampfireModel,disposeCampfireEffects} from './campfire-model.js';
-import {createFireVisibilityTester} from './fire-effects.js?v=20261102-centered-outer-flame1';
+import {fireLighting} from './lighting-profile.js?v=20261103-shadow-visibility-cache1';
+import {fireShadowPolicy,selectFireShadowSources,STARTER_FIRE_ID} from './fire-shadow-policy.js?v=20261103-all-cached-shadows1';
+import {createCampfireModel,attachAnimatedFire,animateCampfireModel,presentCampfireModel,disposeCampfireEffects,applyFireLightSettings,applyFireShadowMode} from './campfire-model.js?v=20261103-all-cached-shadows1';
+import {createFireVisibilityTester} from './fire-effects.js?v=20261102-night-lighting1';
 import {CAMP_RECIPES,MAX_CAMP_STRUCTURES,validCampStructure,isFireKind} from './camp-rules.js';
 
 // Procedural campsite with bounded lights, offline snapshots and online authority.
@@ -169,8 +171,10 @@ export function createCampStructures(ctx,doc=document){
     if(!isFireKind(item.kind))return;
     const distance=Math.hypot(item.x-ctx.px,item.z-ctx.pz);
     presentCampfireModel(ctx,item.group,{lit:item.lit,distance});
+    applyFireLightSettings(ctx,item.group,item.kind,ctx.terrain?.nightBlend??0);
     // Enabled lights are selected in tick(): never light all saved fires at once.
     if(item.group.userData.light)item.group.userData.light.visible=false;
+    if(item.group.userData.dynamicLight)item.group.userData.dynamicLight.visible=false;
   }
   function add(item){
     if(!validCampStructure(item))return false;
@@ -189,6 +193,10 @@ export function createCampStructures(ctx,doc=document){
   }
   function remove(id){const item=items.get(id);if(!item)return false;
     disposeCampfireEffects(item.group);
+    const origin=item.group.userData.fireOrigin??item.group;
+    for(const light of [origin.userData.light,origin.userData.dynamicLight]){
+      light?.shadow?.dispose?.();
+    }
     scene.remove(item.group);items.delete(id);ctx.collisionWorld?.invalidate?.();ctx.deathSystem?.onStructureRemoved?.(id);ctx.atmosphere?.invalidateStaticShadows?.();return true;}
   function clear(){for(const id of [...items.keys()])remove(id);}
   function set(list){clear();for(const item of list??[])add(item);}
@@ -262,14 +270,51 @@ export function createCampStructures(ctx,doc=document){
       }
       const lit=[...items.values()].filter(x=>x.lit&&isFireKind(x.kind))
         .sort((a,b)=>Math.hypot(a.x-ctx.px,a.z-ctx.pz)-Math.hypot(b.x-ctx.px,b.z-ctx.pz));
-      const lighted=new Set(lit.slice(0,3).map(x=>x.id));
+      const night=ctx.terrain?.nightBlend??0;
+      // All fire lights inside their activation distance can illuminate and
+      // display cached shadow maps. The independent 0–4 budget only limits
+      // sources whose dynamic cubemaps refresh each rendered frame.
+      const lighted=new Set(lit.filter(item=>
+        Math.hypot(item.x-ctx.px,item.z-ctx.pz)<
+          fireLighting(ctx.settings??{},item.kind,night).activationDistance+2
+      ).map(item=>item.id));
+      const candidates=[];
       for(const item of lit){
         const light=item.group.userData.light;
-        if(light)light.visible=lighted.has(item.id)&&
-          Math.hypot(item.x-ctx.px,item.z-ctx.pz)<25;
+        if(!light)continue;
+        const lighting=applyFireLightSettings(ctx,item.group,item.kind,night);
+        const dist=Math.hypot(item.x-ctx.px,item.z-ctx.pz);
+        // Existing PointLights stay attached to the fire and retain their
+        // shadow maps while inactive. The slider only changes visibility.
+        light.visible=lighted.has(item.id)&&dist<lighting.activationDistance+2;
+        candidates.push({id:item.id,distance:dist,
+          radius:lighting.radius,
+          visible:light.visible});
       }
-      for(const item of items.values())if(!item.lit&&item.group.userData.light)
+      const starterDistance=ctx.landmarks?.fireDistance??Infinity;
+      if(Number.isFinite(starterDistance)){
+        const starterProfile=fireLighting(ctx.settings??{},'campfire',night);
+        candidates.push({id:STARTER_FIRE_ID,distance:starterDistance,
+          radius:starterProfile.radius,
+          visible:starterDistance<starterProfile.activationDistance+2});
+      }
+      const shadowSources=selectFireShadowSources(candidates,
+        ctx.settings?.fireShadowLimit??2,100);
+      for(const item of lit){
+        const light=item.group.userData.light;
+        if(!light)continue;
+        applyFireShadowMode(ctx,item.group,fireShadowPolicy({
+          night,settings:ctx.settings,selected:shadowSources.has(item.id),
+          visible:light.visible,distance:Math.hypot(item.x-ctx.px,item.z-ctx.pz),
+          radius:fireLighting(ctx.settings??{},item.kind,night).shadowVisibilityDistance,
+          maxRange:100,
+        }),now,Math.hypot(item.x-ctx.px,item.z-ctx.pz));
+      }
+      for(const item of items.values())if(!item.lit&&item.group.userData.light){
         item.group.userData.light.visible=false;
+        applyFireShadowMode(ctx,item.group,{castShadow:false,autoUpdate:false},now);
+        if(item.group.userData.dynamicLight)item.group.userData.dynamicLight.visible=false;
+      }
     }
     for(const item of items.values()){
       if(!item.lit||!isFireKind(item.kind))continue;

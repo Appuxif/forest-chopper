@@ -1,8 +1,14 @@
-import {createFireEffects,resolveFireTier,firePreset} from './fire-effects.js?v=20261102-centered-outer-flame1';
+import {fireLighting} from './lighting-profile.js?v=20261103-shadow-visibility-cache1';
+import {applyFireShadowPolicy} from './fire-shadow-policy.js?v=20261103-all-cached-shadows1';
+import {createFireEffects,resolveFireTier,firePreset} from './fire-effects.js?v=20261102-night-lighting1';
 
 // Shared upgraded crafting campfire: identical at spawn, in player structures,
 // and in inventory thumbnails. Logs converge upward in the centre, while
 // their outer ends rest near the rock ring.
+// Fire lighting range, activation distance, and shadow-caster ranges are
+// independent. 100m is the *default* static shadow coverage, not a hard cap
+// on the distance at which the lamp can illuminate the scene.
+export const FIRE_STATIC_LIGHT_RADIUS=100;
 const shared=new WeakMap();
 
 function fireAssets(THREE){
@@ -73,22 +79,35 @@ export function attachAnimatedFire(ctx,parent,{
   parent.add(spark);sparks.push(spark);
  }
  const light=new THREE.PointLight(0xffaa66,lightIntensity,lightDistance,2);
- light.position.set(0,lightY,0);
- light.castShadow=shadows;
- if(shadows){
-  light.layers?.enable(1);light.layers?.enable(3);
-  light.shadow.mapSize.set(256,256);
-  light.shadow.camera.near=.2;light.shadow.camera.far=9;
-  light.shadow.bias=-.001;light.shadow.normalBias=.025;
-  light.shadow.radius=2;light.shadow.autoUpdate=false;light.shadow.needsUpdate=true;
+ // The second light duplicates the source direction/range but only renders
+ // the character shadow cubemap when split mode is active.
+ const dynamicLight=new THREE.PointLight(0xffaa66,0,lightDistance,2);
+ for(const source of [light,dynamicLight]){
+  source.position.set(0,lightY,0);
+  source.castShadow=false;
+  source.layers?.enable(1);source.layers?.enable(3);
+  source.shadow?.mapSize?.set?.(256,256);
+  if(source.shadow?.camera){
+   source.shadow.camera.near=.2;
+   source.shadow.camera.far=Math.max(9,lightDistance+1);
+  }
+  if(source.shadow){
+   source.shadow.bias=-.001;source.shadow.normalBias=.025;
+   source.shadow.radius=2;source.shadow.autoUpdate=false;source.shadow.needsUpdate=false;
+  }
+  source.userData??={};
  }
- parent.add(light);
+ light.userData.shadowRole='all';
+ dynamicLight.userData.shadowRole='dynamic';
+ dynamicLight.visible=false;
+ parent.add(light);parent.add(dynamicLight);
  parent.userData.flame=flame;
  parent.userData.innerFlame=inner;
  parent.userData.sparks=sparks;
  parent.userData.light=light;
+ parent.userData.dynamicLight=dynamicLight;
  parent.userData.fireKind=kind;
- return {flame,inner,light,sparks};
+ return {flame,inner,light,dynamicLight,sparks};
 }
 
 export function createCampfireModel(ctx,{shadows=false}={}){
@@ -134,17 +153,19 @@ export function presentCampfireModel(ctx,group,{lit=true,distance=0,onScreen=tru
  const visual=group?.userData?.fireOrigin??group;
  const data=visual?.userData;
  if(!data?.flame)return 'off';
- const tier=!lit||!onScreen?'off':resolveFireTier(firePreset(ctx.settings),distance);
+ const tier=!lit||!onScreen?'off':
+   resolveFireTier(ctx.settings?.flameShader===false?'low':firePreset(ctx.settings),distance);
  // Over 100m only the glowing billboard remains (no rocks or logs drawn).
  for(const part of data.fireBody??[])part.visible=distance<100;
  const legacy=tier==='low';
  data.flame.visible=legacy;
  if(data.innerFlame)data.innerFlame.visible=legacy;
  for(const spark of data.sparks??[])spark.visible=legacy;
- if(['ultra','high','medium','glow'].includes(tier)&&!data.fireEffects){
+ if((['ultra','high','medium','glow'].includes(tier)||ctx.settings?.flameBillboard!==false)&&lit&&ctx.THREE.InstancedMesh&&!data.fireEffects){
   data.fireEffects=createFireEffects(ctx.THREE,visual,data.fireKind??'campfire');
  }
  data.fireEffects?.setTier(tier);
+ data.fireEffects?.setBillboardEnabled?.(ctx.settings?.flameBillboard!==false);
  return tier;
 }
 
@@ -192,5 +213,119 @@ export function animateCampfireModel(group,now,reducedMotion=false,animateFlames
     base.baseY-.08+rise*.38,
     base.baseZ+Math.cos(t*1.7+i*2.0)*.055);
   }
+ }
+}
+
+export function applyFireLightSettings(ctx,group,kind,night=0){
+ const data=(group?.userData?.fireOrigin??group)?.userData;
+ const light=data?.light??group?.userData?.light;
+ if(!light)return null;
+ const state=fireLighting(ctx.settings??{},kind,night);
+ const split=ctx.settings?.splitShadowMaps!==false;
+ const staticShadowRadius=ctx.settings?.fireStaticShadowRadius??FIRE_STATIC_LIGHT_RADIUS;
+ for(const source of [light,data?.dynamicLight].filter(Boolean)){
+  // Lighting/culling use the visibility slider; caster selection uses a
+  // separate radius. Keep the cubemap far plane at the lighting range to
+  // avoid invalid shadow sampling beyond a truncated point-shadow frustum.
+  const casterRadius=split&&source===light?staticShadowRadius:state.radius;
+  if(source.position.y!==state.height){
+   source.position.y=state.height;
+   if(source.shadow)source.shadow.needsUpdate=true;
+  }
+  source.distance=state.visibilityDistance;
+  source.decay=state.decay;
+  source.userData??={};
+  if(source.userData.shadowCasterRange!==casterRadius){
+   source.userData.shadowCasterRange=casterRadius;
+   if(source.shadow)source.shadow.needsUpdate=true;
+  }
+  source.intensity=state.intensity*(split?0.5:(source===light?1:0));
+  if(source.shadow?.camera && Math.abs(source.shadow.camera.far-state.visibilityDistance-1)>.1){
+   source.shadow.camera.far=state.visibilityDistance+1;
+   source.shadow.camera.updateProjectionMatrix?.();
+   source.shadow.needsUpdate=true;
+  }
+ }
+ return state;
+}
+
+
+// Apply the same 50/50 approach used by the directional sun. The original
+// light renders static geometry; its sibling renders only characters.
+// Static cubemap refreshes only when the light/caster configuration changes;
+// character cubemap refreshes on every rendered frame. In single mode the
+// original light renders *all* casters on every rendered frame.
+export function applyFireShadowMode(ctx,group,policy,now=0,distance=0){
+ const data=(group?.userData?.fireOrigin??group)?.userData;
+ const light=data?.light??group?.userData?.light;
+ const dynamic=data?.dynamicLight;
+ if(!light)return;
+ const split=ctx.settings?.splitShadowMaps!==false&&!!dynamic;
+ const previousRole=light.userData?.shadowRole;
+ // Preserve brightness during live switching, even if a VFX update has not
+ // yet reapplied the configured intensity.
+ if(dynamic && previousRole!==undefined&&previousRole!==(split?'static':'all')){
+  const total=light.intensity+dynamic.intensity;
+  light.intensity=split?total*.5:total;
+  dynamic.intensity=split?total*.5:0;
+ }
+ light.userData??={};
+ light.userData.shadowRole=split?'static':'all';
+ if(dynamic){
+  dynamic.userData??={};
+  dynamic.userData.shadowRole='dynamic';
+  // Both lights illuminate the full configured range; only their shadow
+  // casters differ. Do not kill half the brightness past the shadow radius.
+  dynamic.visible=split&&light.visible;
+  dynamic.position.y=light.position.y;
+  dynamic.intensity=split?light.intensity:0;
+  dynamic.distance=light.distance;
+  dynamic.decay=light.decay;
+ }
+ // Illumination visibility and shadow visibility are independent from
+ // the smaller caster radius. A shadow map can stay sampled at 30m while
+ // geometry is gathered only within 9m of the fire.
+ const staticRadius=light.userData?.shadowCasterRange??FIRE_STATIC_LIGHT_RADIUS;
+ const dynamicRadius=dynamic?.userData?.shadowCasterRange??staticRadius;
+ const revision=ctx.atmosphere?.staticShadowRevision??0;
+ if(!split){
+  const shadows=policy.castShadow;
+  const live=shadows&&policy.autoUpdate&&distance<=staticRadius+2;
+  applyFireShadowPolicy(light,{castShadow:shadows,autoUpdate:live});
+  // Preserve the last rendered cubemap when a source loses its update slot:
+  // even the character shadow may stay frozen. Only redraw a cached map if
+  // the static world changed, or the source was just enabled.
+  light.userData.shadowFrozen=shadows&&!live;
+  if(shadows&&!live&&light.userData.lastCombinedRevision!==revision){
+   if(light.shadow)light.shadow.needsUpdate=true;
+  }
+  light.userData.shadowLive=live;
+  light.userData.lastCombinedRevision=revision;
+  if(dynamic){
+   dynamic.userData.shadowLive=false;
+   dynamic.userData.shadowFrozen=false;
+   applyFireShadowPolicy(dynamic,{castShadow:false,autoUpdate:false});
+  }
+  return;
+ }
+ const staticShadows=policy.castShadow;
+ const dynamicShadows=policy.castShadow&&dynamic.visible;
+ const dynamicLive=dynamicShadows&&policy.autoUpdate&&distance<=dynamicRadius+2;
+ applyFireShadowPolicy(light,{castShadow:staticShadows,autoUpdate:false});
+ applyFireShadowPolicy(dynamic,{castShadow:dynamicShadows,autoUpdate:dynamicLive});
+ // Losing the update slot must not erase the last rendered character
+ // shadow. An already allocated cubemap stays unchanged, even if it includes
+ // a frozen silhouette; a newly enabled cubemap builds empty when cached.
+ dynamic.userData.shadowFrozen=dynamicShadows&&!dynamicLive;
+ dynamic.userData.shadowLive=dynamicLive;
+ light.userData.shadowFrozen=false;
+ light.userData.shadowLive=false;
+ if(!staticShadows)return;
+ const cache=light.userData;
+ // Static cubemap redraws only when it is first enabled, the emitter
+ // changes or the world geometry has been invalidated.
+ if(previousRole!=='static'||revision!==cache.lastStaticRevision){
+  if(light.shadow)light.shadow.needsUpdate=true;
+  cache.lastStaticRevision=revision;
  }
 }

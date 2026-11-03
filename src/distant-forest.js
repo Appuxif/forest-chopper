@@ -10,8 +10,10 @@ export const DISTANT_FOREST_CHUNKS_PER_TICK=48;
 export const DISTANT_SECTOR_CHUNKS=4;
 
 export function distantForestRange(terrain,lakes=[],x=0,z=0,settings=null){
-  const visibility=Math.max(terrain?.visibility??0,terrain?.visibilityTarget??0);
-  const base=settings?.farForestDistance??DISTANT_FOREST_BASE_METERS;
+  const night=terrain?.nightBlend??0;
+  const visibility=Math.max(terrain?.visibility??0,terrain?.visibilityTarget??0)*(1-night);
+  const dayBase=settings?.farForestDistance??DISTANT_FOREST_BASE_METERS;
+  const base=dayBase+(Math.min(dayBase,terrain?.nightViewDistance??30)-dayBase)*night;
   if(visibility<=.035||!lakes.length||settings?.lakeForestMode==='off')return base;
   if(settings?.lakeForestMode==='full')
     return Math.max(base,settings?.lakeViewDistance??DISTANT_FOREST_LAKE_METERS);
@@ -151,7 +153,7 @@ export function createDistantForest(ctx){
   function update(){
     const size=ctx.chunkSize,cx=Math.floor(ctx.px/size),
       cz=Math.floor(ctx.pz/size),near=ctx.radius??3;
-    const visibility=Math.max(ctx.terrain?.visibility??0,ctx.terrain?.visibilityTarget??0);
+    const visibility=Math.max(ctx.terrain?.visibility??0,ctx.terrain?.visibilityTarget??0)*(1-(ctx.terrain?.nightBlend??0));
     const lakeMode=visibility>.035&&ctx.settings?.lakeForestMode!=='off';
     const nearbyLakes=lakeMode
       ?lakesNearTile(ctx.seed,ctx.px-500,ctx.pz-500,1000)
@@ -177,8 +179,8 @@ export function createDistantForest(ctx){
       count=0;
     }
     signature=sign;lastSeed=ctx.seed;
-    const next=new Set(),baseSq=((ctx.settings?.farForestDistance??
-      DISTANT_FOREST_BASE_METERS)+size*.72)**2;
+    const activeBase=distantForestRange(ctx.terrain,[],ctx.px,ctx.pz,ctx.settings);
+    const next=new Set(),baseSq=(activeBase+size*.72)**2;
     const outerSq=(outerRadius+size*.72)**2;
     const chunkMargin=size*Math.SQRT2*.5;
     const vx=previousX===null?0:ctx.px-previousX;

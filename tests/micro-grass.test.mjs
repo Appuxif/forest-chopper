@@ -2,7 +2,7 @@ import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {gladesForTile,gladeAtPoint,gladeDensity,GLADE_CELL} from '../src/grass-glades.js';
-import {generateGrassTile,createMicroGrass} from '../src/micro-grass.js';
+import {generateGrassTile,createMicroGrass,effectiveGrassRadius,MICRO_GRASS_NIGHT_RADIUS} from '../src/micro-grass.js';
 
 function fixture({radius=12,density=2}={}) {
   const sceneItems=new Set(),geometries=new Set(),materials=new Set(),meshes=new Set();
@@ -254,4 +254,56 @@ test('campfire, sign, bench and placed logs clear grass through shared shader un
   assert.equal(near.material.userData.grassUniforms.fcGrassClearings.value
     .filter(slot=>slot.w===1).length,2,'grass restores after removing a bench or log');
   grass.dispose();
+});
+
+
+test('night micro-grass is capped at 30 m independently of daytime grass range',()=>{
+ assert.equal(MICRO_GRASS_NIGHT_RADIUS,30);
+ for(const day of [12,25,30,50,70,100]){
+  assert.equal(effectiveGrassRadius(day,0),day);
+  assert.equal(effectiveGrassRadius(day,1),Math.min(day,30));
+ }
+ assert.equal(effectiveGrassRadius(70,.5),50);
+ assert.equal(effectiveGrassRadius(70,0.1),66);
+ assert.equal(effectiveGrassRadius(70,-1),70);
+ assert.equal(effectiveGrassRadius(70,10),30);
+});
+
+test('night mode actually unloads distant grass pages and restores them at dawn',()=>{
+ const {ctx,sceneItems}=fixture({radius:70,density:2});
+ ctx.terrain.nightBlend=0;
+ const grass=createMicroGrass(ctx);
+ assert.equal(grass.visibleRadius,70);
+ const dayPages=grass.tiles,dayDraws=sceneItems.size,generated=grass.generatedTiles;
+ assert.ok(dayPages>0);
+ ctx.terrain.nightBlend=1;
+ assert.equal(grass.tick(),true);
+ assert.equal(grass.visibleRadius,30);
+ assert.ok(grass.tiles<dayPages,'night reduces actual GPU grass mesh count');
+ assert.ok(sceneItems.size<dayDraws,'night removes distant grass draw calls');
+ assert.equal(grass.generatedTiles,generated,'night reuses near pages rather than regenerating tiles');
+ const nightPages=grass.tiles;
+ ctx.terrain.nightBlend=.5;
+ assert.equal(grass.tick(),true);
+ assert.equal(grass.visibleRadius,50);
+ assert.ok(grass.tiles>nightPages,'dusk progressively loads distant tiles');
+ ctx.terrain.nightBlend=0;
+ assert.equal(grass.tick(),true);
+ assert.equal(grass.visibleRadius,70);
+ assert.equal(grass.tiles,dayPages,'dawn restores the daytime distance');
+ assert.ok(grass.cacheHits>0,'dawn reuses cached grass samples after night culling');
+ assert.ok(grass.generatedTiles>=generated,'reloaded GPU pages recreate instances as needed');
+ grass.dispose();
+ assert.equal(sceneItems.size,0);
+});
+
+test('night grass cap never increases an already shorter daytime setting',()=>{
+ const {ctx}=fixture({radius:20,density:2});
+ const grass=createMicroGrass(ctx);
+ const tiles=grass.tiles;
+ ctx.terrain.nightBlend=1;
+ assert.equal(grass.tick(),false);
+ assert.equal(grass.visibleRadius,20);
+ assert.equal(grass.tiles,tiles);
+ grass.dispose();
 });

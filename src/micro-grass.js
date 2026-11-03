@@ -8,6 +8,15 @@ export const MICRO_GRASS_CELL = 1.1;
 export const MICRO_GRASS_RADIUS = 26;
 export const MICRO_GRASS_PER_CELL = 9;
 export const MICRO_GRASS_MAX_RADIUS = 100;
+export const MICRO_GRASS_NIGHT_RADIUS = 30;
+// Blend the night cap smoothly across dusk/dawn. Quantization prevents
+// thousands of near-identical streaming radii during a lighting transition.
+export function effectiveGrassRadius(dayRadius,nightBlend=0){
+  const day=Math.max(12,Math.min(MICRO_GRASS_MAX_RADIUS,dayRadius));
+  const t=Math.max(0,Math.min(1,nightBlend));
+  return Math.round(day+(Math.min(day,MICRO_GRASS_NIGHT_RADIUS)-day)*t);
+}
+
 export const MICRO_GRASS_MAX_DENSITY = 50;
 const NEAR_TILE = 12;
 const FAR_TILE = 24;
@@ -264,7 +273,7 @@ export function createMicroGrass(ctx) {
     layer.pending=new Set();layer.desired=new Set();
   }
   let currentTriangles=6,currentInteraction=true;
-  let generatedTiles=0;
+  let generatedTiles=0,cacheHits=0;
   const grassTrail=[];
   let lastTrailX=ctx.px,lastTrailZ=ctx.pz,lastTrailAt=-Infinity;
   const nearbyGuests=[];
@@ -439,12 +448,17 @@ export function createMicroGrass(ctx) {
       const cacheKey=[seed,layer.tier,tx,tz,density].join('/');
       const cached=sampleCache.get(cacheKey);
       if(cached){
+        cacheHits++;
         const page=createPage(layer,tx,tz,seed,density,cached);
         if(page)layer.active.set(key,page);
         continue;
       }
       if(!ctx.worldStreamer){
-        const page=createPage(layer,tx,tz,seed,density);
+        // The sync fallback should also reuse tile samples on dawn instead
+        // of regenerating grass locations after a night-time cull.
+        const samples=generateGrassTile(seed,tx,tz,layer.size,density,layer.tier);
+        sampleCache.put(cacheKey,samples,samples.length*80);
+        const page=createPage(layer,tx,tz,seed,density,samples);
         if(page)layer.active.set(key,page);
         continue;
       }
@@ -500,8 +514,11 @@ export function createMicroGrass(ctx) {
       u.fcGrassWidth.value=width;
       u.fcGrassTurnRange.value.set(minTurn*Math.PI/180,maxTurn*Math.PI/180);
     }
-    const radius=Math.max(12,Math.min(MICRO_GRASS_MAX_RADIUS,
-      ctx.settings?.grassDistance??MICRO_GRASS_RADIUS));
+    // Do not generate/draw pages hidden by the 30m deep-night fog. The
+    // ordinary grass slider remains a daytime setting; no GPU-only fade.
+    const radius=effectiveGrassRadius(
+      ctx.settings?.grassDistance??MICRO_GRASS_RADIUS,
+      ctx.terrain?.nightBlend??0);
     const density=Math.max(1,Math.min(MICRO_GRASS_MAX_DENSITY,
       ctx.settings?.grassDensity??MICRO_GRASS_PER_CELL));
     if(ctx.ground?.material?.userData?.grassDensityUniforms)
@@ -511,15 +528,17 @@ export function createMicroGrass(ctx) {
       -2,-1,Math.max(3,cutoff-7),cutoff);
     far.material.userData.grassUniforms.fcGrassFade.value.set(
       NEAR_END-7,NEAR_END,Math.max(NEAR_END,radius-5),radius);
-    const changed=lastSeed!==ctx.seed||lastDensity!==density||lastRadius!==radius;
-    if(changed)streamingEpoch++;
-    if(!changed&&Math.abs(x-lastX)<REBUILD_DISTANCE&&
+    const refreshData=lastSeed!==ctx.seed||lastDensity!==density;
+    const radiusChanged=lastRadius!==radius;
+    if(refreshData)streamingEpoch++;
+    if(!refreshData&&!radiusChanged&&Math.abs(x-lastX)<REBUILD_DISTANCE&&
       Math.abs(z-lastZ)<REBUILD_DISTANCE)return false;
     lastX=x;lastZ=z;lastSeed=ctx.seed;lastDensity=density;lastRadius=radius;
-    // Small hysteresis buffer keeps page boundaries outside visible fade ends.
-    syncLayer(near,x,z,cutoff+REBUILD_DISTANCE,ctx.seed,density,changed);
+    // Radius-only changes reuse existing InstancedMeshes and cached tiles.
+    // Rebuild their instance matrices only if seed/density/geometry changes.
+    syncLayer(near,x,z,cutoff+REBUILD_DISTANCE,ctx.seed,density,refreshData);
     syncLayer(far,x,z,radius>NEAR_END?radius+REBUILD_DISTANCE:0,
-      ctx.seed,density,changed);
+      ctx.seed,density,refreshData);
     return true;
   }
   tick();
@@ -529,9 +548,11 @@ export function createMicroGrass(ctx) {
       for(const record of layer.active.values())sum+=record.mesh.count;
       return sum;},
     get tiles(){return near.active.size+far.active.size;},
+    get visibleRadius(){return lastRadius;},
     get nearPending(){return near.pending.size;},
     get nearDesired(){return near.desired.size;},
     get generatedTiles(){return generatedTiles;},
+    get cacheHits(){return cacheHits;},
     get mesh(){return near.active.values().next().value?.mesh??null;},
     dispose(){
       streamingEpoch++;

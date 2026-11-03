@@ -1,7 +1,7 @@
 import {createRagdoll} from './ragdoll.js?v=20261102-bounce-fix1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261102-bounce-fix1';
 import {createAnimations} from './animations.js?v=20261102-chop-frame18';
-import {createWorld} from './world.js?v=20261102-collision-world1';
+import {createWorld} from './world.js?v=20261102-night-grass30';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
@@ -11,9 +11,9 @@ import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
-import {createMicroGrass} from './micro-grass.js?v=20261101-startup-loader1';
+import {createMicroGrass} from './micro-grass.js?v=20261102-night-grass30';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
-import {TerrainSystem} from './terrain.js?v=20261101-worker-stream1';
+import {TerrainSystem} from './terrain.js?v=20261102-night-grass30';
 import {createPhysics} from './physics.js?v=20261102-jump-voices1';
 import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bounce-fix1';
 import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
@@ -24,15 +24,15 @@ import {createPlayer} from './player.js?v=20261102-flight-distance1';
 import {createMultiplayer} from './multiplayer.js?v=20261102-chop-frame18';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261102-jump-voices1';
+import {createSettings} from './settings.js?v=20261103-all-cached-shadows1';
 import {createGameAudio} from './game-audio.js?v=20261102-treefall-sync13';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
-import {createLandmarks} from './landmarks.js?v=20261102-centered-outer-flame1';
+import {createLandmarks} from './landmarks.js?v=20261103-all-cached-shadows1';
 import {createPlantInteraction} from './plant-interaction.js?v=20261031-collectible-plants1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
-import {createDayCycle} from './day-cycle.js?v=20261102-darker-night1';
-import {createAtmosphere} from './atmosphere.js?v=20261102-darker-night1';
+import {createDayCycle} from './day-cycle.js?v=20261102-night-grass30';
+import {createAtmosphere} from './atmosphere.js?v=20261102-split-shadow1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
@@ -45,7 +45,7 @@ import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
 import {createStorages} from './storages.js?v=20261102-collision-world1';
-import {createCampStructures} from './camp-structures.js?v=20261102-centered-outer-flame1';
+import {createCampStructures} from './camp-structures.js?v=20261103-all-cached-shadows1';
 import {createVitalsUI} from './vitals-ui.js?v=20261102-debug-cheats';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261102-prestage-logs1';
@@ -102,7 +102,7 @@ try{
   if(typeof saved?.antialias==='boolean')initialAntialias=saved.antialias;
 }catch{}
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.1,280);camera.rotation.order='YXZ';const renderer=new THREE.WebGLRenderer({antialias:initialAntialias,powerPreference:'default'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;host.prepend(renderer.domElement);
-const hemisphere=new THREE.HemisphereLight(0xe1efff,0x45552b,2.1);scene.add(hemisphere);const sun=new THREE.DirectionalLight(0xffe4a6,2.3);sun.position.set(35,75,20);scene.add(sun);
+const hemisphere=new THREE.HemisphereLight(0xe1efff,0x45552b,1.2);scene.add(hemisphere);const sun=new THREE.DirectionalLight(0xffe4a6,2);sun.position.set(35,75,20);scene.add(sun);
 const groundTexture=createGroundTexture(THREE,document,renderer);
 const groundMaterial=new THREE.MeshLambertMaterial({map:groundTexture});
 enableGrassDensityShadows(THREE,groundMaterial);
@@ -187,35 +187,49 @@ const atmosphere=createAtmosphere({
   return result;
  },
  getPointShadowCasters(light){
-  const fire=light.parent;
-  if(!fire)return [];
-  const x=fire.position.x,z=fire.position.z,r=light.distance;
-  const casters=selectDecorShadowCasters(chunks,x,z,r,36);
-  const batches=new Set();
-  for(const tree of trees.values()){
-   if(Math.hypot(tree.position.x-x,tree.position.z-z)>=r+3 || casters.length>=52)continue;
-   if(tree.userData.treeBatch){
-    for(const mesh of tree.userData.treeBatch.meshes)batches.add(mesh);
-   }else casters.push(tree);
+  if(!light.parent)return [];
+  const pos=light.getWorldPosition(new THREE.Vector3());
+  const x=pos.x,z=pos.z,r=Math.min(light.distance,
+    light.userData?.shadowCasterRange??light.distance);
+  const role=light.userData?.shadowRole??'all';
+  const casters=[];
+  if(role!=='dynamic'){
+   casters.push(...selectDecorShadowCasters(chunks,x,z,r,36));
+   const batches=new Set();
+   for(const tree of trees.values()){
+    if(Math.hypot(tree.position.x-x,tree.position.z-z)>=r+3 || casters.length>=52)continue;
+    if(tree.userData.treeBatch){
+     for(const mesh of tree.userData.treeBatch.meshes)batches.add(mesh);
+    }else casters.push(tree);
+   }
+   casters.push(...batches);
+   for(const item of crafting?.items?.values()??[]){
+    if(Math.hypot(item.x-x,item.z-z)<r+3)casters.push(item.group);
+   }
+   for(const item of campStructures?.items?.values()??[]){
+    if(Math.hypot(item.x-x,item.z-z)<r+3)casters.push(item.group);
+   }
+   for(const log of placed){
+    if(Math.hypot(log.x-x,log.z-z)<r+2 && log.mesh?.castShadow)
+     casters.push(log.mesh);
+   }
   }
-  casters.push(...batches);
-  if(Math.hypot(px-x,pz-z)<r+2 && ownAvatar?.shadowMeshes)
-   casters.push(...ownAvatar.shadowMeshes);
-  for(const avatar of avatars.values()){
-   if(Math.hypot(avatar.group.position.x-x,avatar.group.position.z-z)<r+2)
-    casters.push(...(avatar.actor?.shadowMeshes??avatar.shadowMeshes??[]));
-  }
-  for(const item of crafting?.items?.values()??[]){
-   if(Math.hypot(item.x-x,item.z-z)<r+3)casters.push(item.group);
-  }
-  for(const log of placed){
-   if(Math.hypot(log.x-x,log.z-z)<r+2 && log.mesh?.castShadow)
-    casters.push(log.mesh);
+  // Cold cached shadow maps (or ones invalidated by the world) exclude
+  // moving characters. Already rendered maps are *not* cleared merely
+  // because a light leaves the live-refresh budget; stale silhouettes are
+  // an intentional visual/performance trade-off.
+  if(role!=='static'&&!light.userData?.shadowFrozen){
+   if(Math.hypot(px-x,pz-z)<r+2 && ownAvatar?.shadowMeshes)
+    casters.push(...ownAvatar.shadowMeshes);
+   for(const avatar of avatars.values()){
+    if(Math.hypot(avatar.group.position.x-x,avatar.group.position.z-z)<r+2)
+     casters.push(...(avatar.actor?.shadowMeshes??avatar.shadowMeshes??[]));
+   }
   }
   return casters;
  },
 });
-const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere});
+const dayCycle=createDayCycle({THREE,scene,hemisphere,sun,settings,atmosphere,terrain});
 if(menuLaunch.mode==='new'){
   try{
     // Reset only after the render engine has successfully initialized.
@@ -626,7 +640,7 @@ if(menuLaunch.mode==='online'){
 }
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261102-debug-lightfix1');
+  const { installDebug } = await import('./debug.js?v=20261102-freeze-time1');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

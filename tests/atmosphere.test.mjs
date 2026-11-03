@@ -124,7 +124,9 @@ function fixture(){
   characters[0].layers.set(1);characters[1].layers.set(3);
   const atmosphere=createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
     getCharacterShadowCasters:()=>characters,
-    getPointShadowCasters:()=>[characters[0]]});
+    getPointShadowCasters:light=>light.userData?.shadowRole==='static'
+      ?[...characters,characters[0]]
+      :light.userData?.shadowFrozen?[]:[characters[0]]});
   return {scene,renderer,renders,ground,sun,hemisphere,trees,settings,atmosphere,camera};
 }
 
@@ -292,8 +294,79 @@ test('night sky zenith uses darker palette while daytime keeps its usual blue',(
  const sky=f.atmosphere.dome.material.uniforms;
  const day={...sky.zenith.value};
  f.atmosphere.setPhase(.5);
- const expected={r:8/255,g:13/255,b:27/255};
+ const expected={r:0,g:1/255,b:1/255};
  for(const channel of ['r','g','b'])assert.ok(Math.abs(sky.zenith.value[channel]-expected[channel])<1e-12);
  f.atmosphere.setPhase(0);
  assert.deepEqual({r:sky.zenith.value.r,g:sky.zenith.value.g,b:sky.zenith.value.b},day);
+});
+
+
+test('one-sun mode renders static trees and skinned characters together every frame',()=>{
+ const f=fixture();
+ const character=f.atmosphere.characterLight;
+ f.settings.splitShadowMaps=false;
+ f.atmosphere.tick(0,0,0);
+ assert.equal(f.sun.castShadow,true);
+ assert.equal(character.castShadow,false);
+ assert.equal(character.visible,false);
+ assert.equal(f.sun.intensity,2.3);
+ assert.equal(character.intensity,0);
+ f.renderer.shadowMap.render([f.sun],f.scene,f.camera);
+ assert.equal(f.renders.length,1);
+ assert.ok(f.renders[0].count>f.atmosphere.shadowCasters,
+   'single map includes both the forest batch and character meshes');
+ assert.equal(f.renders[0].mask,1|(1<<1)|(1<<3)|(1<<4));
+ f.atmosphere.tick(16,0,0);
+ assert.equal(f.sun.shadow.needsUpdate,true,'unified map refreshes every rendered frame');
+ f.renderer.shadowMap.render([f.sun],f.scene,f.camera);
+ assert.equal(f.renders.length,2);
+ f.settings.splitShadowMaps=true;
+ f.atmosphere.tick(32,0,0);
+ assert.equal(character.castShadow,true);
+ assert.equal(character.visible,true);
+ assert.equal(f.sun.intensity,2.3*.5);
+ assert.equal(character.intensity,2.3*.5);
+ assert.equal(character.shadow.needsUpdate,true);
+ f.renderer.shadowMap.render([f.sun,character],f.scene,f.camera);
+ assert.equal(f.renders.at(-1).light,character);
+ f.atmosphere.tick(48,0,0);
+ assert.equal(f.sun.shadow.needsUpdate,false,'split static shadow map is throttled');
+ assert.equal(character.shadow.needsUpdate,true,'split character shadows redraw every rendered frame');
+});
+
+test('point-light caster roles are routed to separate static/dynamic cubemap scenes',()=>{
+ const f=fixture();
+ const point={isPointLight:true,userData:{shadowRole:'static'},
+   shadow:{autoUpdate:false,needsUpdate:true}};
+ f.renderer.shadowMap.render([point],f.scene,f.camera);
+ assert.equal(f.renders.at(-1).count,3);
+ assert.equal(f.renders.at(-1).mask,1|(1<<1)|(1<<3)|(1<<4));
+ point.userData.shadowRole='dynamic';
+ point.shadow.needsUpdate=true;
+ f.renderer.shadowMap.render([point],f.scene,f.camera);
+ assert.equal(f.renders.at(-1).count,1);
+ assert.equal(f.renders.length,2);
+});
+
+
+test('cached dynamic point-shadow cubemap clears casters once and then skips depth passes',()=>{
+ const f=fixture();
+ const point={isPointLight:true,userData:{shadowRole:'dynamic',shadowFrozen:false},
+   shadow:{autoUpdate:true,needsUpdate:true}};
+ f.renderer.shadowMap.render([point],f.scene,f.camera);
+ assert.equal(f.renders.length,1);
+ assert.equal(f.renders[0].count,1);
+ point.userData.shadowFrozen=true;
+ point.shadow.autoUpdate=false;
+ point.shadow.needsUpdate=true;
+ f.renderer.shadowMap.render([point],f.scene,f.camera);
+ assert.equal(f.renders.length,2,'last render clears the old moving silhouette');
+ assert.equal(f.renders[1].count,0,'no moving character remains in the frozen map');
+ f.renderer.shadowMap.render([point],f.scene,f.camera);
+ assert.equal(f.renders.length,2,'cached map is reused without further redraws');
+ point.userData.shadowFrozen=false;
+ point.shadow.autoUpdate=true;
+ f.renderer.shadowMap.render([point],f.scene,f.camera);
+ assert.equal(f.renders.length,3,'return to near region resumes GPU updates');
+ assert.equal(f.renders[2].count,1);
 });

@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sanitizeSettings,createSettings} from '../src/settings.js';
+import {sanitizeSettings,createSettings,LIGHTING_FIELDS,LIGHTING_FLAGS} from '../src/settings.js';
 import {PERFORMANCE_DEFAULTS,PERFORMANCE_PRESETS} from '../src/performance-presets.js';
 import {DEFAULT_AUDIO,SOUND_CONTROLS} from '../src/sound-rules.js';
 
 const defaults = {...PERFORMANCE_DEFAULTS,performancePreset:'high',
   mouseSensitivity:1,showFps:false,spruceFoliageVisible:true,spruceFoliageShadows:true,spruceFoliageDensity:100,windEnabled:true,dayCycleEnabled:false,
-  autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:70,grassDensity:30,
+  autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:100,grassDensity:30,
   grassDistance:70,grassMinSize:2.5,grassMaxSize:5.5,grassWidth:1,
   grassTurnMin:-30,grassTurnMax:30,fov:75,
   cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,audio:DEFAULT_AUDIO,
+  ...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,val])=>[key,val[3]])),...LIGHTING_FLAGS,
 };
 
 test('settings defaults and rejects invalid or corrupted saved values',()=>{
@@ -46,7 +47,7 @@ test('sensitivity boundaries are inclusive and persistence stays independent of 
   assert.equal(sanitizeSettings({characterShadowDistance:5}).characterShadowDistance,30);
   assert.equal(sanitizeSettings({shadowContrast:0}).shadowContrast,0);
   assert.equal(sanitizeSettings({shadowContrast:100}).shadowContrast,100);
-  assert.equal(sanitizeSettings({shadowContrast:101}).shadowContrast,70);
+  assert.equal(sanitizeSettings({shadowContrast:101}).shadowContrast,100);
   assert.equal(sanitizeSettings({spruceFoliageVisible:false}).spruceFoliageVisible,false);
   assert.equal(sanitizeSettings({spruceFoliageShadows:false}).spruceFoliageShadows,false);
   assert.equal(sanitizeSettings({spruceFoliageShadows:0}).spruceFoliageShadows,true);
@@ -124,7 +125,7 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   assert.equal(element('#fc-character-shadow-distance-value').textContent,'100');
   assert.equal(writes.at(-1)[1].characterShadowDistance,100);
   const contrast=element('#fc-shadow-contrast');
-  assert.equal(contrast.value,'70');
+  assert.equal(contrast.value,'100');
   contrast.value='95';contrast.oninput();
   assert.equal(settings.shadowContrast,95);
   assert.equal(element('#fc-shadow-contrast-value').textContent,'95');
@@ -156,7 +157,7 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   assert.equal(writes.at(-1)[1].seed,undefined);
   element('#fc-reset-settings').onclick();
   assert.equal(settings.characterShadowDistance,30);
-  assert.equal(settings.shadowContrast,70);
+  assert.equal(settings.shadowContrast,100);
   assert.equal(settings.fov,75);
   assert.equal(settings.spruceFoliageVisible,true);
   assert.equal(settings.spruceFoliageShadows,true);
@@ -240,6 +241,7 @@ test('all graphics presets are internally consistent and custom fields validate'
   assert.equal(sanitizeSettings({farTreeDensity:-5}).farTreeDensity,100);
   assert.equal(sanitizeSettings({grassTriangles:2}).grassTriangles,6);
   assert.equal(sanitizeSettings({shadowMapSize:2048}).shadowMapSize,2048);
+ assert.equal(sanitizeSettings({shadowMapSize:4096}).shadowMapSize,4096);
 });
 
 test('preset selection applies all graphics properties; manual graphics changes select custom, controls do not',()=>{
@@ -422,4 +424,324 @@ test('saved untouched pre-review audio volumes migrate once to new 40% defaults'
  const fire=element('#fc-audio-fire');fire.value='71';fire.oninput();
  const settingsAgain=createSettings(doc,storage);
  assert.equal(settingsAgain.audio.fire,71,'custom user value survives future starts');
+});
+
+
+test('lighting sliders and visual toggles persist independently from graphics presets',()=>{
+ const value=sanitizeSettings({
+  dayAmbient:1.25,nightMoon:0,nightViewDistance:80,
+  campfireDayRadius:1,campfireNightRadius:30,
+  torchNightIntensity:10,torchLightHeight:2.8,
+  flameShader:false,flameBillboard:false,fireShadows:false,
+ });
+ assert.equal(value.dayAmbient,1.25);
+ assert.equal(value.nightMoon,0);
+ assert.equal(value.nightViewDistance,80);
+ assert.equal(value.campfireDayRadius,1);
+ assert.equal(value.campfireNightRadius,30);
+ assert.equal(value.torchNightIntensity,10);
+ assert.equal(value.torchLightHeight,2.8);
+ assert.equal(value.flameShader,false);
+ assert.equal(value.flameBillboard,false);
+ assert.equal(value.fireShadows,false);
+ assert.equal(value.performancePreset,'high');
+ assert.equal(sanitizeSettings({campfireNightRadius:31}).campfireNightRadius,30);
+ assert.equal(sanitizeSettings({torchDayIntensity:'10'}).torchDayIntensity,1.1);
+});
+
+
+test('sun and fire brightness accept 100 while preserving low fractional defaults',()=>{
+ for(const key of ['campfireDayIntensity','campfireNightIntensity',
+   'torchDayIntensity','torchNightIntensity']){
+  const max=sanitizeSettings({[key]:100});
+  assert.equal(max[key],100, key+' maximum');
+  assert.equal(sanitizeSettings({[key]:100.1})[key],LIGHTING_FIELDS[key][3],
+    key+' rejects values above 100');
+  assert.equal(LIGHTING_FIELDS[key][1],100,key+' slider maximum');
+ }
+ assert.equal(LIGHTING_FIELDS.daySun[1],5);
+ assert.equal(sanitizeSettings({daySun:5}).daySun,5);
+ assert.equal(sanitizeSettings({daySun:5.05}).daySun,2);
+ assert.equal(sanitizeSettings({daySun:2.35}).daySun,2.35);
+ assert.equal(sanitizeSettings({campfireDayIntensity:1.3}).campfireDayIntensity,1.3);
+ assert.equal(sanitizeSettings({torchNightIntensity:3.3}).torchNightIntensity,3.3);
+});
+
+test('old untouched lighting preferences migrate once without overwriting custom light settings',()=>{
+ const values=new Map([['forest-chopper:settings:v1',JSON.stringify({
+  shadowContrast:70,dayAmbient:2.1,daySun:2.3,
+  nightAmbient:.35,nightMoon:.025,nightViewDistance:100,
+  campfireNightIntensity:4,campfireNightRadius:20,
+  torchNightIntensity:3.3,torchNightRadius:16,
+  campfireDayIntensity:14,
+ })]]);
+ const nodes=new Map();
+ function element(id){
+  if(!nodes.has(id))nodes.set(id,{value:'',checked:false,textContent:'',style:{},
+    setAttribute(){},querySelector:element});
+  return nodes.get(id);
+ }
+ const created=[];
+ const doc={createElement:tag=>{
+   const node={tag,hidden:false,style:{},setAttribute(){},querySelector:element};
+   created.push(node);return node;
+ },head:{append(){}},body:{append(){}}};
+ const storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
+ const cfg=createSettings(doc,storage);
+ const after=JSON.parse(values.get('forest-chopper:settings:v1'));
+ assert.equal(cfg.shadowContrast,100);
+ assert.equal(cfg.dayAmbient,1.2);
+ assert.equal(cfg.daySun,2);
+ assert.equal(cfg.nightMoon,.2);
+ assert.equal(cfg.nightAmbient,.35,'customized night ambient stays customized');
+ assert.equal(cfg.campfireDayIntensity,14,'customized daytime fire intensity stays');
+ assert.equal(cfg.campfireNightIntensity,30);
+ assert.equal(cfg.campfireNightRadius,30);
+ assert.equal(cfg.torchNightIntensity,30);
+ assert.equal(cfg.torchNightRadius,30);
+ assert.equal(cfg.nightViewDistance,30);
+ assert.equal(after.daySun,2);
+ assert.equal(after.nightMoon,.2);
+ assert.ok(values.has('forest-chopper:night-moon-default:v1'));
+ assert.ok(values.has('forest-chopper:night-visibility-30-default:v1'));
+ assert.ok(values.has('forest-chopper:night-profile-defaults:v1'));
+ assert.ok(created.some(node=>node.innerHTML?.includes('4096 × 4096 (4K)')));
+ assert.equal(cfg.shadowMapSize,1024,'adding 4K does not force all users onto 4K');
+});
+
+test('lighting settings expose a live persistent shadow budget 0–4 and moon default 0.2',()=>{
+ assert.equal(LIGHTING_FIELDS.nightMoon[3],.2);
+ assert.deepEqual(LIGHTING_FIELDS.fireShadowLimit.slice(0,4),[0,4,1,2]);
+ for(let count=0;count<=4;count++){
+  assert.equal(sanitizeSettings({fireShadowLimit:count}).fireShadowLimit,count);
+ }
+ for(const invalid of [-1,5,1.5,'3',null,NaN]){
+  assert.equal(sanitizeSettings({fireShadowLimit:invalid}).fireShadowLimit,2);
+ }
+ assert.equal(sanitizeSettings(null).nightMoon,.2);
+ const values=new Map();
+ const nodes=new Map();
+ const node=id=>{
+  if(!nodes.has(id))nodes.set(id,{value:'',checked:false,textContent:'',style:{},
+   setAttribute(){},querySelector:node});
+  return nodes.get(id);
+ };
+ const doc={createElement:tag=>({tag,hidden:false,style:{},setAttribute(){},querySelector:node}),
+  head:{append(){}},body:{append(){}}};
+ const storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
+ const settings=createSettings(doc,storage);
+ const control=node('#fc-light-fireShadowLimit');
+ assert.equal(control.value,'2');
+ assert.equal(settings.fireShadowLimit,2);
+ control.value='4';control.oninput();
+ assert.equal(settings.fireShadowLimit,4);
+ assert.equal(node('#fc-light-fireShadowLimit-value').textContent,'4');
+ assert.equal(JSON.parse(values.get('forest-chopper:settings:v1')).fireShadowLimit,4);
+ control.value='0';control.oninput();
+ assert.equal(settings.fireShadowLimit,0);
+ assert.equal(JSON.parse(values.get('forest-chopper:settings:v1')).fireShadowLimit,0);
+});
+
+
+test('shadow map split toggle is on by default and persists independently of quality',()=>{
+ assert.equal(sanitizeSettings(null).splitShadowMaps,true);
+ assert.equal(sanitizeSettings({splitShadowMaps:false}).splitShadowMaps,false);
+ assert.equal(sanitizeSettings({splitShadowMaps:'false'}).splitShadowMaps,true);
+ const values=new Map();
+ const nodes=new Map();
+ const el=id=>{
+  if(!nodes.has(id))nodes.set(id,{checked:false,value:'',style:{},textContent:'',
+   setAttribute(){},querySelector:el});
+  return nodes.get(id);
+ };
+ const doc={createElement:tag=>({tag,hidden:false,style:{},setAttribute(){},querySelector:el}),
+  head:{append(){}},body:{append(){}}};
+ const storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
+ const settings=createSettings(doc,storage);
+ const toggle=el('#fc-light-splitShadowMaps');
+ assert.equal(toggle.checked,true);
+ toggle.checked=false;toggle.onchange();
+ assert.equal(settings.splitShadowMaps,false);
+ assert.equal(settings.performancePreset,'high');
+ assert.equal(JSON.parse(values.get('forest-chopper:settings:v1')).splitShadowMaps,false);
+ toggle.checked=true;toggle.onchange();
+ assert.equal(settings.splitShadowMaps,true);
+});
+
+
+test('night range slider reaches 30m, defaults to 30m and keeps custom values',()=>{
+ assert.deepEqual(LIGHTING_FIELDS.nightViewDistance.slice(0,4),[30,160,5,30]);
+ assert.equal(sanitizeSettings(null).nightViewDistance,30);
+ assert.equal(sanitizeSettings({nightViewDistance:30}).nightViewDistance,30);
+ assert.equal(sanitizeSettings({nightViewDistance:150}).nightViewDistance,150);
+ assert.equal(sanitizeSettings({nightViewDistance:29}).nightViewDistance,30);
+ assert.equal(sanitizeSettings({nightViewDistance:161}).nightViewDistance,30);
+ assert.equal(LIGHTING_FIELDS.campfireNightRadius[3],30);
+ assert.equal(LIGHTING_FIELDS.torchNightRadius[3],30);
+ const persisted=new Map([['forest-chopper:settings:v1',JSON.stringify({
+  nightViewDistance:80,nightMoon:.4,dayAmbient:1,
+ })]]);
+ const el=id=>({id,style:{},setAttribute(){},querySelector:el});
+ const doc={createElement:()=>({style:{},setAttribute(){},querySelector:el}),
+  head:{append(){}},body:{append(){}}};
+ const storage={getItem:key=>persisted.get(key)??null,
+  setItem:(key,val)=>persisted.set(key,val)};
+ const settings=createSettings(doc,storage);
+ assert.equal(settings.nightViewDistance,80,'customized night visibility is preserved');
+ assert.equal(settings.nightMoon,.4);
+});
+
+test('fire visibility distance, decay and static shadow caster radius persist independently',()=>{
+ const defaults=sanitizeSettings(null);
+ for(const kind of ['campfire','torch']){
+  assert.equal(defaults[kind+'VisibilityDistance'],100);
+  assert.equal(defaults[kind+'Decay'],2);
+  assert.equal(sanitizeSettings({[kind+'VisibilityDistance']:250})[kind+'VisibilityDistance'],250);
+  assert.equal(sanitizeSettings({[kind+'VisibilityDistance']:10})[kind+'VisibilityDistance'],10);
+  assert.equal(sanitizeSettings({[kind+'Decay']:0})[kind+'Decay'],0);
+  assert.equal(sanitizeSettings({[kind+'Decay']:.3})[kind+'Decay'],.3);
+  assert.equal(sanitizeSettings({[kind+'Decay']:3})[kind+'Decay'],3);
+  assert.equal(sanitizeSettings({[kind+'Decay']:4})[kind+'Decay'],2);
+  assert.equal(sanitizeSettings({[kind+'VisibilityDistance']:255})[kind+'VisibilityDistance'],100);
+ }
+ assert.equal(defaults.fireStaticShadowRadius,100);
+ assert.equal(sanitizeSettings({fireStaticShadowRadius:9}).fireStaticShadowRadius,9);
+ assert.equal(sanitizeSettings({fireStaticShadowRadius:0}).fireStaticShadowRadius,100);
+ const values=new Map();
+ const nodes=new Map();
+ const element=id=>{
+  if(!nodes.has(id))nodes.set(id,{value:'',checked:false,textContent:'',style:{},
+   setAttribute(){},querySelector:element});
+  return nodes.get(id);
+ };
+ const doc={createElement:()=>({hidden:false,style:{},setAttribute(){},querySelector:element}),
+  head:{append(){}},body:{append(){}}};
+ const storage={getItem:key=>values.get(key)??null,setItem:(key,v)=>values.set(key,v)};
+ const cfg=createSettings(doc,storage);
+ for(const [key,value] of [
+  ['campfireVisibilityDistance',200],['torchVisibilityDistance',150],
+  ['campfireDecay',.4],['torchDecay',0],['fireStaticShadowRadius',9],
+ ]){
+  const input=element('#fc-light-'+key);
+  assert.equal(typeof input.oninput,'function',key+' has a live slider');
+  input.value=String(value);input.oninput();
+  assert.equal(cfg[key],value,key+' is accessible at runtime');
+  assert.equal(JSON.parse(values.get('forest-chopper:settings:v1'))[key],value);
+ }
+ assert.equal(cfg.campfireNightRadius,30,'shadow and lighting ranges are independent');
+});
+
+test('light illumination and activation distance have independent sliders for both kinds',()=>{
+ for(const kind of ['campfire','torch']){
+  const light=kind+'VisibilityDistance';
+  const activation=kind+'ActivationDistance';
+  const defaults=sanitizeSettings(null);
+  assert.equal(defaults[light],100);
+  assert.equal(defaults[activation],100);
+  assert.equal(sanitizeSettings({[activation]:10})[activation],10);
+  assert.equal(sanitizeSettings({[activation]:250})[activation],250);
+  assert.equal(sanitizeSettings({[activation]:0})[activation],100);
+  assert.equal(sanitizeSettings({[activation]:255})[activation],100);
+  const first=sanitizeSettings({[light]:30,[activation]:200});
+  assert.equal(first[light],30);
+  assert.equal(first[activation],200);
+  const second=sanitizeSettings({[light]:250,[activation]:20});
+  assert.equal(second[light],250);
+  assert.equal(second[activation],20);
+ }
+ const values=new Map();
+ const elements=new Map();
+ const element=id=>{
+  if(!elements.has(id))elements.set(id,{
+   value:'',checked:false,textContent:'',style:{},setAttribute(){},querySelector:element,
+  });
+  return elements.get(id);
+ };
+ const doc={createElement:()=>({style:{},setAttribute(){},querySelector:element}),
+  head:{append(){}},body:{append(){}}};
+ const storage={getItem:key=>values.get(key)??null,setItem:(key,val)=>values.set(key,val)};
+ const settings=createSettings(doc,storage);
+ for(const [kind,illumination,activation] of [
+  ['campfire',35,225],['torch',220,15],
+ ]){
+  for(const [key,value] of [
+   [kind+'VisibilityDistance',illumination],[kind+'ActivationDistance',activation],
+  ]){
+   const input=element('#fc-light-'+key);
+   assert.equal(typeof input.oninput,'function',key);
+   input.value=String(value);input.oninput();
+   assert.equal(settings[key],value);
+   assert.equal(JSON.parse(values.get('forest-chopper:settings:v1'))[key],value);
+  }
+  assert.equal(settings[kind+'VisibilityDistance'],illumination);
+  assert.equal(settings[kind+'ActivationDistance'],activation);
+ }
+});
+
+test('legacy light distance migrates into activation once, then remains independent',()=>{
+ const values=new Map([['forest-chopper:settings:v1',JSON.stringify({
+  campfireVisibilityDistance:175,torchVisibilityDistance:40,
+ })]]);
+ const elements=new Map();
+ const element=id=>{
+  if(!elements.has(id))elements.set(id,{
+   value:'',checked:false,textContent:'',style:{},setAttribute(){},querySelector:element,
+  });
+  return elements.get(id);
+ };
+ const doc={createElement:()=>({style:{},setAttribute(){},querySelector:element}),
+  head:{append(){}},body:{append(){}}};
+ const storage={getItem:key=>values.get(key)??null,setItem:(key,val)=>values.set(key,val)};
+ const settings=createSettings(doc,storage);
+ assert.equal(settings.campfireVisibilityDistance,175);
+ assert.equal(settings.campfireActivationDistance,175);
+ assert.equal(settings.torchVisibilityDistance,40);
+ assert.equal(settings.torchActivationDistance,40);
+ assert.equal(values.get('forest-chopper:fire-activation-distance:v1'),'1');
+ element('#fc-light-campfireVisibilityDistance').value='30';
+ element('#fc-light-campfireVisibilityDistance').oninput();
+ assert.equal(settings.campfireVisibilityDistance,30);
+ assert.equal(settings.campfireActivationDistance,175);
+ const repeated=createSettings(doc,storage);
+ assert.equal(repeated.campfireVisibilityDistance,30);
+ assert.equal(repeated.campfireActivationDistance,175);
+ assert.equal(repeated.torchActivationDistance,40);
+});
+
+test('per-fire shadow visibility uses independent 1–100 m sliders and preserves shadow radii',()=>{
+ const defaults=sanitizeSettings(null);
+ for(const kind of ['campfire','torch']){
+  const key=kind+'ShadowVisibilityDistance';
+  assert.deepEqual(LIGHTING_FIELDS[key].slice(0,4),[1,100,1,30]);
+  assert.equal(defaults[key],30);
+  assert.equal(sanitizeSettings({[key]:1})[key],1);
+  assert.equal(sanitizeSettings({[key]:100})[key],100);
+  assert.equal(sanitizeSettings({[key]:101})[key],30);
+  assert.equal(sanitizeSettings({[key]:0})[key],30);
+ }
+ const values=new Map();
+ const nodes=new Map();
+ const element=id=>{
+  if(!nodes.has(id))nodes.set(id,{
+   value:'',checked:false,textContent:'',style:{},setAttribute(){},querySelector:element,
+  });
+  return nodes.get(id);
+ };
+ const doc={createElement:()=>({style:{},setAttribute(){},querySelector:element}),
+  head:{append(){}},body:{append(){}}};
+ const storage={getItem:key=>values.get(key)??null,setItem:(key,val)=>values.set(key,val)};
+ const settings=createSettings(doc,storage);
+ for(const [key,val] of [
+  ['campfireShadowVisibilityDistance',30],
+  ['torchShadowVisibilityDistance',75],
+ ]){
+  const slider=element('#fc-light-'+key);
+  assert.equal(typeof slider.oninput,'function');
+  slider.value=String(val);slider.oninput();
+  assert.equal(settings[key],val);
+  assert.equal(JSON.parse(values.get('forest-chopper:settings:v1'))[key],val);
+ }
+ assert.equal(settings.campfireNightRadius,30,'caster range unaffected');
+ assert.equal(settings.torchNightRadius,30,'caster range unaffected');
+ assert.equal(settings.fireStaticShadowRadius,100,'static caster range unaffected');
 });
