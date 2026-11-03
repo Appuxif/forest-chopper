@@ -1,6 +1,6 @@
 import {fireLighting} from './lighting-profile.js?v=20261103-shadow-visibility-cache1';
 import {fireShadowPolicy,selectFireShadowSources,STARTER_FIRE_ID} from './fire-shadow-policy.js?v=20261103-day-night-fire-shadows1';
-import {createCampfireModel,animateCampfireModel,presentCampfireModel,disposeCampfireEffects,applyFireLightSettings,applyFireShadowMode} from './campfire-model.js?v=20261103-unified-sun-cascades1';
+import {createCampfireModel,animateCampfireModel,presentCampfireModel,disposeCampfireEffects,applyFireLightSettings,applyFireShadowMode} from './campfire-model.js?v=20261103-distant-fire-billboard20';
 import {createFireVisibilityTester} from './fire-effects.js?v=20261102-night-lighting1';
 import {createTrailTexture} from './trail-texture.js';
 // Shared low-poly navigation cues. The trail is purely visual:

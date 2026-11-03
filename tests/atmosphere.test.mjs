@@ -246,13 +246,20 @@ test('far cascade does not disable nearer tree shadows when its budget changes',
  assert.ok([...f.trees.values()].every(tree=>tree.children.every(m=>!m.castShadow)));
 });
 
-test('night sky zenith uses darker palette while daytime keeps its usual blue',()=>{
+test('deep-night sky zenith and horizon match black fog, daytime stays blue',()=>{
  const f=fixture();
  const sky=f.atmosphere.dome.material.uniforms;
  const day={...sky.zenith.value};
  f.atmosphere.setPhase(.5);
- const expected={r:0,g:1/255,b:1/255};
+ const expected={r:0,g:0,b:0};
  for(const channel of ['r','g','b'])assert.ok(Math.abs(sky.zenith.value[channel]-expected[channel])<1e-12);
+ assert.deepEqual({r:sky.zenith.value.r,g:sky.zenith.value.g,b:sky.zenith.value.b},
+  {r:0,g:0,b:0},'full-night zenith is black: no visible gradient band');
+ // In the real game day-cycle applies the identical black scene.background.
+ // The dome shader reads it as horizon and renders a uniform black sky.
+ sky.horizon.value.copy({r:0,g:0,b:0});
+ assert.deepEqual({r:sky.horizon.value.r,g:sky.horizon.value.g,b:sky.horizon.value.b},
+  {r:0,g:0,b:0});
  f.atmosphere.setPhase(0);
  assert.deepEqual({r:sky.zenith.value.r,g:sky.zenith.value.g,b:sky.zenith.value.b},day);
 });

@@ -1,8 +1,12 @@
 // The three graphics quality levels store independent procedural-tree presets.
 // Pure JS: no Three.js/browser dependencies, safe to validate even before WebGL.
-import {SPRUCE_PRESET,BIRCH_PRESET} from './tree-model-presets.js';
+import {SPRUCE_PRESET,BIRCH_PRESET} from './tree-model-presets.js?v=20261103-shared-birch-all1';
 export const TREE_MODEL_KEY='forest-chopper:tree-model-profiles:v1';
 export const GRAPHICS_KEY='forest-chopper:settings:v1';
+// One-time migrations update the approved tree templates across all model
+// qualities. The opposite species is kept intact when only one is migrated.
+export const SPRUCE_PROFILE_MIGRATION_KEY='forest-chopper:spruce-model-shared-5000:v1';
+export const BIRCH_PROFILE_MIGRATION_KEY='forest-chopper:birch-model-shared-6500:v1';
 export const TREE_QUALITIES=['low','balanced','high'];
 
 const N=(name,min,max,step=1,group='geometry',hint='')=>({name,min,max,step,group,hint,type:'number'});
@@ -84,10 +88,16 @@ export function defaultTreeModel(species){
     // The old editor preset contains trunkStyle, but the current foliage-card
     // generator ignores it. Do not advertise a setting that has no effect.
     delete value.trunkStyle;
-    value.generatorQuality='balanced';
+    value.generatorQuality=params.generatorQuality??'high';
   }
   return value;
 }
+// Graphics LOD limits may only reduce the model's own triangle budget.
+export function limitTreeModelTriangles(model,graphicsBudget){
+  return {...model,maxTriangles:Math.min(model.maxTriangles,graphicsBudget)};
+}
+// Backwards-compatible helper used by earlier tests.
+export const limitSpruceModelTriangles=limitTreeModelTriangles;
 export function sanitizeTreeModel(species,source){
   const valid=source&&typeof source==='object'&&!Array.isArray(source)?source:{};
   const defaults=defaultTreeModel(species);
@@ -126,13 +136,35 @@ export function sanitizeTreeProfiles(source){
   return profiles;
 }
 export function loadTreeProfiles(storage){
-  try{return sanitizeTreeProfiles(JSON.parse(storage?.getItem(TREE_MODEL_KEY)??'null'));}
-  catch{return defaultTreeProfiles();}
+  try{
+    const raw=storage?.getItem(TREE_MODEL_KEY);
+    const profiles=sanitizeTreeProfiles(JSON.parse(raw??'null'));
+    if(raw){
+      const migrateSpruce=storage?.getItem(SPRUCE_PROFILE_MIGRATION_KEY)!=='1';
+      const migrateBirch=storage?.getItem(BIRCH_PROFILE_MIGRATION_KEY)!=='1';
+      if(migrateSpruce||migrateBirch){
+        for(const quality of TREE_QUALITIES){
+          if(migrateSpruce)profiles[quality].spruce=defaultTreeModel('spruce');
+          if(migrateBirch)profiles[quality].birch=defaultTreeModel('birch');
+        }
+        try{
+          storage?.setItem?.(TREE_MODEL_KEY,JSON.stringify(profiles));
+          if(migrateSpruce)storage?.setItem?.(SPRUCE_PROFILE_MIGRATION_KEY,'1');
+          if(migrateBirch)storage?.setItem?.(BIRCH_PROFILE_MIGRATION_KEY,'1');
+        }catch{/* readonly storage still gets updated in-memory profiles */}
+      }
+    }
+    return profiles;
+  }catch{return defaultTreeProfiles();}
 }
 export function saveTreeProfiles(storage,profiles){
   if(typeof storage?.setItem!=='function')return false;
-  try{storage.setItem(TREE_MODEL_KEY,JSON.stringify(sanitizeTreeProfiles(profiles)));return true;}
-  catch{return false;}
+  try{
+    storage.setItem(TREE_MODEL_KEY,JSON.stringify(sanitizeTreeProfiles(profiles)));
+    storage.setItem(SPRUCE_PROFILE_MIGRATION_KEY,'1');
+    storage.setItem(BIRCH_PROFILE_MIGRATION_KEY,'1');
+    return true;
+  }catch{return false;}
 }
 export function readActiveTreeConfig(storage){
   let local=storage;

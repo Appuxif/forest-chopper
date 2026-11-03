@@ -4,7 +4,7 @@
 import {
   TREE_FIELDS,TREE_GROUPS,TREE_QUALITIES,defaultTreeModel,loadTreeProfiles,
   saveTreeProfiles,sanitizeTreeModel,sanitizeTreeProfiles,
-} from './tree-model-config.js';
+} from './tree-model-config.js?v=20261103-shared-birch-all1';
 
 const esc=value=>String(value).replace(/[&<>"']/g,c=>({
   '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',

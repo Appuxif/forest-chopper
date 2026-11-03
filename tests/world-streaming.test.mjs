@@ -10,9 +10,9 @@ import {terrainHeight} from '../src/terrain.js';
 import {generateGrassTile} from '../src/micro-grass.js';
 import {PERFORMANCE_PRESETS,presetSettings} from '../src/performance-presets.js';
 
-test('medium and low disable MSAA; high and ultra retain it',()=>{
-  for(const preset of ['medium','low'])assert.equal(PERFORMANCE_PRESETS[preset].antialias,false);
-  for(const preset of ['high','ultra'])assert.equal(PERFORMANCE_PRESETS[preset].antialias,true);
+test('reviewed High, Medium and Low disable MSAA; Ultra retains it',()=>{
+  for(const preset of ['high','medium','low'])assert.equal(PERFORMANCE_PRESETS[preset].antialias,false);
+  assert.equal(PERFORMANCE_PRESETS.ultra.antialias,true);
   const settings=presetSettings('medium');
   settings.antialias=true;
   assert.equal(PERFORMANCE_PRESETS.medium.antialias,false,'returned preset must be a copy');

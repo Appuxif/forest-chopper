@@ -202,7 +202,9 @@ export function createAtmosphere({THREE,renderer,scene,camera,sun,hemisphere,gro
   let lightingChanged=true,moonShadowsDisabled=false;
   const nearTrees=new Set(),farTrees=new Set(),shadowEnabledTrees=new Set();
   const zenithDay=new THREE.Color(0x78b0d0);
-  const zenithNight=new THREE.Color(0x000101);
+  // Match the deep-night sky, clear colour and fog to prevent a visible
+  // horizon ring from sRGB rounding at very low RGB levels.
+  const zenithNight=new THREE.Color(0x000000);
   const sunVector=new THREE.Vector3();
   const moonVector=new THREE.Vector3();
   const lightDir=new THREE.Vector3();

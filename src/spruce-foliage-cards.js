@@ -10,7 +10,7 @@
  * instead of calling createSpruce hundreds of times.
  */
 import * as THREE from 'https://esm.sh/three@0.170.0';
-import {SPRUCE_PRESET} from './tree-model-presets.js';
+import {SPRUCE_PRESET} from './tree-model-presets.js?v=20261103-shared-birch-all1';
 export {SPRUCE_PRESET};
 
 const num = (v, fallback) => v === undefined ? fallback : Number(v);
@@ -387,7 +387,7 @@ function buildFoliageCardsSpruce(spec={}, options={}) {
     geo.setIndex(indices);geo.computeVertexNormals();geo.computeBoundingSphere();
     const material=new THREE.MeshStandardMaterial({
       map:atlas,color:0xffffff,roughness:1,metalness:0,side:THREE.DoubleSide,
-      alphaTest,transparent:false,depthWrite:true,alphaToCoverage:true
+      alphaTest,transparent:false,depthWrite:true,alphaToCoverage:false
     });
     const cards=new THREE.Mesh(geo,material);
     cards.name='Foliage Cards · текстура хвои';

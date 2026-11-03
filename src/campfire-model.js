@@ -154,7 +154,10 @@ export function presentCampfireModel(ctx,group,{lit=true,distance=0,onScreen=tru
   data.fireEffects=createFireEffects(ctx.THREE,visual,data.fireKind??'campfire');
  }
  data.fireEffects?.setTier(tier);
- data.fireEffects?.setBillboardEnabled?.(ctx.settings?.flameBillboard!==false);
+ // At close range the billboard is a visibly static yellow blob inside
+ // the animated flame. Keep it as a cheap distant LOD only (20m+).
+ data.fireEffects?.setBillboardEnabled?.(
+   ctx.settings?.flameBillboard!==false && lit && onScreen && distance>=20);
  return tier;
 }
 

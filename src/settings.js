@@ -1,8 +1,8 @@
 // Lightweight client-only preferences. No framework or new dependencies.
 import {collectDiagnostics, formatDiagnostics, getGpuRendererName} from './diagnostics.js?v=20261101-gpu-renderer1';
 import {FPS_OPTIONS} from './frame-limiter.js';
-import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js';
-import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS} from './performance-presets.js?v=20261103-unified-sun-cascades1';
+import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js?v=20261103-shared-birch-all1';
+import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS,PERFORMANCE_LIGHTING_PRESETS} from './performance-presets.js?v=20261103-shared-spruce-all1';
 import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261102-jump-voices1';
 const KEY = 'forest-chopper:settings:v1';
 export const LIGHTING_FIELDS=Object.freeze({
@@ -53,7 +53,15 @@ const PREVIOUS_LIGHTING_DEFAULTS=Object.freeze({
  nightViewDistance:100,campfireNightIntensity:4,campfireNightRadius:20,
  torchNightIntensity:3.3,torchNightRadius:16,
 });
-const DEFAULT = Object.freeze({...PERFORMANCE_DEFAULTS,performancePreset:'high',mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 30, grassDistance: 70, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 150, shadowRefreshSeconds: 2, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 100, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80, audio:DEFAULT_AUDIO,...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,val])=>[key,val[3]])),...LIGHTING_FLAGS});
+const DEFAULT=Object.freeze({
+ ...PERFORMANCE_DEFAULTS,performancePreset:'high',
+ mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,fov:75,
+ cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
+ audio:DEFAULT_AUDIO,
+ ...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,val])=>[key,val[3]])),
+ ...LIGHTING_FLAGS,
+ ...PERFORMANCE_LIGHTING_PRESETS.high,
+});
 
 function validCameraNumber(value,min,max,fallback,digits=2){
   if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max)return fallback;
@@ -65,10 +73,11 @@ export function sanitizeSettings(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const number = Number(source.mouseSensitivity);
   const fov = Number(source.fov);
+  const performancePreset=['ultra','high','medium','low','custom'].includes(source.performancePreset)
+    ?source.performancePreset:(source.quality?'custom':'high');
   const settings = {
     audio:sanitizeAudioSettings(source.audio),
-    performancePreset:['ultra','high','medium','low','custom'].includes(source.performancePreset)
-      ?source.performancePreset:(source.quality?'custom':'high'),
+    performancePreset,
     ...Object.fromEntries(PERFORMANCE_KEYS.filter(key=>!(key in {
       quality:1,maxFps:1,windEnabled:1,shadowDistance:1,shadowRefreshSeconds:1,
       characterShadowsEnabled:1,characterShadowDistance:1,spruceFoliageDensity:1,
@@ -93,11 +102,13 @@ export function sanitizeSettings(value) {
     dayCycleEnabled: source.dayCycleEnabled === true,
     ...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,[min,max,step,fallback]])=>{
       const value=source[key];
+      const presetFallback=performancePreset==='high'?DEFAULT[key]:fallback;
       return [key,typeof value==='number'&&Number.isFinite(value)&&value>=min&&value<=max
-        ?Number((Math.round(value/step)*step).toFixed(4)):fallback];
+        ?Number((Math.round(value/step)*step).toFixed(4)):presetFallback];
     })),
     ...Object.fromEntries(Object.entries(LIGHTING_FLAGS).map(([key,fallback])=>
-      [key,typeof source[key]==='boolean'?source[key]:fallback])),
+      [key,typeof source[key]==='boolean'?source[key]:
+        performancePreset==='high'?DEFAULT[key]:fallback])),
     autoSprint: source.autoSprint === true,
     quality: ['low','balanced','high'].includes(source.quality) ? source.quality : DEFAULT.quality,
     maxFps: FPS_OPTIONS.includes(source.maxFps) ? source.maxFps : DEFAULT.maxFps,
@@ -225,7 +236,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     // A saved 0 was the previous moonlight default. Upgrade that default
     // once, while leaving custom nonzero values untouched.
     if(persisted&&!local.getItem(MOONLIGHT_MIGRATION)){
-      if(persisted.nightMoon===0){
+      if(persisted.nightMoon===0&&persisted.performancePreset!=='high'){
         persisted.nightMoon=LIGHTING_FIELDS.nightMoon[3];
         local.setItem(KEY,JSON.stringify(persisted));
       }
@@ -234,7 +245,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     // Replace only the last night-visibility default (60 m) with 30 m.
     // A deliberately customized range other than 60 m is preserved.
     if(persisted&&!local.getItem(NIGHT_VISIBILITY_30_MIGRATION)){
-      if(persisted.nightViewDistance===60){
+      if(persisted.nightViewDistance===60&&persisted.performancePreset!=='high'){
         persisted.nightViewDistance=LIGHTING_FIELDS.nightViewDistance[3];
         local.setItem(KEY,JSON.stringify(persisted));
       }
@@ -842,6 +853,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     if(preset!=='custom'&&PERFORMANCE_PRESETS[preset]){
       applyingPreset=true;
       Object.assign(state,PERFORMANCE_PRESETS[preset]);
+      if(PERFORMANCE_LIGHTING_PRESETS[preset])Object.assign(state,PERFORMANCE_LIGHTING_PRESETS[preset]);
     }
     state.performancePreset=preset;
     onQualityChange?.(state.quality);

@@ -260,3 +260,34 @@ test('all demo systems share a single transform: particle size, smoke rise, spar
  assert.ok(fx.sparks.matrices.every(m=>m.position.y*scale+fx.anchor.position.y<3), 'sparks rise shrinks with flame');
  fx.dispose();
 });
+
+
+test('billboard glow is hidden before 20m and shown from 20m for fires and torches',()=>{
+ for(const kind of ['campfire','torch']){
+  const flame={visible:true},innerFlame={visible:true};
+  const state={tier:'off',billboard:false};
+  const fireEffects={
+   setTier(tier){state.tier=tier;},
+   setBillboardEnabled(value){state.billboard=value;},
+  };
+  const group={userData:{flame,innerFlame,sparks:[],fireKind:kind,fireBody:[],fireEffects}};
+  const ctx={settings:{performancePreset:'high',flameBillboard:true},THREE:{}};
+  const visible=distance=>state.billboard && state.tier!=='off';
+  for(const distance of [0,5,19.99]){
+   presentCampfireModel(ctx,group,{distance});
+   assert.equal(visible(distance),false,kind+' '+distance+'m: no static glow nearby');
+  }
+  for(const distance of [20,30,99,120]){
+   presentCampfireModel(ctx,group,{distance});
+   assert.equal(visible(distance),true,kind+' '+distance+'m: distant glow visible');
+  }
+  ctx.settings.flameBillboard=false;
+  presentCampfireModel(ctx,group,{distance:30});
+  assert.equal(visible(30),false,kind+': user option still disables billboard');
+  ctx.settings.flameBillboard=true;
+  presentCampfireModel(ctx,group,{distance:30,lit:false});
+  assert.equal(visible(30),false,kind+': unlit fire has no glow');
+  presentCampfireModel(ctx,group,{distance:30,onScreen:false});
+  assert.equal(visible(30),false,kind+': offscreen fire has no glow');
+ }
+});

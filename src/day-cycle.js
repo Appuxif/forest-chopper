@@ -13,14 +13,14 @@ export function extrapolateDayPhase(phase,elapsedMs,cycleMs=DAY_CYCLE_MS){
 const PHASES = Object.freeze([
   {at:0,    sky:0xa4c8be, ambient:1.2, sun:2, sunlight:0xffe4a6},
   {at:.23,  sky:0xc18d80, ambient:1.85,sun:1.5, sunlight:0xffba86},
-  {at:.375, sky:0x010203, ambient:0,sun:.2, sunlight:0xb5ceef},
-  {at:.625, sky:0x010203, ambient:0,sun:.2, sunlight:0xb5ceef},
+  {at:.375, sky:0x000000, ambient:0,sun:.2, sunlight:0xb5ceef},
+  {at:.625, sky:0x000000, ambient:0,sun:.2, sunlight:0xb5ceef},
   {at:.77,  sky:0xa3acb9, ambient:1.78,sun:1.4, sunlight:0xffcda0},
   {at:1,    sky:0xa4c8be, ambient:1.2, sun:2, sunlight:0xffe4a6},
 ]);
 
 // Night vision changes local lighting only; daylight stays unchanged.
-// Preserve the night sky colour and the moon so the effect isn't a fake daytime.
+// Deep-night sky and fog are both black so the 60m fog/frustum boundary is invisible.
 export function nightVisionLighting(ambient,sun,enabled=false,night=0){
   // Night vision must depend on actual time, not on the user's daytime
   // ambient slider (which may legitimately be very dim).

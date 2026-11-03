@@ -47,7 +47,7 @@ test('phase interpolation is continuous, cyclic and keeps a readable light floor
   assert.ok(Math.abs(dayPhaseValues(.5).ambient-0)<1e-10);
   const midpointSky=fixture();
   midpointSky.cycle.applyPhase(.5);
-  assert.deepEqual(midpointSky.scene.background.rgb(),new Color(0x010203).rgb());
+  assert.deepEqual(midpointSky.scene.background.rgb(),new Color(0x000000).rgb());
   assert.deepEqual(midpointSky.scene.fog.color.rgb(),new Color(0x000000).rgb());
   assert.ok(dayPhaseValues(.23).sun>dayPhaseValues(.5).sun);
 });
@@ -67,7 +67,7 @@ test('opt-in visual cycle throttles color changes and fully restores baseline on
   assert.notDeepEqual(night,original);
   assert.ok(Math.abs(night.ambient-0)<1e-10);
   assert.ok(Math.abs(night.sun-.2)<1e-10);
-  assert.notDeepEqual(night.sky,night.fog,'night fog is black while sky is near-black');
+  assert.deepEqual(night.sky,night.fog,'deep-night sky and fog match, hiding far clipping');
   f.cycle.tick(1000+DAY_CYCLE_MS*.5+100);
   assert.deepEqual(snapshot(f),night,'throttled call must not change render state');
   f.settings.dayCycleEnabled=false;
@@ -276,7 +276,8 @@ test('debug time override applies actual night lighting even with visual cycle d
  assert.ok(f.hemisphere.intensity<daylight.ambient*.5);
  assert.ok(f.sun.intensity<daylight.sun*.5);
  assert.notDeepEqual(f.scene.background.rgb(),daylight.sky);
- assert.notDeepEqual(f.scene.background.rgb(),f.scene.fog.color.rgb());
+ assert.deepEqual(f.scene.background.rgb(),f.scene.fog.color.rgb(),
+   'night debug cheat must use a consistent black horizon and fog');
  // An explicit change from night to day must apply immediately (same timestamp).
  f.cycle.setOfflinePhase(0);
  f.cycle.tick(200);

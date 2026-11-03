@@ -2,10 +2,10 @@ import {createRagdoll} from './ragdoll.js?v=20261103-ragdoll-save-recovery1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
 import {createAnimations} from './animations.js?v=20261102-chop-frame18';
 import {createWorld} from './world.js?v=20261103-unified-sun-cascades1';
-import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
-import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
+import {generateSpruceParts} from './spruce-model.js?v=20261103-shared-birch-all1';
+import {generateBirchParts} from './birch-model.js?v=20261103-shared-birch-all1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
-import {readActiveTreeConfig} from './tree-model-config.js?v=20261031-tree-editor1';
+import {readActiveTreeConfig,limitTreeModelTriangles} from './tree-model-config.js?v=20261103-shared-birch-all1';
 import {createSpruceDiagnostics} from './spruce-diagnostics.js?v=20261031-spruce-bark1';
 import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js';
@@ -24,15 +24,15 @@ import {createPlayer} from './player.js?v=20261103-debug-player1';
 import {createMultiplayer} from './multiplayer.js?v=20261103-debug-player1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261103-settings-ui-export1';
+import {createSettings} from './settings.js?v=20261103-shared-birch-all1';
 import {createGameAudio} from './game-audio.js?v=20261102-treefall-sync13';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
-import {createLandmarks} from './landmarks.js?v=20261103-unified-sun-cascades1';
+import {createLandmarks} from './landmarks.js?v=20261103-distant-fire-billboard20';
 import {createPlantInteraction} from './plant-interaction.js?v=20261031-collectible-plants1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
-import {createDayCycle} from './day-cycle.js?v=20261102-night-grass30';
-import {createAtmosphere} from './atmosphere.js?v=20261103-settings-ui-export1';
+import {createDayCycle} from './day-cycle.js?v=20261103-night-horizon-black1';
+import {createAtmosphere} from './atmosphere.js?v=20261103-night-horizon-black1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
@@ -45,7 +45,7 @@ import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
 import {createStorages} from './storages.js?v=20261102-collision-world1';
-import {createCampStructures} from './camp-structures.js?v=20261103-unified-sun-cascades1';
+import {createCampStructures} from './camp-structures.js?v=20261103-distant-fire-billboard20';
 import {createVitalsUI} from './vitals-ui.js?v=20261102-debug-cheats';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261102-prestage-logs1';
@@ -480,8 +480,10 @@ function disposeProceduralParts(parts){
 function geometryProfile(){
   const latest=readActiveTreeConfig();
   return {
-    spruce:{...latest.models.spruce,maxTriangles:settings.treeTrianglesSpruce},
-    birch:{...latest.models.birch,maxTriangles:settings.treeTrianglesBirch},
+    // The editor's per-model maximum must remain effective. The graphics
+    // preset's triangle budget is an additional cap, not a replacement.
+    spruce:limitTreeModelTriangles(latest.models.spruce,settings.treeTrianglesSpruce),
+    birch:limitTreeModelTriangles(latest.models.birch,settings.treeTrianglesBirch),
   };
 }
 function distantProfile(spruce,birch){
