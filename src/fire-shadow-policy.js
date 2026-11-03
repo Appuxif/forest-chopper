@@ -14,10 +14,10 @@ export function selectFireShadowSources(candidates,limit=FIRE_SHADOW_LIMIT,maxRa
    .slice(0,count)
    .map(source=>source.id));
 }
-// Night shadows remain available on all eligible lights. Only selected nearby
-// lights receive per-frame updates; others reuse a cached cubemap.
-export function fireShadowPolicy({night=0,settings={},selected=true,visible=true,distance=0,radius=30,maxRange=30}={}){
- const visibleShadows=night>=.999 && settings?.fireShadows!==false &&
+// Fire shadows are available throughout the day/night cycle. Only selected
+// nearby lights refresh each frame; the other sources reuse cached cubemaps.
+export function fireShadowPolicy({settings={},selected=true,visible=true,distance=0,radius=30,maxRange=30}={}){
+ const visibleShadows=settings?.fireShadows!==false &&
    settings?.performancePreset!=='low' && visible &&
    distance<=Math.min(maxRange,radius+2);
  return {castShadow:visibleShadows,autoUpdate:visibleShadows&&selected};

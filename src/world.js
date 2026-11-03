@@ -2,7 +2,7 @@ import {decorResourceId} from './collectible-decor.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {treeCandidate,treeCanSpawn} from './tree-spacing.js?v=20261030-spacing-4m1';
 import {createTreeBatch} from './tree-instancing.js?v=20261031-spruce-sway1';
-import {createDistantForest} from './distant-forest.js?v=20261102-night-grass30';
+import {createDistantForest} from './distant-forest.js?v=20261103-unified-sun-cascades1';
 export function createWorld(ctx) {
 let distantForest=createDistantForest(ctx);
 function rand(x,z,n=0){let v=Math.sin(x*127.1+z*311.7+n*78.233+ctx.seed)*43758.5453;return v-Math.floor(v)}

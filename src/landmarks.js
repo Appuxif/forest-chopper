@@ -1,6 +1,6 @@
 import {fireLighting} from './lighting-profile.js?v=20261103-shadow-visibility-cache1';
-import {fireShadowPolicy,selectFireShadowSources,STARTER_FIRE_ID} from './fire-shadow-policy.js?v=20261103-all-cached-shadows1';
-import {createCampfireModel,animateCampfireModel,presentCampfireModel,disposeCampfireEffects,applyFireLightSettings,applyFireShadowMode} from './campfire-model.js?v=20261103-all-cached-shadows1';
+import {fireShadowPolicy,selectFireShadowSources,STARTER_FIRE_ID} from './fire-shadow-policy.js?v=20261103-day-night-fire-shadows1';
+import {createCampfireModel,animateCampfireModel,presentCampfireModel,disposeCampfireEffects,applyFireLightSettings,applyFireShadowMode} from './campfire-model.js?v=20261103-unified-sun-cascades1';
 import {createFireVisibilityTester} from './fire-effects.js?v=20261102-night-lighting1';
 import {createTrailTexture} from './trail-texture.js';
 // Shared low-poly navigation cues. The trail is purely visual:
@@ -53,7 +53,6 @@ export function createLandmarks(ctx,doc=document) {
     if(activeFire){
       disposeCampfireEffects(activeFire.group);
       activeFire.light?.shadow?.dispose?.();
-      activeFire.dynamicLight?.shadow?.dispose?.();
     }
     const visual=createCampfireModel(ctx,{shadows:true});
     const fire=visual.group;
@@ -71,7 +70,6 @@ export function createLandmarks(ctx,doc=document) {
     if(ctx.chunks.get('0,0')!==activeFire.parent){
       disposeCampfireEffects(activeFire.group);
       activeFire.light?.shadow?.dispose?.();
-      activeFire.dynamicLight?.shadow?.dispose?.();
       activeFire=null;return;
     }
     if(!Number.isFinite(now))return;
@@ -134,7 +132,6 @@ export function createLandmarks(ctx,doc=document) {
     applyFireLightSettings(ctx,group,'campfire',ctx.terrain?.nightBlend??0);
     const flicker=1+Math.sin(now*.007)*.06;
     light.intensity*=flicker;
-    if(group.userData.dynamicLight)group.userData.dynamicLight.intensity*=flicker;
   }
 
   function decorate(group,cx,cz) {

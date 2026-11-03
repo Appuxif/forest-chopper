@@ -242,3 +242,24 @@ test('distant forest ignores lakes during deep night and limits draw range',()=>
  assert.equal(distantForestRange(terrain,[lake],lake.x,lake.z,
    {lakeForestMode:'full',farForestDistance:165,lakeViewDistance:450}),450);
 });
+
+test('far shadow sector budget reaches outer rings and never creates more meshes',()=>{
+ const f=fixture();
+ f.ctx.settings={farForestDistance:350,farTreeDensity:100,lakeForestMode:'off'};
+ f.distant.update();f.complete();
+ const before=f.objects.size;
+ const casterMeshes=f.distant.getShadowCasters(0,0,30,350,12);
+ assert.ok(casterMeshes.length>0,'far casters have visible mesh batches');
+ assert.equal(f.objects.size,before,'shadow selection does not allocate geometry');
+ assert.ok(casterMeshes.every(m=>m.castShadow===true));
+ const selectedKeys=[...f.distant.meshes].filter(([,sector])=>
+  sector.meshes.some(m=>casterMeshes.includes(m))).map(([key])=>key);
+ assert.ok(selectedKeys.length<=12,'selection limits sectors, not individual instances');
+ const sectors=selectedKeys.map(key=>{
+  const [sx,sz]=key.split(',').map(Number);
+  return Math.hypot((sx+.5)*96,(sz+.5)*96);
+ });
+ assert.ok(sectors.some(distance=>distance>220),'outermost visible forest contributes');
+ assert.ok(sectors.some(distance=>distance<180),'midrange shadows also survive budget');
+ f.distant.dispose();
+});

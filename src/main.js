@@ -1,7 +1,7 @@
-import {createRagdoll} from './ragdoll.js?v=20261102-bounce-fix1';
-import {createRagdollControls} from './ragdoll-controls.js?v=20261102-bounce-fix1';
+import {createRagdoll} from './ragdoll.js?v=20261103-ragdoll-save-recovery1';
+import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
 import {createAnimations} from './animations.js?v=20261102-chop-frame18';
-import {createWorld} from './world.js?v=20261102-night-grass30';
+import {createWorld} from './world.js?v=20261103-unified-sun-cascades1';
 import {generateSpruceParts} from './spruce-model.js?v=20261031-spruce-bark1';
 import {generateBirchParts} from './birch-model.js?v=20261031-birch1';
 import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending1';
@@ -14,25 +14,25 @@ import {createGrass} from './grass.js';
 import {createMicroGrass} from './micro-grass.js?v=20261102-night-grass30';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
 import {TerrainSystem} from './terrain.js?v=20261102-night-grass30';
-import {createPhysics} from './physics.js?v=20261102-jump-voices1';
+import {createPhysics} from './physics.js?v=20261103-debug-player1';
 import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bounce-fix1';
 import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
 import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261102-chop-current-target1';
 import {createControls} from './controls.js?v=20261102-view-flight1';
-import {createPlayer} from './player.js?v=20261102-flight-distance1';
-import {createMultiplayer} from './multiplayer.js?v=20261102-chop-frame18';
+import {createPlayer} from './player.js?v=20261103-debug-player1';
+import {createMultiplayer} from './multiplayer.js?v=20261103-debug-player1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261103-all-cached-shadows1';
+import {createSettings} from './settings.js?v=20261103-settings-ui-export1';
 import {createGameAudio} from './game-audio.js?v=20261102-treefall-sync13';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
-import {createLandmarks} from './landmarks.js?v=20261103-all-cached-shadows1';
+import {createLandmarks} from './landmarks.js?v=20261103-unified-sun-cascades1';
 import {createPlantInteraction} from './plant-interaction.js?v=20261031-collectible-plants1';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261030-decor-shadow1';
 import {createDayCycle} from './day-cycle.js?v=20261102-night-grass30';
-import {createAtmosphere} from './atmosphere.js?v=20261102-split-shadow1';
+import {createAtmosphere} from './atmosphere.js?v=20261103-settings-ui-export1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
@@ -45,7 +45,7 @@ import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
 import {createStorages} from './storages.js?v=20261102-collision-world1';
-import {createCampStructures} from './camp-structures.js?v=20261103-all-cached-shadows1';
+import {createCampStructures} from './camp-structures.js?v=20261103-unified-sun-cascades1';
 import {createVitalsUI} from './vitals-ui.js?v=20261102-debug-cheats';
 import {createForestResources} from './forest-resources.js?v=20261101-pickup-reticle1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261102-prestage-logs1';
@@ -53,7 +53,7 @@ import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1
 import {WorldTaskScheduler} from './world-task-scheduler.js';
 import {createWorldStartupGate} from './world-startup.js';
 import {createPickupInteraction} from './pickup-interaction.js?v=20261102-audio1';
-import {createDeathSystem} from './death.js?v=20261102-voice1';
+import {createDeathSystem} from './death.js?v=20261103-ragdoll-save-recovery1';
 
 // Read and consume launch mode before touching any saved game data.
 const MENU_LAUNCH_KEY='forest-chopper:launch:v1';
@@ -186,14 +186,15 @@ const atmosphere=createAtmosphere({
   }
   return result;
  },
+ getDistantShadowCasters(x,z,minRadius,maxRadius){
+  return ctx.distantForest?.getShadowCasters?.(x,z,minRadius,maxRadius,18)??[];
+ },
  getPointShadowCasters(light){
   if(!light.parent)return [];
   const pos=light.getWorldPosition(new THREE.Vector3());
   const x=pos.x,z=pos.z,r=Math.min(light.distance,
     light.userData?.shadowCasterRange??light.distance);
-  const role=light.userData?.shadowRole??'all';
   const casters=[];
-  if(role!=='dynamic'){
    casters.push(...selectDecorShadowCasters(chunks,x,z,r,36));
    const batches=new Set();
    for(const tree of trees.values()){
@@ -213,12 +214,9 @@ const atmosphere=createAtmosphere({
     if(Math.hypot(log.x-x,log.z-z)<r+2 && log.mesh?.castShadow)
      casters.push(log.mesh);
    }
-  }
-  // Cold cached shadow maps (or ones invalidated by the world) exclude
-  // moving characters. Already rendered maps are *not* cleared merely
-  // because a light leaves the live-refresh budget; stale silhouettes are
-  // an intentional visual/performance trade-off.
-  if(role!=='static'&&!light.userData?.shadowFrozen){
+  // A freshly built cached map may omit characters, while previously
+  // rendered moving silhouettes are deliberately preserved when frozen.
+  if(!light.userData?.shadowFrozen){
    if(Math.hypot(px-x,pz-z)<r+2 && ownAvatar?.shadowMeshes)
     casters.push(...ownAvatar.shadowMeshes);
    for(const avatar of avatars.values()){
@@ -640,7 +638,7 @@ if(menuLaunch.mode==='online'){
 }
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261102-freeze-time1');
+  const { installDebug } = await import('./debug.js?v=20261103-debug-player1');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

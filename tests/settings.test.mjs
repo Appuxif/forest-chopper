@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sanitizeSettings,createSettings,LIGHTING_FIELDS,LIGHTING_FLAGS} from '../src/settings.js';
+import {readFileSync} from 'node:fs';
+import {sanitizeSettings,createSettings,lightingFieldMarkup,settingsExportJSON,LIGHTING_FIELDS,LIGHTING_FLAGS} from '../src/settings.js';
 import {PERFORMANCE_DEFAULTS,PERFORMANCE_PRESETS} from '../src/performance-presets.js';
 import {DEFAULT_AUDIO,SOUND_CONTROLS} from '../src/sound-rules.js';
 
 const defaults = {...PERFORMANCE_DEFAULTS,performancePreset:'high',
   mouseSensitivity:1,showFps:false,spruceFoliageVisible:true,spruceFoliageShadows:true,spruceFoliageDensity:100,windEnabled:true,dayCycleEnabled:false,
-  autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:60,shadowRefreshSeconds:1,characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:100,grassDensity:30,
+  autoSprint:false,quality:'balanced',maxFps:60,shadowDistance:150,shadowRefreshSeconds:2,characterShadowsEnabled:true,characterShadowDistance:30,shadowContrast:100,grassDensity:30,
   grassDistance:70,grassMinSize:2.5,grassMaxSize:5.5,grassWidth:1,
   grassTurnMin:-30,grassTurnMax:30,fov:75,
   cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,audio:DEFAULT_AUDIO,
@@ -35,8 +36,10 @@ test('sensitivity boundaries are inclusive and persistence stays independent of 
     'zero means every rendered frame and must survive persistence');
   assert.equal(sanitizeSettings({shadowRefreshSeconds:.5}).shadowRefreshSeconds,.5);
   assert.equal(sanitizeSettings({shadowRefreshSeconds:5}).shadowRefreshSeconds,5);
-  assert.equal(sanitizeSettings({shadowRefreshSeconds:-.5}).shadowRefreshSeconds,1);
-  assert.equal(sanitizeSettings({shadowRefreshSeconds:5.5}).shadowRefreshSeconds,1);
+  assert.equal(sanitizeSettings({shadowRefreshSeconds:-.5}).shadowRefreshSeconds,2);
+  assert.equal(sanitizeSettings({shadowRefreshSeconds:5.5}).shadowRefreshSeconds,5.5);
+  assert.equal(sanitizeSettings({shadowRefreshSeconds:20}).shadowRefreshSeconds,20);
+  assert.equal(sanitizeSettings({shadowRefreshSeconds:20.5}).shadowRefreshSeconds,2);
   assert.equal(sanitizeSettings({characterShadowFps:0}).characterShadowsEnabled,false,
     'old 0 FPS setting migrates to disabled shadows');
   assert.equal(sanitizeSettings({characterShadowFps:20}).characterShadowsEnabled,true);
@@ -111,7 +114,7 @@ test('FOV is restored, applied live and reset without affecting world saves',()=
   assert.equal(settings.spruceFoliageShadows,false);
   assert.deepEqual(updates,[85]);
   const refresh=element('#fc-shadow-refresh');
-  assert.equal(refresh.value,'1');
+  assert.equal(refresh.value,'2');
   refresh.value='0';refresh.oninput();
   assert.equal(settings.shadowRefreshSeconds,0);
   assert.equal(element('#fc-shadow-refresh-value').textContent,'каждый кадр');
@@ -543,31 +546,23 @@ test('lighting settings expose a live persistent shadow budget 0–4 and moon de
 });
 
 
-test('shadow map split toggle is on by default and persists independently of quality',()=>{
- assert.equal(sanitizeSettings(null).splitShadowMaps,true);
- assert.equal(sanitizeSettings({splitShadowMaps:false}).splitShadowMaps,false);
- assert.equal(sanitizeSettings({splitShadowMaps:'false'}).splitShadowMaps,true);
- const values=new Map();
- const nodes=new Map();
- const el=id=>{
-  if(!nodes.has(id))nodes.set(id,{checked:false,value:'',style:{},textContent:'',
-   setAttribute(){},querySelector:el});
-  return nodes.get(id);
- };
+test('obsolete split shadow mode and static radius are absent from saved settings',()=>{
+ const settings=sanitizeSettings({splitShadowMaps:true,fireStaticShadowRadius:99});
+ assert.equal('splitShadowMaps' in settings,false);
+ assert.equal('fireStaticShadowRadius' in settings,false);
+ assert.equal('splitShadowMaps' in LIGHTING_FLAGS,false);
+ assert.equal('fireStaticShadowRadius' in LIGHTING_FIELDS,false);
+ const values=new Map(),nodes=new Map();
+ const el=id=>{if(!nodes.has(id))nodes.set(id,{checked:false,value:'',style:{},
+   textContent:'',setAttribute(){},querySelector:el});return nodes.get(id);};
  const doc={createElement:tag=>({tag,hidden:false,style:{},setAttribute(){},querySelector:el}),
   head:{append(){}},body:{append(){}}};
- const storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
- const settings=createSettings(doc,storage);
- const toggle=el('#fc-light-splitShadowMaps');
- assert.equal(toggle.checked,true);
- toggle.checked=false;toggle.onchange();
- assert.equal(settings.splitShadowMaps,false);
- assert.equal(settings.performancePreset,'high');
- assert.equal(JSON.parse(values.get('forest-chopper:settings:v1')).splitShadowMaps,false);
- toggle.checked=true;toggle.onchange();
- assert.equal(settings.splitShadowMaps,true);
+ const store={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
+ const ui=createSettings(doc,store);
+ assert.equal('splitShadowMaps' in ui,false);
+ assert.equal('fireStaticShadowRadius' in ui,false);
+ assert.equal(el('#fc-light-splitShadowMaps').onchange,undefined);
 });
-
 
 test('night range slider reaches 30m, defaults to 30m and keeps custom values',()=>{
  assert.deepEqual(LIGHTING_FIELDS.nightViewDistance.slice(0,4),[30,160,5,30]);
@@ -591,7 +586,7 @@ test('night range slider reaches 30m, defaults to 30m and keeps custom values',(
  assert.equal(settings.nightMoon,.4);
 });
 
-test('fire visibility distance, decay and static shadow caster radius persist independently',()=>{
+test('fire visibility and decay persist independently without an obsolete static radius',()=>{
  const defaults=sanitizeSettings(null);
  for(const kind of ['campfire','torch']){
   assert.equal(defaults[kind+'VisibilityDistance'],100);
@@ -604,9 +599,6 @@ test('fire visibility distance, decay and static shadow caster radius persist in
   assert.equal(sanitizeSettings({[kind+'Decay']:4})[kind+'Decay'],2);
   assert.equal(sanitizeSettings({[kind+'VisibilityDistance']:255})[kind+'VisibilityDistance'],100);
  }
- assert.equal(defaults.fireStaticShadowRadius,100);
- assert.equal(sanitizeSettings({fireStaticShadowRadius:9}).fireStaticShadowRadius,9);
- assert.equal(sanitizeSettings({fireStaticShadowRadius:0}).fireStaticShadowRadius,100);
  const values=new Map();
  const nodes=new Map();
  const element=id=>{
@@ -620,7 +612,7 @@ test('fire visibility distance, decay and static shadow caster radius persist in
  const cfg=createSettings(doc,storage);
  for(const [key,value] of [
   ['campfireVisibilityDistance',200],['torchVisibilityDistance',150],
-  ['campfireDecay',.4],['torchDecay',0],['fireStaticShadowRadius',9],
+  ['campfireDecay',.4],['torchDecay',0],
  ]){
   const input=element('#fc-light-'+key);
   assert.equal(typeof input.oninput,'function',key+' has a live slider');
@@ -743,5 +735,167 @@ test('per-fire shadow visibility uses independent 1–100 m sliders and preserve
  }
  assert.equal(settings.campfireNightRadius,30,'caster range unaffected');
  assert.equal(settings.torchNightRadius,30,'caster range unaffected');
- assert.equal(settings.fireStaticShadowRadius,100,'static caster range unaffected');
+});
+
+test('near sunlight cascade has 2K defaults, controls for distance and blend, no refresh slider',()=>{
+ const defaults=sanitizeSettings(null);
+ assert.equal(defaults.sunNearShadowMapSize,2048);
+ assert.equal(defaults.sunNearShadowDistance,30);
+ assert.equal(defaults.sunCascadeBlendDistance,4);
+ assert.equal('sunNearShadowRefreshSeconds' in defaults,false,'near shadows always render every frame');
+ assert.equal(sanitizeSettings({sunNearShadowMapSize:4096}).sunNearShadowMapSize,4096);
+ assert.equal(sanitizeSettings({sunNearShadowMapSize:3072}).sunNearShadowMapSize,2048);
+ assert.equal(sanitizeSettings({sunNearShadowDistance:45}).sunNearShadowDistance,45);
+ assert.equal(sanitizeSettings({sunNearShadowRefreshSeconds:1}).sunNearShadowRefreshSeconds,undefined);
+ const saved=new Map(),nodes=new Map();
+ const element=id=>{
+  if(!nodes.has(id))nodes.set(id,{value:'',checked:false,textContent:'',style:{},
+    setAttribute(){},querySelector:element});
+  return nodes.get(id);
+ };
+ const doc={createElement:()=>({hidden:false,setAttribute(){},querySelector:element}),
+  head:{append(){}},body:{append(){}}};
+ const storage={getItem:key=>saved.get(key)??null,setItem:(key,val)=>saved.set(key,val)};
+ const settings=createSettings(doc,storage);
+ for(const [key,value] of [
+  ['sunNearShadowMapSize',4096],['sunNearShadowDistance',25],
+  ['sunCascadeBlendDistance',6],
+ ]){
+  const input=element('#fc-light-'+key);
+  assert.equal(typeof input.oninput,'function','control is wired: '+key);
+  input.value=String(value);input.oninput();
+  assert.equal(settings[key],value);
+  assert.equal(JSON.parse(saved.get('forest-chopper:settings:v1'))[key],value);
+ }
+ assert.equal(settings.shadowMapSize,1024,'far map has its own resolution');
+ assert.equal(settings.shadowDistance,150,'far shadow radius stays independent');
+});
+
+
+test('shadow settings have their own tab beside lighting with all controls moved',()=>{
+ const source=readFileSync(new URL('../src/settings.js',import.meta.url),'utf8');
+ const begin=source.indexOf('panel.innerHTML =');
+ const end=source.indexOf('const fps =',begin);
+ const markup=source.slice(begin,end);
+ const lightingTab='data-category="lighting" aria-selected="false"';
+ const shadowTab='data-category="shadows" aria-selected="false"';
+ assert.ok(markup.indexOf(lightingTab)<markup.indexOf(shadowTab));
+ assert.equal(markup.match(/data-category="shadows" aria-label="Тени"/g)?.length,1);
+ const lightStart=markup.indexOf('data-category="lighting" aria-label="Освещение"');
+ const shadowStart=markup.indexOf('data-category="shadows" aria-label="Тени"');
+ const worldStart=markup.indexOf('data-category="world" aria-label="Мир"');
+ const lighting=markup.slice(lightStart,shadowStart);
+ const shadows=markup.slice(shadowStart,worldStart);
+ for(const field of [
+  'sunNearShadowDistance','sunNearShadowMapSize','sunCascadeBlendDistance',
+  'sunCascadeCasterOverlap','sunNearShadowSoftness','sunFarShadowSoftness',
+  'shadow-distance','shadow-map-size','shadow-refresh',
+  'tree-shadows','character-shadows','character-shadow-distance','shadow-contrast',
+  'campfireDayRadius','campfireNightRadius','campfireShadowVisibilityDistance',
+  'torchDayRadius','torchNightRadius','torchShadowVisibilityDistance',
+  'fireShadowLimit','fireShadows','nightDisableMoonShadows',
+ ]){
+  assert.ok(shadows.includes(field),'shadows tab contains '+field);
+  assert.equal(lighting.includes(field),false,'lighting tab omits shadow setting '+field);
+ }
+ for(const field of ['dayAmbient','daySun','nightAmbient','nightMoon',
+  'campfireDayIntensity','torchNightIntensity','campfireVisibilityDistance',
+  'torchActivationDistance','flameShader','flameBillboard']){
+  assert.ok(lighting.includes(field),'lighting keeps '+field);
+ }
+ assert.equal(shadows.includes('sunNearShadowRefreshSeconds'),false);
+ assert.equal(source.includes("if(!['graphics','grass','trees','controls','camera','audio','lighting','shadows','world']"),true);
+ assert.equal(source.includes('const nearDue=shadowsEnabled'),false,
+  'shadow tab does not accidentally own render logic');
+});
+
+
+test('shadow overlap and softness persist as live settings without touching old save data',()=>{
+ const defaults=sanitizeSettings(null);
+ assert.equal(defaults.sunCascadeCasterOverlap,12);
+ assert.equal(defaults.sunNearShadowSoftness,1);
+ assert.equal(defaults.sunFarShadowSoftness,1.5);
+ assert.equal(sanitizeSettings({sunCascadeCasterOverlap:30}).sunCascadeCasterOverlap,30);
+ assert.equal(sanitizeSettings({sunCascadeCasterOverlap:41}).sunCascadeCasterOverlap,12);
+ assert.equal(sanitizeSettings({sunNearShadowSoftness:0}).sunNearShadowSoftness,0);
+ assert.equal(sanitizeSettings({sunFarShadowSoftness:0}).sunFarShadowSoftness,0);
+ assert.equal(sanitizeSettings({sunNearShadowSoftness:2.5}).sunNearShadowSoftness,2.5);
+ assert.equal(sanitizeSettings({sunFarShadowSoftness:4}).sunFarShadowSoftness,4);
+ const saved=new Map(),nodes=new Map();
+ const element=id=>{
+  if(!nodes.has(id))nodes.set(id,{value:'',checked:false,textContent:'',style:{},
+    setAttribute(){},querySelector:element});
+  return nodes.get(id);
+ };
+ const doc={createElement:()=>({hidden:false,setAttribute(){},querySelector:element}),
+  head:{append(){}},body:{append(){}}};
+ const storage={getItem:key=>saved.get(key)??null,setItem:(key,val)=>saved.set(key,val)};
+ const settings=createSettings(doc,storage);
+ for(const [key,value] of [
+  ['sunCascadeCasterOverlap',26],['sunNearShadowSoftness',2],
+  ['sunFarShadowSoftness',3.5],
+ ]){
+  const slider=element('#fc-light-'+key);
+  assert.equal(typeof slider.oninput,'function');
+  slider.value=String(value);
+  slider.oninput();
+  assert.equal(settings[key],value);
+  assert.equal(JSON.parse(saved.get('forest-chopper:settings:v1'))[key],value);
+ }
+});
+
+
+test('all illumination and fire-radius controls render as sliders; only near map size is a select',()=>{
+ for(const key of Object.keys(LIGHTING_FIELDS)){
+  const html=lightingFieldMarkup(key);
+  assert.match(html,new RegExp('id="fc-light-'+key+'"'));
+  assert.match(html,new RegExp('id="fc-light-'+key+'-value"'));
+  if(key==='sunNearShadowMapSize'){
+   assert.match(html,/<select /);
+   assert.equal((html.match(/<option /g)??[]).length,3);
+   assert.doesNotMatch(html,/type="range"/);
+  }else{
+   assert.match(html,/type="range"/,'field '+key+' must use the numeric slider');
+   assert.doesNotMatch(html,/<select/,'field '+key+' must not show shadow-map size options');
+   const [min,max,step]=LIGHTING_FIELDS[key];
+   assert.ok(html.includes('min="'+min+'"')&&html.includes('max="'+max+'"'));
+   assert.ok(html.includes('step="'+step+'"'));
+  }
+ }
+ assert.match(lightingFieldMarkup('dayAmbient'),/max="3"/);
+ assert.match(lightingFieldMarkup('campfireNightIntensity'),/max="100"/);
+ assert.match(lightingFieldMarkup('torchDayRadius'),/max="30"/);
+ assert.match(lightingFieldMarkup('sunNearShadowSoftness'),/min="0"/);
+ assert.throws(()=>lightingFieldMarkup('not-a-setting'),/Unknown/);
+});
+
+test('portable JSON export captures every current setting, preset and all tree-model profiles',()=>{
+ const original=sanitizeSettings({
+  performancePreset:'custom',shadowDistance:290,dayAmbient:1.75,
+  sunNearShadowSoftness:0,sunFarShadowSoftness:3.5,
+  audio:{master:23},
+ });
+ const profiles={
+  low:{spruce:{seed:11},birch:{seed:12}},
+  balanced:{spruce:{seed:21},birch:{seed:22}},
+  high:{spruce:{seed:31},birch:{seed:32}},
+ };
+ const output=settingsExportJSON(original,profiles,'2026-11-03T17:20:00.000Z');
+ const exported=JSON.parse(output);
+ assert.equal(exported.format,'forest-chopper-settings');
+ assert.equal(exported.version,1);
+ assert.equal(exported.exportedAt,'2026-11-03T17:20:00.000Z');
+ assert.equal(exported.performancePreset,'custom');
+ assert.deepEqual(exported.settings,original);
+ assert.deepEqual(Object.keys(exported.settings).sort(),Object.keys(sanitizeSettings(null)).sort());
+ assert.deepEqual(exported.treeModels,{version:1,profiles});
+ assert.equal(exported.settings.sunNearShadowSoftness,0);
+ assert.equal(exported.settings.shadowDistance,290);
+ assert.equal('world' in exported,false);
+ assert.equal('seed' in exported,false);
+ assert.equal('inventory' in exported,false);
+ original.dayAmbient=2.95;profiles.high.spruce.seed=99;
+ assert.equal(exported.settings.dayAmbient,1.75);
+ assert.equal(exported.treeModels.profiles.high.spruce.seed,31,'snapshot is independent');
+ assert.ok(output.includes('\n  "settings": {'),'readable indented JSON');
 });

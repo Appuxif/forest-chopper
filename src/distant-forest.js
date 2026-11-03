@@ -231,6 +231,48 @@ export function createDistantForest(ctx){
       if(++started>=budget)break;
     }
   }
+  // Shadow-only selection of the lower-detail instanced forest. Keep this
+  // bounded by sectors, not by individual trees; the ordinary view still
+  // uses the existing instancing and frustum culling.
+  function getShadowCasters(x,z,minRadius,maxRadius,maxSectors=18){
+    const size=ctx.chunkSize*DISTANT_SECTOR_CHUNKS;
+    const margin=size*.75;
+    const bins=Array.from({length:4},()=>[]);
+    const span=Math.max(1,maxRadius-minRadius);
+    for(const [key,sector] of sectors){
+      const [sx,sz]=key.split(',').map(Number);
+      const dx=(sx+.5)*size-x,dz=(sz+.5)*size-z;
+      const distance=Math.hypot(dx,dz);
+      if(distance>maxRadius+margin || distance+margin<minRadius)continue;
+      const band=Math.min(3,Math.max(0,Math.floor(
+        (distance-minRadius)/span*4)));
+      bins[band].push({distance,angle:Math.atan2(dz,dx),sector});
+    }
+    // Reserve slots across the whole radius rather than taking only the
+    // nearest sectors. Otherwise 350m shadows could stop around 100m.
+    const chosen=new Set();
+    const quota=Math.floor(maxSectors/4),rem=maxSectors%4;
+    for(let band=3;band>=0;band--){
+      const group=bins[band].sort((a,b)=>a.angle-b.angle);
+      const count=Math.min(group.length,quota+(band>=4-rem?1:0));
+      for(let i=0;i<count;i++)
+        chosen.add(group[Math.floor((i+.5)*group.length/count)]);
+    }
+    // Redistribute unused slots if a distance band is empty.
+    const all=bins.flat().sort((a,b)=>b.distance-a.distance);
+    for(const entry of all){
+      if(chosen.size>=maxSectors)break;
+      chosen.add(entry);
+    }
+    const selected=[];
+    for(const {sector} of chosen)
+      for(const mesh of sector.meshes){
+        if(mesh.count<=0)continue;
+        mesh.castShadow=true;
+        selected.push(mesh);
+      }
+    return selected;
+  }
   function updateVisibility(){
     // Sector frustum culling is handled by THREE without rewriting matrices.
     // Never enqueue missing chunks here: camera rotation should be GPU-only.
@@ -251,7 +293,7 @@ export function createDistantForest(ctx){
   }
   function clear(){invalidate();lru.clear();lastSeed=null;previousX=previousZ=null;}
   function dispose(){clear();}
-  return {update,updateVisibility,invalidate,invalidateTree,clear,dispose,
+  return {update,updateVisibility,invalidate,invalidateTree,getShadowCasters,clear,dispose,
     meshes:sectors,
     get count(){return count;},get pending(){return [...desired].filter(k=>!cache.has(k)).length+dirtySectors.size;},
     get chunkCount(){return cache.size;},

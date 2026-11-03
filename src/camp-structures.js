@@ -1,6 +1,6 @@
 import {fireLighting} from './lighting-profile.js?v=20261103-shadow-visibility-cache1';
-import {fireShadowPolicy,selectFireShadowSources,STARTER_FIRE_ID} from './fire-shadow-policy.js?v=20261103-all-cached-shadows1';
-import {createCampfireModel,attachAnimatedFire,animateCampfireModel,presentCampfireModel,disposeCampfireEffects,applyFireLightSettings,applyFireShadowMode} from './campfire-model.js?v=20261103-all-cached-shadows1';
+import {fireShadowPolicy,selectFireShadowSources,STARTER_FIRE_ID} from './fire-shadow-policy.js?v=20261103-day-night-fire-shadows1';
+import {createCampfireModel,attachAnimatedFire,animateCampfireModel,presentCampfireModel,disposeCampfireEffects,applyFireLightSettings,applyFireShadowMode} from './campfire-model.js?v=20261103-unified-sun-cascades1';
 import {createFireVisibilityTester} from './fire-effects.js?v=20261102-night-lighting1';
 import {CAMP_RECIPES,MAX_CAMP_STRUCTURES,validCampStructure,isFireKind} from './camp-rules.js';
 
@@ -174,7 +174,6 @@ export function createCampStructures(ctx,doc=document){
     applyFireLightSettings(ctx,item.group,item.kind,ctx.terrain?.nightBlend??0);
     // Enabled lights are selected in tick(): never light all saved fires at once.
     if(item.group.userData.light)item.group.userData.light.visible=false;
-    if(item.group.userData.dynamicLight)item.group.userData.dynamicLight.visible=false;
   }
   function add(item){
     if(!validCampStructure(item))return false;
@@ -194,9 +193,7 @@ export function createCampStructures(ctx,doc=document){
   function remove(id){const item=items.get(id);if(!item)return false;
     disposeCampfireEffects(item.group);
     const origin=item.group.userData.fireOrigin??item.group;
-    for(const light of [origin.userData.light,origin.userData.dynamicLight]){
-      light?.shadow?.dispose?.();
-    }
+    origin.userData.light?.shadow?.dispose?.();
     scene.remove(item.group);items.delete(id);ctx.collisionWorld?.invalidate?.();ctx.deathSystem?.onStructureRemoved?.(id);ctx.atmosphere?.invalidateStaticShadows?.();return true;}
   function clear(){for(const id of [...items.keys()])remove(id);}
   function set(list){clear();for(const item of list??[])add(item);}
@@ -313,8 +310,7 @@ export function createCampStructures(ctx,doc=document){
       for(const item of items.values())if(!item.lit&&item.group.userData.light){
         item.group.userData.light.visible=false;
         applyFireShadowMode(ctx,item.group,{castShadow:false,autoUpdate:false},now);
-        if(item.group.userData.dynamicLight)item.group.userData.dynamicLight.visible=false;
-      }
+          }
     }
     for(const item of items.values()){
       if(!item.lit||!isFireKind(item.kind))continue;

@@ -2,21 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fireShadowPolicy,applyFireShadowPolicy,selectFireShadowSources,FIRE_SHADOW_LIMIT,STARTER_FIRE_ID} from '../src/fire-shadow-policy.js';
 
-test('point-light shadow maps update only during deep night',()=>{
+test('point-light shadow maps remain active through day, twilight and night',()=>{
  const config={settings:{fireShadows:true,performancePreset:'high'},
    selected:true,visible:true,distance:4,radius:30};
- for(const night of [0,.25,.8,.998]){
-  assert.deepEqual(fireShadowPolicy({...config,night}),{castShadow:false,autoUpdate:false});
+ for(const night of [0,.25,.8,.998,1]){
+  assert.deepEqual(fireShadowPolicy({...config,night}),
+    {castShadow:true,autoUpdate:true},
+    'shadows work throughout the cycle, blend='+night);
+  assert.deepEqual(fireShadowPolicy({...config,night,selected:false}),
+    {castShadow:true,autoUpdate:false},
+    'unselected sources keep cached maps, blend='+night);
  }
- assert.deepEqual(fireShadowPolicy({...config,night:1}),{castShadow:true,autoUpdate:true});
- for(const settings of [{fireShadows:false},{performancePreset:'low'}]){
-  assert.equal(fireShadowPolicy({...config,night:1,settings}).castShadow,false);
+ for(const night of [0,1]){
+  for(const settings of [{fireShadows:false},{performancePreset:'low'}]){
+   assert.equal(fireShadowPolicy({...config,night,settings}).castShadow,false);
+  }
+  assert.equal(fireShadowPolicy({...config,night,visible:false}).autoUpdate,false);
+  assert.equal(fireShadowPolicy({...config,night,distance:40}).castShadow,false);
  }
- assert.deepEqual(fireShadowPolicy({...config,night:1,selected:false}),
-   {castShadow:true,autoUpdate:false},
-   'a non-selected lamp keeps its cached shadows instead of disabling them');
- assert.equal(fireShadowPolicy({...config,night:1,visible:false}).autoUpdate,false);
- assert.equal(fireShadowPolicy({...config,night:1,distance:40}).castShadow,false);
 });
 test('turning off fire shadows disables cubemap update without global renderer mutations',()=>{
  const light={castShadow:false,shadow:{needsUpdate:false,autoUpdate:false}};

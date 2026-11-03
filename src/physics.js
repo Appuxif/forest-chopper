@@ -4,7 +4,7 @@ import {createKinematicCollisionAdapter} from './collision-kinematic.js';
 export function createPhysics(ctx){
 const collisions=createKinematicCollisionAdapter(ctx.collisionWorld??createCollisionWorld(ctx),ctx);
 const {logFootprint,logTop,logBottom}=collisions;
-function blocksPlayerAt(x,z,feet){return collisions.blocked(x,z,feet);}
+function blocksPlayerAt(x,z,feet,{includeTrees=false}={}){return collisions.blocked(x,z,feet,{includeTrees});}
 function moveHorizontal(dx,dz){
  // Axis-by-axis movement, with a small step-up allowance for terrain slopes.
  const oldGround=ctx.terrain.heightAt(ctx.px,ctx.pz);

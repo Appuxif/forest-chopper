@@ -2,7 +2,7 @@
 import {collectDiagnostics, formatDiagnostics, getGpuRendererName} from './diagnostics.js?v=20261101-gpu-renderer1';
 import {FPS_OPTIONS} from './frame-limiter.js';
 import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js';
-import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS} from './performance-presets.js?v=20261102-deep-night1';
+import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS} from './performance-presets.js?v=20261103-unified-sun-cascades1';
 import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261102-jump-voices1';
 const KEY = 'forest-chopper:settings:v1';
 export const LIGHTING_FIELDS=Object.freeze({
@@ -12,11 +12,16 @@ export const LIGHTING_FIELDS=Object.freeze({
  nightMoon:[0,1,.005,.2,'🌙 Лунный свет'],
  nightViewDistance:[30,160,5,30,'🌑 Дальность ночной видимости, м'],
  fireShadowLimit:[0,4,1,2,'Количество источников с обновляемыми тенями'],
- fireStaticShadowRadius:[1,100,1,100,'Радиус статических теней, м'],
+ sunNearShadowDistance:[10,60,5,30,'Граница чётких солнечных теней, м'],
+ sunNearShadowMapSize:[1024,4096,1024,2048,'Разрешение ближней карты теней'],
+ sunCascadeBlendDistance:[0,10,1,4,'Ширина плавного перехода, м'],
+ sunCascadeCasterOverlap:[0,40,2,12,'Запас перекрытия каскадов, м'],
+ sunNearShadowSoftness:[0,4,.5,1,'Мягкость ближних солнечных теней, тексели'],
+ sunFarShadowSoftness:[0,4,.5,1.5,'Мягкость дальних солнечных теней, тексели'],
  campfireDayIntensity:[1,100,.1,1.3,'День · яркость'],
  campfireNightIntensity:[1,100,.1,30,'Ночь · яркость'],
- campfireDayRadius:[1,30,1,7,'День · радиус расчёта динамических теней, м'],
- campfireNightRadius:[1,30,1,30,'Ночь · радиус расчёта динамических теней, м'],
+ campfireDayRadius:[1,30,1,7,'День · радиус расчёта теней, м'],
+ campfireNightRadius:[1,30,1,30,'Ночь · радиус расчёта теней, м'],
  campfireShadowVisibilityDistance:[1,100,1,30,'Дальность видимости теней, м'],
  campfireVisibilityDistance:[10,250,5,100,'Радиус освещения (PointLight.distance), м'],
  campfireActivationDistance:[10,250,5,100,'Дальность видимости лампы (от игрока), м'],
@@ -24,8 +29,8 @@ export const LIGHTING_FIELDS=Object.freeze({
  campfireLightHeight:[.2,4,.05,1.5,'Высота света над основанием, м'],
  torchDayIntensity:[1,100,.1,1.1,'День · яркость'],
  torchNightIntensity:[1,100,.1,30,'Ночь · яркость'],
- torchDayRadius:[1,30,1,6,'День · радиус расчёта динамических теней, м'],
- torchNightRadius:[1,30,1,30,'Ночь · радиус расчёта динамических теней, м'],
+ torchDayRadius:[1,30,1,6,'День · радиус расчёта теней, м'],
+ torchNightRadius:[1,30,1,30,'Ночь · радиус расчёта теней, м'],
  torchShadowVisibilityDistance:[1,100,1,30,'Дальность видимости теней, м'],
  torchVisibilityDistance:[10,250,5,100,'Радиус освещения (PointLight.distance), м'],
  torchActivationDistance:[10,250,5,100,'Дальность видимости лампы (от игрока), м'],
@@ -33,7 +38,7 @@ export const LIGHTING_FIELDS=Object.freeze({
  torchLightHeight:[.2,4,.05,2.23,'Высота света над основанием, м'],
 });
 export const LIGHTING_FLAGS=Object.freeze({
- flameShader:true,flameBillboard:true,fireShadows:true,nightDisableMoonShadows:true,splitShadowMaps:true,
+ flameShader:true,flameBillboard:true,fireShadows:true,nightDisableMoonShadows:true,
 });
 const CAMERA_80_MIGRATION = 'forest-chopper:camera-80-default:v1';
 const AUDIO_REWORK_MIGRATION='forest-chopper:audio-rework-defaults:v2';
@@ -41,13 +46,14 @@ const VOICE_MIGRATION='forest-chopper:voice-samples:v3';
 const NIGHT_PROFILE_MIGRATION='forest-chopper:night-profile-defaults:v1';
 const MOONLIGHT_MIGRATION='forest-chopper:night-moon-default:v1';
 const NIGHT_VISIBILITY_30_MIGRATION='forest-chopper:night-visibility-30-default:v1';
+const CSM_FAR_MIGRATION='forest-chopper:far-cascade-range:v1';
 const FIRE_ACTIVATION_MIGRATION='forest-chopper:fire-activation-distance:v1';
 const PREVIOUS_LIGHTING_DEFAULTS=Object.freeze({
  shadowContrast:70,dayAmbient:2.1,daySun:2.3,nightAmbient:.06,nightMoon:.025,
  nightViewDistance:100,campfireNightIntensity:4,campfireNightRadius:20,
  torchNightIntensity:3.3,torchNightRadius:16,
 });
-const DEFAULT = Object.freeze({...PERFORMANCE_DEFAULTS,performancePreset:'high',mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 30, grassDistance: 70, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 60, shadowRefreshSeconds: 1, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 100, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80, audio:DEFAULT_AUDIO,...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,val])=>[key,val[3]])),...LIGHTING_FLAGS});
+const DEFAULT = Object.freeze({...PERFORMANCE_DEFAULTS,performancePreset:'high',mouseSensitivity: 1, showFps: false, windEnabled: true, fov: 75, dayCycleEnabled: false, autoSprint: false,quality: 'balanced', maxFps: 60, spruceFoliageVisible: true, spruceFoliageShadows: true, spruceFoliageDensity: 100, grassDensity: 30, grassDistance: 70, grassMinSize: 2.5, grassMaxSize: 5.5, grassWidth: 1, grassTurnMin: -30, grassTurnMax: 30, shadowDistance: 150, shadowRefreshSeconds: 2, characterShadowsEnabled: true, characterShadowDistance: 30, shadowContrast: 100, cameraHeight: 2.3, cameraSide: .4, cameraDistance: 1.7, cameraPitchLimit: 80, audio:DEFAULT_AUDIO,...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,val])=>[key,val[3]])),...LIGHTING_FLAGS});
 
 function validCameraNumber(value,min,max,fallback,digits=2){
   if(typeof value!=='number'||!Number.isFinite(value)||value<min||value>max)return fallback;
@@ -95,10 +101,10 @@ export function sanitizeSettings(value) {
     autoSprint: source.autoSprint === true,
     quality: ['low','balanced','high'].includes(source.quality) ? source.quality : DEFAULT.quality,
     maxFps: FPS_OPTIONS.includes(source.maxFps) ? source.maxFps : DEFAULT.maxFps,
-    shadowDistance: Number.isInteger(source.shadowDistance) && source.shadowDistance >= 20
-      && source.shadowDistance <= 100 ? source.shadowDistance : DEFAULT.shadowDistance,
+    shadowDistance: Number.isInteger(source.shadowDistance) && source.shadowDistance >= 60
+      && source.shadowDistance <= 350 ? source.shadowDistance : DEFAULT.shadowDistance,
     shadowRefreshSeconds: Number.isFinite(source.shadowRefreshSeconds)
-      && source.shadowRefreshSeconds >= 0 && source.shadowRefreshSeconds <= 5
+      && source.shadowRefreshSeconds >= 0 && source.shadowRefreshSeconds <= 20
       ? Math.round(source.shadowRefreshSeconds * 2) / 2 : DEFAULT.shadowRefreshSeconds,
     // Read both the old 0–60 FPS slider and the original checkbox setting.
     characterShadowsEnabled: source.characterShadowsEnabled === false
@@ -146,6 +152,8 @@ export function sanitizeSettings(value) {
   }
   if(![1,3,6].includes(settings.grassTriangles))settings.grassTriangles=6;
   if(![512,1024,2048,4096].includes(settings.shadowMapSize))settings.shadowMapSize=1024;
+  if(![1024,2048,4096].includes(settings.sunNearShadowMapSize))
+    settings.sunNearShadowMapSize=2048;
   if(!['off','shore','full'].includes(settings.lakeForestMode))
     settings.lakeForestMode=PERFORMANCE_DEFAULTS.lakeForestMode;
   if(!['simple','high'].includes(settings.waterQuality))
@@ -153,6 +161,33 @@ export function sanitizeSettings(value) {
   if(settings.grassMinSize > settings.grassMaxSize)
     [settings.grassMinSize,settings.grassMaxSize] = [settings.grassMaxSize,settings.grassMinSize];
   return settings;
+}
+
+// The same control renderer is used by every light and shadow group.
+export function lightingFieldMarkup(key){
+ const spec=LIGHTING_FIELDS[key];
+ if(!spec)throw Error('Unknown lighting setting: '+key);
+ const [min,max,step,,label]=spec;
+ if(key==='sunNearShadowMapSize'){
+  return `<label>${label}: <output id="fc-light-${key}-value"></output>
+    <select id="fc-light-${key}">
+      <option value="1024">1024 × 1024</option>
+      <option value="2048">2048 × 2048</option>
+      <option value="4096">4096 × 4096</option>
+    </select></label>`;
+ }
+ return `<label>${label}: <output id="fc-light-${key}-value"></output>
+   <input id="fc-light-${key}" type="range" min="${min}" max="${max}" step="${step}"></label>`;
+}
+
+// Portable snapshot: current values and tree generator profiles, no world save.
+export function settingsExportJSON(settings,treeProfiles,exportedAt=new Date().toISOString()){
+ return JSON.stringify({
+  format:'forest-chopper-settings',version:1,exportedAt,
+  performancePreset:settings.performancePreset,
+  settings:JSON.parse(JSON.stringify(settings)),
+  treeModels:{version:1,profiles:JSON.parse(JSON.stringify(treeProfiles))},
+ },null,2);
 }
 
 export function createSettings(doc = document, storage = null, onFovChange = null, onQualityChange = null, treeModelStats = null, onPerformanceChange = null, onSoundPreview = null) {
@@ -205,6 +240,16 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       }
       local.setItem(NIGHT_VISIBILITY_30_MIGRATION,'1');
     }
+    // The old far range was only 60m and mostly covered near trees. Change
+    // untouched per-preset defaults once; keep custom nondefault ranges.
+    if(persisted&&!local.getItem(CSM_FAR_MIGRATION)){
+      const previous={high:[60,150],ultra:[100,250],medium:[40,90],low:[20,60]};
+      const candidate=previous[persisted.performancePreset];
+      if(candidate&&persisted.shadowDistance===candidate[0])
+        persisted.shadowDistance=candidate[1];
+      local.setItem(KEY,JSON.stringify(persisted));
+      local.setItem(CSM_FAR_MIGRATION,'1');
+    }
     // A former single slider controlled both light attenuation and the
     // distance at which the game hid its PointLight. Preserve that culling
     // distance for existing saves; from now on the values are independent.
@@ -245,7 +290,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 .fc-settings-header h2{margin:0;font-size:18px}
 .fc-settings-close{font-size:23px;line-height:1;color:#e8fff0;background:#204336;border:1px solid #ffffff44;min-width:36px;min-height:36px}
 .fc-settings-tabs{display:flex;gap:6px;padding:6px 18px 12px;overflow-x:auto;border-bottom:1px solid #ffffff26;flex-shrink:0}
-.fc-settings .fc-settings-tab{flex:1 0 auto;min-width:90px;background:#19392d;color:#bbd7c5;border:1px solid #ffffff20}
+.fc-settings .fc-settings-tab{flex:1 0 auto;min-width:76px;background:#19392d;color:#bbd7c5;border:1px solid #ffffff20}
 .fc-settings .fc-settings-tab[aria-selected=true]{background:#326849;color:white;border-color:#8bd0a4}
 .fc-settings-content{padding:9px 22px 18px;overflow-y:auto;overscroll-behavior:contain;min-height:120px;flex:1}
 .fc-settings-page[hidden]{display:none}
@@ -284,7 +329,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 .fc-settings .fc-tree-active-stats{font-size:11px;line-height:1.5;background:#183529;border:1px solid #365947;border-radius:7px;padding:8px 10px;color:#d0e8d5}
 .fc-settings #fc-tree-status[data-error=true]{color:#ffb3a9}
 .fc-settings-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 20px;border-top:1px solid #ffffff26}
-.fc-settings-footer small{margin:0!important}
+.fc-settings-footer small{margin:0!important}.fc-settings-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .fc-settings :focus-visible{outline:2px solid #a8eec0;outline-offset:3px}
 .fc-settings h2{font-size:16px;margin:0 0 12px}
 .fc-settings label{display:block;margin:10px 0}
@@ -329,6 +374,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <button type="button" class="fc-settings-tab" data-category="camera" aria-selected="false">📷 Камера</button>
       <button type="button" class="fc-settings-tab" data-category="audio" aria-selected="false">🔊 Звук</button>
       <button type="button" class="fc-settings-tab" data-category="lighting" aria-selected="false">💡 Освещение</button>
+      <button type="button" class="fc-settings-tab" data-category="shadows" aria-selected="false">🌑 Тени</button>
       <button type="button" class="fc-settings-tab" data-category="world" aria-selected="false">🌍 Мир</button>
     </nav>
     <div class="fc-settings-content">
@@ -345,21 +391,6 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <option value="90">90 FPS</option><option value="120">120 FPS</option>
       <option value="144">144 FPS</option><option value="0">Без ограничения</option></select></label>
     <small>Ограничивает только рендеринг; физика и анимации обновляются с частотой дисплея. По умолчанию 60 FPS.</small>
-    <label><input id="fc-tree-shadows" type="checkbox"> Тени деревьев</label>
-    <label>Дальность теней от деревьев: <output id="fc-shadow-distance-value"></output> м
-      <input id="fc-shadow-distance" type="range" min="20" max="100" step="1"></label>
-    <label>Разрешение карты теней
-      <select id="fc-shadow-map-size"><option value="512">512 × 512</option><option value="1024">1024 × 1024</option><option value="2048">2048 × 2048</option><option value="4096">4096 × 4096 (4K)</option></select></label>
-    <label>Обновлять тени деревьев: <output id="fc-shadow-refresh-value"></output>
-      <input id="fc-shadow-refresh" type="range" min="0" max="5" step="0.5"></label>
-    <label><input id="fc-character-shadows" type="checkbox"> Динамические тени персонажей</label>
-    <label>Дальность детальных теней персонажей: <output id="fc-character-shadow-distance-value"></output> м
-      <input id="fc-character-shadow-distance" type="range" min="10" max="100" step="1"></label>
-    <small>Анимированный силуэт до выбранной дальности, затем ещё 16 м упрощённой тени. Большой радиус снижает чёткость и может нагружать GPU.</small>
-    <label>Контрастность теней: <output id="fc-shadow-contrast-value"></output>%
-      <input id="fc-shadow-contrast" type="range" min="0" max="100" step="5"></label>
-    <small>Уменьшает фоновый свет внутри теней: 0% — мягкие, 100% — максимально контрастные. Применяется и днём, и ночью.</small>
-    <small>Тени персонажей обновляются каждый кадр, тени деревьев — по отдельному таймеру.</small>
     <h2>🌄 Дальность и детализация</h2>
     <label>Видимость: <output id="fc-view-distance-value"></output> м
       <input id="fc-view-distance" type="range" min="160" max="500" step="10"></label>
@@ -477,29 +508,61 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <button type="button" id="fc-audio-defaults">Сбросить только громкости</button>
     </section>
     <section class="fc-settings-page" data-category="lighting" aria-label="Освещение" hidden>
-      <small>Часы 6–10 — глубокая ночь. С 4 до 6 плавный закат, с 10 до 12 рассвет. Дневные и ночные значения интерполируются. Настройки сохраняются автоматически.</small>
+      <small>Настройки яркости и дальности света. Дневные и ночные значения смешиваются автоматически. Параметры теней находятся рядом, во вкладке «🌑 Тени».</small>
       ${[
         ['day','☀️ Дневное освещение',['dayAmbient','daySun']],
         ['night','🌙 Ночное освещение',['nightAmbient','nightMoon','nightViewDistance']],
-        ['campfire','🔥 Костёр',['campfireDayIntensity','campfireDayRadius','campfireNightIntensity','campfireNightRadius','campfireShadowVisibilityDistance','campfireVisibilityDistance','campfireActivationDistance','campfireDecay','campfireLightHeight']],
-        ['torch','🕯️ Факел',['torchDayIntensity','torchDayRadius','torchNightIntensity','torchNightRadius','torchShadowVisibilityDistance','torchVisibilityDistance','torchActivationDistance','torchDecay','torchLightHeight']],
-      ].map(([,title,keys])=>`<div class="fc-light-group"><h3>${title}</h3>${keys.map(key=>{
-        const [min,max,step,,label]=LIGHTING_FIELDS[key];
-        return `<label>${label}: <output id="fc-light-${key}-value"></output>
-          <input id="fc-light-${key}" type="range" min="${min}" max="${max}" step="${step}"></label>`;
-      }).join('')}</div>`).join('')}
-      <div class="fc-light-group"><h3>✨ Эффекты и тени</h3>
+        ['campfire','🔥 Костёр',['campfireDayIntensity','campfireNightIntensity','campfireVisibilityDistance','campfireActivationDistance','campfireDecay','campfireLightHeight']],
+        ['torch','🕯️ Факел',['torchDayIntensity','torchNightIntensity','torchVisibilityDistance','torchActivationDistance','torchDecay','torchLightHeight']],
+      ].map(([,title,keys])=>`<div class="fc-light-group"><h3>${title}</h3>${keys.map(lightingFieldMarkup).join('')}</div>`).join('')}
+      <div class="fc-light-group"><h3>✨ Внешний вид пламени</h3>
+        ${[['flameShader','Шейдерное пламя (вместо простых конусов)'],
+           ['flameBillboard','Billboard-свечение вокруг пламени']
+].map(([key,label])=>
+          `<label><input id="fc-light-${key}" type="checkbox"> ${label}</label>`).join('')}
+        <small>Внешний вид пламени и свечения; яркость и дальность света регулируются выше.</small>
+      </div>
+    </section>
+    <section class="fc-settings-page" data-category="shadows" aria-label="Тени" hidden>
+      <small>Солнечные тени: ближние — чёткие, пересчитываются каждый кадр; дальние — кэшируемые, с отдельной частотой обновления. Каждая карта включает деревья, постройки и персонажей.</small>
+      <div class="fc-light-group"><h3>🌲 Общие солнечные тени</h3>
+    <label><input id="fc-tree-shadows" type="checkbox"> Тени деревьев</label>
+    <label><input id="fc-character-shadows" type="checkbox"> Тени персонажей (в обеих картах CSM)</label>
+    <label>Дальность детальных теней персонажей: <output id="fc-character-shadow-distance-value"></output> м
+      <input id="fc-character-shadow-distance" type="range" min="10" max="100" step="1"></label>
+    <small>Анимированный силуэт до выбранной дальности, затем ещё 16 м упрощённой тени. Большой радиус снижает чёткость и может нагружать GPU.</small>
+    <label>Контрастность теней: <output id="fc-shadow-contrast-value"></output>%
+      <input id="fc-shadow-contrast" type="range" min="0" max="100" step="5"></label>
+    <small>Уменьшает фоновый свет внутри теней: 0% — мягкие, 100% — максимально контрастные. Применяется и днём, и ночью.</small>
+    <small>В обе карты CSM входят деревья и персонажи; ближняя обновляется каждый кадр, дальняя — по таймеру.</small>
+      </div>
+      ${[
+        ['sun-cascades','☀️ Ближние солнечные тени · каждый кадр',
+          ['sunNearShadowDistance','sunNearShadowMapSize','sunCascadeBlendDistance','sunCascadeCasterOverlap','sunNearShadowSoftness']]
+      ].map(([,title,keys])=>`<div class="fc-light-group"><h3>${title}</h3>${keys.map(lightingFieldMarkup).join('')}</div>`).join('')}
+      <small>«Ширина перехода» смешивает освещение между картами, а «Запас перекрытия» расширяет область геометрии и камеру ближних теней, чтобы не образовывалась пустая полоса. Больший запас уменьшает плотность пикселей ближней карты и увеличивает число объектов. Мягкость: 0 — без сглаживания, 1–4 — размытие краёв по существующим PCF-выборкам (без новых проходов теневой карты); при значениях 3–4 возможна зернистость.</small>
+      <div class="fc-light-group"><h3>🌲 Дальние солнечные тени</h3>
+        <label>Дальность дальних теней от солнца: <output id="fc-shadow-distance-value"></output> м
+          <input id="fc-shadow-distance" type="range" min="60" max="350" step="10"></label>
+        <label>${LIGHTING_FIELDS.sunFarShadowSoftness[4]}: <output id="fc-light-sunFarShadowSoftness-value"></output>
+          <input id="fc-light-sunFarShadowSoftness" type="range" min="0" max="4" step="0.5"></label>
+        <label>Разрешение дальней солнечной карты
+          <select id="fc-shadow-map-size"><option value="512">512 × 512</option><option value="1024">1024 × 1024</option><option value="2048">2048 × 2048</option><option value="4096">4096 × 4096 (4K)</option></select></label>
+        <label>Обновлять дальние солнечные тени: <output id="fc-shadow-refresh-value"></output>
+          <input id="fc-shadow-refresh" type="range" min="0" max="20" step="0.5"></label>
+        <small>Дальний каскад берёт деревья за границей ближней зоны, включая низкополигональный дальний лес. Радиус 60–350 м и разрешение влияют только на дальнюю карту. При большой дальности уменьшайте разрешение и увеличивайте период обновления до 20 с. Ближняя карта независимо настраивается выше.</small>
+      </div>
+      ${[
+        ['campfire','🔥 Костёр',['campfireDayRadius','campfireNightRadius','campfireShadowVisibilityDistance']],
+        ['torch','🕯️ Факел',['torchDayRadius','torchNightRadius','torchShadowVisibilityDistance']]
+      ].map(([,title,keys])=>`<div class="fc-light-group"><h3>${title}</h3>${keys.map(lightingFieldMarkup).join('')}</div>`).join('')}
+      <div class="fc-light-group"><h3>⚙️ Общие настройки теней</h3>
         <label>${LIGHTING_FIELDS.fireShadowLimit[4]}: <output id="fc-light-fireShadowLimit-value"></output>
         <input id="fc-light-fireShadowLimit" type="range" min="0" max="4" step="1"></label>
-        <label>${LIGHTING_FIELDS.fireStaticShadowRadius[4]}: <output id="fc-light-fireStaticShadowRadius-value"></output>
-        <input id="fc-light-fireStaticShadowRadius" type="range" min="1" max="100" step="1"></label>
-        ${[['flameShader','Шейдерное пламя (вместо простых конусов)'],
-           ['flameBillboard','Billboard-свечение вокруг пламени'],
-           ['fireShadows','Включить тени от огня (дороже на GPU)'],
-           ['splitShadowMaps','Раздельные лампы: статические и динамические тени (солнце, костёр, факел)'],
+        ${[['fireShadows','Включить тени от огня (дороже на GPU)'],
            ['nightDisableMoonShadows','Ночью отключать тени от луны: деревья, объекты, персонаж']].map(([key,label])=>
           `<label><input id="fc-light-${key}" type="checkbox"> ${label}</label>`).join('')}
-        <small>Радиус освещения (10–250 м) задаёт PointLight.distance, а дальность видимости лампы (10–250 м) независимо определяет, как далеко игрок может отойти, прежде чем игра поставит лампе visible=false. Радиусы расчёта теней задают, какие объекты попадают в карту: динамика/одна лампа — дневной и ночной ползунки, статика — общий ползунок 1–100 м. Отдельная дальность видимости теней (1–100 м) определяет, насколько далеко игрок может отойти, прежде чем карты теней перестанут использоваться. За пределами динамического радиуса и при отсутствии свободного слота карта перестаёт обновляться, но последний её снимок остаётся видимым. В раздельном режиме две лампы светят с яркостью 50% каждая, а тени обновляются отдельно. decay=2 — физическое затухание, ближе к 0 — более равномерный свет. Изменение этих параметров не затрагивает солнце. Лимит 0–4 ограничивает только число **покадрово обновляемых** карт ближайших огней; кэшированные тени всех активных источников остаются видимы независимо от этого лимита, даже вблизи и при значении 0. Когда источник теряет слот, его последняя карта сохраняется без пересчёта (возможна замороженная тень персонажа). Для полного выключения теней используй отдельный чекбокс «Включить тени от огня». На Low тени огня отключены.</small>
+        <small>Лимит 0–4 ограничивает только покадровые обновления карт огня. Все остальные костры и факелы показывают кэшированные тени.</small>
       </div>
     </section>
     <section class="fc-settings-page" data-category="world" aria-label="Мир" hidden>
@@ -508,7 +571,10 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <small>Полные сутки 16 минут (8 минут день и 8 минут ночь). В сетевой игре время суток общее и управляется сервером.</small>
     </section></div>
     <footer class="fc-settings-footer"><small>Изменения сохраняются автоматически</small>
-      <button id="fc-reset-settings" type="button">Сбросить всё</button></footer>`;
+      <div class="fc-settings-actions">
+        <button id="fc-export-settings" type="button">📥 Экспорт JSON</button>
+        <button id="fc-reset-settings" type="button">Сбросить всё</button>
+      </div></footer>`;
   const fps = doc.createElement('div');
   fps.className = 'fc-fps';
   fps.setAttribute('aria-label', 'Частота кадров');
@@ -657,7 +723,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const pages=Array.from(panel.querySelectorAll?.('.fc-settings-page')??[]);
   let activeCategory='graphics';
   function activateCategory(category) {
-    if(!['graphics','grass','trees','controls','camera','audio','lighting','world'].includes(category))return;
+    if(!['graphics','grass','trees','controls','camera','audio','lighting','shadows','world'].includes(category))return;
     activeCategory=category;
     for(const tab of tabButtons)tab.setAttribute('aria-selected',String(tab.dataset.category===category));
     for(const page of pages)page.hidden=page.dataset.category!==category;
@@ -871,6 +937,22 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     },
     reload:()=>onPerformanceChange?.(state),
   });
+  panel.querySelector('#fc-export-settings').onclick=()=>{
+    const json=settingsExportJSON(state,treeEditor.getProfiles());
+    const blob=new Blob([json],{type:'application/json;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const anchor=doc.createElement('a');
+    const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+    anchor.href=url;
+    anchor.download='forest-chopper-settings-'+state.performancePreset+'-'+stamp+'.json';
+    anchor.hidden=true;
+    doc.body.append(anchor);
+    try{anchor.click();}
+    finally{
+      anchor.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }
+  };
   panel.querySelector('#fc-reset-settings').onclick = () => {
     Object.assign(state, DEFAULT, {audio:{...DEFAULT_AUDIO}});reflectAudio();treeEditor.resetAll();onFovChange?.(state.fov);onQualityChange?.(state.quality);applyingPreset=true;reflect();save();applyingPreset=false;
   };
@@ -1006,11 +1088,15 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get torchVisibilityDistance(){return state.torchVisibilityDistance;},
     get torchActivationDistance(){return state.torchActivationDistance;},
     get torchDecay(){return state.torchDecay;},
-    get fireStaticShadowRadius(){return state.fireStaticShadowRadius;},
+    get sunNearShadowDistance(){return state.sunNearShadowDistance;},
+    get sunNearShadowMapSize(){return state.sunNearShadowMapSize;},
+    get sunCascadeBlendDistance(){return state.sunCascadeBlendDistance;},
+    get sunCascadeCasterOverlap(){return state.sunCascadeCasterOverlap;},
+    get sunNearShadowSoftness(){return state.sunNearShadowSoftness;},
+    get sunFarShadowSoftness(){return state.sunFarShadowSoftness;},
     get flameShader(){return state.flameShader;},
     get flameBillboard(){return state.flameBillboard;},
     get fireShadows(){return state.fireShadows;},
-    get splitShadowMaps(){return state.splitShadowMaps;},
     get fireShadowLimit(){return state.fireShadowLimit;},
     get nightDisableMoonShadows(){return state.nightDisableMoonShadows;},
     get autoSprint(){return state.autoSprint;},

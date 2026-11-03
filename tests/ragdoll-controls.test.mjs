@@ -169,3 +169,17 @@ test('midair recovery does not reset fall tracker; grounded recovery does',async
  f.controls.getUp();
  assert.deepEqual(events,['reset'],'grounded get-up unlocks subsequent falls');
 });
+
+
+test('Rapier failure releases manual controls without changing death or save state',async()=>{
+ const f=fixture();
+ await f.controls.ragdoll();
+ assert.equal(f.controls.mode,'manual');
+ f.ctx.ragdoll.reset(); // Physics-failure handler restores actor first.
+ f.controls.abort();
+ assert.equal(f.controls.mode,'none');
+ assert.equal(f.controls.busy,false);
+ assert.equal(f.controls.getUp(),false,'Jump returns to normal after physics error');
+ assert.equal(f.ctx.deathSystem.active,false);
+ assert.equal(f.nodes[0].hidden,false,'manual ragdoll button remains usable');
+});

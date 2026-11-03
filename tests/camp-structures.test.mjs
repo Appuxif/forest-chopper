@@ -62,7 +62,7 @@ test('campfire lighting and interaction are persistent, toggle does not spend fu
    'crafted fire has nine sloping logs, one for each gap between nine stones');
  assert.ok(logs.every(log=>log.scale.y===.1008&&log.scale.z===.1008),
    'all crafted fire logs keep their thinner profile');
- assert.equal(visible.length,25,'dark fire has two light instances and no separate glowing coal meshes');
+ assert.equal(visible.length,24,'dark fire has one shadow-casting light and no glowing coals');
 
  assert.equal(fire.group.userData.innerFlame.visible,false);
  assert.ok(fire.group.userData.sparks.every(spark=>spark.visible===false));
@@ -239,557 +239,154 @@ test('bed has mattress, pillow and collision; E selection is distinct from fire 
  assert.equal(camp.createIconModel('bed').children.length,bed.group.children.length);
 });
 
-test('deep night selects two nearest lit fires for per-render-frame shadows',()=>{
+test('four built fires use four single PointLights and retain shadows beyond refresh budget',()=>{
  const {camp,ctx}=fixture();
- ctx.settings={fireShadows:true,performancePreset:'high'};
- ctx.terrain.nightBlend=0;
- camp.add(item(201,'torch',0,0,0,true));
- camp.add(item(202,'campfire',6,0,0,true));
- camp.add(item(203,'torch',12,0,0,true));
- camp.tick(1000);
- const torch=camp.items.get(201).group.userData.light;
- const fire=camp.items.get(202).group.userData.light;
- const farTorch=camp.items.get(203).group.userData.light;
- for(const light of [torch,fire,farTorch])
-  light.shadow={autoUpdate:false,needsUpdate:false};
- for(const id of [201,202,203])
-  (camp.items.get(id).group.userData.fireOrigin??camp.items.get(id).group).userData.dynamicLight.shadow={autoUpdate:false,needsUpdate:false};
- assert.equal(torch.castShadow,false);
- assert.equal(fire.castShadow,false);
+ ctx.settings={fireShadows:true,fireShadowLimit:2,performancePreset:'high',
+  torchNightRadius:9,torchShadowVisibilityDistance:30,torchVisibilityDistance:75,
+  torchActivationDistance:80};
  ctx.terrain.nightBlend=1;
- camp.tick(1200);
- assert.equal(torch.castShadow,true,'nearest torch casts shadows at night');
- assert.equal(torch.shadow.autoUpdate,false,'night static cubemap can be cached');
- assert.equal(camp.items.get(201).group.userData.fireOrigin,undefined);
- assert.equal((camp.items.get(201).group.userData.fireOrigin??camp.items.get(201).group).userData.dynamicLight.shadow.autoUpdate,true);
- assert.equal(fire.castShadow,true,'second closest campfire also casts shadows');
- assert.equal(fire.shadow.autoUpdate,false);
- assert.equal((camp.items.get(202).group.userData.fireOrigin??camp.items.get(202).group).userData.dynamicLight.shadow.autoUpdate,true);
- assert.equal(farTorch.castShadow,true,'third flame retains a cached shadow map');
- assert.equal((camp.items.get(203).group.userData.fireOrigin??
-   camp.items.get(203).group).userData.dynamicLight.shadow.autoUpdate,false,
-   'unselected light has no per-frame dynamic map refresh');
- assert.equal(farTorch.visible,true);
- ctx.px=12;
- camp.tick(1400);
- assert.equal(torch.castShadow,true,'distant torch keeps its cached shadow map');
- assert.equal((camp.items.get(201).group.userData.fireOrigin??
-   camp.items.get(201).group).userData.dynamicLight.shadow.autoUpdate,false,
-   'distant torch releases only an update slot');
- assert.equal(torch.shadow.autoUpdate,false);
- assert.equal(fire.castShadow,true);
- assert.equal(farTorch.castShadow,true,'new nearest torch receives the freed shadow slot');
- assert.equal(farTorch.shadow.autoUpdate,false);
- assert.equal((camp.items.get(203).group.userData.fireOrigin??camp.items.get(203).group).userData.dynamicLight.shadow.autoUpdate,true);
- ctx.terrain.nightBlend=0;
- camp.tick(1600);
- for(const light of [torch,fire,farTorch]){
-  assert.equal(light.castShadow,false);
-  assert.equal(light.shadow.autoUpdate,false);
+ for(const [i,x] of [0,4,8,12].entries())camp.add(item(1000+i,'torch',x,0,0,true));
+ const sources=[...camp.items.values()].map(v=>v.group.userData.light);
+ for(const source of sources)source.shadow={autoUpdate:false,needsUpdate:false};
+ for(const entry of camp.items.values())
+  assert.equal(entry.group.userData.dynamicLight,undefined,'no duplicate PointLight');
+ ctx.px=0;camp.tick(1000);
+ for(let i=0;i<4;i++){
+  assert.equal(sources[i].castShadow,true,'all four retain visible shadow maps');
+  assert.equal(sources[i].shadow.autoUpdate,i<2,'only two are refreshed');
  }
- ctx.terrain.nightBlend=1;
- ctx.settings.fireShadows=false;
- camp.tick(1800);
- assert.equal(fire.castShadow,false,'user option disables all fire shadows');
- assert.equal(farTorch.castShadow,false);
+ sources.forEach(source=>{source.shadow.needsUpdate=false;});
+ ctx.px=12;camp.tick(1200);
+ for(let i=0;i<4;i++){
+  assert.equal(sources[i].castShadow,true,'cached sources are never hidden by selection');
+  assert.equal(sources[i].shadow.autoUpdate,i>=2,'live budget follows player');
+ }
+ assert.equal(sources[0].shadow.needsUpdate,false,'last cached frame was not cleared');
+ ctx.settings.fireShadowLimit=0;camp.tick(1400);
+ assert.ok(sources.every(source=>source.castShadow&&!source.shadow.autoUpdate));
+ ctx.settings.fireShadows=false;camp.tick(1600);
+ assert.ok(sources.every(source=>!source.castShadow));
 });
 
-test('starter campfire occupies one of the two shared shadow slots',()=>{
+test('one fire shadow map is computed in daytime/nighttime with different radius and intensity',()=>{
+ const {camp,ctx}=fixture();
+ ctx.settings={fireShadows:true,fireShadowLimit:2,performancePreset:'high',
+  torchDayRadius:6,torchNightRadius:18,torchDayIntensity:4,torchNightIntensity:12,
+  torchShadowVisibilityDistance:40,torchVisibilityDistance:120,
+  torchActivationDistance:100,torchDecay:.3};
+ camp.add(item(1100,'torch',0,0,0,true));
+ const light=camp.items.get(1100).group.userData.light;
+ light.shadow={autoUpdate:false,needsUpdate:false};
+ const check=(blend,time,intensity,radius)=>{
+  ctx.terrain.nightBlend=blend;camp.tick(time);
+  assert.equal(light.intensity,intensity);
+  assert.equal(light.userData.shadowCasterRange,radius);
+  assert.equal(light.castShadow,true);
+  assert.equal(light.shadow.autoUpdate,true);
+  assert.equal(light.distance,120);
+  assert.equal(light.decay,.3);
+ };
+ check(0,1000,4,6);
+ check(.5,1200,8,12);
+ check(1,1400,12,18);
+ ctx.px=30;camp.tick(1600);
+ assert.equal(light.castShadow,true,'shadow map visible up to 40m');
+ assert.equal(light.shadow.autoUpdate,false,'no updates beyond 18m');
+ ctx.px=45;camp.tick(1800);
+ assert.equal(light.castShadow,false,'shadow visibility independent from 120m light');
+ assert.equal(light.visible,true);
+});
+
+test('starter campfire shares live update slots but no other source loses cached shadows',()=>{
  const {camp,ctx}=fixture();
  ctx.terrain.nightBlend=1;
- ctx.settings={fireShadows:true,performancePreset:'high'};
- camp.add(item(1,'torch',0,0,0,true));
- camp.add(item(2,'campfire',6,0,0,true));
- camp.add(item(3,'torch',12,0,0,true));
- // Starter is closer than both constructed flames (actual landmark logic
- // independently checks the same ranking).
+ ctx.settings={fireShadowLimit:2,fireShadows:true,performancePreset:'high'};
  ctx.landmarks={fireDistance:2};
- const dynamic=id=>(camp.items.get(id).group.userData.fireOrigin??
-   camp.items.get(id).group).userData.dynamicLight;
- for(const id of [1,2,3])dynamic(id).shadow={autoUpdate:false,needsUpdate:false};
+ for(const [id,x] of [[1,1],[2,3],[3,5]])camp.add(item(id,'torch',x,0,0,true));
+ for(const entry of camp.items.values())
+  entry.group.userData.light.shadow={autoUpdate:false,needsUpdate:false};
  camp.tick(1000);
- const shadows=[...camp.items.values()].filter(x=>x.group.userData.light?.castShadow);
- assert.equal(shadows.length,3,'all built fires retain cached shadows with a shared budget');
- assert.equal(dynamic(1).shadow.autoUpdate,true,'nearest built fire gets the live slot');
- assert.equal(dynamic(2).shadow.autoUpdate,false,'second built fire remains cached');
- assert.equal(dynamic(3).shadow.autoUpdate,false,'third built fire remains cached');
- ctx.landmarks.fireDistance=100;
+ const lights=[1,2,3].map(id=>camp.items.get(id).group.userData.light);
+ assert.ok(lights.every(light=>light.castShadow),'all maps sampled');
+ assert.equal(lights[0].shadow.autoUpdate,true,'one slot taken by nearest torch');
+ assert.equal(lights[1].shadow.autoUpdate,false,'starter consumes second slot');
+ ctx.landmarks.fireDistance=Infinity;
  camp.tick(1200);
- assert.equal(shadows.length,3);
- assert.equal(dynamic(1).shadow.autoUpdate,true);
- assert.equal(dynamic(2).shadow.autoUpdate,true,'freed starter slot refreshes second built fire');
- assert.equal(dynamic(3).shadow.autoUpdate,false);
+ assert.equal(lights[1].shadow.autoUpdate,true,'starter leaves budget');
+ assert.equal(lights[2].castShadow,true);
 });
 
-test('shadow budget slider switches built lights between 0, 1, 2, 3 and 4 including starter',()=>{
+test('torch and campfire have independent activation, lighting and shadow distances',()=>{
+ const {camp,ctx}=fixture();
+ ctx.terrain.nightBlend=1;
+ ctx.settings={fireShadows:true,fireShadowLimit:2,performancePreset:'high',
+  campfireNightRadius:8,campfireShadowVisibilityDistance:20,
+  campfireVisibilityDistance:200,campfireActivationDistance:60,
+  torchNightRadius:6,torchShadowVisibilityDistance:50,
+  torchVisibilityDistance:80,torchActivationDistance:90};
+ camp.add(item(1200,'campfire',30,0,0,true));
+ camp.add(item(1201,'torch',45,0,0,true));
+ camp.tick(1000);
+ const campLight=camp.items.get(1200).group.userData.light;
+ const torchLight=camp.items.get(1201).group.userData.light;
+ torchLight.shadow={autoUpdate:false,needsUpdate:false};
+ campLight.shadow={autoUpdate:false,needsUpdate:false};
+ camp.tick(1100);
+ assert.equal(campLight.visible,true);
+ assert.equal(campLight.castShadow,false,'campfire shadow visibility limit 20m');
+ assert.equal(campLight.distance,200);
+ assert.equal(campLight.userData.shadowCasterRange,8);
+ assert.equal(torchLight.castShadow,true,'torch casts cached shadows at 45m');
+ assert.equal(torchLight.shadow.autoUpdate,false);
+ assert.equal(torchLight.userData.shadowCasterRange,6);
+ assert.equal(torchLight.distance,80);
+ ctx.px=32;camp.tick(1200);
+ assert.equal(campLight.castShadow,true);
+ assert.equal(campLight.shadow.autoUpdate,true,'returns within 8m');
+});
+
+test('unlit fires stop contributing illumination and shadows without adding inventory',()=>{
  const {camp,ctx}=fixture();
  ctx.settings={fireShadows:true,fireShadowLimit:2,performancePreset:'high'};
- ctx.terrain.nightBlend=1;
- camp.add(item(201,'torch',3,0,0,true));
- camp.add(item(202,'campfire',7,0,0,true));
- camp.add(item(203,'torch',11,0,0,true));
- const fires=[201,202,203].map(id=>camp.items.get(id).group.userData.light);
- for(const light of fires)light.shadow={autoUpdate:false,needsUpdate:false};
- for(const id of [201,202,203])(camp.items.get(id).group.userData.fireOrigin??camp.items.get(id).group).userData.dynamicLight.shadow={autoUpdate:false,needsUpdate:false};
- ctx.landmarks={fireDistance:1};
- for(let limit=0;limit<=4;limit++){
-  ctx.settings.fireShadowLimit=limit;
-  camp.tick(1000+limit*200);
-  const actual=fires.filter(light=>light.castShadow);
-  assert.equal(actual.length,3,'all three static shadow maps remain visible, budget '+limit);
-  for(let i=0;i<fires.length;i++){
-   const light=fires[i];
-   assert.equal(light.shadow.autoUpdate,false,'static shadow maps are cached');
-   const source=(camp.items.get([201,202,203][i]).group.userData.fireOrigin??camp.items.get([201,202,203][i]).group).userData.dynamicLight;
-   assert.equal(source.castShadow,true,'dynamic shadow sampling remains enabled');
-   assert.equal(source.shadow.autoUpdate,i<Math.max(0,limit-1),
-     'only '+Math.max(0,limit-1)+' built maps update when starter has a slot');
-  }
- }
- // Remove starter and use all three built fires.
- ctx.landmarks.fireDistance=Infinity;
- ctx.settings.fireShadowLimit=3;
- camp.tick(2200);
- assert.equal(fires.filter(x=>x.castShadow).length,3);
- ctx.settings.fireShadowLimit=0;
- camp.tick(2400);
- assert.equal(fires.filter(x=>x.castShadow).length,3,'all cached maps remain at budget zero');
- for(const id of [201,202,203]){
-  const dynamic=(camp.items.get(id).group.userData.fireOrigin??
-    camp.items.get(id).group).userData.dynamicLight;
-  assert.equal(dynamic.shadow.autoUpdate,false,'zero budget disables only per-frame updates');
- }
-});
-
-
-test('fire shadow split mode caches static geometry, updates characters, and switches live',()=>{
- const {camp,ctx}=fixture();
- ctx.settings={fireShadows:true,fireShadowLimit:1,performancePreset:'high',
-  splitShadowMaps:true};
- ctx.terrain.nightBlend=1;
- ctx.atmosphere={staticShadowRevision:3};
- camp.add(item(701,'torch',0,0,0,true));
- const data=camp.items.get(701).group.userData;
- const staticLight=data.light,dynamic=data.dynamicLight;
- for(const light of [staticLight,dynamic])
-  light.shadow={autoUpdate:false,needsUpdate:false};
+ camp.add(item(1300,'campfire',0,0,0,true));
  camp.tick(1000);
- assert.equal(staticLight.castShadow,true);
- assert.equal(staticLight.shadow.autoUpdate,false,'static cubemap is cached');
- assert.equal(staticLight.shadow.needsUpdate,true);
- assert.equal(staticLight.userData.shadowRole,'static');
- assert.equal(dynamic.castShadow,true);
- assert.equal(dynamic.shadow.autoUpdate,true,'character cubemap updates each rendered frame');
- assert.equal(dynamic.userData.shadowRole,'dynamic');
- assert.equal(staticLight.intensity,15);
- assert.equal(dynamic.intensity,15);
- staticLight.shadow.needsUpdate=false;
- camp.tick(1200);
- assert.equal(staticLight.shadow.needsUpdate,false,'static map is not redrawn each frame');
- ctx.atmosphere.staticShadowRevision=4;
- camp.tick(1400);
- assert.equal(staticLight.shadow.needsUpdate,true,'world invalidation refreshes static cubemap');
- staticLight.shadow.needsUpdate=false;
- camp.tick(2400);
- assert.equal(staticLight.shadow.needsUpdate,false,'static map remains cached after one second');
- camp.tick(102400);
- assert.equal(staticLight.shadow.needsUpdate,false,'static map stays cached all night without changes');
- ctx.settings.splitShadowMaps=false;
- camp.tick(102600);
- assert.equal(staticLight.intensity,30,'single source retains total brightness');
- assert.equal(dynamic.intensity,0);
- assert.equal(dynamic.visible,false);
- assert.equal(staticLight.userData.shadowRole,'all');
- assert.equal(staticLight.shadow.autoUpdate,true,'single cubemap refreshes every render frame');
- assert.equal(dynamic.shadow.autoUpdate,false);
- assert.equal(dynamic.castShadow,false);
- ctx.settings.splitShadowMaps=true;
- camp.tick(102800);
- assert.equal(staticLight.intensity+dynamic.intensity,30);
- assert.equal(staticLight.shadow.autoUpdate,false);
- assert.equal(dynamic.shadow.autoUpdate,true);
- ctx.terrain.nightBlend=0;
- camp.tick(103000);
- assert.equal(staticLight.castShadow,false,'daylight suppresses shadows in either mode');
- assert.equal(dynamic.castShadow,false);
-});
-
-test('split fire uses 100m static PointLight and configured dynamic radius',()=>{
- const {camp,ctx}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:2,
-  performancePreset:'high',campfireNightRadius:18,torchNightRadius:23,
-  torchShadowVisibilityDistance:100};
- camp.add(item(801,'torch',70,0,0,true));
- const fire=camp.items.get(801).group.userData;
- for(const source of [fire.light,fire.dynamicLight])
-  source.shadow={autoUpdate:false,needsUpdate:false};
- camp.tick(1000);
- assert.equal(fire.light.distance,100,'static PointLight actually reaches 100m');
- assert.equal(fire.dynamicLight.distance,100,'both PointLights illuminate up to activation distance');
- assert.equal(fire.dynamicLight.userData.shadowCasterRange,23,'dynamic casters use shadow-radius slider');
- assert.equal(fire.light.visible,true,'static light is not culled at 30m');
- assert.equal(fire.light.castShadow,true,'far static lamp retains a shadow slot');
- assert.equal(fire.dynamicLight.visible,true,'dynamic lamp illuminates to 100m despite 23m shadow range');
- assert.equal(fire.dynamicLight.castShadow,true,'distant dynamic shadows remain sampled');
- assert.equal(fire.dynamicLight.shadow.autoUpdate,false,'but cached far from the caster range');
- assert.equal(fire.dynamicLight.userData.shadowFrozen,true);
- assert.equal(fire.light.shadow.autoUpdate,false);
- assert.equal(fire.light.shadow.needsUpdate,true);
- fire.light.shadow.needsUpdate=false;
- camp.tick(600000);
- assert.equal(fire.light.shadow.needsUpdate,false,'static light does not redraw after many minutes');
- ctx.settings.torchLightHeight=3.5;
- camp.tick(600200);
- assert.equal(fire.light.position.y,3.5);
- assert.equal(fire.light.shadow.needsUpdate,true,'moving emitter height invalidates cached static shadows');
- fire.light.shadow.needsUpdate=false;
- ctx.px=55;
- camp.tick(600400);
- assert.equal(fire.light.distance,100);
- assert.equal(fire.dynamicLight.distance,100);
- assert.equal(fire.dynamicLight.visible,true);
- assert.equal(fire.dynamicLight.castShadow,true);
- assert.equal(fire.dynamicLight.shadow.autoUpdate,true);
- ctx.settings.splitShadowMaps=false;
- camp.tick(600600);
- assert.equal(fire.light.distance,100,'single lamp keeps illumination independent of shadow radius');
- assert.equal(fire.light.userData.shadowCasterRange,23);
- assert.equal(fire.dynamicLight.visible,false);
- assert.equal(fire.light.intensity,30);
- assert.equal(fire.light.castShadow,true);
- assert.equal(fire.light.shadow.autoUpdate,true);
- ctx.px=-50;
- camp.tick(600800);
- assert.equal(fire.light.visible,false,'single lamp is culled beyond 100m');
- ctx.settings.splitShadowMaps=true;
- camp.tick(601000);
- assert.equal(fire.light.distance,100);
- assert.equal(fire.light.visible,false,'split lamp also deactivates beyond illumination distance');
- assert.equal(fire.dynamicLight.visible,false);
- assert.equal(fire.light.castShadow,false);
- assert.equal(fire.light.shadow.autoUpdate,false);
-});
-
-test('split campfire inherits the 100m static radius and keeps own dynamic slider',()=>{
- const {camp,ctx}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:1,
-  performancePreset:'high',campfireNightRadius:14};
- camp.add(item(802,'campfire',5,0,0,true));
- camp.tick(1000);
- const origin=camp.items.get(802).group.userData.fireOrigin;
- assert.equal(origin.userData.light.distance,100);
- assert.equal(origin.userData.dynamicLight.distance,100);
- assert.equal(origin.userData.dynamicLight.userData.shadowCasterRange,14);
- assert.equal(origin.userData.light.castShadow,true);
- assert.equal(origin.userData.dynamicLight.castShadow,true);
-});
-
-test('short 9m shadows coexist with 150m light range, slow decay and cached lights',()=>{
- const {ctx,camp}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:2,
-  performancePreset:'high',torchVisibilityDistance:150,torchDecay:.4,
-  torchNightRadius:9,fireStaticShadowRadius:9};
- camp.add(item(851,'torch',40,0,0,true));
- const data=camp.items.get(851).group.userData;
- const originalStatic=data.light,originalDynamic=data.dynamicLight;
- originalStatic.shadow={autoUpdate:false,needsUpdate:false,camera:{far:150}};
- originalDynamic.shadow={autoUpdate:false,needsUpdate:false,camera:{far:150}};
- camp.tick(1000);
- for(const light of [originalStatic,originalDynamic]){
-  assert.equal(light.visible,true,'both lamps still illuminate 40m away');
-  assert.equal(light.distance,150,'illumination distance follows new range slider');
-  assert.equal(light.decay,.4);
-  assert.equal(light.userData.shadowCasterRange,9);
-  assert.equal(light.castShadow,false,'no active shadow passes past the 9m range');
-  assert.equal(light.shadow.camera.far,151,'shadow depth sampling covers the full light range');
- }
- ctx.px=36;
- camp.tick(1200);
- assert.equal(originalStatic.castShadow,true,'static shadow pass activates within 9m');
- assert.equal(originalStatic.shadow.autoUpdate,false);
- assert.equal(originalDynamic.castShadow,true);
- assert.equal(originalDynamic.shadow.autoUpdate,true);
- originalStatic.shadow.needsUpdate=false;
- ctx.settings.fireStaticShadowRadius=4;
- camp.tick(1400);
- assert.equal(originalStatic.userData.shadowCasterRange,4);
- assert.equal(originalStatic.shadow.needsUpdate,true,'static shadow radius invalidates cached map');
- ctx.settings.splitShadowMaps=false;
- camp.tick(1600);
- assert.equal(originalStatic.distance,150);
- assert.equal(originalStatic.decay,.4);
- assert.equal(originalStatic.intensity,30,'single light restores full brightness');
- assert.equal(originalDynamic.visible,false);
- assert.equal(originalStatic.userData.shadowCasterRange,9);
- ctx.px=240;
- camp.tick(1800);
- assert.equal(originalStatic.visible,false,'lamp turns off only beyond activation slider');
- ctx.px=40;
- ctx.settings.splitShadowMaps=true;
- camp.tick(2000);
- assert.equal(data.light,originalStatic,'static PointLight is reused, not constructed again');
- assert.equal(data.dynamicLight,originalDynamic,'dynamic PointLight is reused, not constructed again');
- assert.equal(data.light.visible,true);
- assert.equal(data.dynamicLight.visible,true);
- assert.equal(data.light.distance,150);
- assert.equal(data.light.decay,.4);
-});
-
-test('activation limit is applied per fire kind without changing shadow-caster distance',()=>{
- const {ctx,camp}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:2,
-  performancePreset:'high',campfireVisibilityDistance:25,torchVisibilityDistance:200,
-  campfireNightRadius:9,torchNightRadius:9,fireStaticShadowRadius:9,
-  campfireDecay:0,torchDecay:3};
- camp.add(item(852,'campfire',40,0,0,true));
- camp.add(item(853,'torch',60,0,0,true));
- camp.tick(1000);
- const campfire=camp.items.get(852).group.userData;
- const torch=camp.items.get(853).group.userData;
- assert.equal(campfire.light.visible,false,'campfire switches off past 25m');
- assert.equal(torch.light.visible,true,'torch stays visible to 200m');
- assert.equal(campfire.light.decay,0);
- assert.equal(torch.light.decay,3);
- assert.equal(torch.light.userData.shadowCasterRange,9);
- ctx.px=20;
- camp.tick(1200);
- assert.equal(campfire.light.visible,true);
- assert.equal(campfire.light.decay,0);
-});
-
-test('illumination radius and lamp culling are independent for torch and campfire',()=>{
- const {ctx,camp}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:2,
-  performancePreset:'high',
-  torchVisibilityDistance:30,torchActivationDistance:200,
-  campfireVisibilityDistance:200,campfireActivationDistance:20,
-  torchNightRadius:9,campfireNightRadius:9,fireStaticShadowRadius:9};
- camp.add(item(861,'torch',80,0,0,true));
- camp.add(item(862,'campfire',40,0,0,true));
- camp.tick(1000);
- const torch=camp.items.get(861).group.userData;
- const campfire=camp.items.get(862).group.userData;
- const campfireDynamic=(campfire.fireOrigin??camp.items.get(862).group).userData.dynamicLight;
- assert.equal(torch.light.distance,30,'torch illuminates only 30m');
- assert.equal(torch.light.visible,true,'torch stays active at 80m for possible off-camera illumination');
- assert.equal(torch.dynamicLight.distance,30);
- assert.equal(torch.dynamicLight.visible,true);
- assert.equal(campfire.light.distance,200,'campfire can illuminate to 200m');
- assert.equal(campfire.light.visible,false,'campfire is deactivated at 40m');
- assert.equal(campfireDynamic.visible,false);
- ctx.px=24;
- camp.tick(1200);
- assert.equal(campfire.light.visible,true,'campfire activates within 20m');
- assert.equal(campfire.light.distance,200,'culling change does not touch light distance');
- ctx.settings.torchActivationDistance=10;
- camp.tick(1400);
- assert.equal(torch.light.visible,false,'changing culling distance deactivates torch');
- assert.equal(torch.light.distance,30,'changing culling never changes light range');
- ctx.settings.torchVisibilityDistance=250;
- camp.tick(1600);
- assert.equal(torch.light.visible,false,'large illumination range does not override culling');
- assert.equal(torch.light.distance,250);
- ctx.settings.torchActivationDistance=250;
- camp.tick(1800);
- assert.equal(torch.light.visible,true,'torch reuses its own PointLight when activated');
- assert.equal(torch.light.distance,250);
-});
-
-test('inactive near fires cannot consume active slots reserved for more distant torches',()=>{
- const {ctx,camp}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:4,
-  performancePreset:'high',campfireActivationDistance:10,torchActivationDistance:200};
- for(let n=0;n<4;n++)camp.add(item(870+n,'campfire',30+n*3,0,0,true));
- camp.add(item(880,'torch',65,0,0,true));
- camp.tick(1000);
- for(let n=0;n<4;n++)
-  assert.equal(camp.items.get(870+n).group.userData.light.visible,false);
- assert.equal(camp.items.get(880).group.userData.light.visible,true,
-  'torch farther away still gets an available light slot');
-});
-
-test('9m dynamic shadow calculation is cached and visible at 30m from torch',()=>{
- const {camp,ctx}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:1,
-  performancePreset:'high',torchNightRadius:9,torchShadowVisibilityDistance:30,
-  fireStaticShadowRadius:9,torchVisibilityDistance:90,torchActivationDistance:100};
- camp.add(item(891,'torch',0,0,0,true));
- const origin=camp.items.get(891).group.userData;
- const staticLight=origin.light,dynamic=origin.dynamicLight;
- for(const source of [staticLight,dynamic])
-  source.shadow={autoUpdate:false,needsUpdate:false};
- ctx.px=4;
- camp.tick(1000);
- assert.equal(staticLight.userData.shadowCasterRange,9);
- assert.equal(dynamic.userData.shadowCasterRange,9);
- assert.equal(staticLight.castShadow,true);
- assert.equal(dynamic.castShadow,true);
- assert.equal(dynamic.shadow.autoUpdate,true);
- assert.equal(dynamic.userData.shadowFrozen,false);
- // Cross the 9m caster boundary with the +2m geometry safety margin.
- dynamic.shadow.needsUpdate=false;
- staticLight.shadow.needsUpdate=false;
- ctx.px=25;
- camp.tick(1200);
- assert.equal(dynamic.castShadow,true,'dynamic shadow remains visible from 25m');
- assert.equal(staticLight.castShadow,true,'static shadow remains visible from 25m');
- assert.equal(dynamic.shadow.autoUpdate,false,'dynamic map stops updating');
- assert.equal(dynamic.shadow.needsUpdate,false,'no redraw when shadow map is frozen');
- assert.equal(dynamic.userData.shadowFrozen,true);
- assert.equal(staticLight.shadow.needsUpdate,false,'static shadow is not regenerated on exit');
- dynamic.shadow.needsUpdate=false; // Renderer has already completed its last live frame.
- camp.tick(1400);
- assert.equal(dynamic.shadow.needsUpdate,false,'no additional redraw while away');
- ctx.px=8;
- camp.tick(1600);
- assert.equal(dynamic.castShadow,true);
- assert.equal(dynamic.shadow.autoUpdate,true,'returns to frame-by-frame updates');
- assert.equal(dynamic.userData.shadowFrozen,false);
- dynamic.shadow.needsUpdate=false;
- ctx.px=25;
- camp.tick(1800);
- assert.equal(dynamic.shadow.needsUpdate,false,'frozen character shadow keeps its last frame');
- dynamic.shadow.needsUpdate=false;
- ctx.px=33;
- camp.tick(2000);
- assert.equal(dynamic.castShadow,false,'shadow visibility 30m is independent from lighting');
- assert.equal(staticLight.castShadow,false);
- assert.equal(staticLight.visible,true,'lamp remains active at 33m');
- assert.equal(staticLight.distance,90);
-});
-
-test('single PointLight freezes combined shadow map but preserves static casters',()=>{
- const {camp,ctx}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:false,fireShadows:true,fireShadowLimit:1,
-  performancePreset:'high',campfireNightRadius:9,
-  campfireShadowVisibilityDistance:30,campfireActivationDistance:100};
- camp.add(item(892,'campfire',0,0,0,true));
- const origin=(camp.items.get(892).group.userData.fireOrigin
-  ??camp.items.get(892).group).userData;
- const light=origin.light;
- light.shadow={autoUpdate:false,needsUpdate:false};
- ctx.px=4;
- camp.tick(1000);
+ const entry=camp.items.get(1300),light=entry.group.userData.light;
  assert.equal(light.castShadow,true);
+ entry.lit=false;camp.tick(1200);
+ assert.equal(light.castShadow,false);
+ assert.equal(light.visible,false);
+ assert.equal(entry.group.userData.dynamicLight,undefined);
+});
+
+test('moving out of the small caster radius freezes the combined map without flicker',()=>{
+ const {camp,ctx}=fixture();
+ ctx.terrain.nightBlend=1;
+ ctx.settings={fireShadows:true,fireShadowLimit:1,performancePreset:'high',
+  torchNightRadius:6,torchShadowVisibilityDistance:30,
+  torchActivationDistance:70,torchVisibilityDistance:70};
+ camp.add(item(1400,'torch',0,0,0,true));
+ const light=camp.items.get(1400).group.userData.light;
+ light.shadow={autoUpdate:false,needsUpdate:false};
+ ctx.px=1;camp.tick(1000);
  assert.equal(light.shadow.autoUpdate,true);
- assert.equal(light.userData.shadowFrozen,false);
  light.shadow.needsUpdate=false;
- ctx.px=25;
- camp.tick(1200);
+ ctx.px=25;camp.tick(1200);
  assert.equal(light.castShadow,true);
  assert.equal(light.shadow.autoUpdate,false);
- assert.equal(light.shadow.needsUpdate,false,'single lamp preserves the last combined cubemap');
+ assert.equal(light.shadow.needsUpdate,false,'preserve the last render');
  assert.equal(light.userData.shadowFrozen,true);
- light.shadow.needsUpdate=false;
- camp.tick(1400);
- assert.equal(light.shadow.needsUpdate,false);
- ctx.atmosphere={staticShadowRevision:4};
- camp.tick(1600);
- assert.equal(light.shadow.needsUpdate,true,'world edits invalidate frozen combined map');
- light.shadow.needsUpdate=false;
- ctx.px=7;
- camp.tick(1800);
- assert.equal(light.shadow.autoUpdate,true);
+ ctx.px=2;camp.tick(1400);
+ assert.equal(light.shadow.autoUpdate,true,'resume near source');
  assert.equal(light.userData.shadowFrozen,false);
 });
 
-test('torch and campfire independently select shadow visibility distance',()=>{
+test('one PointLight per fire is disposed exactly once on removal',()=>{
  const {camp,ctx}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:2,
-  performancePreset:'high',torchNightRadius:9,campfireNightRadius:9,
-  torchShadowVisibilityDistance:60,campfireShadowVisibilityDistance:15,
-  torchActivationDistance:100,campfireActivationDistance:100};
- camp.add(item(893,'torch',35,0,0,true));
- camp.add(item(894,'campfire',25,0,0,true));
- camp.tick(1000);
- const torch=camp.items.get(893).group.userData.light;
- const fire=camp.items.get(894).group.userData.light;
- assert.equal(torch.castShadow,true,'torch remains shadow-visible at 35m');
- assert.equal(fire.castShadow,false,'campfire shadows are hidden at 25m');
- assert.equal(torch.visible,true);
- assert.equal(fire.visible,true,'illumination remains active after shadow visibility ends');
- ctx.px=12;
- camp.tick(1200);
- assert.equal(fire.castShadow,true,'campfire shadow reactivates inside 15m');
-});
-
-test('four lights retain cached maps while two live update slots follow the player',()=>{
- const {ctx,camp}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:false,fireShadows:true,fireShadowLimit:2,
-  performancePreset:'high',torchNightRadius:6,torchShadowVisibilityDistance:30,
-  torchVisibilityDistance:30,torchActivationDistance:60};
- const lights=[];
- for(const [i,x] of [0,4,8,12].entries()){
-  camp.add(item(910+i,'torch',x,0,0,true));
-  const light=camp.items.get(910+i).group.userData.light;
-  light.shadow={autoUpdate:false,needsUpdate:false};
-  lights.push(light);
- }
- const check=(liveIds)=>{
-  const live=new Set(liveIds);
-  for(let i=0;i<4;i++){
-   const light=lights[i];
-   assert.equal(light.visible,true,'all four lamps remain on');
-   assert.equal(light.castShadow,true,'all four maps are sampled');
-   assert.equal(light.shadow.autoUpdate,live.has(i),'only two sources refresh');
-   assert.equal(light.userData.shadowFrozen,!live.has(i));
-  }
- };
- ctx.px=0;camp.tick(1000);
- check([0,1]);
- lights.forEach(light=>{light.shadow.needsUpdate=false;});
- ctx.px=12;camp.tick(1200);
- check([2,3]);
- assert.equal(lights[0].shadow.needsUpdate,false,'leaving live budget preserves cached map');
- assert.equal(lights[1].shadow.needsUpdate,false);
- lights.forEach(light=>{light.shadow.needsUpdate=false;});
- camp.tick(1400);
- check([2,3]);
- assert.equal(lights[0].shadow.needsUpdate,false,'no repeated frozen map updates');
- ctx.settings.fireShadowLimit=0;camp.tick(1600);
- check([]);
- lights.forEach(light=>{light.shadow.needsUpdate=false;});
- camp.tick(1800);
- assert.equal(lights.every(light=>!light.shadow.needsUpdate),true);
- ctx.settings.fireShadowLimit=2;ctx.px=6;camp.tick(2000);
- check([1,2]);
-});
-
-test('split maps show cached static shadows on every in-range fire',()=>{
- const {ctx,camp}=fixture();
- ctx.terrain.nightBlend=1;
- ctx.settings={splitShadowMaps:true,fireShadows:true,fireShadowLimit:2,
-  performancePreset:'high',torchNightRadius:6,torchShadowVisibilityDistance:30,
-  fireStaticShadowRadius:9,torchVisibilityDistance:30,torchActivationDistance:60};
- const entries=[];
- for(const [i,x] of [0,3,6,9].entries()){
-  camp.add(item(920+i,'torch',x,0,0,true));
-  const data=camp.items.get(920+i).group.userData;
-  data.light.shadow={autoUpdate:false,needsUpdate:false};
-  data.dynamicLight.shadow={autoUpdate:false,needsUpdate:false};
-  entries.push(data);
- }
- const check=(liveIds)=>{
-  const live=new Set(liveIds);
-  for(let i=0;i<4;i++){
-   const data=entries[i];
-   assert.equal(data.light.castShadow,true);
-   assert.equal(data.light.shadow.autoUpdate,false);
-   assert.equal(data.dynamicLight.castShadow,true);
-   assert.equal(data.dynamicLight.shadow.autoUpdate,live.has(i));
-  }
- };
- ctx.px=0;camp.tick(1000);check([0,1]);
- ctx.px=9;camp.tick(1200);check([2,3]);
- ctx.settings.fireShadowLimit=0;camp.tick(1400);check([]);
+ camp.add(item(1500,'torch',0,0,0,true));
+ const entry=camp.items.get(1500);
+ assert.equal(entry.group.userData.dynamicLight,undefined);
+ const light=entry.group.userData.light;
+ light.shadow={disposed:0,dispose(){this.disposed++;}};
+ camp.remove(1500);
+ assert.equal(light.shadow.disposed,1);
 });

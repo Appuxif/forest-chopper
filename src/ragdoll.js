@@ -225,6 +225,28 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
  }
  function tick(dt){
    if(!instance)return;
+   try{stepSimulation(dt);}
+   catch(error){
+     // A Rapier WASM panic can poison its internal borrow state. Do not
+     // let the same exception escape on every animation frame (including
+     // while restoring a saved death). The save and the world are untouched.
+     console.error('Ragdoll simulation failed; restoring animated player:',error);
+     try{reset();}
+     catch(cleanupError){
+       // The WASM borrow guard can stay poisoned after its first trap.
+       // Never let failed cleanup stop the game's requestAnimationFrame loop.
+       console.warn('Ragdoll cleanup after WASM error failed:',cleanupError);
+       instance=null;
+       physics=null;
+       ctx.ragdollCamera?.exit?.();
+     }finally{
+       ctx.ragdollControls?.abort?.();
+       ctx.notify?.('Ошибка физики Ragdoll: режим отключён, сохранение не затронуто','warning');
+     }
+   }
+ }
+ function stepSimulation(dt){
+   if(!instance)return;
    const {world,parts,actor}=instance;
    instance.accumulator=Math.min(.15,instance.accumulator+Math.max(0,dt));
    let steps=0;
@@ -266,7 +288,13 @@ export function createRagdoll(ctx,{loadPhysics=async()=>{
    if(!instance)return false;
    const {actor,snapshot,originalRoot,originalActorQuaternion,world,culling}=instance;
    instance=null;
-   world.free();
+   try{world.free();}
+   catch(error){
+     // Following a WASM trap a world may no longer be safely freeable.
+     // Local actor/camera restoration must still complete.
+     console.warn('Ragdoll: unable to free Rapier world after physics error:',error);
+     physics=null;
+   }
    for(const [mesh,enabled] of culling??[])mesh.frustumCulled=enabled;
    // All exit paths pass through this reset: manual get-up, bed wake-up,
    // death respawn, restored saves, and late asynchronous death physics.

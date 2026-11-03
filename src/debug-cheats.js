@@ -1,5 +1,6 @@
 import {ITEM_STACK,AXE_STATS} from './inventory.js';
 import {itemDisplayName,itemDisplayIcon} from './item-display.js';
+import {createDebugPlayers,MAX_DEBUG_PLAYERS} from './debug-players.js?v=20261103-debug-player1';
 
 export function safeTeleportPoint(ctx,x,z,{step=1,maxRadius=40}={}){
  if(!Number.isFinite(x)||!Number.isFinite(z)||Math.abs(x)>200000||Math.abs(z)>200000)return null;
@@ -7,7 +8,7 @@ export function safeTeleportPoint(ctx,x,z,{step=1,maxRadius=40}={}){
   const y=ctx.terrain.heightAt(tx,tz);
   if(!Number.isFinite(y)||ctx.terrain.waterDepthAt(tx,tz)>.12)return null;
   const offsets=[[0,0],[.5,0],[-.5,0],[0,.5],[0,-.5]];
-  if(offsets.some(([dx,dz])=>ctx.blocksPlayerAt(tx+dx,tz+dz,y)))return null;
+  if(offsets.some(([dx,dz])=>ctx.blocksPlayerAt(tx+dx,tz+dz,y,{includeTrees:true})))return null;
   return {x:tx,y,z:tz};
  };
  const direct=safe(x,z);if(direct)return direct;
@@ -26,6 +27,8 @@ export function installDebugCheats(ctx){
  let downButton=null;
  function updateFlightButtons(){if(downButton)downButton.hidden=!state.flying||ctx.isOnline();}
  ctx.debugCheats=state;
+ const debugPlayers=createDebugPlayers(ctx,{findSafePoint:safeTeleportPoint});
+ ctx.debugPlayers=debugPlayers;
  const onlyOffline=()=>{if(ctx.isOnline())throw Error('Читы недоступны в сетевой игре');};
  function reset(){
   ctx.dayCycle.setFrozen(false);
@@ -101,6 +104,13 @@ export function installDebugCheats(ctx){
    ctx.dayCycle.tick(performance.now());ctx.offlineSave?.markDirty?.();
    return hour;
   },
+  spawnPlayer(count=1){onlyOffline();return debugPlayers.spawn(count);},
+  followPlayer(id,enabled=true){onlyOffline();return debugPlayers.follow(id,enabled);},
+  damagePlayer(id,amount=1){onlyOffline();return debugPlayers.damage(id,amount);},
+  respawnPlayer(id){onlyOffline();return debugPlayers.respawn(id);},
+  removePlayer(id){onlyOffline();return debugPlayers.remove(id);},
+  clearPlayers(){onlyOffline();debugPlayers.clear();return true;},
+  get players(){return debugPlayers.list();},
   reset
  };
  ctx.debugCheatsController=cheats;
@@ -129,6 +139,13 @@ export function installDebugCheats(ctx){
  <section id="fc-cheat-flags"></section>
  <section><b>📍 Безопасный телепорт</b><div class="fields"><input id="fc-tpx" type="number" step="1" placeholder="X"><input id="fc-tpz" type="number" step="1" placeholder="Z"><button id="fc-tp">Перейти</button></div><span class="note">Проверка деревьев, построек, предметов и воды; поиск рядом с точкой.</span></section>
  <section><b>🎒 Каталог предметов</b><input id="fc-search" placeholder="Поиск по названию или ID"><div id="fc-catalog" class="catalog"></div><span id="fc-choice" class="note">Выбери предмет</span><div class="fields"><input id="fc-count" type="number" min="1" max="100" value="1"><select id="fc-tier"><option value="0">Топор 1</option><option value="1">Топор 2</option><option value="2">Топор 3</option><option value="3">Топор 4</option></select><button id="fc-add">Добавить</button></div></section>
+ <section><b>👤 Тестовые игроки</b><span class="note">Создаются той же моделью, что и участники сети. Имеют отдельные здоровье, голод, выносливость, инвентарь и ragdoll. Не сохраняются в мире и не подключаются к серверу.</span>
+ <div class="fields"><input id="fc-player-count" type="number" min="1" max="8" step="1" value="1"><button id="fc-player-spawn">Создать игрока</button></div>
+ <label>Выбранный игрок<select id="fc-player-select" aria-label="Тестовый игрок"></select></label>
+ <div class="fields"><button id="fc-player-follow">Следовать</button><button id="fc-player-stop">Стоять</button><button id="fc-player-hit">Урон −1</button></div>
+ <div class="fields"><button id="fc-player-kill">Убить</button><button id="fc-player-respawn">Возродить</button><button id="fc-player-remove">Удалить</button></div>
+ <button id="fc-player-clear">Удалить всех тестовых игроков</button>
+ <span id="fc-player-status" class="note" aria-live="polite">Игроков нет (максимум 8).</span></section>
  <section><b>🌗 Время дня <output id="fc-time-label">0</output>/15</b><input id="fc-time" type="range" min="0" max="15" step="1" value="0"><button id="fc-settime">Установить</button><span class="note">0 — начало суток, 8 — середина ночи; цикл 16 минут.</span></section>
  <div id="fc-cheat-msg" role="status" class="note"></div>`;
  downButton=document.createElement('button');
@@ -177,16 +194,54 @@ export function installDebugCheats(ctx){
  $('fc-choice').textContent='Выбран: '+itemDisplayName(selected);
  $('fc-tier').hidden=true;renderCatalog();
  $('fc-add').onclick=()=>perform(()=>{const n=cheats.grant(selected,$('fc-count').value,$('fc-tier').value);return 'Добавлено: '+n+' × '+itemDisplayName(selected);});
+ const playerSelect=$('fc-player-select');
+ function updateDebugPlayers(preferred=null){
+  const players=debugPlayers.list();
+  const selected=preferred??Number(playerSelect.value);
+  playerSelect.replaceChildren();
+  for(const player of players){
+   const option=document.createElement('option');
+   option.value=String(player.id);
+   option.textContent=player.name+(player.dead?' 💀':player.following?' 🚶':'');
+   playerSelect.append(option);
+  }
+  if(players.some(p=>p.id===selected))playerSelect.value=String(selected);
+  const current=players.find(p=>p.id===Number(playerSelect.value));
+  $('fc-player-status').textContent=current
+   ?current.name+' · HP '+current.health+'/5, голод '+current.hunger+'/5, силы '+current.stamina.toFixed(1)+'/5 · '+(current.dead?'мёртв':current.following?'следует за вами':'стоит')
+   :'Игроков нет (максимум '+MAX_DEBUG_PLAYERS+').';
+ }
+ playerSelect.onchange=()=>updateDebugPlayers();
+ const action=fn=>perform(()=>{
+  const state=fn();
+  updateDebugPlayers(state?.id??null);
+  return typeof state==='string'?state:state?.name??'Готово';
+ });
+ const chosen=()=>Number(playerSelect.value);
+ $('fc-player-spawn').onclick=()=>action(()=>{
+  const created=cheats.spawnPlayer($('fc-player-count').value);
+  updateDebugPlayers(created.at(-1)?.id);
+  return 'Создано: '+created.length+'; всего: '+debugPlayers.size;
+ });
+ $('fc-player-follow').onclick=()=>action(()=>cheats.followPlayer(chosen(),true));
+ $('fc-player-stop').onclick=()=>action(()=>cheats.followPlayer(chosen(),false));
+ $('fc-player-hit').onclick=()=>action(()=>cheats.damagePlayer(chosen(),1));
+ $('fc-player-kill').onclick=()=>action(()=>cheats.damagePlayer(chosen(),5));
+ $('fc-player-respawn').onclick=()=>action(()=>cheats.respawnPlayer(chosen()));
+ $('fc-player-remove').onclick=()=>action(()=>{cheats.removePlayer(chosen());return 'Тестовый игрок удалён';});
+ $('fc-player-clear').onclick=()=>action(()=>{cheats.clearPlayers();return 'Все тестовые игроки удалены';});
+ updateDebugPlayers();
  $('fc-time').oninput=()=>$('fc-time-label').textContent=$('fc-time').value;
  $('fc-settime').onclick=()=>perform(()=>{cheats.time($('fc-time').value);return 'Время установлено: '+$('fc-time').value+'/15';});
  const timer=setInterval(()=>{
   const online=ctx.isOnline();
   toggle.hidden=online;panel.hidden=online||panel.hidden;updateFlightButtons();
+  if(!panel.hidden)updateDebugPlayers();
   if(online){
    if(Object.values(state).some(Boolean))reset();
    for(const box of flags.querySelectorAll('input'))box.checked=false;
   }
  },250);
- window.addEventListener('pagehide',()=>clearInterval(timer));
+ window.addEventListener('pagehide',()=>{clearInterval(timer);debugPlayers.clear();});
  return cheats;
 }

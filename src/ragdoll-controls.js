@@ -135,8 +135,13 @@ export function createRagdollControls(ctx,doc=document){
   return true;
  }
  function clearForDeath(){mode='none';bed=null;refresh();}
+ function abort(){
+  // Restore normal input when a Rapier WASM simulation fails. Do not mark
+  // a death as respawned; the death screen owns that state separately.
+  mode='none';bed=null;busy=false;refresh();
+ }
  function tick(){if(button.hidden!==!!(mode!=='none'||ctx.deathSystem?.active))refresh();}
  button.addEventListener('click',()=>{void ragdoll();});
- return {ragdoll,sleepInBed,getUp,syncPose,tick,clearForDeath,
+ return {ragdoll,sleepInBed,getUp,syncPose,tick,clearForDeath,abort,
   get mode(){return mode},get busy(){return busy},refresh};
 }
