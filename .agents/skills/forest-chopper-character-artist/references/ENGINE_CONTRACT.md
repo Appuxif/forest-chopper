@@ -4,7 +4,7 @@ This is a project-specific compatibility target, **not** generic Blender advice.
 
 ## Existing character files
 
-- Source: `lumberjack/lumberjack.blend` (other working/experimental `.blend` files may coexist; preserve all).
+- Source: `characters/lumberjack/lumberjack.blend` (other working/experimental `.blend` files may coexist; preserve all).
 - Runtime: `lumberjack/lumberjack.glb`, loaded by `src/animations.js` with `GLTFLoader` and cloned via Three.js `SkeletonUtils.clone`.
 - Current GLB: ~2,177,332 bytes, 58 meshes, 1 skin, 10 materials, ~31,380 triangles.
 - There are multiple mesh objects and **one Armature** (`Lumberjack Rig`). This is correct: **one rig != one mesh**.

@@ -1,0 +1,15 @@
+{
+  "swapMaterial": "Hen Plumage | color atlas",
+  "baseColorTextures": {
+    "russet": "assets/models/hen/textures/hen_plumage_russet.png",
+    "white": "assets/models/hen/textures/hen_plumage_white.png",
+    "black": "assets/models/hen/textures/hen_plumage_black.png",
+    "golden": "assets/models/hen/textures/hen_plumage_golden.png",
+    "speckled": "assets/models/hen/textures/hen_plumage_speckled.png"
+  },
+  "lods": {
+    "10k": "assets/models/hen_low_10k.glb",
+    "3k": "assets/models/hen_low_3k.glb"
+  },
+  "note": "Both GLBs embed russet by default. Replace the base color texture of 'Hen Plumage | color atlas' at runtime, or export a variant. Tail and wings share the same UV atlas as body."
+}

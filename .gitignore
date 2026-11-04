@@ -6,6 +6,6 @@ forest_world.json
 *.tmp
 .idea/
 tools/
-lumberjack/lumberjack.blend1
+characters/lumberjack/lumberjack.blend1
 
 .codex/

@@ -2,7 +2,7 @@
 
 **This is a new character system, not a rework of the game's legacy lumberjack.**
 The previous procedural Rowan character was deleted. The production
-`lumberjack/lumberjack.blend`, `lumberjack/lumberjack.glb`, and JS loader are unchanged.
+`characters/lumberjack/lumberjack.blend`, `lumberjack/lumberjack.glb`, and JS loader are unchanged.
 
 ## Live editable Blender scene
 
