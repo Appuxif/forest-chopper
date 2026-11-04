@@ -2,7 +2,7 @@ import {debugFlightDelta} from './debug-flight-motion.js';
 import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
 import {createPlayerMotionTracker} from './ragdoll-motion.js';
 import {rootMotionSpeed,playbackRateForSpeed,walkingMotion,runningMotion,humanoidTargetSpeed,playbackDirectionForMotion,BACKWARD_RUN_SPEED} from './root-motion-speed.js?v=20261104-ori03';
-import {movementInput,locomotionMode,targetLegsYaw,worldMoveDirection,joystickSprintActive} from './locomotion-input.js?v=20261104-lateralrun1';
+import {movementInput,locomotionMode,targetLegsYaw,worldMoveDirection,joystickSprintActive,createMovementSteering} from './locomotion-input.js?v=20261104-turn-inertia1';
 import {classicLocalRate,classicRemoteRate} from './legacy-animation-rates.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
@@ -63,6 +63,7 @@ function refreshCrosshair(mob,pursuing,lootOpen){
 }
 let lastMoveMode='idle';
 let joystickRunning=false;
+const movementSteering=createMovementSteering();
 function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
  orbitCamera.reset();
  if(ctx.thirdPerson){const limit=ctx.settings.cameraPitchLimit*Math.PI/180;ctx.pitch=Math.max(-limit,Math.min(limit,ctx.pitch));}
@@ -109,22 +110,29 @@ function animate(now){
  const intent=movementInput({
   keys:ctx.keys,joyX:ctx.joyX,joyY:ctx.joyY,disabled:posing||dead,
  });
- const {forward,side,strength}=intent;
- const moving=strength>0;
+ const moving=intent.strength>0;
  // A deep mobile-stick push starts a run even without a Shift button;
  // a smaller release threshold prevents rapid run/strafe toggling.
  joystickRunning=joystickSprintActive(ctx.joyX,ctx.joyY,joystickRunning);
  const wantsSprint=shouldSprint(ctx.keys,ctx.settings.autoSprint,moving)||joystickRunning;
  const flying=ctx.debugCheats?.flying===true&&!ctx.isOnline?.();
  const sprint=!flying&&moving&&wantsSprint&&(!ctx.vitals||ctx.vitals.canSprint());
+ // Ease only the direction of real travel, not the Root Motion step length.
+ // Reset for zero input, ragdoll, death and debug flight. Keep the camera
+ // fully responsive and preserve the legacy character's established feel.
+ const moveIntent=movementSteering.update(intent,ctx.cameraYaw,dt,{
+  sprinting:sprint,
+  disabled:posing||dead||flying||ctx.ownAvatar?.model==='legacy',
+ });
+ const {forward,side,strength}=moveIntent;
  // Modern humanoids run toward lateral input when sprinting; normal A/D
  // remains strafe. Preserve the classic lumberjack's old locomotion.
  const lateralRun=sprint&&ctx.ownAvatar?.model!=='legacy';
- const mode=locomotionMode(intent,lastMoveMode,lateralRun);
+ const mode=locomotionMode(moveIntent,lastMoveMode,lateralRun);
  if(posing||dead)lastMoveMode='idle';
  else if(mode!=='idle')lastMoveMode=mode;
- ctx.characterOrientation.setMovementIntent(intent,mode,
-  targetLegsYaw(ctx.cameraYaw,intent,{mode,sprinting:lateralRun}));
+ ctx.characterOrientation.setMovementIntent(moveIntent,mode,
+  targetLegsYaw(ctx.cameraYaw,moveIntent,{mode,sprinting:lateralRun}));
  // Leg/hip facing approaches the intended diagonal on the shortest arc.
  // The classic lumberjack, death and ragdoll retain their original facing.
  ctx.characterOrientation.steerLegs(dt,{
@@ -147,7 +155,7 @@ function animate(now){
   :((motion==='Idle'?1:motion==='Run'?1.2*strength:
     playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed*strength)) *
     playbackDirectionForMotion(motion,mode==='backward'));
- const moveDirection=worldMoveDirection(ctx.cameraYaw,intent);
+ const moveDirection=worldMoveDirection(ctx.cameraYaw,moveIntent);
  if(!posing&&!dead&&!flying)ctx.simulateVertical(dt);
  let dx=0,dz=0;
  if(ctx.ownAvatar&&!posing&&!dead){
@@ -175,7 +183,7 @@ function animate(now){
   if(flying){
    const up=Number(!!(ctx.keys.Space||ctx.keys.ShiftLeft||ctx.keys.ShiftRight||ctx.debugCheats?.mobileUp));
    const down=Number(!!(ctx.keys.ControlLeft||ctx.keys.ControlRight||ctx.debugCheats?.mobileDown));
-   const delta=debugFlightDelta({forward:forward*strength,side:side*strength,yaw:ctx.yaw,pitch:ctx.pitch,vertical:up-down,dt});
+   const delta=debugFlightDelta({forward:intent.forward*intent.strength,side:intent.side*intent.strength,yaw:ctx.yaw,pitch:ctx.pitch,vertical:up-down,dt});
    ctx.px+=delta.x;ctx.pz+=delta.z;
    ctx.feetY=Math.max(ctx.terrain.heightAt(ctx.px,ctx.pz)+.2,ctx.feetY+delta.y);
    ctx.onGround=false;ctx.verticalSpeed=0;ctx.jumpRequested=false;

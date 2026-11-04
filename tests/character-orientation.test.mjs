@@ -162,6 +162,8 @@ test('player implements the sprint-based gait for both keyboard and joystick',()
  const player=readFileSync(new URL('../src/player.js',import.meta.url),'utf8');
  assert.match(player,/joystickRunning=joystickSprintActive\(ctx\.joyX,ctx\.joyY,joystickRunning\)/);
  assert.match(player,/shouldSprint\(ctx\.keys,ctx\.settings\.autoSprint,moving\)\|\|joystickRunning/);
- assert.match(player,/locomotionMode\(intent,lastMoveMode,lateralRun\)/);
- assert.match(player,/targetLegsYaw\(ctx\.cameraYaw,intent,\{mode,sprinting:lateralRun\}\)/);
+ assert.match(player,/locomotionMode\(moveIntent,lastMoveMode,lateralRun\)/);
+ assert.match(player,/targetLegsYaw\(ctx\.cameraYaw,moveIntent,\{mode,sprinting:lateralRun\}\)/);
+ assert.match(player,/const movementSteering=createMovementSteering\(\)/);
+ assert.match(player,/const moveIntent=movementSteering\.update\(intent,ctx\.cameraYaw,dt,/);
 });

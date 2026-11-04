@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   movementInput,locomotionMode,targetLegsYaw,worldMoveDirection,
+  createMovementSteering,RUN_DIRECTION_TURN_RATE,WALK_DIRECTION_TURN_RATE,
   joystickSprintActive,JOYSTICK_SPRINT_ENTER,JOYSTICK_SPRINT_EXIT,
   MOVE_DEADZONE,STRAFE_BLEND_START,STRAFE_BLEND_END,
 } from '../src/locomotion-input.js';
@@ -171,4 +172,105 @@ test('mobile stick full push starts sprint with hysteresis; low deflection stays
  const analog=movementInput({joyX:.84,joyY:0});
  assert.equal(locomotionMode(analog,'idle',joystickSprintActive(.84,0)),'forward');
  near(targetLegsYaw(0,analog,{mode:'forward',sprinting:true}),-Math.PI/2);
+});
+
+test('sprint smoothly turns real movement from W toward W+A without losing speed',()=>{
+ const steering=createMovementSteering();
+ const straight=input({KeyW:true});
+ const diagonal=input({KeyW:true,KeyA:true});
+ const start=steering.update(straight,0,1/60,{sprinting:true});
+ near(start.angle,0);
+ near(start.strength,1);
+ const first=steering.update(diagonal,0,1/60,{sprinting:true});
+ const step=RUN_DIRECTION_TURN_RATE/60;
+ near(first.angle,-step);
+ near(first.strength,1);
+ assert.ok(Math.abs(first.angle)<Math.PI/4);
+ const startDirection=worldMoveDirection(0,start);
+ const turnDirection=worldMoveDirection(0,first);
+ assert.ok(turnDirection.x<startDirection.x && turnDirection.x>-.1);
+ near(Math.hypot(turnDirection.x,turnDirection.z),1);
+ let last=first;
+ for(let i=0;i<25;i++)last=steering.update(diagonal,0,1/60,{sprinting:true});
+ near(last.angle,-Math.PI/4);
+ near(last.strength,1);
+ near(worldMoveDirection(0,last).x,-Math.SQRT1_2);
+});
+
+test('walking turns more responsively than sprint; both turn rates are configurable',()=>{
+ const straight=input({KeyW:true}),side=input({KeyW:true,KeyD:true});
+ const walk=createMovementSteering(),run=createMovementSteering();
+ walk.update(straight,0,1/60,{sprinting:false});
+ run.update(straight,0,1/60,{sprinting:true});
+ const w=walk.update(side,0,1/60,{sprinting:false});
+ const r=run.update(side,0,1/60,{sprinting:true});
+ near(w.angle,WALK_DIRECTION_TURN_RATE/60);
+ near(r.angle,RUN_DIRECTION_TURN_RATE/60);
+ assert.ok(w.angle>r.angle,'walking must react faster than sprint');
+});
+
+test('world-space turn inertia works with analog input and camera rotation',()=>{
+ const steering=createMovementSteering();
+ const forward=movementInput({joyY:-1});
+ const right=movementInput({joyX:1});
+ steering.update(forward,0,1/60,{sprinting:true});
+ const turn=steering.update(right,0,1/60,{sprinting:true});
+ near(turn.angle,RUN_DIRECTION_TURN_RATE/60);
+ const rotated=steering.update(right,Math.PI/2,1/60,{sprinting:true});
+ const worldAngle=rotated.angle-Math.PI/2;
+ near(Math.atan2(Math.sin(worldAngle),Math.cos(worldAngle)),
+   -RUN_DIRECTION_TURN_RATE/60+RUN_DIRECTION_TURN_RATE/60);
+ // After rotating the camera, the world-space heading may advance by
+ // only one more turn-rate step, never jump with the full camera rotation.
+ const before=worldMoveDirection(0,turn);
+ const after=worldMoveDirection(Math.PI/2,rotated);
+ const beforeYaw=Math.atan2(-before.x,-before.z);
+ const afterYaw=Math.atan2(-after.x,-after.z);
+ near(Math.atan2(Math.sin(afterYaw-beforeYaw),Math.cos(afterYaw-beforeYaw)),
+   RUN_DIRECTION_TURN_RATE/60);
+});
+
+test('input release, respawn and debug mode reset turn inertia',()=>{
+ const steering=createMovementSteering();
+ const straight=input({KeyW:true}),diagonal=input({KeyW:true,KeyD:true});
+ steering.update(straight,0,.01,{sprinting:true});
+ steering.update(diagonal,0,.01,{sprinting:true});
+ assert.ok(steering.heading!==null);
+ steering.update(input({}),0,.01,{sprinting:true});
+ assert.equal(steering.heading,null);
+ near(steering.update(diagonal,0,.01,{sprinting:true}).angle,Math.PI/4);
+ steering.update(straight,0,.01,{sprinting:true,disabled:true});
+ assert.equal(steering.heading,null);
+ near(steering.update(straight,.5,.01,{sprinting:true}).angle,0);
+ steering.reset();
+ assert.equal(steering.heading,null);
+});
+
+test('opposite W to S input immediately reverses without a sideways 180-degree arc',()=>{
+ const steering=createMovementSteering();
+ const forward=input({KeyW:true}),back=input({KeyS:true});
+ steering.update(forward,0,1/60,{sprinting:true});
+ const reversed=steering.update(back,0,1/60,{sprinting:true});
+ near(Math.abs(reversed.angle),Math.PI);
+ near(reversed.forward,-1);
+ near(reversed.side,0);
+ assert.equal(locomotionMode(reversed,'forward',true),'backward');
+});
+
+test('direction smoothing has bounded error at different render frame rates',()=>{
+ const w=input({KeyW:true}),wd=input({KeyW:true,KeyD:true});
+ const samples=[];
+ for(const fps of [30,60,120,144]){
+  const steer=createMovementSteering();
+  steer.update(w,0,0,{sprinting:true});
+  let t=0;
+  while(t<.2-1e-9){
+   const dt=Math.min(1/fps,.2-t);
+   t+=dt;
+   steer.update(wd,0,dt,{sprinting:true});
+  }
+  const state=steer.update(wd,0,0,{sprinting:true});
+  samples.push(state.angle);
+ }
+ for(const angle of samples)near(angle,RUN_DIRECTION_TURN_RATE*.2,1e-8);
 });
