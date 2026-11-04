@@ -382,3 +382,11 @@ git diff --check
 - **Shared spruce default / migration:** SPRUCE_PRESET.params — единственный шаблон ели для defaultTreeProfiles() (low, balanced, high). Ultra по-прежнему выбирает high, но сам графический пресет Ultra не меняется. loadTreeProfiles() обновляет сохранённые профили ели один раз по SPRUCE_PROFILE_MIGRATION_KEY, сохраняя отдельно настроенные берёзы (для миграции ели); saveTreeProfiles() устанавливает миграционный маркер, чтобы ручные правки не перетирались повторно. В main.geometryProfile() limitSpruceModelTriangles соблюдает оба лимита: профиль генератора 5000 и графический treeTrianglesSpruce (Low может уменьшить). Изменение High: quality high, spruceFoliageDensity 100.
 
 - **Shared birch default / migration:** BIRCH_PRESET.params теперь задаёт один общий шаблон для всех Low/Balanced/High, как ель. loadTreeProfiles независимо проверяет SPRUCE_PROFILE_MIGRATION_KEY и BIRCH_PROFILE_MIGRATION_KEY, обновляя нужные деревья в сохранённых профилях один раз. При миграции берёзы сохранённая ель не перезаписывается, если её маркер уже установлен; saveTreeProfiles отмечает обе завершённые миграции. limitTreeModelTriangles применяет Math.min к лимитам генератора и графического LOD и для ели, и для берёзы. High и Ultra используют общий модельный профиль high, а их собственные графические значения не изменены.
+
+
+### Mobile HUD
+`mobile-hud.css` подключён обоими HTML entrypoint; mobile/coarse overrides задают общую компоновку динамических HUD-панелей. `mobile-hud.js` инициализируется после controls и вызывает существующие кнопки через меню ⋮, не дублируя игровую логику. `touch-input.js` публикует `data-active` для видимости джойстика. `player.js` добавляет 2.5 м к плечу камеры на мобильном экране или coarse pointer, сохраняя spring-arm коллизии.
+
+Общие правила `mobile-hud.css` применяют меню ⋮, круглую карту, сумку-иконку и fade джойстика независимо от viewport; media rules задают компактные размеры. `settings.showTouchControls` хранится в существующем settings JSON, `reflect()` синхронизирует body class и событие `forest-touch-controls`; controls сбрасывает активный джойстик при выключении.
+
+Кнопка «FPS / диагностика» в меню ⋮ вызывает settings.setShowFps: единый showFps управляет sampling, hidden-атрибутом и сохранённым предпочтением на всех экранах. Media rules меняют только положение оверлея.

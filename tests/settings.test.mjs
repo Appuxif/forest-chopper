@@ -6,7 +6,7 @@ import {PERFORMANCE_DEFAULTS,PERFORMANCE_PRESETS,PERFORMANCE_LIGHTING_PRESETS} f
 import {DEFAULT_AUDIO,SOUND_CONTROLS} from '../src/sound-rules.js';
 
 const defaults={...PERFORMANCE_DEFAULTS,performancePreset:'high',
- mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,
+ mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,
  fov:75,cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
  audio:DEFAULT_AUDIO,
  ...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,val])=>[key,val[3]])),
@@ -29,6 +29,8 @@ test('sensitivity boundaries are inclusive and persistence stays independent of 
   assert.equal(sanitizeSettings({windEnabled:0}).windEnabled,true);
   assert.equal(sanitizeSettings({dayCycleEnabled:true}).dayCycleEnabled,true);
   assert.equal(sanitizeSettings({dayCycleEnabled:'true'}).dayCycleEnabled,false);
+  assert.equal(sanitizeSettings({showTouchControls:false}).showTouchControls,false);
+  assert.equal(sanitizeSettings({showTouchControls:'false'}).showTouchControls,true);
   assert.equal(sanitizeSettings({autoSprint:true}).autoSprint,true);
   assert.equal(sanitizeSettings({autoSprint:'true'}).autoSprint,false);
   assert.equal(sanitizeSettings({shadowRefreshSeconds:0}).shadowRefreshSeconds,0,
@@ -1112,4 +1114,17 @@ test('grass performance presets retain tuned formula and density/distance tiers'
       'grassFarDensityPercent','grassDensitySharpness','grassDensityCoefficient','grassDensityOffset'])
       assert.equal(validated[key],preset[key],tier+' validates '+key);
   }
+});
+
+test('touch control visibility is applied immediately and saved independently of world state',()=>{
+ const elements=new Map(),classes=new Map(),writes=[];
+ const element=id=>{if(!elements.has(id))elements.set(id,{style:{},checked:false,setAttribute(){},querySelector:element});return elements.get(id);};
+ const doc={createElement:()=>({hidden:false,setAttribute(){},querySelector:element}),head:{append(){}},body:{append(){},classList:{toggle(key,value){classes.set(key,value);}}}};
+ const storage={getItem:()=>JSON.stringify({showTouchControls:false}),setItem:(key,value)=>writes.push(JSON.parse(value))};
+ const settings=createSettings(doc,storage);
+ assert.equal(settings.showTouchControls,false);
+ assert.equal(classes.get('hide-touch-controls'),true);
+ const checkbox=element('#fc-touch-controls');checkbox.checked=true;checkbox.onchange();
+ assert.equal(settings.showTouchControls,true);assert.equal(classes.get('hide-touch-controls'),false);
+ assert.equal(writes.at(-1).showTouchControls,true);
 });

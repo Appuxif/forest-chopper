@@ -46,6 +46,7 @@ export function createRagdollCameraLifecycle(ctx,{toggleView,resetOrbit}){
 }
 
 export function createPlayer(ctx) {
+ const mobileCamera=globalThis.matchMedia?.('(max-width:650px), (pointer:coarse)');
 const limiter=createFrameLimiter();
 const gpuTimer=createGpuFrameTimer(ctx.renderer);
 const orbitCamera=createOrbitCamera(ctx);
@@ -172,7 +173,7 @@ function animate(now){
  ctx.camera.position.set(follow?.px??ctx.px,
    (follow?.feetY??ctx.feetY)+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,
    follow?.pz??ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
- if(ctx.thirdPerson)orbitCamera.update(dt,follow,flying?2:0);
+ if(ctx.thirdPerson)orbitCamera.update(dt,follow,(flying?2:0)+(mobileCamera?.matches?2.5:0));
  // Animation mixer and camera have both updated: resolve any frame-18 tree
  // contact using the *current* crosshair, not the mouse-down position.
  ctx.tickChopImpact?.(now);

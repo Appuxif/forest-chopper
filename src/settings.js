@@ -55,7 +55,7 @@ const PREVIOUS_LIGHTING_DEFAULTS=Object.freeze({
 });
 const DEFAULT=Object.freeze({
  ...PERFORMANCE_DEFAULTS,performancePreset:'high',
- mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,fov:75,
+ mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,fov:75,
  cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
  audio:DEFAULT_AUDIO,
  ...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,val])=>[key,val[3]])),
@@ -112,6 +112,7 @@ export function sanitizeSettings(value) {
       [key,typeof source[key]==='boolean'?source[key]:
         performancePreset==='high'?DEFAULT[key]:fallback])),
     autoSprint: source.autoSprint === true,
+    showTouchControls: source.showTouchControls !== false,
     quality: ['low','balanced','high'].includes(source.quality) ? source.quality : DEFAULT.quality,
     maxFps: FPS_OPTIONS.includes(source.maxFps) ? source.maxFps : DEFAULT.maxFps,
     shadowDistance: Number.isInteger(source.shadowDistance) && source.shadowDistance >= 60
@@ -514,6 +515,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <label>Чувствительность обзора: <output id="fc-sensitivity-value"></output>
       <input id="fc-sensitivity" type="range" min="0.4" max="2.5" step="0.1"></label>
     <label><input id="fc-auto-sprint" type="checkbox"> Автобег при движении</label>
+    <label><input id="fc-touch-controls" type="checkbox"> Сенсорные кнопки: джойстик, прыжок и рубка</label>
     <div class="fc-settings-shortcuts" aria-label="Клавиши и управление">
       <strong>Клавиши управления</strong>
       <div>WASD / стрелки — ходьба · Shift — бег · Space — прыжок</div>
@@ -643,6 +645,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const checkbox = panel.querySelector('#fc-show-fps');
   const windCheckbox = panel.querySelector('#fc-wind-enabled');
   const sprintCheckbox = panel.querySelector('#fc-auto-sprint');
+  const touchCheckbox = panel.querySelector('#fc-touch-controls');
   const qualitySelect = panel.querySelector('#fc-quality');
   const fpsSelect = panel.querySelector('#fc-max-fps');
   const spruceVisibleInput=panel.querySelector('#fc-spruce-foliage-visible');
@@ -717,6 +720,9 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     dayCheckbox.disabled = connected;
     dayCheckbox.title = connected?'В сетевом мире время суток задаёт сервер':'';
     sprintCheckbox.checked = state.autoSprint;
+    touchCheckbox.checked = state.showTouchControls;
+    doc.body?.classList?.toggle('hide-touch-controls',!state.showTouchControls);
+    if(doc.defaultView?.CustomEvent)doc.dispatchEvent(new doc.defaultView.CustomEvent('forest-touch-controls',{detail:{visible:state.showTouchControls}}));
     qualitySelect.value = state.performancePreset;
     for(const [key,id] of Object.entries(PERFORMANCE_INPUTS)){
       const el=panel.querySelector('#fc-'+id);
@@ -899,6 +905,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   };
   windCheckbox.onchange = () => {state.windEnabled = windCheckbox.checked;reflect();save();};
   dayCheckbox.onchange = () => {state.dayCycleEnabled = dayCheckbox.checked;reflect();save();};
+  touchCheckbox.onchange = () => {state.showTouchControls=touchCheckbox.checked;reflect();save();};
   sprintCheckbox.onchange = () => {state.autoSprint = sprintCheckbox.checked;reflect();save();};
   qualitySelect.onchange = () => {
     const preset=qualitySelect.value;
@@ -1191,6 +1198,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get fireShadowLimit(){return state.fireShadowLimit;},
     get nightDisableMoonShadows(){return state.nightDisableMoonShadows;},
     get autoSprint(){return state.autoSprint;},
+    get showTouchControls(){return state.showTouchControls;},
     get fov(){return state.fov;},
     get quality(){return state.quality;},
     get maxFps(){return state.maxFps;},

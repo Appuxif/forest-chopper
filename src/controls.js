@@ -1,4 +1,4 @@
-import {createTouchJoystick} from './touch-input.js';
+import {createTouchJoystick} from './touch-input.js?v=20261104-mobile1';
 // Fn+PgUp/PgDn on many laptops emits a different physical `code` from
 // the logical `key`. Prefer the logical key, but keep physical fallback and
 // +/- shortcuts for keyboards with no dedicated Page keys.
@@ -72,6 +72,7 @@ for(const type of ['pointerup','pointercancel','lostpointercapture']){
  });
 }
 window.addEventListener('blur',()=>{flightUpPointers.clear();if(ctx.debugCheats)ctx.debugCheats.mobileUp=false;});ctx.$('hit').addEventListener('pointerdown',e=>{e.preventDefault();ctx.chop()});const joystick=createTouchJoystick(ctx,ctx.$('stick'),ctx.$('knob'));
+document.addEventListener('forest-touch-controls',e=>{if(!e.detail.visible){joystick.reset();flightUpPointers.clear();if(ctx.debugCheats)ctx.debugCheats.mobileUp=false;}});
 window.addEventListener('blur',()=>{joystick.reset();ctx.drag=null});
 ctx.$('reset').onclick=()=>{if(ctx.isOnline()){alert('В сетевой игре мир общий и сохраняется на сервере.');return;}ctx.highlight?.clear();ctx.wind?.clear();ctx.distantForest?.clear?.();ctx.offlineSave.reset();ctx.logsCollected=0;ctx.dayCycle?.resetOffline?.();ctx.groundBoxes?.clear?.();ctx.forestResources?.clear?.();ctx.clearDecorBatches?.();ctx.inventory?.restore(null,0);ctx.vitals?.restore(null);for(const t of ctx.trees.values())ctx.scene.remove(t);for(const g of ctx.chunks.values()){g.userData.treeBatch?.dispose();for(const geo of g.userData.terrainGeometries??[])geo.dispose();ctx.scene.remove(g);}for(const f of ctx.falling)ctx.scene.remove(f.tree);for(const p of ctx.particles)ctx.scene.remove(p.mesh);for(const p of ctx.placed)ctx.scene.remove(p.mesh);ctx.placed.length=0;ctx.collisionWorld?.invalidate?.();ctx.crafting?.clear();ctx.storages?.clear();ctx.campStructures?.clear();ctx.disposePreview();ctx.trees.clear();ctx.chunks.clear();ctx.falling.length=0;ctx.particles.length=0;ctx.felled.clear();ctx.treeDamage.clear();ctx.seed=(Math.random()*999999)|0;ctx.px=ctx.pz=ctx.yaw=ctx.pitch=ctx.wood=ctx.cuts=0;ctx.feetY=ctx.verticalSpeed=0;ctx.onGround=true;ctx.$('wood').textContent='0';ctx.$('cut').textContent='0';ctx.progress.resetPosition(0,0);ctx.updateChunks();ctx.offlineSave.markDirty()};addEventListener('resize',()=>{ctx.camera.aspect=innerWidth/innerHeight;ctx.camera.updateProjectionMatrix();ctx.renderer.setSize(innerWidth,innerHeight)});ctx.updateChunks();
 

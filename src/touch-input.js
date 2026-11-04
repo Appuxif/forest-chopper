@@ -3,6 +3,7 @@ export function createTouchJoystick(ctx,stick,knob) {
   let pointerId=null;
   const reset=()=>{
     pointerId=null;
+    stick.setAttribute?.('data-active','false');
     ctx.joyX=ctx.joyY=0;
     knob.style.transform='translate(0,0)';
   };
@@ -21,6 +22,7 @@ export function createTouchJoystick(ctx,stick,knob) {
     if(pointerId!==null)return;
     e.preventDefault();
     pointerId=e.pointerId;
+    stick.setAttribute?.('data-active','true');
     stick.setPointerCapture?.(e.pointerId);
     move(e);
   });

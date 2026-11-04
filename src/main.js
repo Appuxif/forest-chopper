@@ -1,3 +1,4 @@
+import {createMobileHud} from './mobile-hud.js?v=20261104-fps3';
 import {createRagdoll} from './ragdoll.js?v=20261103-ragdoll-save-recovery1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
 import {createAnimations} from './animations.js?v=20261102-chop-frame18';
@@ -19,12 +20,12 @@ import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bou
 import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
 import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261102-chop-current-target1';
-import {createControls} from './controls.js?v=20261104-save-slots1';
-import {createPlayer} from './player.js?v=20261103-grass-culling1';
+import {createControls} from './controls.js?v=20261104-hud2';
+import {createPlayer} from './player.js?v=20261104-mobile1';
 import {createMultiplayer} from './multiplayer.js?v=20261103-decor-region2';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261103-grass-presets-tuned1';
+import {createSettings} from './settings.js?v=20261104-hud2';
 import {createGameAudio} from './game-audio.js?v=20261102-treefall-sync13';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
@@ -608,6 +609,7 @@ progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}})
 ({toggleView, ragdollCamera, animate}=createPlayer(ctx));
 ({showMapPing,clearMapPings}=createMinimap(ctx));
 ({look}=createControls(ctx));
+createMobileHud(document,settings);
 const leaveGuard=installGameLeaveGuard(window);
 worldStartupGate=createWorldStartupGate({
   loading,online:menuLaunch.mode==='online',

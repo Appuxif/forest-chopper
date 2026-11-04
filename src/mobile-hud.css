@@ -1,0 +1,54 @@
+ body #mobile-menu-toggle{display:block;position:fixed;z-index:24;top:max(10px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));width:44px;height:44px;border-radius:50%;background:#10251fcb;font-size:29px;line-height:1;touch-action:manipulation}
+ body #mobile-menu{display:grid;position:fixed;z-index:25;right:12px;top:62px;grid-template-columns:1fr 1fr;gap:6px;width:min(310px,calc(100vw - 24px));padding:10px;max-height:calc(100dvh - 76px);overflow-y:auto;touch-action:pan-y;background:#10251ff5;border:1px solid #72977e;border-radius:14px;box-shadow:0 12px 35px #0008}
+ body #mobile-menu[hidden]{display:none}
+ body #mobile-menu button{min-height:44px;padding:8px;border-radius:8px;text-align:left;font-size:12px;touch-action:manipulation}
+ body:has(#mainmenu:not([hidden])) #mobile-menu-toggle,body:has(#mainmenu:not([hidden])) #mobile-menu{display:none}
+ body #reset,body #nettoggle,body #viewtoggle,body #menu-backgame,body .fc-settings-toggle,body .fc-progress-toggle,body #fc-ragdoll-btn,body #fc-cheats-toggle,body #fc-profiler-toggle{display:none!important}
+
+body #minimappanel{top:16px;left:16px;width:144px;height:144px;padding:0;border:0;border-radius:50%;background:transparent}
+body #minimap{width:144px;height:144px;border-radius:50%;border:1px solid #ffffff55;box-shadow:0 2px 9px #0004}
+body #minimaplegend,body #maphint{display:none}
+body .top{left:180px}
+body #online{left:180px!important;top:90px!important}
+body .fc-bag-toggle{width:44px;height:44px;padding:0;font-size:0;border-radius:12px}
+body .fc-bag-toggle:before{content:'🎒';font-size:20px}
+body #stick{opacity:0;transition:opacity .18s}
+body #stick[data-active=true]{opacity:1}
+body #game:after{content:'◌';position:absolute;left:76px;bottom:78px;font-size:26px;color:#fff7;pointer-events:none}
+body #game:has(#stick[data-active=true]):after{display:none}
+body.hide-touch-controls #stick,body.hide-touch-controls #jump,body.hide-touch-controls #hit,body.hide-touch-controls #game:after{display:none!important}
+@media(max-width:650px),(pointer:coarse){
+ body .top{top:max(12px,env(safe-area-inset-top));left:120px;font-size:10px}
+ body .top strong{display:none}
+ body #online{top:48px!important;left:120px!important;font-size:9px}
+ body #minimappanel{top:max(12px,env(safe-area-inset-top));left:12px;width:92px;height:92px;padding:0;border:0;border-radius:50%;background:transparent}
+ body #minimap{width:92px;height:92px;border-radius:50%;border:1px solid #ffffff55;box-shadow:0 2px 9px #0004}
+ body #minimaplegend,body #maphint{display:none}
+ body .fc-hotbar{bottom:calc(12px + env(safe-area-inset-bottom));padding:3px;gap:3px;border-radius:10px}
+ body .fc-hotbar .fc-slot{width:36px;height:38px;font-size:17px}
+ body .fc-hotbar .fc-key{display:none}
+ body .fc-bag-toggle{left:auto;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));width:44px;height:44px;padding:0;font-size:0;border-radius:12px}
+ body .fc-bag-toggle:before{content:'🎒';font-size:20px}
+ body .fc-vitals{bottom:calc(65px + env(safe-area-inset-bottom));padding:3px 6px;font-size:10px;gap:8px;background:#10251fa8}
+ body .fc-vitals-symbols{font-size:11px}
+ body #stick{left:16px;bottom:calc(88px + env(safe-area-inset-bottom));width:104px;height:104px;opacity:0;transition:opacity .18s;}
+ body #game:after{content:'◌';position:absolute;left:52px;bottom:calc(121px + env(safe-area-inset-bottom));font-size:26px;color:#fff7;pointer-events:none}
+ body #game:has(#stick[data-active=true]):after{display:none}
+ body #stick[data-active=true]{opacity:1}
+ body #stick:before{content:'';position:absolute;inset:38px;border-radius:50%;border:1px solid #fff8}
+ body #knob{left:32px;top:32px;width:40px;height:40px}
+ body #jump{right:86px;bottom:calc(104px + env(safe-area-inset-bottom));width:48px;height:48px;font-size:23px}
+ body #hit{right:18px;bottom:calc(90px + env(safe-area-inset-bottom));width:58px;height:58px;font-size:26px;background:#15372bcc}
+ body #pickup{right:14px;bottom:calc(162px + env(safe-area-inset-bottom));width:110px;height:44px;font-size:13px;border-radius:12px}
+ body #chatpanel.collapsed{left:12px;bottom:calc(12px + env(safe-area-inset-bottom));padding:0;background:transparent;border:0}
+ body #chattoggle{min-height:44px;margin:0;font-size:0;width:44px}
+ body #chattoggle:before{content:'💬';font-size:18px}
+ body #chatpanel:not(.collapsed){bottom:calc(210px + env(safe-area-inset-bottom));left:12px;width:calc(100vw - 24px)}
+ body .target{bottom:calc(205px + env(safe-area-inset-bottom));font-size:11px;max-width:80vw;white-space:normal}
+ body #buildbar{bottom:calc(214px + env(safe-area-inset-bottom));right:12px}
+ body .fc-tutorial{left:12px;top:116px;bottom:auto;width:230px;padding:8px 10px;font-size:11px;max-height:150px;overflow:auto;background:#132b22c9}
+ body .fc-tutorial p,body .fc-tutorial strong{font-size:11px;margin:4px 0}
+ body .fc-fps{top:62px;left:auto;right:12px;transform:none;font-size:9px;pointer-events:none}
+ body .fc-progress-panel{top:65px;max-height:calc(100dvh - 140px)}
+}
+@media(prefers-reduced-motion:reduce){body #stick{transition:none}}
