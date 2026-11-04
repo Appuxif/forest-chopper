@@ -1,7 +1,8 @@
 import {debugFlightDelta} from './debug-flight-motion.js';
 import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
 import {createPlayerMotionTracker} from './ragdoll-motion.js';
-import {rootMotionSpeed,playbackRateForSpeed,walkingMotion,runningMotion,humanoidTargetSpeed,playbackDirectionForMotion} from './root-motion-speed.js?v=20261104-backrun-root1';
+import {rootMotionSpeed,playbackRateForSpeed,walkingMotion,runningMotion,humanoidTargetSpeed,playbackDirectionForMotion,BACKWARD_RUN_SPEED} from './root-motion-speed.js?v=20261104-ori03';
+import {movementInput,locomotionMode,targetLegsYaw,worldMoveDirection,joystickSprintActive} from './locomotion-input.js?v=20261104-lateralrun1';
 import {classicLocalRate,classicRemoteRate} from './legacy-animation-rates.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
@@ -60,6 +61,8 @@ let reticleTree=null,reticleInteraction=null,reticleError='';
 function refreshCrosshair(mob,pursuing,lootOpen){
  updateCrosshair(ctx.$('crosshair'),lootOpen?{kind:'idle',text:'',label:'Окно добычи'}:aimState(ctx.buildMode,reticleTree,reticleError,reticleInteraction,mob,{pursuing}));
 }
+let lastMoveMode='idle';
+let joystickRunning=false;
 function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
  orbitCamera.reset();
  if(ctx.thirdPerson){const limit=ctx.settings.cameraPitchLimit*Math.PI/180;ctx.pitch=Math.max(-limit,Math.min(limit,ctx.pitch));}
@@ -101,55 +104,78 @@ function animate(now){
  if(posing||dead)ctx.jumpRequested=false; // no movement while dead
  (ctx.mobs??ctx.hens)?.tick(dt,elapsed);
  ctx.wind.tick(now);ctx.treeWindShader?.tick(now,ctx.px,ctx.pz,ctx.settings.windEnabled);ctx.landmarks.tick(now);ctx.dayCycle.tick(now);ctx.emotes.tick(now);
- let forward=(posing||dead)?0:(ctx.keys.KeyW||ctx.keys.ArrowUp?1:0)-(ctx.keys.KeyS||ctx.keys.ArrowDown?1:0)-ctx.joyY;
- let side=(posing||dead)?0:(ctx.keys.KeyD||ctx.keys.ArrowRight?1:0)-(ctx.keys.KeyA||ctx.keys.ArrowLeft?1:0)+ctx.joyX;
- const len=Math.max(1,Math.hypot(forward,side));forward/=len;side/=len;
- const moving=Math.hypot(forward,side)>.1;
- const wantsSprint=shouldSprint(ctx.keys,ctx.settings.autoSprint,moving);
+ // ORI-02: one continuous movement vector for keyboard and touch joystick.
+ // Relative direction and analog strength are independent of camera steering.
+ const intent=movementInput({
+  keys:ctx.keys,joyX:ctx.joyX,joyY:ctx.joyY,disabled:posing||dead,
+ });
+ const {forward,side,strength}=intent;
+ const moving=strength>0;
+ // A deep mobile-stick push starts a run even without a Shift button;
+ // a smaller release threshold prevents rapid run/strafe toggling.
+ joystickRunning=joystickSprintActive(ctx.joyX,ctx.joyY,joystickRunning);
+ const wantsSprint=shouldSprint(ctx.keys,ctx.settings.autoSprint,moving)||joystickRunning;
  const flying=ctx.debugCheats?.flying===true&&!ctx.isOnline?.();
  const sprint=!flying&&moving&&wantsSprint&&(!ctx.vitals||ctx.vitals.canSprint());
+ // Modern humanoids run toward lateral input when sprinting; normal A/D
+ // remains strafe. Preserve the classic lumberjack's old locomotion.
+ const lateralRun=sprint&&ctx.ownAvatar?.model!=='legacy';
+ const mode=locomotionMode(intent,lastMoveMode,lateralRun);
+ if(posing||dead)lastMoveMode='idle';
+ else if(mode!=='idle')lastMoveMode=mode;
+ ctx.characterOrientation.setMovementIntent(intent,mode,
+  targetLegsYaw(ctx.cameraYaw,intent,{mode,sprinting:lateralRun}));
+ // Leg/hip facing approaches the intended diagonal on the shortest arc.
+ // The classic lumberjack, death and ragdoll retain their original facing.
+ ctx.characterOrientation.steerLegs(dt,{
+  locked:posing||dead||ctx.ownAvatar?.model==='legacy',
+ });
  if(!dead)ctx.vitals?.tick(sprint);
  ctx.sprinting=sprint;
- const motion=!moving?'Idle':Math.abs(forward)>.1
-  ?(sprint?runningMotion(ctx.ownAvatar,forward<-.1):walkingMotion(ctx.ownAvatar,forward<-.1))
-  :(side<0?'StrafeLeft':'StrafeRight');
- // Match each authored Root Motion cycle to its intended movement speed.
- // Walk now plays 20% slower; 60cm sidesteps also play 20% slower
- // despite covering more ground per cycle. The Run playback is UNCHANGED
- // at 1.2x, and the 20-frame backwards run also plays at 1.2x.
- // The classic lumberjack keeps its original authored rates.
+ const motion=mode==='idle'?'Idle':mode==='strafe'
+  ?(side<0?'StrafeLeft':'StrafeRight')
+  :(sprint?runningMotion(ctx.ownAvatar,mode==='backward')
+    :walkingMotion(ctx.ownAvatar,mode==='backward'));
+ // An analog input at 40% travel must drive both the motion speed and
+ // its root displacement at 40%, not play a full-speed animation in place.
+ // Existing forward Run stays 1.2x at full tilt; backward Run is 30% faster
+ // than backward Walk (2.6 m/s vs 2.0 m/s).
  const targetSpeed=ctx.ownAvatar?.model==='legacy'
   ?(sprint?4.6:2.5):humanoidTargetSpeed(motion,sprint);
  const rate=ctx.ownAvatar?.model==='legacy'
-  ?classicLocalRate(motion,sprint,forward)
-  :((motion==='Run'||motion==='RunBackward')?1.2:playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed))*
-    playbackDirectionForMotion(motion,forward<-.1);
+  ?classicLocalRate(motion,sprint,forward)*(moving?strength:1)
+  :((motion==='Idle'?1:motion==='Run'?1.2*strength:
+    playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed*strength)) *
+    playbackDirectionForMotion(motion,mode==='backward'));
+ const moveDirection=worldMoveDirection(ctx.cameraYaw,intent);
  if(!posing&&!dead&&!flying)ctx.simulateVertical(dt);
  let dx=0,dz=0;
  if(ctx.ownAvatar&&!posing&&!dead){
-  ctx.ownAvatar.group.rotation.y=ctx.yaw;
+  ctx.ownAvatar.group.rotation.y=ctx.legsYaw;
   const rootDelta=ctx.tickActor(ctx.ownAvatar,dt,motion,!ctx.onGround,rate);
   dx=rootDelta.x;dz=rootDelta.z;
-  // Diagonal input keeps its intended direction; step distance still comes
-  // from the animation, rather than an independent hard-coded speed.
-  if(ctx.onGround&&Math.abs(forward)>.1&&Math.abs(side)>.1){
-   const distance=Math.hypot(dx,dz);
-   dx=(-Math.sin(ctx.yaw)*forward+Math.cos(ctx.yaw)*side)*distance;
-   dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*distance;
+  // Root Motion controls *distance* while the joystick controls direction.
+  // During W<->S and walk<->strafe cross-fades, summing signed root
+  // vectors can cancel their distance (briefly freezing the character).
+  // tickActor tracks the weighted travel of each active clip separately.
+  if(ctx.onGround&&moving){
+   const distance=ctx.ownAvatar.rootTravelDistance??Math.hypot(dx,dz);
+   dx=moveDirection.x*distance;
+   dz=moveDirection.z*distance;
   }
  }
  // Jump movement remains physics/input-driven, not extracted from Root.
  // Also keep a fallback when testing against an old GLB without Root Motion.
  const noRoot=motion!=='Idle'&&rootMotionSpeed(ctx.rootMotion[motion])===0;
  if(!dead&&!posing&&!flying&&(!ctx.onGround||!ctx.ownAvatar||noRoot)){
-  dx=(-Math.sin(ctx.yaw)*forward+Math.cos(ctx.yaw)*side)*targetSpeed*dt;
-  dz=(-Math.cos(ctx.yaw)*forward-Math.sin(ctx.yaw)*side)*targetSpeed*dt;
+  dx=moveDirection.x*targetSpeed*strength*dt;
+  dz=moveDirection.z*targetSpeed*strength*dt;
  }
  if(!posing&&!dead){
   if(flying){
    const up=Number(!!(ctx.keys.Space||ctx.keys.ShiftLeft||ctx.keys.ShiftRight||ctx.debugCheats?.mobileUp));
    const down=Number(!!(ctx.keys.ControlLeft||ctx.keys.ControlRight||ctx.debugCheats?.mobileDown));
-   const delta=debugFlightDelta({forward,side,yaw:ctx.yaw,pitch:ctx.pitch,vertical:up-down,dt});
+   const delta=debugFlightDelta({forward:forward*strength,side:side*strength,yaw:ctx.yaw,pitch:ctx.pitch,vertical:up-down,dt});
    ctx.px+=delta.x;ctx.pz+=delta.z;
    ctx.feetY=Math.max(ctx.terrain.heightAt(ctx.px,ctx.pz)+.2,ctx.feetY+delta.y);
    ctx.onGround=false;ctx.verticalSpeed=0;ctx.jumpRequested=false;
@@ -189,8 +215,8 @@ function animate(now){
    feetY:Math.max(ctx.terrain.heightAt(fallPose.x,fallPose.z),fallPose.feetY),
  }:null;
  ctx.camera.position.set(follow?.px??ctx.px,
-   (follow?.feetY??ctx.feetY)+1.8+Math.sin(now*.011)*Math.min(1,Math.hypot(forward,side))*.035,
-   follow?.pz??ctx.pz);ctx.camera.rotation.set(ctx.pitch,ctx.yaw,0);
+   (follow?.feetY??ctx.feetY)+1.8+Math.sin(now*.011)*Math.min(1,strength)*.035,
+   follow?.pz??ctx.pz);ctx.camera.rotation.set(ctx.cameraPitch,ctx.cameraYaw,0);
  if(ctx.thirdPerson)orbitCamera.update(dt,follow,(flying?2:0)+(mobileCamera?.matches?2.5:0));
  // Raycasters must see this frame's camera, including frames skipped by the
  // render limiter. Small moving mobs can cross the reticle between HUD ticks.
@@ -209,7 +235,7 @@ function animate(now){
 tickFallingTrees(ctx,dt);
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}
 ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx.offlineSave.tick(now);ctx.progress.trackPosition(ctx.px,ctx.pz,ctx.seed);ctx.discoveries.check(now);ctx.updateChunks();ctx.forestResources?.tick(now);ctx.inventory?.tickBook?.();ctx.updatePreview();ctx.pickupInteraction?.update?.();const interaction=ctx.pickupInteraction?.current;const t=ctx.buildMode||mob||pursuing||lootOpen||interaction?.empty?null:ctx.aimed();ctx.highlight.update(t);if(t)ctx.tutorial.complete('tree-aimed');reticleTree=t;reticleInteraction=interaction;reticleError=ctx.buildMode?(ctx.inventory?.selected==='bench'?ctx.crafting?.placeError?.(ctx.placement):(ctx.preview?.userData?.previewError??ctx.placeError(ctx.placement))):'';refreshCrosshair(mob,pursuing,lootOpen);ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`${u.species==='birch'?'🌳 Берёза':'🌲 Дерево'} · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':
-   lootOpen?'':mob?(mob.displayName??'Существо')+' · Атаковать':pursuing?'':interaction?interaction.label+' · '+(interaction.verb??(interaction.type==='box'||interaction.type==='resource'?'Подобрать':'Открыть')):''}if(ctx.isOnline()&&!dead&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}ctx.debugPlayers?.tick?.(now,dt);
+   lootOpen?'':mob?(mob.displayName??'Существо')+' · Атаковать':pursuing?'':interaction?interaction.label+' · '+(interaction.verb??(interaction.type==='box'||interaction.type==='resource'?'Подобрать':'Открыть')):''}if(ctx.isOnline()&&!dead&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.legsYaw,jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}ctx.debugPlayers?.tick?.(now,dt);
 for(const avatar of ctx.avatars.values()){
  if(avatar.debugDead)continue;
  const previousX=avatar.group.position.x,previousZ=avatar.group.position.z;
@@ -230,7 +256,9 @@ for(const avatar of ctx.avatars.values()){
       ?runningMotion(avatar.actor,front<0):walkingMotion(avatar.actor,front<0));
    const rate=avatar.actor.model==='legacy'
     ?classicRemoteRate(remoteMotion)
-    :((remoteMotion==='Run'||remoteMotion==='RunBackward')?1.2:
+    :(remoteMotion==='Run'?1.2:remoteMotion==='RunBackward'
+      ?playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
+         Math.min(BACKWARD_RUN_SPEED,Math.max(.5,avatar.moveSpeed))):
        playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
          Math.min(4.6,Math.max(0.5,avatar.moveSpeed))))*
        playbackDirectionForMotion(remoteMotion,front<0);

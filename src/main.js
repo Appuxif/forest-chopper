@@ -3,7 +3,7 @@ import {createMobs} from './mobs.js?v=20261105-corpse-cursor1';
 import {createMobileHud} from './mobile-hud.js?v=20261104-fps3';
 import {createRagdoll} from './ragdoll.js?v=20261104-humanoid-ragdoll-merge1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
-import {createAnimations} from './animations.js?v=20261104-backrun-root1';
+import {createAnimations} from './animations.js?v=20261104-ori03';
 import {createWorld} from './world.js?v=20261103-region-default-3';
 import {generateSpruceParts} from './spruce-model.js?v=20261103-shared-birch-all1';
 import {generateBirchParts} from './birch-model.js?v=20261103-shared-birch-all1';
@@ -24,7 +24,8 @@ import {createCollisionWorld} from './collision-world.js?v=20261102-collision-wo
 import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261105-mob-hit-audio1';
 import {createControls} from './controls.js?v=20261105-corpse-cursor1';
-import {createPlayer} from './player.js?v=20261104-backrun-root1';
+import {createPlayer} from './player.js?v=20261104-lateralrun1';
+import {createCharacterOrientation} from './character-orientation.js';
 import {createMultiplayer} from './multiplayer.js?v=20261104-backrun-root1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
@@ -148,7 +149,8 @@ for(let i=0;i<68;i++){
 }
 const birchBarkTexture=new THREE.CanvasTexture(barkCanvas);birchBarkTexture.colorSpace=THREE.SRGBColorSpace;
 const birchTrunkMat=new THREE.MeshLambertMaterial({map:birchBarkTexture});
-const trees=new Map(),chunks=new Map(),rockColliders=new Map(),felled=new Set(),falling=[],particles=[],keys={},treeDamage=new Map();let seed=menuLaunch.mode==='new'&&Number.isInteger(menuLaunch.seed)&&menuLaunch.seed>=0&&menuLaunch.seed<=999998?menuLaunch.seed:((Math.random()*999999)|0),px=0,pz=0,yaw=0,pitch=0,wood=0,cuts=0,joyX=0,joyY=0,swing=0,lastHit=0,drag=null,frame=0,lastTime=performance.now();const chunkSize=24;terrain.setSeed(seed);
+const trees=new Map(),chunks=new Map(),rockColliders=new Map(),felled=new Set(),falling=[],particles=[],keys={},treeDamage=new Map();let seed=menuLaunch.mode==='new'&&Number.isInteger(menuLaunch.seed)&&menuLaunch.seed>=0&&menuLaunch.seed<=999998?menuLaunch.seed:((Math.random()*999999)|0),px=0,pz=0,wood=0,cuts=0,joyX=0,joyY=0,swing=0,lastHit=0,drag=null,frame=0,lastTime=performance.now();const characterOrientation=createCharacterOrientation();
+const chunkSize=24;terrain.setSeed(seed);
 
 scene.add(camera);const axe=new THREE.Group();camera.add(axe);const handle=new THREE.Mesh(new THREE.CylinderGeometry(.045,.065,1.3,8),new THREE.MeshLambertMaterial({color:0x99623b}));handle.rotation.z=-.2;axe.add(handle);const metal=new THREE.MeshStandardMaterial({color:0xc2cbd0,metalness:.65,roughness:.35});const head=new THREE.Mesh(new THREE.BoxGeometry(.48,.32,.15),metal);head.position.set(-.18,.58,0);axe.add(head);const blade=new THREE.Mesh(new THREE.CylinderGeometry(.26,.26,.15,3),metal);blade.rotation.x=Math.PI/2;blade.rotation.z=Math.PI/2;blade.position.set(-.44,.58,0);axe.add(blade);axe.position.set(.72,-.7,-1.1);axe.rotation.z=-.25;
 
@@ -301,6 +303,14 @@ const ctx={
  get build(){return build;},
  get buildMode(){return buildMode;}, set buildMode(value){buildMode=value;},
  get camera(){return camera;},
+ get characterOrientation(){return characterOrientation;},
+ get cameraYaw(){return characterOrientation.cameraYaw;}, set cameraYaw(value){characterOrientation.cameraYaw=value;},
+ get cameraPitch(){return characterOrientation.cameraPitch;}, set cameraPitch(value){characterOrientation.cameraPitch=value;},
+ get legsYaw(){return characterOrientation.legsYaw;}, set legsYaw(value){characterOrientation.legsYaw=value;},
+ get torsoYaw(){return characterOrientation.torsoYaw;}, set torsoYaw(value){characterOrientation.torsoYaw=value;},
+ get torsoPitch(){return characterOrientation.torsoPitch;}, set torsoPitch(value){characterOrientation.torsoPitch=value;},
+ get headYaw(){return characterOrientation.headYaw;}, set headYaw(value){characterOrientation.headYaw=value;},
+ get headPitch(){return characterOrientation.headPitch;}, set headPitch(value){characterOrientation.headPitch=value;},
  get candidate(){return candidate;},
  get chop(){return chop;},
  get tickChopImpact(){return tickChopImpact;},
@@ -378,7 +388,8 @@ const ctx={
  applyFallImpact(impact,options){return applyFallImpact(ctx,impact,options);},
  get collisionWorld(){return collisionWorld;},
  get particles(){return particles;},
- get pitch(){return pitch;}, set pitch(value){pitch=value;},
+ // Backward-compatible camera pitch; existing saves, controls and debug tools use this.
+ get pitch(){return characterOrientation.cameraPitch;}, set pitch(value){characterOrientation.cameraPitch=value;},
  get placeLog(){return placeLog;},
  get nudgeLog(){return nudgeLog;},
  get rotateLog(){return rotateLog;},
@@ -434,7 +445,8 @@ const ctx={
  get verticalSpeed(){return verticalSpeed;}, set verticalSpeed(value){verticalSpeed=value;},
  get wind(){return wind;},
  get wood(){return wood;}, set wood(value){if(inventory&&!inventory.syncWood(value,{migrate:value>1000}))return;wood=value;},
- get yaw(){return yaw;}, set yaw(value){yaw=value;},
+ // Backward-compatible camera yaw; legs/torso are updated explicitly per tick.
+ get yaw(){return characterOrientation.cameraYaw;}, set yaw(value){characterOrientation.cameraYaw=value;},
 };
 // Micro-grass starts ticking immediately; crafting must exist before its getter is read.
 let crafting=null;

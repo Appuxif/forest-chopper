@@ -2,6 +2,7 @@ import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createOfflineSave, parseOfflineSave, slotKey} from '../src/offline-save.js';
+import {createCharacterOrientation} from '../src/character-orientation.js';
 const OFFLINE_SAVE_KEY=slotKey(1);
 
 function fixture(existing = null) {
@@ -419,4 +420,21 @@ test('new mob save envelope validates and reloads, retaining old hen saves as a 
  const before=world.snapshot();assert.equal(f.save.restoreSnapshot(JSON.stringify(state),{replace:false}),true);
  assert.deepEqual(world.snapshot(),before);
  const bad=structuredClone(state);bad.mobs.populations.unknown=bad.mobs.populations.chicken;assert.equal(parseOfflineSave(JSON.stringify(bad)),null);
+test('loading a pre-orientation save initializes legs and torso from saved camera yaw',()=>{
+ const earlier=fixture();
+ assert.equal(earlier.save.save(),true);
+ const saved=earlier.storage.getItem(OFFLINE_SAVE_KEY);
+ const current=fixture(saved);
+ const pose=createCharacterOrientation({cameraYaw:-2.5,cameraPitch:.1});
+ pose.legsYaw=1.3;pose.torsoYaw=2.4;
+ Object.defineProperties(current.ctx,{
+  yaw:{get(){return pose.cameraYaw},set(value){pose.cameraYaw=value}},
+  pitch:{get(){return pose.cameraPitch},set(value){pose.cameraPitch=value}},
+ });
+ current.ctx.characterOrientation=pose;
+ assert.equal(current.save.restore(),true);
+ assert.equal(pose.cameraYaw,.5);
+ assert.equal(pose.legsYaw,.5,'restored avatar must not rotate unexpectedly on first frame');
+ assert.equal(pose.torsoYaw,.5);
+ assert.equal(pose.cameraPitch,-.25);
 });

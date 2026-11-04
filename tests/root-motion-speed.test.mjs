@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {MIN_ROOT_TRAVEL,rootMotionSpeed,playbackRateForSpeed,mirroredWalkPhaseTime,walkingMotion,runningMotion,rootMotionSampleDelta,humanoidTargetSpeed,STRAFE_SPEED,STRAFE_SPRINT_SPEED,WALK_SPEED,playbackDirectionForMotion} from '../src/root-motion-speed.js';
+import {MIN_ROOT_TRAVEL,weightedHorizontalRootTravel,rootMotionSpeed,playbackRateForSpeed,mirroredWalkPhaseTime,walkingMotion,runningMotion,rootMotionSampleDelta,humanoidTargetSpeed,STRAFE_SPEED,STRAFE_SPRINT_SPEED,WALK_SPEED,BACKWARD_RUN_SPEED,playbackDirectionForMotion} from '../src/root-motion-speed.js';
 
 const info=(x,z,duration)=>({travel:{x,z},duration});
 
@@ -57,7 +57,12 @@ test('dedicated backwards run is selected only when available',()=>{
  assert.equal(runningMotion(humanoid,false),'Run');
  assert.equal(runningMotion({lower:{Run:{}}},true),'Run');
  assert.equal(runningMotion(null,true),'Run');
- assert.equal(humanoidTargetSpeed('RunBackward',true),1.16/(20/30)*1.2);
+ assert.equal(BACKWARD_RUN_SPEED,WALK_SPEED*1.3);
+ assert.equal(humanoidTargetSpeed('RunBackward',true),2.6);
+ const backwards=info(0,-1.16,20/30);
+ const rate=playbackRateForSpeed(backwards,BACKWARD_RUN_SPEED);
+ assert.ok(Math.abs(rate-1.49425287356)<1e-8);
+ assert.ok(Math.abs(rate*rootMotionSpeed(backwards)-WALK_SPEED*1.3)<1e-9);
  assert.equal(humanoidTargetSpeed('Run',true),4.6);
 });
 
@@ -142,10 +147,10 @@ test('authored 60cm side steps move farther, but play 20% slower',()=>{
  assert.equal(humanoidTargetSpeed('Walk',false),2.0);
  assert.equal(humanoidTargetSpeed('WalkBackward',false),2.0);
  assert.equal(humanoidTargetSpeed('Run',true),4.6);
- // Run still bypasses computed root speed: preserve the existing fixed 1.2x.
+ // Forward Run remains at 1.2x; backward Run uses its true Root travel.
  const fs=readFileSync(new URL('../src/player.js',import.meta.url),'utf8');
- assert.match(fs,/motion==='Run'\|\|motion==='RunBackward'/);
- assert.match(fs,/\?1\.2:playbackRateForSpeed/);
+ assert.match(fs,/motion==='Run'\?1\.2\*strength/);
+ assert.match(fs,/playbackRateForSpeed\(ctx\.rootMotion\[motion\],targetSpeed\*strength\)/);
 });
 
 test('left and right strafe root steps move smoothly on every frame through loop wrap',()=>{
@@ -187,4 +192,18 @@ test('dedicated left/right strafe clips must never reverse with backward camera 
  assert.equal(playbackDirectionForMotion('Walk',true),-1);
  assert.equal(playbackDirectionForMotion('Run',true),-1);
  assert.equal(playbackDirectionForMotion('Run',false),1);
+});
+
+test('cross-fading opposite root steps retains forward travel magnitude, not cancellation',()=>{
+ const stepForward={x:0,y:.07,z:-.04},stepBackward={x:0,y:-.08,z:.04};
+ // The blended 3D vector's horizontal component cancels at equal weights.
+ const blendedZ=stepForward.z*.5+stepBackward.z*.5;
+ assert.equal(blendedZ,0);
+ const distance=weightedHorizontalRootTravel(stepForward,.5)
+  +weightedHorizontalRootTravel(stepBackward,.5);
+ assert.ok(Math.abs(distance-.04)<1e-10,
+  'opposing Root Motion clips must still move without a freeze');
+ // Vertical root motion must never inflate horizontal walking speed.
+ assert.equal(weightedHorizontalRootTravel({x:0,y:.25,z:0},.75),0);
+ assert.ok(Math.abs(weightedHorizontalRootTravel({x:3,y:100,z:4},.5)-2.5)<1e-10);
 });

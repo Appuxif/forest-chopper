@@ -92,6 +92,7 @@ export function createDeathSystem(ctx,{
   ctx.fallTracker?.reset?.();
   ctx.px=x;ctx.pz=z;ctx.feetY=ctx.terrain.heightAt(x,z);
   ctx.verticalSpeed=0;ctx.onGround=true;ctx.buildMode=false;
+  ctx.characterOrientation?.alignToCamera?.();
   ctx.disposePreview?.();
   if(ctx.ownAvatar){
    ctx.ownAvatar.group.position.set(x,ctx.feetY,z);

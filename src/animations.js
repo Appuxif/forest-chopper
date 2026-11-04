@@ -1,4 +1,4 @@
-import {rootMotionSpeed,mirroredWalkPhaseTime,rootMotionSampleDelta} from './root-motion-speed.js?v=20261104-backrun-root1';
+import {rootMotionSpeed,mirroredWalkPhaseTime,rootMotionSampleDelta,weightedHorizontalRootTravel} from './root-motion-speed.js?v=20261104-ori03';
 
 // Each actor owns exactly one visible skeleton, mixer and animation bank.
 // The modular male/female game GLBs contain the authored Run/Chop actions.
@@ -194,6 +194,7 @@ export async function createAnimations(THREE){
  function tickActor(actor,dt,motion='Idle',jumping=false,rate=1){
   const displacement=new THREE.Vector3();
   if(!actor)return displacement;
+  actor.rootTravelDistance=0;
   motion=jumping&&actor.lower.Jump?'Jump':actor.lower[motion]?motion:'Idle';
   transitionLayer(THREE,actor,'lower',motion,rate);
   if(canTransitionUpperBody(actor,performance.now()))
@@ -207,7 +208,12 @@ export async function createAnimations(THREE){
    const from=actor.rmTimes[name]??action.time,to=action.time;
    actor.rmTimes[name]=to;
    if(!action.isRunning()||action.getEffectiveWeight()<.001||Math.abs(to-from)<1e-9)continue;
-   displacement.addScaledVector(rootStep(THREE,info,from,to,action.getEffectiveTimeScale()<0),action.getEffectiveWeight());
+   const step=rootStep(THREE,info,from,to,action.getEffectiveTimeScale()<0);
+   const weight=action.getEffectiveWeight();
+   displacement.addScaledVector(step,weight);
+   // Root Motion drives distance even when two cross-fading clips travel in
+   // opposing directions. Direction comes from camera-relative input.
+   actor.rootTravelDistance+=weightedHorizontalRootTravel(step,weight);
   }
   return displacement.applyQuaternion(actor.visual.quaternion).applyQuaternion(actor.group.quaternion);
  }

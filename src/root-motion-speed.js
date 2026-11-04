@@ -3,6 +3,13 @@
 // needed for the game's desired world-space movement speed.
 export const MIN_ROOT_TRAVEL=0.025;
 
+// Sum positive *horizontal* travel of each active Root Motion clip.
+// Opposing forward/backward or strafe clips must not cancel out during fades;
+// camera-relative input supplies the direction after the blended step.
+export function weightedHorizontalRootTravel(step,weight=1){
+ return Math.hypot(step.x,step.z)*weight;
+}
+
 export function rootMotionSpeed(info){
  if(!info||!Number.isFinite(info.duration)||info.duration<=0)return 0;
  const travel=info.travel;
@@ -64,14 +71,15 @@ export function rootMotionSampleDelta(info,from,to,backward=false){
 export const STRAFE_SPEED=1.2;
 export const STRAFE_SPRINT_SPEED=1.8;
 export const WALK_SPEED=2.0; // 20% slower walking cycle than the old 2.5 m/s
+export const BACKWARD_RUN_SPEED=WALK_SPEED*1.3; // 30% above backward walking
 export function humanoidTargetSpeed(motion,sprint){
  if(motion==='StrafeLeft'||motion==='StrafeRight'){
   return sprint?STRAFE_SPRINT_SPEED:STRAFE_SPEED;
  }
- // Both authored run clips play at the unchanged fixed 1.2x rate;
- // the backward clip has a shorter 1.16m stride and therefore slower
- // *movement*, without slowing the arm cadence.
- if(motion==='RunBackward')return 1.16/(20/30)*1.2;
+ // Backward run follows the same 2 m/s walking baseline, at +30%.
+ // Derive the playback rate from the authored Root travel instead of
+ // assuming the 20-frame cycle always covers exactly 1.16 meters.
+ if(motion==='RunBackward')return BACKWARD_RUN_SPEED;
  return sprint?4.6:WALK_SPEED;
 }
 

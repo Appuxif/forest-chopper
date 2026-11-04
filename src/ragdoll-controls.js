@@ -122,6 +122,7 @@ export function createRagdollControls(ctx,doc=document){
   // while lying down updates ctx.yaw, so always align the animated root with
   // the live camera yaw on wake, including manual falls (not just beds).
   ctx.jumpRequested=false;
+  ctx.characterOrientation?.alignToCamera?.();
   if(ctx.ownAvatar){
    ctx.ownAvatar.group.position.set(ctx.px,ctx.feetY,ctx.pz);
    ctx.ownAvatar.group.rotation.set(0,ctx.yaw,0);

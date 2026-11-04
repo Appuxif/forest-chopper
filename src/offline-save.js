@@ -207,6 +207,7 @@ export function createOfflineSave(ctx, {
     ctx.wood = state.wood;ctx.cuts = state.cuts;ctx.logsCollected = state.logsCollected;
     ctx.px = state.position.x;ctx.pz = state.position.z;
     ctx.yaw = state.position.yaw;ctx.pitch = state.position.pitch;
+    ctx.characterOrientation?.alignToCamera?.();
     const floor=ctx.terrain.heightAt(ctx.px,ctx.pz);
     // Old flat-world saves stored Y relative to ground at zero.
     const oldFloor=state.terrainVersion===3?floor:
