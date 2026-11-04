@@ -145,9 +145,9 @@ def animation_bank(info, gender):
             target = name[len(prefix):]
             assert target in shared, f'{name}: overrides must target an existing clip'
             shared[target] = action
-    # The authored walk_backward is the replacement for the old stock
-    # walk_back (which had no Root Motion). Keep the runtime's 13-clip bank
-    # and its established name; preserve both Actions in the Blender workbench.
+    # The Blender workbench has only walk_backward; retain the existing
+    # walk_back runtime GLB name for compatibility with the 13-clip bank.
+    # The old in-place walk_back Action was removed from Blender.
     if 'walk_backward' in shared:
         shared['walk_back'] = shared.pop('walk_backward')
     required = {'idle', 'walk', 'walk_back', 'run', 'Chop'}

@@ -198,6 +198,31 @@ class HumanoidLiteTest(unittest.TestCase):
                         self.assertAlmostEqual(v,w,delta=2e-5,
                             msg=f'{gender}:{bone}: reverse phase must match')
 
+    def test_backward_walk_looks_left_and_preserves_root_motion(self):
+        """Runtime GLB has the new backward Action, not its obsolete pose."""
+        import math
+        for gender,model in self.body.items():
+            data=(GAME/f'body_{gender}.glb').read_bytes()
+            clips={a['name']:a for a in model['animations']}
+            self.assertEqual(len(clips),13)
+            self.assertNotIn('walk_backward',clips)  # runtime legacy name
+            for bone,expected_degrees in (('neck_01',25),('head',40)):
+                fw=glb_animation_samples(data,model,clips['walk'],bone,'rotation')
+                back=glb_animation_samples(data,model,clips['walk_back'],bone,'rotation')
+                self.assertEqual(len(fw),31)
+                self.assertEqual(len(back),31)
+                for q,r in zip(fw,reversed(back)):
+                    dot=min(1.,abs(sum(v*w for v,w in zip(q,r))))
+                    angle=math.degrees(2*math.acos(dot))
+                    self.assertAlmostEqual(angle,expected_degrees,delta=.1,
+                                           msg=f'{gender}:{bone}')
+            for name,expected in (('walk',1.32),('walk_back',-1.32)):
+                root=glb_animation_samples(data,model,clips[name],'Root','translation')
+                self.assertEqual(len(root),31)
+                self.assertAlmostEqual(root[-1][2]-root[0][2],expected,delta=.0002)
+                self.assertLess(max(x[1] for x in root)-min(x[1] for x in root),.0001,
+                                'Root remains on the ground; vertical sway belongs to pelvis')
+
     def test_gender_action_override_preserves_other_gender_bank(self):
         """An authored female__run replaces female Run only, never male Run."""
         import sys

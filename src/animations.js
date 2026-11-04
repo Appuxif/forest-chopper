@@ -5,6 +5,16 @@ import {rootMotionSpeed,mirroredWalkPhaseTime,rootMotionSampleDelta} from './roo
 // No invisible driver character and no second animation timeline.
 const LOWER_BONES=new Set(['root','pelvis','hips','thighl','thighr','calfl','calfr','shinl','shinr','footl','footr','balll','ballr']);
 const ROOT_MOTIONS=['Walk','WalkBackward','Run','StrafeLeft','StrafeRight'];
+const HUMANOID_CLIP_NAMES={
+ idle:'Idle',walk:'Walk',walk_back:'WalkBackward',run:'Run',
+ strafe_left:'StrafeLeft',strafe_right:'StrafeRight',
+ jump:'Jump',fall:'Fall',Chop:'Chop2'
+};
+// The classic GLB already contains DIFFERENT actions named Chop and Chop2.
+// Never rename its Chop to Chop2: doing so overwrites the real axe swing.
+export function runtimeClipName(model,name){
+ return model==='legacy'?name:(HUMANOID_CLIP_NAMES[name]??name);
+}
 const normalizeBone=name=>name.replace(/[._\s-]/g,'').toLowerCase();
 export const CHOP_SPEED=1.6;
 
@@ -46,7 +56,10 @@ export function transitionLayer(THREE,actor,layer,name,rate=1){
    next.time=speed<0?Math.max(0,next.getClip().duration-1e-5):0;
    actor.rmTimes[name]=next.time;
   }
-  if(name!=='Chop2')next.setEffectiveTimeScale(speed);
+  // The classic actor never retimed its upper-body action once playing:
+  // only its lower-body locomotion rate changed with movement input.
+  if(name!=='Chop2'&&(layer==='lower'||actor.model!=='legacy'))
+   next.setEffectiveTimeScale(speed);
   return;
  }
  const previous=bank[actor[field]];
@@ -68,15 +81,26 @@ export function transitionLayer(THREE,actor,layer,name,rate=1){
  actor[field]=name;
 }
 
+// The classic axe finishes when its AnimationAction reaches the last
+// frame, even if browser rendering/physics was throttled or paused.
+// Modern humanoids keep their existing clock-based chop lifecycle.
+export function canTransitionUpperBody(actor,now){
+ if(actor.upperState!=='Chop2')return true;
+ if(actor.model==='legacy'){
+  const chop=actor.upper.Chop2;
+  return !chop||chop.time>=chop.getClip().duration-1e-5;
+ }
+ return now>=actor.chopEnd;
+}
+
 function rootStep(THREE,info,from,to,backward){
  return new THREE.Vector3().fromArray(rootMotionSampleDelta(info,from,to,backward));
 }
 
 export async function createAnimations(THREE){
  const modelActors=new Set();
- const {createLiteHumanoid}=await import('../characters/humanoid/humanoid-lite.js?v=20261104-rootwalk1');
+ const {createLiteHumanoid}=await import('../characters/humanoid/humanoid-lite.js?v=20261104-walkback-look-left1');
  let legacyTemplatePromise=null,axeAssetPromise=null;
- const clipNames={idle:'Idle',walk:'Walk',walk_back:'WalkBackward',run:'Run',strafe_left:'StrafeLeft',strafe_right:'StrafeRight',jump:'Jump',fall:'Fall',Chop:'Chop2'};
  const {GLTFLoader}=await import('https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js');
  const loader=new GLTFLoader();
 
@@ -115,9 +139,12 @@ export async function createAnimations(THREE){
   // animation masks/actions until they are selected for actual gameplay.
   const clips=rawClips.filter(clip=>!clip.name.startsWith('REF_')).map(clip=>{
    const cloned=clip.clone();
-   cloned.name=clipNames[cloned.name]??cloned.name;
+   cloned.name=runtimeClipName(model,cloned.name);
    return cloned;
   });
+  const names=clips.map(clip=>clip.name);
+  if(new Set(names).size!==names.length)
+   throw Error('Duplicate '+model+' animation clips: '+names.join(', '));
   const rootMotion=extractRootMotion(THREE,clips);
   const lower={},upper={};
   for(const clip of clips){
@@ -149,8 +176,10 @@ export async function createAnimations(THREE){
   const action=actor?.upper?.Chop2;
   if(!action)return;
   if(actor.upperState==='Chop2'){action.stop();actor.upperState='';}
-  const playbackSpeed=CHOP_SPEED*Math.max(.1,axeSpeed);
-  actor.chopEnd=performance.now()+action.getClip().duration/playbackSpeed*1000+30;
+  if(actor.model!=='legacy'){
+   const playbackSpeed=CHOP_SPEED*Math.max(.1,axeSpeed);
+   actor.chopEnd=performance.now()+action.getClip().duration/playbackSpeed*1000+30;
+  }
   // Model-specific contact (frame 18/25) is measured on this same action; the visual
   // swing must use the equipped axe's rate, not the default 1.6x rate.
   transitionLayer(THREE,actor,'upper','Chop2',axeSpeed);
@@ -161,8 +190,8 @@ export async function createAnimations(THREE){
   if(!actor)return displacement;
   motion=jumping&&actor.lower.Jump?'Jump':actor.lower[motion]?motion:'Idle';
   transitionLayer(THREE,actor,'lower',motion,rate);
-  if(actor.upperState!=='Chop2'||performance.now()>=actor.chopEnd)
-   transitionLayer(THREE,actor,'upper',motion,rate);
+  if(canTransitionUpperBody(actor,performance.now()))
+   transitionLayer(THREE,actor,'upper',motion,actor.model==='legacy'?1:rate);
   // The same mixer that moves the rendered bones supplies Root Motion.
   if(actor.human){actor.human.motionName=motion.toLowerCase();actor.human.update(dt);}
   else actor.mixer.update(dt);

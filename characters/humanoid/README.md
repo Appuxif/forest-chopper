@@ -114,7 +114,7 @@ are tiny, integrated morph targets; there are no separate face GLBs.
 - `game/body_male.glb` and `game/body_female.glb`: sole canonical 53-bone body
   files for **both the game and `preview-lite.html`**. Each contains 13 production Actions. The 19 `REF_*` reference clips remain in the Blender workbench and are **not exported**.
 - The Blender workbench also contains authored `walk_backward`. At export it
-  replaces the old in-place `walk_back` without growing the 13-clip runtime
+  replaces the deleted in-place `walk_back` without growing the 13-clip runtime
   bank. Both `walk` and `walk_back` move the Root ±1.32m over 30 frames;
   exporter-only normalization produces 31 exact samples over 1.0s.
 - Future per-gender Actions use the names `male__<clip>` and `female__<clip>`
