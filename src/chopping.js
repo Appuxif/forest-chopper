@@ -101,10 +101,10 @@ const t=aimed();
      return;
    }
  }
- // Aim is only evaluated at the actual frame-18 impact, not locked
- // when clicking. An empty-space swing can hit a tree acquired mid-swing,
+ // Aim is evaluated only on the model's contact frame (18 legacy, 25
+ // modular), not at click time. An empty-space swing can hit a tree acquired mid-swing,
  // or switch from tree A to B before the axe makes contact.
- pendingSwing={startedAt:now,playbackSpeed};
+ pendingSwing={startedAt:now,playbackSpeed,model:ctx.ownAvatar?.model};
 }
 function tickImpact(now=performance.now(),currentMobTarget=undefined){
  if(!pendingSwing)return false;
@@ -113,8 +113,8 @@ function tickImpact(now=performance.now(),currentMobTarget=undefined){
    pendingSwing=null;return false;
  }
  const action=ctx.ownAvatar?.upper?.Chop2??ctx.ownAvatar?.actions?.Chop2;
- if(!chopContactReached(action,pendingSwing.startedAt,now,pendingSwing.playbackSpeed))return false;
- pendingSwing=null; // Exactly once, even if the animation remains on frame 18.
+ if(!chopContactReached(action,pendingSwing.startedAt,now,pendingSwing.playbackSpeed,pendingSwing.model))return false;
+ pendingSwing=null; // Exactly once, even if the animation remains on its contact frame.
  // Whichever tree the crosshair points at now receives the hit.
  // No tree under the crosshair = a clean miss.
  // The player loop already resolved this frame's reticle before damage.
@@ -132,7 +132,7 @@ function tickImpact(now=performance.now(),currentMobTarget=undefined){
  }
  const u=t.userData;
  if(ctx.isOnline()){
-   // Give the local player immediate chips + sound on frame 18 while the
+   // Give the local player immediate chips + sound on the contact frame while the
    // authoritative tree HP is confirmed by the server a little later.
    ctx.audio?.effect('axe');spawnChips(t);
    const chipNow=performance.now();

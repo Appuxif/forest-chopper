@@ -282,4 +282,71 @@ test('an open corpse UI prevents a new swing and cancels an already pending impa
  f.ctx.mobs.opened='corpse';assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),false);
  f.ctx.mobs.opened=null;assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1000),false);
  assert.equal(f.tree.userData.hp,5);
+test('male and female wait for frame 25 before aim, stamina, HP, chips and sound',()=>{
+ for(const model of ['male','female']){
+  const f=setup();
+  const action={time:0,getClip(){return {duration:47/30}}};
+  f.ctx.ownAvatar={model,upper:{Chop2:action},actions:{Chop2:action}};
+  let staminaSpent=0;
+  f.ctx.vitals={canChop:true,hit(){staminaSpent++;return true;}};
+  f.setAim(false);
+  f.chopping.chop();
+  assert.deepEqual(f.events,['swing'],`${model}: clicking starts animation only`);
+  action.time=17/24;
+  f.setAim(true);
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false,
+   `${model}: classic frame 18 must not hit`);
+  action.time=25/30-.001;
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false,
+   `${model}: before frame 25 must not hit`);
+  assert.equal(f.tree.userData.hp,5);
+  assert.equal(staminaSpent,0);
+  assert.equal(f.ctx.particles.length,0);
+  assert.deepEqual(f.events,['swing']);
+  action.time=25/30;
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),true);
+  assert.equal(f.tree.userData.hp,4);
+  assert.equal(staminaSpent,1);
+  assert.equal(f.ctx.particles.length,7);
+  assert.deepEqual(f.events,['swing','axe']);
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+10000),false,'impact occurs once');
+  assert.equal(staminaSpent,1);
+ }
+});
+
+test('new humanoid aim and online hit are both evaluated on frame 25',()=>{
+ for(const model of ['male','female']){
+  const f=setup(true);
+  const action={time:0,getClip(){return {duration:47/30}}};
+  f.ctx.ownAvatar={model,upper:{Chop2:action},actions:{Chop2:action}};
+  f.setAim(true);
+  f.chopping.chop();
+  action.time=25/30-.001;
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false);
+  f.setAim(false);
+  action.time=25/30;
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false,
+   'aiming away at contact is a miss, even after aiming at the start');
+  assert.deepEqual(f.sent,[]);
+  assert.deepEqual(f.events,['swing']);
+ }
+});
+
+test('new humanoid online hit uses the tree aimed at frame 25',()=>{
+ const f=setup(true);
+ const action={time:0,getClip(){return {duration:47/30}}};
+ f.ctx.ownAvatar={model:'male',upper:{Chop2:action},actions:{Chop2:action}};
+ f.setAim(false);
+ f.chopping.chop();
+ f.setAim(true);
+ action.time=25/30-.01;
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false);
+ assert.deepEqual(f.sent,[]);
+ action.time=25/30;
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),true);
+ assert.deepEqual(f.sent,[{type:'hit',tree:f.tree.userData.id}]);
+ assert.equal(f.tree.userData.hp,5,'remote server remains authoritative');
+ assert.deepEqual(f.events,['swing','axe']);
+ assert.equal(f.ctx.particles.length,7);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+9000),false);
 });
