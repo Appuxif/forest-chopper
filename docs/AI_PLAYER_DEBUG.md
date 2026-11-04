@@ -2,7 +2,7 @@
 
 > **Только для отладки через браузер.** Обычным автономным AI-ботам используй [AI_PLAYER.md](AI_PLAYER.md) и отдельный Forest Chopper Bots MCP.
 >
-> Инструкция для агента, который играет в браузерной версии Forest Chopper через **Chrome DevTools MCP**. Не нужен отдельный MCP-сервер игры и не нужно управлять клавиатурой через DevTools: в `index_debug.html` уже доступен `window.__gameDebug`.
+> Инструкция для агента, который играет в браузерной версии Forest Chopper через **Chrome DevTools MCP**. Не нужен отдельный MCP-сервер игры и не нужно управлять клавиатурой через DevTools: в `index_debug.html` после входа в мир доступен `window.__gameDebug`.
 
 ## 1. Архитектура и правила сессии
 
@@ -27,7 +27,9 @@
 index_debug.html?type=multiplayer&server=ws%3A%2F%2Flocalhost%3A8765&name=woodpecker&performance=low&diag=true
 ```
 
-Если есть сохранение и `force` не задан, новая игра спрашивает подтверждение; отказ
+`type=continue` открывает первый валидный занятый слот; `type=new` выбирает слот 1,
+URL-параметра для выбора другого слота нет. Если слот 1 занят и `force` не задан,
+новая игра спрашивает подтверждение; отказ
 возвращает в главное меню без параметров. **Не используйте `force=true` на общем origin**:
 можно уничтожить чужой offline-save. Для тестов используйте изолированный browser context.
 FPS-диагностику (`diag=true`) включайте **по умолчанию**. `performance=low` — по умолчанию
@@ -37,7 +39,7 @@ FPS-диагностику (`diag=true`) включайте **по умолча�
 
 1. Найди свою вкладку через `chrome_devtools_list_pages`. Если её нет, открой отдельную через `chrome_devtools_new_page` с адресом `http://localhost:63342/forest-chopper/index_debug.html` (пример локального JetBrains-сервера; фактический URL узнай у пользователя/по существующим вкладкам). Можно открыть в фоне.
 2. У новой вкладки **сначала открывается главное меню**, поэтому `window.__gameDebug` в этот момент **не существует**. Это норма. Проверь `#mainmenu`, `#game[hidden]` и отсутствие ошибок в консоли.
-3. В **своей** вкладке выбери нужный режим через меню: для локального теста `#menu-new` → `#menu-seed` → `#menu-create` (это перезаписывает локальное сохранение **текущего origin (все вкладки одного origin могут делить localStorage)**; используй отдельный браузерный контекст); для online `#menu-online` → `#menu-connection-mode` → `#menu-server` и `#menu-player-name` → `#menu-join`. Проверку сервера запускает `#menu-check-server`, она не создаёт игрока.
+3. В **своей** вкладке выбери нужный режим через меню: для локального теста `#menu-saves` → кнопка пустого слота в `#menu-save-list` → `#menu-seed` → `#menu-create` (создаёт мир в выбранном слоте **текущего origin; все вкладки одного origin могут делить localStorage**; используй отдельный браузерный контекст); для online `#menu-online` → `#menu-connection-mode` → `#menu-server` и `#menu-player-name` → `#menu-join`. Проверку сервера запускает `#menu-check-server`, она не создаёт игрока.
 4. Дождись завершения динамического импорта и экрана загрузки (обычно 3–5 с); затем проверь `window.__gameDebug`, canvas и ошибки консоли. Сразу после нажатия «Играть» `ready=false` некоторое время допустимо.
 5. Проверь `#netstatus`, `#online` и доступность `ai.chat()`/`ai.observe()`; при необходимости общайся через имеющийся WS-клиент. Параметры хоста можно прочитать в его вкладке **только для выяснения адреса и комнаты**, не изменяя её.
 
@@ -47,7 +49,10 @@ FPS-диагностику (`diag=true`) включайте **по умолча�
 
 ```javascript
 async () => {
-  document.querySelector('#menu-new').click();
+  document.querySelector('#menu-saves').click();
+  const emptySlot = document.querySelector('#menu-save-list .save-slot-empty-label');
+  if (!emptySlot) return {error: 'Нет пустых слотов; используйте отдельный тестовый origin'};
+  emptySlot.closest('button').click();
   document.querySelector('#menu-seed').value = '13579';
   document.querySelector('#menu-create').click();
   // Не делай длительный busy wait в одном вызове MCP; проверь позже.
@@ -65,7 +70,7 @@ async () => {
 })
 ```
 
-**Важно:** тестовый seed и команда «Новая игра» очищают локальный игровой слот.
+**Важно:** URL `type=new` выбирает слот 1; `force=true` разрешает его замену без подтверждения. Через список «Локальная игра» можно выбрать другой пустой слот.
 Не запускать этот пример в пользовательском браузерном профиле без согласия.
 
 ### Пример подключения по PeerJS

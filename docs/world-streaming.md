@@ -1,6 +1,6 @@
 # World streaming (Forest Chopper)
 
-> Актуальная реализация, 2026-11-01. Общий жизненный цикл —
+> Карта реализации; сверено с кодом 2026-11-04. Общий жизненный цикл —
 > [ARCHITECTURE.md](ARCHITECTURE.md); список механик —
 > [GAME_MECHANICS_CATALOG.md](GAME_MECHANICS_CATALOG.md).
 > Значения параметров могут меняться с пресетами в
@@ -30,7 +30,13 @@ src/micro-grass.js, src/world.js, src/world-startup.js.
   (4x4 tree chunks). Each sector uses reused instance buffers and independent
   frustum culling. Turning the camera no longer repacks the entire forest.
 - Micro-grass has two tile LODs. Worker records include sampled terrain
-  height so the main thread only applies transforms and colors.
+  height so the main thread only applies transforms and colors. Density is
+  selected per blade using stable world-space priorities, with a configurable
+  full-density distance, far-density floor and curve. CPU instance-count
+  culling uses the nearest page edge as a conservative bound; the shader
+  decides individual visibility, avoiding whole-page density jumps. Far blades
+  can widen with distance. Presets in `performance-presets.js` configure these
+  values; regression coverage is in `tests/micro-grass.test.mjs`.
 - LRU budgets: terrain grids 32MiB, far-forest records 24MiB, grass records
   20MiB, plus up to one inactive tree-model preset capped at 96MiB. Grass
   keeps its existing limited GPU-mesh pool.

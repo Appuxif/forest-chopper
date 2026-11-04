@@ -16,7 +16,7 @@
 - [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) — цели игры, core loop и границы текущей версии; отдельный раздел с *идеями*, не готовыми функциями.
 - [docs/GAME_MECHANICS_CATALOG.md](docs/GAME_MECHANICS_CATALOG.md) — реестр реализованных/частичных/планируемых механик, параметры и их исходные файлы.
 - [docs/world-streaming.md](docs/world-streaming.md) — worker-очередь, GPU-сектора, кеши, readiness gate и профиль приёмки.
-- [docs/AUTONOMOUS_WORK_REPORT.md](docs/AUTONOMOUS_WORK_REPORT.md) — **исторический отчёт** прежней автономной миссии, не инструкция по текущим задачам.
+- [docs/develop/GAMEPLAY_IMPROVEMENT_PLAN_REPORT.md](docs/develop/GAMEPLAY_IMPROVEMENT_PLAN_REPORT.md) — исторический отчёт разработки; план рядом с ним не является текущим заданием.
 - [.agents/skills/forest-chopper-character-artist/SKILL.md](.agents/skills/forest-chopper-character-artist/SKILL.md) — специализированный скилл Blender character artist: персонажи, скульпт, rig/skin, анимации, GLB и проверки под текущий движок.
 - [docs/AI_PLAYER.md](docs/AI_PLAYER.md) — инструкция **игровому LLM-персонажу**, управляющему headless-ботом через MCP.
 - [docs/AI_PLAYER_DEBUG.md](docs/AI_PLAYER_DEBUG.md) — инструкция **игровому LLM-персонажу** при отладке через Chrome DevTools и `index_debug.html`.
@@ -46,7 +46,7 @@ Forest Chopper — экспериментальная 3D browser sandbox/co-op �
 | `src/physics.js`, `src/player.js`, `src/animations.js` | Движение, коллизии, персонаж и анимации |
 | `src/chopping.js`, `src/building.js`, `src/crafting.js` | Рубка, брёвна, мебель и крафт |
 | `src/inventory.js`, `src/vitals.js`, `src/pickup-interaction.js` | Предметы, выживание, контекстный подбор |
-| `src/offline-save.js`, `src/day-cycle.js`, `src/progress.js` | Сохранение offline, часы суток, достижения |
+| `src/offline-save.js`, `src/save-slots.js`, `src/day-cycle.js`, `src/progress.js` | Десять offline-слотов, JSON-архивы, часы суток, достижения |
 | `src/controls.js`, `src/minimap.js` | Клавиатура/мышь/touch и миникарта |
 | `src/multiplayer.js`, `src/peer-bridge.js` | WebSocket-мультиплеер и PeerJS |
 | `src/debug.js` | Browser debug API, фоновые задачи, `getBrief` |
@@ -65,7 +65,8 @@ Forest Chopper — экспериментальная 3D browser sandbox/co-op �
 - Новый UI должен работать на **desktop и touch/mobile**, не закрывать основные кнопки и учитывать reduced motion там, где есть анимационные эффекты.
 - **Точка входа — главное меню:** `main-menu.js` не должен загружать Three.js/воркеры до выбора режима; `main.js` импортируется динамически. WebGL-опции должны применяться до создания renderer. Debug API доступен лишь после входа в игру.
 - Для изменений в обычной игре учитывай **оба HTML entrypoint**; `debug.js` не должен утекать в обычный `index.html`.
-- **Контракты:** сохраняй совместимость с `forest-chopper:offline-world:v1`, серверным `forest_world.json`, авторитетными WS-пакетами, seed/ID деревьев; multiplayer не должен затирать offline-save.
+- **Контракты:** сохраняй совместимость с payload `version:1` в `forest-chopper:slot:v1:1` … `forest-chopper:slot:v1:10`, серверным `forest_world.json`, авторитетными WS-пакетами, seed/ID деревьев; multiplayer не должен затирать offline-save.
+- **Слоты:** `offline-save.js` пишет только выбранный слот (1–10), `save-slots.js` проверяет JSON-архивы. Старый ключ `forest-chopper:offline-world:v1` текущим кодом не читается и автоматически не мигрируется; не удаляй его. Параметр URL `type=new` выбирает слот 1, `type=continue` — первый валидный занятый слот. Настройки, достижения, tutorial/progress используют отдельные общие ключи, не считай их частью архива слотов. Проверки: `tests/save-slots.test.mjs`, `tests/offline-save.test.mjs`, `tests/main-menu.test.mjs`.
 - **Документация в том же коммите:** обновляй `GAME_MECHANICS_CATALOG.md` при добавлении/изменении механики, `ARCHITECTURE.md` при изменении модулей/сетевого протокола/сохранений и `GAME_DESIGN.md` при изменении целевого игрового опыта. `README.md` должен соответствовать актуальным кнопкам и способу запуска.
 - Не трогай headless AI/MCP/Jev ради косметического улучшения клиента. При необходимости менять протокол — сначала объясни причину тестами и минимизируй область правки.
 
@@ -86,7 +87,7 @@ git diff --check
 
 Для браузерной проверки:
 - Запускай **свой** локальный HTTP-сервер на свободном порту (например, `python3 -m http.server 18000 --bind 127.0.0.1`) и открывай отдельную тестовую вкладку через Chrome DevTools MCP.
-- Сначала открой главное меню, выбери «Продолжить», «Новая игра» или online; `window.__gameDebug` появляется **только после** инициализации мира в `index_debug.html`. Само отсутствие debug API в меню — не ошибка.
+- Сначала открой главное меню, выбери «Локальная игра» → занятый/пустой слот или «Мультиплеер»; `window.__gameDebug` появляется **только после** инициализации мира в `index_debug.html`. Само отсутствие debug API в меню — не ошибка.
 - Для быстрых проверок используй `index_debug.html?type=continue&performance=low&diag=true`; для чистого воспроизводимого мира — `?type=new&seed=123&force=true&performance=low&diag=true` **строго в изолированном контексте**, чтобы не повредить сохранение пользователя. Для сравнения графики выбирай нужный `performance` вместо `low`. Включай `diag=true` для FPS и диагностик.
 - Проверяй состояние DOM, ошибки консоли и screenshots desktop/mobile. При необходимости используй `index_debug.html` и `window.__gameDebug` **только в своей вкладке**.
 - Не управляй пользовательскими/чужими вкладками и не закрывай их.
@@ -108,7 +109,7 @@ python3 forest_server.py --host 127.0.0.1 --port 18765 --save /tmp/forest-choppe
 - **Не выполняй `git push`, force-push, `git reset --hard`, `git clean -fd`**, не переписывай чужую историю.
 - Коммиты: если пользователь прямо попросил коммит или автономная миссия прямо предусматривает локальные коммиты — делай **небольшие тематические коммиты после проверок**. Иначе оставь изменения незакоммиченными.
 - Используй избирательное `git add -- <пути>`; не добавляй секреты, сохранения, временные артефакты и служебные папки.
-- При изменении механики обнови соответствующий пункт каталога и краткий пользовательский README. Старый overnight-план удалён, отчёт `docs/AUTONOMOUS_WORK_REPORT.md` — только исторический архив; не превращай его в актуальный backlog без нового задания.
+- При изменении механики обнови соответствующий пункт каталога и краткий пользовательский README. Планы и отчёт в `docs/develop/` — исторический контекст; не превращай его в актуальный backlog без нового задания.
 
 ## 6. Критерий «готово»
 
