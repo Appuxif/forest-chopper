@@ -158,7 +158,7 @@ class HumanoidLiteTest(unittest.TestCase):
     def test_animations_preserved_and_target_skeleton(self):
         for gender,model in self.body.items():
             with self.subTest(gender=gender):
-                self.assertEqual(len(model.get('animations',[])),13)
+                self.assertEqual(len(model.get('animations',[])),14)
                 for a in model['animations']:
                     for channel in a['channels']:
                         node=model['nodes'][channel['target']['node']]
@@ -197,6 +197,48 @@ class HumanoidLiteTest(unittest.TestCase):
                     for v,w in zip(f,b):
                         self.assertAlmostEqual(v,w,delta=2e-5,
                             msg=f'{gender}:{bone}: reverse phase must match')
+
+    def test_backward_run_has_full_toe_jog_and_backwards_root_motion(self):
+        """20-frame run-backwards jog keeps forward arm cadence and has no loop hitch."""
+        import math
+        for gender,model in self.body.items():
+            payload=(GAME/f'body_{gender}.glb').read_bytes()
+            bank={clip['name']:clip for clip in model['animations']}
+            self.assertIn('run_backward',bank)
+            clip=bank['run_backward']
+            self.assertEqual(len(clip['channels']),159)
+            run=bank['run']
+            root=glb_animation_samples(payload,model,clip,'Root','translation')
+            self.assertEqual(len(root),21,(gender,'20 frames require 21 samples'))
+            self.assertAlmostEqual(root[-1][2]-root[0][2],-1.16,delta=.0002)
+            self.assertAlmostEqual(root[-1][0]-root[0][0],0,delta=.0002)
+            self.assertLess(max(q[1] for q in root)-min(q[1] for q in root),.0001)
+            # Extracted Root Motion must not start after t=0; otherwise a
+            # one-frame hang appears every time the backward run is started.
+            channel=next(c for c in clip['channels']
+                         if model['nodes'][c['target']['node']]['name']=='Root'
+                         and c['target']['path']=='translation')
+            times=model['accessors'][clip['samplers'][channel['sampler']]['input']]
+            self.assertEqual(times['count'],21)
+            self.assertAlmostEqual(times['min'][0],0,delta=1e-7)
+            self.assertAlmostEqual(times['max'][0],20/30,delta=1e-7)
+            for bone in ('upperarm_l','upperarm_r','lowerarm_l','lowerarm_r','hand_l','hand_r'):
+                back=glb_animation_samples(payload,model,clip,bone,'rotation')
+                original=glb_animation_samples(payload,model,run,bone,'rotation')
+                self.assertEqual(len(back),21,(gender,bone))
+                for a,b in zip(back[0],back[-1]):
+                    self.assertAlmostEqual(a,b,delta=.0001,msg=f'{gender}:{bone}:loop')
+                # Small intentional softening around run frames 7/17 only,
+                # preserving the full original backward arm cycle.
+                max_error=max(
+                    min(math.dist(a,b),math.dist(a,tuple(-q for q in b)))
+                    for a,b in zip(back,reversed(original)))
+                self.assertLess(max_error,.06,(gender,bone,max_error))
+            for bone in ('foot_l','foot_r','ball_l','ball_r','pelvis','head'):
+                values=glb_animation_samples(payload,model,clip,bone,'rotation')
+                for q,r in zip(values[0],values[-1]):
+                    self.assertAlmostEqual(q,r,delta=.0001,
+                        msg=f'{gender}:{bone}: backward run must cycle seamlessly')
 
     def test_both_strafes_export_root_motion_and_held_open_arm_pose(self):
         """Every 60cm lateral step includes the final planted pose and arm seam."""
@@ -246,7 +288,7 @@ class HumanoidLiteTest(unittest.TestCase):
         for gender,model in self.body.items():
             data=(GAME/f'body_{gender}.glb').read_bytes()
             clips={a['name']:a for a in model['animations']}
-            self.assertEqual(len(clips),13)
+            self.assertEqual(len(clips),14)
             self.assertNotIn('walk_backward',clips)  # runtime legacy name
             for bone,expected_degrees in (('neck_01',25),('head',40)):
                 fw=glb_animation_samples(data,model,clips['walk'],bone,'rotation')
@@ -277,8 +319,8 @@ class HumanoidLiteTest(unittest.TestCase):
         collection={'animations':original+[other]}
         male=animation_bank(collection,'male')
         female=animation_bank(collection,'female')
-        self.assertEqual(len(male),13)
-        self.assertEqual(len(female),13)
+        self.assertEqual(len(male),14)
+        self.assertEqual(len(female),14)
         self.assertNotIn('marker',male['run'])
         self.assertEqual(female['run']['marker'],'female-specific')
         self.assertEqual(male['walk'],female['walk'])
@@ -308,7 +350,7 @@ class HumanoidLiteTest(unittest.TestCase):
             reference={}
             for clip in gltf['animations']:
                 if clip['name'].startswith('REF_'):continue # experimental actions need their own finger poses
-                if clip['name'] in ('Chop','run','walk'):continue # hand-authored actions have intentional grip variation
+                if clip['name'] in ('Chop','run','run_backward','walk'):continue # hand-authored actions have intentional grip variation
                 if clip['name']=='idle':
                     continue  # Entire Action comes from the user's Blender file.
                 for name in names:
@@ -330,11 +372,11 @@ class HumanoidLiteTest(unittest.TestCase):
     def test_authored_actions_have_valid_complete_per_bone_channels(self):
         """Compare working rig ownership, not old source's exact NLA endpoints."""
         originals={'idle','idle_breathe','idle_fidget','idle_look','run','walk',
-                   'walk_back','strafe_left','strafe_right','jump','land','fall','Chop'}
+                   'walk_back','run_backward','strafe_left','strafe_right','jump','land','fall','Chop'}
         for gender in ('male','female'):
             model=self.body[gender]
             actions={a['name']:a for a in model['animations']}
-            self.assertEqual(len(actions),13)
+            self.assertEqual(len(actions),14)
             for name in originals:
                 channels={(model['nodes'][c['target']['node']]['name'],c['target']['path'])
                           for c in actions[name]['channels']}

@@ -9,19 +9,20 @@ function glb(name){
  return JSON.parse(data.toString('utf8',20,20+size));
 }
 
-test('two independent runtime gender GLBs each contain 13 production Actions, one rig and face presets',()=>{
+test('two independent runtime gender GLBs each contain 14 production Actions, one rig and face presets',()=>{
  const male=glb('body_male'),female=glb('body_female');
  for(const asset of [male,female]){
   assert.equal(asset.skins.length,1);
   assert.equal(asset.skins[0].joints.length,53);
   const clips=new Map(asset.animations.map(clip=>[clip.name,clip]));
   assert.ok(clips.has('run'));
+  assert.ok(clips.has('run_backward'));
   assert.ok(clips.has('walk'));
   assert.ok(clips.has('walk_back'),'authored backward root motion replaces old stock clip');
   assert.ok(clips.has('Chop'));
   assert.ok(clips.has('idle'));
-  assert.equal(asset.animations.length,13);
-  assert.equal(clips.size,13);
+  assert.equal(asset.animations.length,14);
+  assert.equal(clips.size,14);
   assert.equal([...clips.keys()].filter(name=>name.startsWith('REF_')).length,0);
   assert.ok(asset.meshes.every(mesh=>mesh.extras?.targetNames?.join(',')==='angular,soft'));
   assert.ok(asset.meshes.every(mesh=>mesh.primitives.every(primitive=>primitive.targets?.length===2)));

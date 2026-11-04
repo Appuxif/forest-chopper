@@ -1230,7 +1230,7 @@ class World:
         await self.prune_boxes()
         player['visible_boxes']=self.visible_box_set(player)
         player['last_box_sync']=(player['x'],player['z'])
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'camp_structures':[{'id':k,**v} for k,v in self.camp_structures.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**self.boxes[k]} for k in sorted(player['visible_boxes'])],'resources':self.resource_view(player)['resources'],'hens':self.hens.views(player['x'],player['z'],time.time()),'mobs':self.mobs.views(player['x'],player['z'],time.time()),'server_time':time.time(),'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'camp_structures':[{'id':k,**v} for k,v in self.camp_structures.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','sprinting','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**self.boxes[k]} for k in sorted(player['visible_boxes'])],'resources':self.resource_view(player)['resources'],'hens':self.hens.views(player['x'],player['z'],time.time()),'mobs':self.mobs.views(player['x'],player['z'],time.time()),'server_time':time.time(),'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -1459,7 +1459,7 @@ class World:
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='hello':
                     player['name']=str(data.get('name','Игрок'))[:22].strip() or f'Игрок {uid}'
-                    await self.broadcast({'type':'join','player':{k:player[k] for k in ('id','name','x','z','y','yaw','jumping','axe_equipped')}},ws)
+                    await self.broadcast({'type':'join','player':{k:player[k] for k in ('id','name','x','z','y','yaw','jumping','sprinting','axe_equipped')}},ws)
                 elif kind=='ping':
                     # Application-level RTT for browser clients; WebSocket control pings
                     # are not exposed to client-side JavaScript. Never broadcast it.
@@ -1549,7 +1549,7 @@ class World:
                     if stamina_changed and now-player['last_stamina_sent']>.6:
                         player['last_stamina_sent']=now
                         await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
-                    await self.broadcast({'type':'move','id':uid,'x':x,'z':z,'y':y,'yaw':yaw,'jumping':jumping},ws)
+                    await self.broadcast({'type':'move','id':uid,'x':x,'z':z,'y':y,'yaw':yaw,'jumping':jumping,'sprinting':permitted_sprint},ws)
                     if (resource_cell(x,z)!=resource_cell(old_x,old_z) or
                         math.floor(x/DECOR_CHUNK_SIZE)!=math.floor(old_x/DECOR_CHUNK_SIZE) or
                         math.floor(z/DECOR_CHUNK_SIZE)!=math.floor(old_z/DECOR_CHUNK_SIZE)):

@@ -29,13 +29,15 @@ assert len(names)>=13,('Expected game Actions',names)
 # Strafe: authored 1.25..27.5 (26.25 Blender frames) -> export 0..26
 # (27 samples at 30 FPS), a <1% retiming required for integer glTF samples.
 # Walk: authored 1.25..31.25 -> export 0..30 (31 samples).
+# Run backward: authored 1..21 -> export 0..20 (21 samples), so there
+# is no extra frozen 1/30-second lead-in at each new loop.
 # The user's source .blend is NEVER written.
-for name in ('walk','walk_backward','strafe_left','strafe_right'):
+for name in ('walk','walk_backward','strafe_left','strafe_right','run_backward'):
  action=bpy.data.actions.get(name)
  if not action:raise AssertionError(f'Missing production locomotion Action: {name}')
  start=float(action.frame_range[0])
  final=float(action.frame_range[1])
- end_frame=26 if name.startswith('strafe_') else 30
+ end_frame=26 if name.startswith('strafe_') else 20 if name=='run_backward' else 30
  scale=end_frame/(final-start)
  for layer in action.layers:
   for strip in layer.strips:

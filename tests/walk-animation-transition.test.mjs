@@ -80,3 +80,23 @@ test('releasing direction blends into idle rather than cutting the walk early',(
  assert.equal(actor.lower.Idle.plays,1);
  assert.equal(actor.upper.Idle.plays,1);
 });
+
+
+test('Run to RunBackward uses reverse-phase transition on both layers',()=>{
+ const lower={Run:action(.22,2/3),RunBackward:action(0,2/3)};
+ const upper={Run:action(.22,2/3),RunBackward:action(0,2/3)};
+ const actor={model:'male',lower,upper,lowerState:'Run',upperState:'Run',rmTimes:{Run:.22}};
+ for(const layer of ['lower','upper']){
+  transitionLayer(null,actor,layer,'RunBackward',1.2);
+  assert.equal(actor[layer+'State'],'RunBackward');
+  assert.ok(Math.abs(actor[layer].RunBackward.time-((1-.22/(2/3))*(2/3)))<1e-10);
+  assert.equal(actor[layer].RunBackward.scale,1.2);
+  assert.equal(actor[layer].RunBackward.fadeInMs,.12);
+ }
+ assert.ok(Math.abs(actor.rmTimes.RunBackward-lower.RunBackward.time)<1e-10);
+ // The other direction must mirror as well instead of restarting frame 0.
+ const before=lower.RunBackward.time=.31;
+ actor.lowerState='RunBackward';
+ transitionLayer(null,actor,'lower','Run',1.2);
+ assert.ok(Math.abs(actor.lower.Run.time-((1-before/(2/3))*(2/3)))<1e-10);
+});

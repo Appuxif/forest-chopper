@@ -150,9 +150,9 @@ def animation_bank(info, gender):
     # The old in-place walk_back Action was removed from Blender.
     if 'walk_backward' in shared:
         shared['walk_back'] = shared.pop('walk_backward')
-    required = {'idle', 'walk', 'walk_back', 'run', 'Chop'}
+    required = {'idle', 'walk', 'walk_back', 'run', 'run_backward', 'Chop'}
     assert required <= shared.keys(), required - shared.keys()
-    assert len(shared) == 13, ('Expected 13 production Actions',len(shared),sorted(shared))
+    assert len(shared) == 14, ('Expected 14 production Actions',len(shared),sorted(shared))
     return shared
 
 
@@ -225,7 +225,7 @@ def build(source, gender, body_dir):
     write_glb(output, base_info, bytes(payload))
     verify, _ = load_glb(output)
     assert len(verify['skins']) == 1 and len(verify['skins'][0]['joints']) == 53
-    assert len(verify['animations']) == len(mapped_clips) == 13
+    assert len(verify['animations']) == len(mapped_clips) == 14
     assert all(prim.get('targets') and len(prim['targets']) == 2
                for m in verify['meshes'] for prim in m['primitives'])
     print('BUILT', output, 'bytes', output.stat().st_size,

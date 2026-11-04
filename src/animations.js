@@ -1,12 +1,12 @@
-import {rootMotionSpeed,mirroredWalkPhaseTime,rootMotionSampleDelta} from './root-motion-speed.js?v=20261104-strafe60-pace1';
+import {rootMotionSpeed,mirroredWalkPhaseTime,rootMotionSampleDelta} from './root-motion-speed.js?v=20261104-backrun-root1';
 
 // Each actor owns exactly one visible skeleton, mixer and animation bank.
 // The modular male/female game GLBs contain the authored Run/Chop actions.
 // No invisible driver character and no second animation timeline.
 const LOWER_BONES=new Set(['root','pelvis','hips','thighl','thighr','calfl','calfr','shinl','shinr','footl','footr','balll','ballr']);
-const ROOT_MOTIONS=['Walk','WalkBackward','Run','StrafeLeft','StrafeRight'];
+const ROOT_MOTIONS=['Walk','WalkBackward','Run','RunBackward','StrafeLeft','StrafeRight'];
 const HUMANOID_CLIP_NAMES={
- idle:'Idle',walk:'Walk',walk_back:'WalkBackward',run:'Run',
+ idle:'Idle',walk:'Walk',walk_back:'WalkBackward',run:'Run',run_backward:'RunBackward',
  strafe_left:'StrafeLeft',strafe_right:'StrafeRight',
  jump:'Jump',fall:'Fall',Chop:'Chop2'
 };
@@ -64,12 +64,15 @@ export function transitionLayer(THREE,actor,layer,name,rate=1){
  }
  const previous=bank[actor[field]];
  const fade=name==='Chop2'?.045:(layer==='upper'&&previous===bank.Chop2?.18:.12);
- // Forward and backward Walk have the same poses in reverse order; invert
- // the cycle phase on both body layers so planted feet AND arm swings align.
- const mirroredWalk=previous&&
-  ((actor[field]==='Walk'&&name==='WalkBackward')||
-   (actor[field]==='WalkBackward'&&name==='Walk'));
- const mirroredTime=mirroredWalk
+ // Forward/backward Walk and Run are reverse-phase variants. Invert
+ // both body layers' time to keep planted feet and arm cadence aligned.
+ const reversedDirection=previous&&(
+   (actor[field]==='Walk'&&name==='WalkBackward')||
+   (actor[field]==='WalkBackward'&&name==='Walk')||
+   (actor[field]==='Run'&&name==='RunBackward')||
+   (actor[field]==='RunBackward'&&name==='Run')
+ );
+ const mirroredTime=reversedDirection
   ?mirroredWalkPhaseTime(previous.time,previous.getClip().duration,next.getClip().duration)
   :null;
  next.reset().setEffectiveTimeScale(speed).setEffectiveWeight(1);
@@ -99,7 +102,7 @@ function rootStep(THREE,info,from,to,backward){
 
 export async function createAnimations(THREE){
  const modelActors=new Set();
- const {createLiteHumanoid}=await import('../characters/humanoid/humanoid-lite.js?v=20261104-strafe60-pace1');
+ const {createLiteHumanoid}=await import('../characters/humanoid/humanoid-lite.js?v=20261104-backrun-root1');
  let legacyTemplatePromise=null,axeAssetPromise=null;
  const {GLTFLoader}=await import('https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js');
  const loader=new GLTFLoader();
@@ -152,7 +155,7 @@ export async function createAnimations(THREE){
    if(lo.tracks.length)lower[clip.name]=mixer.clipAction(lo);
    if(hi.tracks.length)upper[clip.name]=mixer.clipAction(hi);
   }
-  for(const name of ['Walk','WalkBackward','StrafeLeft','StrafeRight']){
+  for(const name of ['Walk','WalkBackward','RunBackward','StrafeLeft','StrafeRight']){
    lower[name]?.setLoop(THREE.LoopRepeat,Infinity);
    upper[name]?.setLoop(THREE.LoopRepeat,Infinity);
   }
@@ -170,7 +173,8 @@ export async function createAnimations(THREE){
    'WalkBackward', {duration:rootMotion.WalkBackward?.duration,meters:rootMotion.WalkBackward?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.WalkBackward)},
    'StrafeLeft', {duration:rootMotion.StrafeLeft?.duration,meters:rootMotion.StrafeLeft?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.StrafeLeft)},
    'StrafeRight', {duration:rootMotion.StrafeRight?.duration,meters:rootMotion.StrafeRight?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.StrafeRight)},
-   'Run', {duration:rootMotion.Run?.duration,meters:rootMotion.Run?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.Run)});
+   'Run', {duration:rootMotion.Run?.duration,meters:rootMotion.Run?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.Run)},
+   'RunBackward', {duration:rootMotion.RunBackward?.duration,meters:rootMotion.RunBackward?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.RunBackward)});
   return actor;
  }
 

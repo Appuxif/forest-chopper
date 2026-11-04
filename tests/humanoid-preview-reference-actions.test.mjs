@@ -16,8 +16,8 @@ function getGltfJson(buffer){
 test('workbench-only REF clips are not exported in the self-contained runtime GLB',()=>{
  const gltf=getGltfJson(glb);
  const names=gltf.animations.map(clip=>clip.name);
- assert.equal(names.length,13);
- assert.equal(new Set(names).size,13);
+ assert.equal(names.length,14);
+ assert.equal(new Set(names).size,14);
  assert.ok(names.every(name=>!name.startsWith('REF_')));
  assert.ok(gltf.meshes?.length>0);
  assert.equal(gltf.skins?.length,1);

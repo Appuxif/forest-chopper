@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {MIN_ROOT_TRAVEL,rootMotionSpeed,playbackRateForSpeed,mirroredWalkPhaseTime,walkingMotion,rootMotionSampleDelta,humanoidTargetSpeed,STRAFE_SPEED,STRAFE_SPRINT_SPEED,WALK_SPEED,playbackDirectionForMotion} from '../src/root-motion-speed.js';
+import {MIN_ROOT_TRAVEL,rootMotionSpeed,playbackRateForSpeed,mirroredWalkPhaseTime,walkingMotion,runningMotion,rootMotionSampleDelta,humanoidTargetSpeed,STRAFE_SPEED,STRAFE_SPRINT_SPEED,WALK_SPEED,playbackDirectionForMotion} from '../src/root-motion-speed.js';
 
 const info=(x,z,duration)=>({travel:{x,z},duration});
 
@@ -49,6 +49,16 @@ test('legacy playback remains reversed, new humanoids use authored backwards act
  assert.equal(walkingMotion(actor,true),'WalkBackward');
  assert.equal(walkingMotion({lower:{Walk:{}}},true),'Walk');
  assert.equal(walkingMotion(null,true),'Walk');
+});
+
+test('dedicated backwards run is selected only when available',()=>{
+ const humanoid={lower:{Run:{},RunBackward:{}}};
+ assert.equal(runningMotion(humanoid,true),'RunBackward');
+ assert.equal(runningMotion(humanoid,false),'Run');
+ assert.equal(runningMotion({lower:{Run:{}}},true),'Run');
+ assert.equal(runningMotion(null,true),'Run');
+ assert.equal(humanoidTargetSpeed('RunBackward',true),1.16/(20/30)*1.2);
+ assert.equal(humanoidTargetSpeed('Run',true),4.6);
 });
 
 test('opposite walking direction starts at mirrored phase rather than restarting a stride',()=>{
@@ -134,7 +144,8 @@ test('authored 60cm side steps move farther, but play 20% slower',()=>{
  assert.equal(humanoidTargetSpeed('Run',true),4.6);
  // Run still bypasses computed root speed: preserve the existing fixed 1.2x.
  const fs=readFileSync(new URL('../src/player.js',import.meta.url),'utf8');
- assert.match(fs,/motion==='Run'\?1\.2:playbackRateForSpeed/);
+ assert.match(fs,/motion==='Run'\|\|motion==='RunBackward'/);
+ assert.match(fs,/\?1\.2:playbackRateForSpeed/);
 });
 
 test('left and right strafe root steps move smoothly on every frame through loop wrap',()=>{
@@ -169,7 +180,7 @@ test('left and right strafe root steps move smoothly on every frame through loop
 
 
 test('dedicated left/right strafe clips must never reverse with backward camera motion',()=>{
- for(const motion of ['StrafeLeft','StrafeRight','WalkBackward','Idle']){
+ for(const motion of ['StrafeLeft','StrafeRight','WalkBackward','RunBackward','Idle']){
   assert.equal(playbackDirectionForMotion(motion,true),1);
   assert.equal(playbackDirectionForMotion(motion,false),1);
  }

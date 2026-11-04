@@ -108,13 +108,13 @@ presence of the editable Blender workbench.
 
 The original system above is retained verbatim under Git checkpoint **f055736**.
 The lightweight system has **two** canonical body model files; each owns its
-own production action bank (13 clips currently imported from one shared workbench). The face presets
+own production action bank (14 clips imported from one shared workbench). The face presets
 are tiny, integrated morph targets; there are no separate face GLBs.
 
 - `game/body_male.glb` and `game/body_female.glb`: sole canonical 53-bone body
-  files for **both the game and `preview-lite.html`**. Each contains 13 production Actions. The 19 `REF_*` reference clips remain in the Blender workbench and are **not exported**.
+  files for **both the game and `preview-lite.html`**. Each contains 14 production Actions. The 19 `REF_*` reference clips remain in the Blender workbench and are **not exported**.
 - The Blender workbench also contains authored `walk_backward`. At export it
-  replaces the deleted in-place `walk_back` without growing the 13-clip runtime
+  replaces the deleted in-place `walk_back` without replacing other clips in the runtime
   bank. Both `walk` and `walk_back` move the Root ±1.32m over 30 frames;
   exporter-only normalization produces 31 exact samples over 1.0s.
 - The user-authored `strafe_left` / `strafe_right` have ±0.60m X Root
@@ -125,7 +125,15 @@ are tiny, integrated morph targets; there are no separate face GLBs.
   complete Root travel. Game sidestep speed is 1.2m/s (1.8m/s with Shift):
   20% slower animation than the older 40cm clips despite longer strides.
   Forward/back walking now plays at 2.0m/s (20% slower than 2.5m/s).
-  Run playback remains the original fixed 1.2x.
+  Forward Run playback remains the original fixed 1.2x.
+- Authored `run_backward` is a 20-frame toe-running jog with a modest
+  backward pelvis lean, smaller leg swings, short hops, softened hip yaw,
+  and matching 20-frame running arm cadence. Root travels 1.16m backwards
+  (Blender +Y, runtime -Z) per 0.667s loop. Both forward and backward
+  running clips use the same fixed 1.2x playback, which naturally moves
+  the backwards run slower (~2.09m/s) without slowing the arm animation.
+  The game exports it as `RunBackward` on both genders; classic retains
+  reversed `Run`. All 14 gameplay actions share the same 53-bone rig.
 - Future per-gender Actions use the names `male__<clip>` and `female__<clip>`
   in `animation/humanoid_animation_workbench.blend` and override the shared
   default clip when exported into the corresponding gender GLB.

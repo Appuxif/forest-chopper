@@ -1,7 +1,7 @@
 import {debugFlightDelta} from './debug-flight-motion.js';
 import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
 import {createPlayerMotionTracker} from './ragdoll-motion.js';
-import {rootMotionSpeed,playbackRateForSpeed,walkingMotion,humanoidTargetSpeed,playbackDirectionForMotion} from './root-motion-speed.js?v=20261104-strafe60-pace1';
+import {rootMotionSpeed,playbackRateForSpeed,walkingMotion,runningMotion,humanoidTargetSpeed,playbackDirectionForMotion} from './root-motion-speed.js?v=20261104-backrun-root1';
 import {classicLocalRate,classicRemoteRate} from './legacy-animation-rates.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
@@ -111,17 +111,18 @@ function animate(now){
  if(!dead)ctx.vitals?.tick(sprint);
  ctx.sprinting=sprint;
  const motion=!moving?'Idle':Math.abs(forward)>.1
-  ?(sprint?'Run':walkingMotion(ctx.ownAvatar,forward<-.1))
+  ?(sprint?runningMotion(ctx.ownAvatar,forward<-.1):walkingMotion(ctx.ownAvatar,forward<-.1))
   :(side<0?'StrafeLeft':'StrafeRight');
  // Match each authored Root Motion cycle to its intended movement speed.
  // Walk now plays 20% slower; 60cm sidesteps also play 20% slower
  // despite covering more ground per cycle. The Run playback is UNCHANGED
- // at 1.2x. The classic lumberjack keeps its original authored rates.
+ // at 1.2x, and the 20-frame backwards run also plays at 1.2x.
+ // The classic lumberjack keeps its original authored rates.
  const targetSpeed=ctx.ownAvatar?.model==='legacy'
   ?(sprint?4.6:2.5):humanoidTargetSpeed(motion,sprint);
  const rate=ctx.ownAvatar?.model==='legacy'
   ?classicLocalRate(motion,sprint,forward)
-  :(motion==='Run'?1.2:playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed))*
+  :((motion==='Run'||motion==='RunBackward')?1.2:playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed))*
     playbackDirectionForMotion(motion,forward<-.1);
  if(!posing&&!dead&&!flying)ctx.simulateVertical(dt);
  let dx=0,dz=0;
@@ -225,10 +226,11 @@ for(const avatar of ctx.avatars.values()){
    const moving=avatar.moveSpeed>.55;
    const remoteMotion=!moving?'Idle':Math.abs(right)>Math.abs(front)*1.5
     ?(right>0?'StrafeRight':'StrafeLeft')
-    :(avatar.moveSpeed>3.3?'Run':walkingMotion(avatar.actor,front<0));
+    :((avatar.sprinting||avatar.moveSpeed>3.3)
+      ?runningMotion(avatar.actor,front<0):walkingMotion(avatar.actor,front<0));
    const rate=avatar.actor.model==='legacy'
     ?classicRemoteRate(remoteMotion)
-    :(remoteMotion==='Run'?1.2:
+    :((remoteMotion==='Run'||remoteMotion==='RunBackward')?1.2:
        playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
          Math.min(4.6,Math.max(0.5,avatar.moveSpeed))))*
        playbackDirectionForMotion(remoteMotion,front<0);

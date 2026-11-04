@@ -18,6 +18,7 @@ test('legacy Chop and Chop2 must never collide during clip renaming',()=>{
  assert.deepEqual(runtime,originals,'never rename a classic animation');
  assert.equal(runtimeClipName('male','Chop'),'Chop2');
  assert.equal(runtimeClipName('female','walk_back'),'WalkBackward');
+ assert.equal(runtimeClipName('female','run_backward'),'RunBackward');
  assert.equal(runtimeClipName('female','Chop2'),'Chop2');
  const duration=name=>{
   const animation=gltf.animations.find(a=>a.name===name);

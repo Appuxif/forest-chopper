@@ -32,6 +32,12 @@ export function walkingMotion(actor,backward){
  return backward&&actor?.lower?.WalkBackward?'WalkBackward':'Walk';
 }
 
+// New humanoids have a dedicated toe-running backwards clip.
+// Classic lumberjack and older GLBs retain reversed forward Run playback.
+export function runningMotion(actor,backward){
+ return backward&&actor?.lower?.RunBackward?'RunBackward':'Run';
+}
+
 // Sample actual GLB Root displacement, including the segment that crosses a
 // looping action's end/start. The walk clips have identical first/last poses
 // but accumulate nonzero travel; dropping that seam step causes a hitch.
@@ -62,14 +68,16 @@ export function humanoidTargetSpeed(motion,sprint){
  if(motion==='StrafeLeft'||motion==='StrafeRight'){
   return sprint?STRAFE_SPRINT_SPEED:STRAFE_SPEED;
  }
- // IMPORTANT: running is unchanged. Its playback rate is still fixed to
- // 1.2 in player.js, not recomputed from this target.
+ // Both authored run clips play at the unchanged fixed 1.2x rate;
+ // the backward clip has a shorter 1.16m stride and therefore slower
+ // *movement*, without slowing the arm cadence.
+ if(motion==='RunBackward')return 1.16/(20/30)*1.2;
  return sprint?4.6:WALK_SPEED;
 }
 
 
-// Authored backward Walk and dedicated left/right strafes always run forward
-// in clip time. Only legacy-style backward Walk and backward Run reverse time.
+// Authored backward Walk/Run and dedicated strafes run forward in clip time.
+// Only classic models without backwards clips reverse forward Walk/Run.
 export function playbackDirectionForMotion(motion,backward){
  return backward&&(motion==='Walk'||motion==='Run')?-1:1;
 }
