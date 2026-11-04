@@ -75,3 +75,29 @@ body.fc-world-loading > :not(#game):not(#mainmenu):not(script):not(style){
 .menu-chip-group .menu-chip:first-child{border-radius:18px 0 0 18px;max-width:260px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .menu-chip-group .menu-star{border-radius:0 18px 18px 0;border-left:0;color:#e0c98b}
+.menu-import-slot{display:flex!important;align-items:center;gap:10px;padding:9px;border:1px solid #61877045;border-radius:9px}
+.menu-import-slot input{width:22px!important;min-height:22px!important;flex:none;accent-color:#78c994}
+.menu-section input[hidden]{display:none}
+
+.save-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.save-slot{display:flex;align-items:stretch;min-height:52px;border:1px solid #61877055;border-radius:10px;background:#0b1c16aa;overflow:hidden}
+.save-slot:hover,.save-slot:focus-within{background:#294d37}
+.save-slot-empty-label{flex:1;color:#b4d4be;font-weight:600}
+.save-slot-plus{color:#b8dfc0;font-size:24px;line-height:1}
+.save-slot-empty .save-slot-button{min-height:52px;padding-top:7px;padding-bottom:7px}
+.save-slot-number{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:8px;background:#234533;color:#b4d4be;font:700 13px system-ui}
+.save-slot-button{display:flex;align-items:center;gap:14px;width:100%;min-height:68px;padding:10px 14px;border:0;background:transparent;color:#e9f7eb;text-align:left;cursor:pointer;font:inherit}
+.save-slot-button:focus-visible{outline:2px solid #a7dfb6;outline-offset:-3px}
+.save-slot-content{display:grid;gap:3px;flex:1;min-width:0}
+.save-slot-content strong{font-size:15px}
+.save-slot-stats,.save-slot-detail{color:#a8c5b2;font-size:12px;overflow-wrap:anywhere}
+.save-transfer .menu-btn{min-width:145px}
+@media(max-width:500px){
+  .save-slot-button{display:grid;grid-template-columns:36px minmax(0,1fr);gap:6px 10px;padding:10px}
+  .save-slot-number{align-self:start}
+  .save-slot-empty .save-slot-button{display:flex}
+  .save-slot-detail{line-height:1.45}
+}
+
+.save-slot-delete{flex:none;align-self:center;display:grid;place-items:center;width:44px;height:44px;margin:0 12px 0 0;border:1px solid #a46e6866;border-radius:9px;background:#472c29aa;color:#ffd0c8;font-size:19px;cursor:pointer}
+.save-slot-delete:hover,.save-slot-delete:focus-visible{background:#75433c;outline:2px solid #ffc4b5;outline-offset:2px}

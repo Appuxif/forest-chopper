@@ -341,6 +341,7 @@ export function createGroundBoxes(ctx,doc=document){
   if(!ctx.inventory?.state.addItem(received)){
     ctx.notify?.('Нет места или превышен лимит 100 кг','warning','box-full');return false;
   }
+  if(isFallenLogs(b))ctx.logsCollected=(ctx.logsCollected??0)+1;
   if(isFallenLogs(b)&&b.item.count>1)
     add({...b,mask:segmentMask(b)&~(1<<part.index),
       item:{id:'log',count:b.item.count-1}});

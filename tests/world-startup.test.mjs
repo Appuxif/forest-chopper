@@ -130,5 +130,5 @@ test('startup loading mask hides every HUD mount while allowing the loading scre
   assert.match(menu,/document\.body\.classList\.add\('fc-world-loading'\)/);
   assert.match(menu,/document\.body\.classList\.remove\('fc-world-loading'\)/,
     'startup failure must restore the main menu without a stale mask');
-  assert.match(main,/onComplete:\(\)=>document\.body\.classList\.remove\('fc-world-loading'\)/);
+  assert.match(main,/onComplete:\(\)=>\{\s*document\.body\.classList\.remove\('fc-world-loading'\)/);
 });

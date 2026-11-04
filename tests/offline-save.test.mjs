@@ -1,7 +1,8 @@
 import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createOfflineSave, parseOfflineSave, OFFLINE_SAVE_KEY} from '../src/offline-save.js';
+import {createOfflineSave, parseOfflineSave, slotKey} from '../src/offline-save.js';
+const OFFLINE_SAVE_KEY=slotKey(1);
 
 function fixture(existing = null) {
   const items=new Map();
@@ -372,4 +373,27 @@ test('10,000 drops round-trip through v1 offline save, 10,001 is rejected',()=>{
  assert.equal(f.save.save(),false,'saver must not write an oversized box count');
  assert.equal(f.storage.getItem(OFFLINE_SAVE_KEY),raw,
    'failed snapshot must not overwrite the previously valid save');
+});
+
+test('slots preserve independent worlds and metadata across save and restore',()=>{
+  const first=fixture();
+  first.ctx.logsCollected=4;
+  first.save.save();
+  const one=first.storage.getItem(slotKey(1));
+  const second=createOfflineSave(first.ctx,{storage:first.storage,slot:2});
+  first.ctx.seed=321; first.ctx.logsCollected=9; second.save();
+  assert.equal(first.storage.getItem(slotKey(1)),one);
+  const saved=JSON.parse(first.storage.getItem(slotKey(2)));
+  assert.equal(saved.seed,321);assert.equal(saved.logsCollected,9);
+  assert.ok(saved.createdAt>0 && saved.savedAt>=saved.createdAt);
+  first.ctx.logsCollected=0;first.ctx.seed=0;
+  assert.equal(second.restore(),true);assert.equal(first.ctx.logsCollected,9);assert.equal(first.ctx.seed,321);
+  second.reset();assert.equal(first.storage.getItem(slotKey(1)),one);
+  assert.equal(first.storage.getItem(slotKey(2)),null);
+});
+
+test('preparing a replacement preserves the old world until the new snapshot is written',()=>{
+ const f=fixture();f.save.save();const old=f.storage.getItem(slotKey(1));
+ f.save.reset({preserve:true});assert.equal(f.storage.getItem(slotKey(1)),old);
+ f.ctx.seed=987;f.save.save();assert.equal(JSON.parse(f.storage.getItem(slotKey(1))).seed,987);
 });

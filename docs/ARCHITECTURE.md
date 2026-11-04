@@ -103,7 +103,7 @@ URL shortcut (`?type=continue|new|multiplayer`, `seed`, `force`, `performance`, 
 
 | Хранилище | Где | Содержание |
 | --- | --- | --- |
-| `forest-chopper:offline-world:v1` | браузер, localStorage | Схема `version:1`, seed, координаты, felled/damage, брёвна, мебель, inventory, vitals, cooldowns, boxes, `dayPhase`. Парсинг — `parseOfflineSave` |
+| `forest-chopper:slot:v1:1` … `forest-chopper:slot:v1:10` | браузер, localStorage | Независимые снимки `version:1`: seed, даты, статистика, координаты и состояние мира. `offline-save.js` работает с выбранным слотом; `save-slots.js` проверяет архивы JSON для импорта/экспорта. Онлайн-мир хранится отдельно |
 | `forest-chopper:progress:v1` | localStorage | Счётчики и локальные задания мира |
 | `forest-chopper:achievements:v1` | localStorage | Полученные достижения между новыми мирами |
 | `forest-chopper:tutorial:v1` | localStorage | Прогресс обучения (сбрасывается при новом мире) |

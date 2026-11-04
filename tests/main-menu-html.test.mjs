@@ -15,7 +15,10 @@ for(const filename of ['index.html','index_debug.html']){
     'entrypoint module must exist');
   assert.match(html,/<\/script>\s*<\/body>\s*<\/html>\s*$/i,
     'a truncated script tag silently leaves all main-menu buttons inert');
-  for(const id of ['menu-new','menu-continue','menu-online','menu-help',
+  const home=html.match(/<section[^>]*id="menu-home"[\s\S]*?<\/section>/)?.[0];
+  assert.ok(home);assert.match(home,/Локальная игра/);
+  assert.doesNotMatch(home,/id="menu-new"/);
+  for(const id of ['menu-new-panel','menu-new-back','menu-saves','menu-saves-panel','menu-save-list','slots-export','slots-import','menu-online','menu-help',
     'menu-settings','menu-create','menu-join'])
    assert.ok(html.includes(`id="${id}"`),`${id} must be present`);
  });

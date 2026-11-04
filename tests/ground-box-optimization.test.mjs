@@ -294,3 +294,15 @@ test('falling-trees completion reveals prepared logs in the same render frame',(
  f.ground.dispose();
  assert.equal(f.meshes.size,0);
 });
+
+test('collected-log statistic counts successful fallen segments, not dropped inventory',()=>{
+ const f=sceneFixture();
+ f.ground.add({id:910,kind:'fallen_logs',x:0,z:0,direction:0,mask:0b111,
+  expires_at:seconds()+3600,item:{id:'log',count:3}});
+ const part=[...f.ground.nearbyPickupNodes(0,0,4)].find(n=>n.id===910);
+ f.ctx.px=part.x;f.ctx.pz=part.z;
+ assert.equal(f.ground.pickup(910,part.segment),true);
+ assert.equal(f.ctx.logsCollected,1);
+ assert.equal(f.ground.pickup(910,part.segment),false);
+ assert.equal(f.ctx.logsCollected,1);
+});

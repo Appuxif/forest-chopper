@@ -1,18 +1,99 @@
+import {parseOfflineSave,slotKey} from './offline-save.js';
+import {exportSlots,parseSlotArchive,importSlots,deleteSlot} from './save-slots.js?v=20261104-local-game3';
 import {createSettings} from './settings.js?v=20261103-grass-presets-tuned1';
 import {
-  MENU_NAME_KEY,MENU_LAUNCH_KEY,MAX_SEED,parseSeed,readLocalWorld,
-  formatSavedWorld,normalizeServerAddress,serverStatusAddress,parseLaunchQuery,
+  MENU_NAME_KEY,MENU_LAUNCH_KEY,MAX_SEED,parseSeed,listSavedSlots,
+  normalizeServerAddress,serverStatusAddress,parseLaunchQuery,
   parseServerStatus,formatWorldAge,recentServers,rememberServer,
   favoriteServers,toggleFavoriteServer,
-} from './main-menu-state.js?v=20261102-url-launch1';
+} from './main-menu-state.js?v=20261104-save-list2';
 
 const $=id=>document.getElementById(id);
 const storage=(()=>{try{return localStorage;}catch{return null;}})();
 const launchStorage=(()=>{try{return sessionStorage;}catch{return null;}})();
 const game=$('game'),menu=$('mainmenu'),home=$('menu-home'),
-  newPanel=$('menu-new-panel'),onlinePanel=$('menu-online-panel'),helpPanel=$('menu-help-panel');
+  newPanel=$('menu-new-panel'),savesPanel=$('menu-saves-panel'),onlinePanel=$('menu-online-panel'),helpPanel=$('menu-help-panel');
 let launching=false,checking=null;
 let menuSettings=null;
+let selectedSlot=1;
+function rawSlot(n){try{return storage?.getItem(slotKey(n));}catch{return null;}}
+function refreshSlots(){
+  const slots=listSavedSlots(storage);
+  $('slots-export').disabled=!slots.some(item=>item.save);
+  const list=$('menu-save-list');list.replaceChildren();
+  for(const {slot,save,metadata} of slots){
+    const item=document.createElement('li');item.className='save-slot'+(save?'':' save-slot-empty');
+    const number=document.createElement('span');number.className='save-slot-number';number.textContent=String(slot).padStart(2,'0');
+    if(save){
+      const button=document.createElement('button');button.type='button';button.className='save-slot-button';
+      const content=document.createElement('span');content.className='save-slot-content';
+      const title=document.createElement('strong');title.textContent=`Seed ${save.seed}`;
+      const stats=document.createElement('span');stats.className='save-slot-stats';
+      stats.textContent=`🌲 ${save.cuts} деревьев · 🪵 ${save.logsCollected} брёвен`;
+      const detail=document.createElement('span');detail.className='save-slot-detail';
+      const date=value=>value?new Date(value).toLocaleString():'неизвестно';
+      detail.textContent=`Создано: ${date(metadata.createdAt)} · Сохранено: ${date(metadata.savedAt)} · Координаты: ${[save.position.x,save.position.y,save.position.z].map(v=>v.toFixed(1)).join(', ')}`;
+      content.append(title,stats,detail);button.append(number,content);
+      button.onclick=()=>{selectedSlot=slot;launch({mode:'continue'});};
+      const remove=document.createElement('button');remove.type='button';remove.className='save-slot-delete';
+      remove.textContent='🗑';remove.setAttribute('aria-label',`Удалить сохранение из слота ${slot}`);
+      remove.title='Удалить сохранение';
+      remove.onclick=()=>{
+        if(!confirm(`Вы уверены? Удалить сохранение из слота ${slot}?`))return;
+        try{deleteSlot(storage,slot);refreshSlots();}
+        catch(error){alert('Не удалось удалить сохранение: '+error.message);}
+      };
+      item.append(button,remove);
+    }else{
+      const button=document.createElement('button');button.type='button';button.className='save-slot-button';
+      button.setAttribute('aria-label',`Начать новую игру в слоте ${slot}`);
+      const label=document.createElement('span');label.className='save-slot-empty-label';label.textContent='Начать новую игру';
+      const plus=document.createElement('span');plus.className='save-slot-plus';plus.textContent='+';plus.setAttribute('aria-hidden','true');
+      button.append(number,label,plus);
+      button.onclick=()=>openNewWorld(slot);item.append(button);
+    }
+    list.append(item);
+  }
+}
+const importPanel=document.createElement('section');
+importPanel.className='menu-card menu-section'; importPanel.hidden=true;
+importPanel.innerHTML='<h2>Импорт сохранений</h2><p>Выберите слоты из файла. Занятые слоты с теми же номерами будут заменены.</p><div id="import-slots"></div><p class="menu-feedback" id="import-feedback" role="status"></p><div class="menu-actions"><button type="button" class="menu-btn secondary" id="import-all">Выбрать все</button><button type="button" class="menu-btn ghost" id="import-cancel">Отмена</button><button type="button" class="menu-btn primary" id="import-apply">Импортировать</button></div>';
+home.after(importPanel);
+let pendingImport=[];
+$('slots-export').onclick=()=>{
+  try {
+    const archive=exportSlots(storage);
+    if(!archive.slots.length){alert('Нет сохранений для экспорта');return;}
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(archive,null,2)],{type:'application/json'}));
+    a.download='forest-chopper-saves.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  }catch(error){alert('Ошибка экспорта: '+error.message);}
+};
+$('slots-import').onclick=()=>$('slots-file').click();
+$('slots-file').onchange=async event=>{
+  try {
+    const file=event.target.files[0];if(!file)return;
+    if(file.size>40_000_000)throw Error('Файл слишком большой');
+    pendingImport=parseSlotArchive(await file.text());
+    if(!pendingImport.length)throw Error('В файле нет сохранений');
+    const root=$('import-slots');root.replaceChildren();
+    for(const entry of pendingImport){
+      const label=document.createElement('label');label.className='menu-import-slot';
+      const input=document.createElement('input');input.type='checkbox';input.value=entry.slot;input.checked=true;
+      const text=document.createElement('span');text.textContent=`Слот ${entry.slot} · seed ${entry.save.seed}${rawSlot(entry.slot)?' · будет заменён':''}`;
+      label.append(input,text);root.append(label);
+    }
+    $('import-feedback').textContent='';view('import');
+  }catch(error){alert('Ошибка импорта: '+error.message);}finally{event.target.value='';}
+};
+$('import-all').onclick=()=>{for(const input of $('import-slots').querySelectorAll('input'))input.checked=true;};
+$('import-cancel').onclick=()=>view('saves');
+$('import-apply').onclick=()=>{
+  const chosen=new Set([...$('import-slots').querySelectorAll('input:checked')].map(input=>Number(input.value)));
+  const entries=pendingImport.filter(entry=>chosen.has(entry.slot));
+  if(!entries.length){$('import-feedback').textContent='Выберите хотя бы один слот';return;}
+  if(entries.some(entry=>rawSlot(entry.slot))&&!confirm('Заменить существующие выбранные слоты?'))return;
+  try {importSlots(storage,entries);view('saves');}catch(error){$('import-feedback').textContent='Ошибка записи: '+error.message;}
+};
 
 function feedback(message='',kind=''){
   const node=$('menu-server-feedback');
@@ -22,13 +103,11 @@ function view(name='home'){
   if(checking){checking.cancel();checking=null;}
   home.hidden=name!=='home';
   newPanel.hidden=name!=='new';
+  savesPanel.hidden=name!=='saves';
   onlinePanel.hidden=name!=='online';
   helpPanel.hidden=name!=='help';
-  if(name==='home'){
-    const saved=readLocalWorld(storage);
-    $('menu-continue').disabled=!saved;
-    $('menu-save-details').textContent=saved?formatSavedWorld(saved):'Нет локального сохранения';
-  }
+  importPanel.hidden=name!=='import';
+  if(name==='home'||name==='saves'||name==='new')refreshSlots();
 }
 function randomSeed(){
   const values=new Uint32Array(1);
@@ -123,8 +202,8 @@ async function launch(options,{force=false,auto=false}={}){
   if(launching)return;
   launching=true;
   if(checking){checking.cancel();checking=null;}
-  const current=readLocalWorld(storage);
-  if(options.mode==='new'&&current&&!force&&!confirm('Создать новый лес? Текущее сохранение будет заменено. Общие достижения и настройки останутся.')){
+  options.slot=selectedSlot;
+  if(options.mode==='new'&&rawSlot(options.slot)&&!force&&!confirm('Создать новый лес? Текущее сохранение будет заменено. Общие достижения и настройки останутся.')){
     launching=false;
     if(auto)location.replace(location.pathname+location.hash);
     return;
@@ -141,7 +220,7 @@ async function launch(options,{force=false,auto=false}={}){
   document.body.classList.add('fc-world-loading');
   menu.hidden=true;game.hidden=false;
   try{
-    await import('./main.js?v=20261103-grass-presets-tuned1');
+    await import('./main.js?v=20261104-save-slots1');
   }catch(error){
     console.error('Forest Chopper startup failed',error);
     delete globalThis.__forestLaunch;
@@ -154,11 +233,13 @@ async function launch(options,{force=false,auto=false}={}){
     launching=false;
   }
 }
-$('menu-continue').onclick=()=>{
-  if(readLocalWorld(storage))launch({mode:'continue'});
-  else view('home');
-};
-$('menu-new').onclick=()=>{view('new');$('menu-seed').value=String(randomSeed());};
+$('menu-saves').onclick=()=>view('saves');
+function openNewWorld(slot){
+  selectedSlot=slot;
+  $('menu-new-slot').textContent=`Слот ${slot}`;
+  view('new');$('menu-seed').value=String(randomSeed());
+}
+$('menu-new-back').onclick=()=>view('saves');
 $('menu-online').onclick=()=>{view('online');updateRecents();};
 $('menu-help').onclick=()=>view('help');
 for(const button of document.querySelectorAll('.menu-back'))button.onclick=()=>view();
@@ -239,9 +320,12 @@ function applyLaunchQuery(){
     if(query.performance!==null)menuSettings.setPerformancePreset(query.performance);
     if(query.diag!==null)menuSettings.setShowFps(query.diag);
   }
-  if(query.type==='continue')$('menu-continue').click();
+  if(query.type==='continue'){
+    const first=listSavedSlots(storage).find(item=>item.save);
+    if(first){selectedSlot=first.slot;launch({mode:'continue'});}
+  }
   else if(query.type==='new'){
-    $('menu-new').click();
+    openNewWorld(1);
     if(query.seedProvided)$('menu-seed').value=query.seed===null?'invalid':String(query.seed);
     createNewWorld({force:query.force,auto:true});
   }else if(query.type==='multiplayer'){

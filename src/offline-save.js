@@ -3,7 +3,7 @@ import {isDecorResourceId} from './collectible-decor.js';
 import {baseTerrainHeight} from './terrain-noise.js';
 import {pondHeightBeforeLakes} from './ponds.js';
 import {validBench,MAX_BENCHES} from './crafting.js';
-import {validItem} from './inventory.js';
+import {validItem,createInventoryModel} from './inventory.js';
 import {segmentMask} from './fallen-log-layout.js';
 import {BOX_LIFETIME_SECONDS,MAX_GROUND_DROPS} from './ground-boxes.js';
 import {validStorage} from './storage-model.js';
@@ -13,7 +13,10 @@ import {MAX_VITALS,HUNGER_INTERVAL_SECONDS,STARVATION_DAMAGE_INTERVAL} from './v
 import {validDeathMarker} from './death.js';
 // Offline-only world snapshots. Server saves are independent and authoritative.
 // This module intentionally never reads/writes the multiplayer world JSON.
-export const OFFLINE_SAVE_KEY = 'forest-chopper:offline-world:v1';
+export const slotKey = slot => {
+  if (!Number.isInteger(slot) || slot < 1 || slot > 10) throw new RangeError('Invalid save slot');
+  return `forest-chopper:slot:v1:${slot}`;
+};
 // Permit 10k dropped items plus other world state; storage quota still applies.
 const MAX_BYTES = 4_000_000;
 const MAX_LOGS = 10_000;
@@ -29,6 +32,9 @@ export function parseOfflineSave(raw) {
     if (!data || data.version !== 1 || !Number.isInteger(data.seed)
         || data.seed < 0 || data.seed > 999998
         || !nonnegative(data.wood) || !nonnegative(data.cuts)
+        || !nonnegative(data.logsCollected ?? 0)
+        || (data.createdAt !== undefined && (!Number.isSafeInteger(data.createdAt) || data.createdAt <= 0))
+        || (data.savedAt !== undefined && (!Number.isSafeInteger(data.savedAt) || data.savedAt <= 0))
         || !Array.isArray(data.felled) || data.felled.length > MAX_TREES
         || !data.damage || typeof data.damage !== 'object' || Array.isArray(data.damage)
         || !Array.isArray(data.logs) || data.logs.length > MAX_LOGS
@@ -92,6 +98,7 @@ export function parseOfflineSave(raw) {
         ||expires>Date.now()/1000+RESOURCE_RESPAWN_SECONDS)return null;
       if(expires>Date.now()/1000)cooldowns[id]=expires;
     }
+    if(data.inventory != null && !createInventoryModel().restore(data.inventory,data.wood))return null;
     const vitals=data.vitals??null;
     if(vitals!==null&&(!Number.isInteger(vitals.health)||vitals.health<0||vitals.health>MAX_VITALS
         ||!Number.isInteger(vitals.hunger)||vitals.hunger<0||vitals.hunger>MAX_VITALS
@@ -118,7 +125,7 @@ export function parseOfflineSave(raw) {
     return {
       camp_structures:campStructures,storages,terrainVersion:[1,2,3].includes(data.terrainVersion)?data.terrainVersion:0,
       dayPhase:data.dayPhase??0,
-      furniture,boxes,migrateLegacyFallenLogs,resource_cooldowns:cooldowns,vitals,death,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
+      logsCollected:data.logsCollected??0, furniture,boxes,migrateLegacyFallenLogs,resource_cooldowns:cooldowns,vitals,death,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
     };
   } catch {
@@ -128,6 +135,7 @@ export function parseOfflineSave(raw) {
 
 export function createOfflineSave(ctx, {
   storage = null,
+  slot = 1,
   setTimer = (fn, ms) => setTimeout(fn, ms),
   clearTimer = id => clearTimeout(id),
   now = () => performance.now(),
@@ -136,10 +144,12 @@ export function createOfflineSave(ctx, {
     try {storage = window.localStorage;} catch { /* Storage blocked. */ }
   }
   let suspended = false, timer = null, lastWrite = now();
+  let createdAt = Date.now();
+  try { createdAt = JSON.parse(storage?.getItem(slotKey(slot)) || 'null')?.createdAt || createdAt; } catch {}
 
   function snapshot() {
     return {
-      version: 1, terrainVersion: 3, seed: ctx.seed, wood: ctx.wood, cuts: ctx.cuts,
+      version: 1, createdAt, savedAt: Date.now(), terrainVersion: 3, seed: ctx.seed, wood: ctx.wood, cuts: ctx.cuts, logsCollected:ctx.logsCollected??0,
       dayPhase:ctx.dayCycle?.offlinePhase??0,
       position: {x: ctx.px, y: ctx.feetY, z: ctx.pz, yaw: ctx.yaw, pitch: ctx.pitch},
       felled: [...ctx.felled], damage: Object.fromEntries(ctx.treeDamage),
@@ -165,7 +175,7 @@ export function createOfflineSave(ctx, {
       return false;
     }
     try {
-      storage.setItem(OFFLINE_SAVE_KEY, payload);
+      storage.setItem(slotKey(slot), payload);
       lastWrite = now();
       return true;
     } catch {
@@ -183,7 +193,7 @@ export function createOfflineSave(ctx, {
     if(ctx.forestResources&&!ctx.forestResources.restoreCooldowns(state.resource_cooldowns))return false;
     ctx.seed = state.seed;
     ctx.dayCycle?.setOfflinePhase?.(state.dayPhase);
-    ctx.wood = state.wood;ctx.cuts = state.cuts;
+    ctx.wood = state.wood;ctx.cuts = state.cuts;ctx.logsCollected = state.logsCollected;
     ctx.px = state.position.x;ctx.pz = state.position.z;
     ctx.yaw = state.position.yaw;ctx.pitch = state.position.pitch;
     const floor=ctx.terrain.heightAt(ctx.px,ctx.pz);
@@ -225,7 +235,7 @@ export function createOfflineSave(ctx, {
   function restore() {
     if (!storage || suspended) return false;
     let raw;
-    try {raw = storage.getItem(OFFLINE_SAVE_KEY);} catch {return false;}
+    try {raw = storage.getItem(slotKey(slot));} catch {return false;}
     return restoreSnapshot(raw);
   }
   function markDirty() {
@@ -243,11 +253,12 @@ export function createOfflineSave(ctx, {
     if(flush)save();
     suspended = true;
   }
-  function reset() {
+  function reset({preserve=false}={}) {
     if (timer !== null) {clearTimer(timer);timer = null;}
     suspended = false;
+    createdAt = Date.now();
     lastWrite = now();
-    try {storage?.removeItem(OFFLINE_SAVE_KEY);} catch { /* In-memory play still works. */ }
+    if(!preserve)try {storage?.removeItem(slotKey(slot));} catch { /* In-memory play still works. */ }
   }
   if (typeof window !== 'undefined') {
     window.addEventListener('pagehide', () => {

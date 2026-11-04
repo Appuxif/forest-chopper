@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import {
   MAX_SEED,parseSeed,parseLaunchQuery,normalizeServerAddress,serverStatusAddress,
   parseServerStatus,formatWorldAge,recentServers,rememberServer,
-  readLocalWorld,formatSavedWorld,favoriteServers,toggleFavoriteServer,
+  readLocalWorld,listSavedSlots,formatSavedWorld,favoriteServers,toggleFavoriteServer,
 } from '../src/main-menu-state.js';
-import {OFFLINE_SAVE_KEY} from '../src/offline-save.js';
+import {slotKey} from '../src/offline-save.js';
+const OFFLINE_SAVE_KEY=slotKey(1);
 import {
   PROGRESS_KEY,LIFETIME_ACHIEVEMENTS_KEY,
   lifetimeAchievements,resetWorldProgress,
@@ -112,4 +113,18 @@ test('URL shortcuts parse valid new/continue/multiplayer inputs and preserve enc
   assert.equal(bad.performance,null);
   assert.equal(bad.diag,null);
   assert.equal(parseLaunchQuery('?name='+encodeURIComponent('Z'.repeat(50))).name.length,22);
+});
+
+
+test('save list always contains ten ordered slots and preserves occupied metadata',()=>{
+ const storage=memory();
+ storage.setItem(slotKey(3),JSON.stringify({version:1,seed:42,wood:0,cuts:5,logsCollected:7,createdAt:100,savedAt:200,felled:[],damage:{},logs:[],position:{x:1,y:2,z:3,yaw:0,pitch:0}}));
+ storage.setItem(slotKey(8),'broken');
+ const slots=listSavedSlots(storage);
+ assert.deepEqual(slots.map(item=>item.slot),[1,2,3,4,5,6,7,8,9,10]);
+ assert.equal(slots.filter(item=>item.save).length,1);
+ assert.equal(slots[2].save.seed,42);assert.equal(slots[2].save.logsCollected,7);
+ assert.deepEqual(slots[2].metadata,{createdAt:100,savedAt:200});
+ assert.equal(slots[7].save,null);
+ assert.equal(listSavedSlots({getItem(){throw Error('blocked');}}).length,10);
 });

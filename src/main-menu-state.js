@@ -1,5 +1,5 @@
 // Startup-only state: no Three.js, scene objects or Web Workers.
-import {parseOfflineSave,OFFLINE_SAVE_KEY} from './offline-save.js';
+import {parseOfflineSave,slotKey} from './offline-save.js';
 
 export const MENU_SERVERS_KEY='forest-chopper:recent-servers:v1';
 export const MENU_NAME_KEY='forest-chopper:player-name:v1';
@@ -30,9 +30,21 @@ export function parseLaunchQuery(search=''){
   };
 }
 
-export function readLocalWorld(storage){
-  try{return parseOfflineSave(storage?.getItem(OFFLINE_SAVE_KEY)??null);}
+export function readLocalWorld(storage,slot=1){
+  try{return parseOfflineSave(storage?.getItem(slotKey(slot))??null);}
   catch{return null;}
+}
+export function listSavedSlots(storage){
+  return Array.from({length:10},(_,index)=>{
+    const slot=index+1;
+    try {
+      const raw=storage?.getItem(slotKey(slot))??null;
+      const save=parseOfflineSave(raw);
+      if(!save)return {slot,save:null,metadata:null};
+      const data=JSON.parse(raw);
+      return {slot,save,metadata:{createdAt:data.createdAt??null,savedAt:data.savedAt??null}};
+    }catch{return {slot,save:null,metadata:null};}
+  });
 }
 export function formatSavedWorld(save){
   if(!save)return '';

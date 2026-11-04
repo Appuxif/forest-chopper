@@ -19,7 +19,7 @@ import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bou
 import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
 import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261102-chop-current-target1';
-import {createControls} from './controls.js?v=20261103-decor-region2';
+import {createControls} from './controls.js?v=20261104-save-slots1';
 import {createPlayer} from './player.js?v=20261103-grass-culling1';
 import {createMultiplayer} from './multiplayer.js?v=20261103-decor-region2';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
@@ -40,7 +40,7 @@ import {createCrafting} from './crafting.js?v=20261102-collision-world1';
 import {createInteractionHighlight} from './interaction-highlight.js';
 import {createDiscoveries} from './discoveries.js';
 import {createCommunityGoal} from './community-goal.js';
-import {createOfflineSave} from './offline-save.js?v=20261102-collision-world1';
+import {createOfflineSave} from './offline-save.js?v=20261104-save-slots1';
 import {createTutorial} from './tutorial.js';
 import {createProgress,resetWorldProgress} from './progress.js?v=20261101-menu-world-progress1';
 import {createInventory} from './inventory-ui.js?v=20261102-ragdoll-sleep1';
@@ -48,7 +48,7 @@ import {createStorages} from './storages.js?v=20261102-collision-world1';
 import {createCampStructures} from './camp-structures.js?v=20261103-distant-fire-billboard20';
 import {createVitalsUI} from './vitals-ui.js?v=20261102-debug-cheats';
 import {createForestResources} from './forest-resources.js?v=20261103-decor-region2';
-import {createGroundBoxes} from './ground-boxes.js?v=20261103-render-profiler1';
+import {createGroundBoxes} from './ground-boxes.js?v=20261104-save-slots1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 import {WorldTaskScheduler} from './world-task-scheduler.js';
 import {createWorldStartupGate} from './world-startup.js';
@@ -246,6 +246,7 @@ let fallImpactSpeed=0;
 let collisionWorld=null;
 let distantForest, replaceTreeModels, ragdollStandingSupport, addAvatar, addLog, aimed, animate, blocksPlayerAt, build, candidate, chop, tickChopImpact, acknowledgeLocalChop, resetChop, clearWorld, closeNet, disposePreview, updatePing, isOnline, logBottom, logFootprint, logTop, look, makeLog, makeTree, moveHorizontal, overlaps, placeError, placeLog, nudgeLog, rotateLog, rand, removeAvatar, removeLog, requestJump, sendChat, sendMapPing, sendEmote, showMapPing, clearMapPings, chatHistory, sendNet, setMode, simulateVertical, spawnChips, syncWood, toggleView, treeFell, treeHit, updateChunks, updatePreview;
 const ctx={
+ logsCollected:0,
  get $(){return $;},
  get chatHistory(){return chatHistory;},
  get clearMapPings(){return clearMapPings;},
@@ -599,9 +600,9 @@ gameAudio=createGameAudio(ctx);
 const highlight=createInteractionHighlight(ctx);
 const discoveries=createDiscoveries(ctx);
 const communityGoal=createCommunityGoal(ctx);
-offlineSave=createOfflineSave(ctx);
+offlineSave=createOfflineSave(ctx,{slot:menuLaunch.slot || 1});
 if(menuLaunch.mode==='continue')offlineSave.restore();
-else if(menuLaunch.mode==='new')offlineSave.reset();
+else if(menuLaunch.mode==='new')offlineSave.reset({preserve:true});
 else if(menuLaunch.mode==='online')offlineSave.suspend({flush:false});
 progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}});
 ({toggleView, ragdollCamera, animate}=createPlayer(ctx));
@@ -610,7 +611,11 @@ progress=createProgress({notify:notifications.notify,start:{x:ctx.px,z:ctx.pz}})
 const leaveGuard=installGameLeaveGuard(window);
 worldStartupGate=createWorldStartupGate({
   loading,online:menuLaunch.mode==='online',
-  onComplete:()=>document.body.classList.remove('fc-world-loading'),
+  onComplete:()=>{
+    document.body.classList.remove('fc-world-loading');
+    if(menuLaunch.mode==='new' && !offlineSave.save())
+      alert('Не удалось сохранить новый мир. Проверьте свободное место в хранилище браузера.');
+  },
 });
 // Returning to the menu uses a page reload: every WebGL resource and listener
 // is torn down by the browser, avoiding a fragile half-destroyed scene.
@@ -619,7 +624,10 @@ $('menu-backgame').onclick=()=>{
     ?'Выйти из сетевого мира и вернуться в главное меню?'
     :'Сохранить игру и вернуться в главное меню?';
   if(!confirm(warning))return;
-  offlineSave.save(); // Suspended for multiplayer, so solo saves remain untouched.
+  if(!offlineSave.suspended && !offlineSave.save()){
+    alert('Не удалось сохранить игру. Проверьте свободное место в хранилище браузера.');
+    return;
+  }
   closeNet?.();
   try{sessionStorage.removeItem(MENU_LAUNCH_KEY);}catch{}
   leaveGuard.allowIntentionalExit(); // Menu button already asked for confirmation.
