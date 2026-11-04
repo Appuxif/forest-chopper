@@ -224,7 +224,7 @@ async function launch(options,{force=false,auto=false}={}){
   document.body.classList.add('fc-world-loading');
   menu.hidden=true;game.hidden=false;
   try{
-    await import('./main.js?v=20261104-classic-axe-chop-fix2');
+    await import('./main.js?v=20261104-strafe60-pace1');
   }catch(error){
     console.error('Forest Chopper startup failed',error);
     delete globalThis.__forestLaunch;

@@ -49,3 +49,27 @@ export function rootMotionSampleDelta(info,from,to,backward=false){
   end[2]-z+seam*(info.travel.z??0),
  ];
 }
+
+
+// Authored strafe Root Motion is now 0.60 m per 0.867 s (previously 0.40 m).
+// At 1.2 / 1.8 m/s, both strafe cycles play 20% more slowly than before,
+// while each stride reaches farther. Actual displacement stays in sync with
+// foot animation because the rate is derived from the clip's Root travel.
+export const STRAFE_SPEED=1.2;
+export const STRAFE_SPRINT_SPEED=1.8;
+export const WALK_SPEED=2.0; // 20% slower walking cycle than the old 2.5 m/s
+export function humanoidTargetSpeed(motion,sprint){
+ if(motion==='StrafeLeft'||motion==='StrafeRight'){
+  return sprint?STRAFE_SPRINT_SPEED:STRAFE_SPEED;
+ }
+ // IMPORTANT: running is unchanged. Its playback rate is still fixed to
+ // 1.2 in player.js, not recomputed from this target.
+ return sprint?4.6:WALK_SPEED;
+}
+
+
+// Authored backward Walk and dedicated left/right strafes always run forward
+// in clip time. Only legacy-style backward Walk and backward Run reverse time.
+export function playbackDirectionForMotion(motion,backward){
+ return backward&&(motion==='Walk'||motion==='Run')?-1:1;
+}

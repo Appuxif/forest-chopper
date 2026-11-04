@@ -296,7 +296,7 @@ export async function createLiteHumanoid(options={}){
  if(!BODIES.includes(appearance.body))throw Error('Unknown body: '+appearance.body);
  if(!FACE_PRESETS.includes(appearance.face))throw Error('Unknown face preset: '+appearance.face);
  const [glb,catalog]=await Promise.all([
-   loadGLTF('game/body_'+appearance.body+'.glb?v=fc-walkback-look-left-20261104'),getHumanoidCatalog()
+   loadGLTF('game/body_'+appearance.body+'.glb?v=fc-strafe60-pace-20261104'),getHumanoidCatalog()
  ]);
  const model=cloneSkinned(glb.scene);
  const actor=new LiteHumanoid(model,glb.animations,appearance,catalog);

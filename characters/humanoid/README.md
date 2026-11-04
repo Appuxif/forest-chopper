@@ -117,6 +117,15 @@ are tiny, integrated morph targets; there are no separate face GLBs.
   replaces the deleted in-place `walk_back` without growing the 13-clip runtime
   bank. Both `walk` and `walk_back` move the Root ±1.32m over 30 frames;
   exporter-only normalization produces 31 exact samples over 1.0s.
+- The user-authored `strafe_left` / `strafe_right` have ±0.60m X Root
+  translation, level Root.Z (vertical sway is on pelvis), and slightly
+  closer-but-open arms. Leg poses are extended with baked two-bone IK and
+  support-foot contact verified. The exporter normalizes Blender's
+  1.25–27.5 frames to 0–26 at 30 FPS: 27 samples, duration 0.867s, and
+  complete Root travel. Game sidestep speed is 1.2m/s (1.8m/s with Shift):
+  20% slower animation than the older 40cm clips despite longer strides.
+  Forward/back walking now plays at 2.0m/s (20% slower than 2.5m/s).
+  Run playback remains the original fixed 1.2x.
 - Future per-gender Actions use the names `male__<clip>` and `female__<clip>`
   in `animation/humanoid_animation_workbench.blend` and override the shared
   default clip when exported into the corresponding gender GLB.

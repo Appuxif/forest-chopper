@@ -1,7 +1,7 @@
 import {debugFlightDelta} from './debug-flight-motion.js';
 import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
 import {createPlayerMotionTracker} from './ragdoll-motion.js';
-import {rootMotionSpeed,playbackRateForSpeed,walkingMotion} from './root-motion-speed.js?v=20261104-walk-rootmotion2';
+import {rootMotionSpeed,playbackRateForSpeed,walkingMotion,humanoidTargetSpeed,playbackDirectionForMotion} from './root-motion-speed.js?v=20261104-strafe60-pace1';
 import {classicLocalRate,classicRemoteRate} from './legacy-animation-rates.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
@@ -113,15 +113,16 @@ function animate(now){
  const motion=!moving?'Idle':Math.abs(forward)>.1
   ?(sprint?'Run':walkingMotion(ctx.ownAvatar,forward<-.1))
   :(side<0?'StrafeLeft':'StrafeRight');
- // Both authored walking clips travel 1.32m in a one-second loop.
- // Match the playback rate to game speed so feet do not slide, while
- // keeping classic (and running) reverse playback unchanged.
- const targetSpeed=sprint?4.6:2.5;
- const backwardsPlayback=forward<-.1 && motion!=='WalkBackward';
+ // Match each authored Root Motion cycle to its intended movement speed.
+ // Walk now plays 20% slower; 60cm sidesteps also play 20% slower
+ // despite covering more ground per cycle. The Run playback is UNCHANGED
+ // at 1.2x. The classic lumberjack keeps its original authored rates.
+ const targetSpeed=ctx.ownAvatar?.model==='legacy'
+  ?(sprint?4.6:2.5):humanoidTargetSpeed(motion,sprint);
  const rate=ctx.ownAvatar?.model==='legacy'
   ?classicLocalRate(motion,sprint,forward)
   :(motion==='Run'?1.2:playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed))*
-    (backwardsPlayback?-1:1);
+    playbackDirectionForMotion(motion,forward<-.1);
  if(!posing&&!dead&&!flying)ctx.simulateVertical(dt);
  let dx=0,dz=0;
  if(ctx.ownAvatar&&!posing&&!dead){
@@ -230,7 +231,7 @@ for(const avatar of ctx.avatars.values()){
     :(remoteMotion==='Run'?1.2:
        playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
          Math.min(4.6,Math.max(0.5,avatar.moveSpeed))))*
-       (front<0&&remoteMotion!=='WalkBackward'?-1:1);
+       playbackDirectionForMotion(remoteMotion,front<0);
    ctx.tickActor(avatar.actor,dt,remoteMotion,avatar.jumping,rate);
   }
  }

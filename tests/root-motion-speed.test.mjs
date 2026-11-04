@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {MIN_ROOT_TRAVEL,rootMotionSpeed,playbackRateForSpeed,mirroredWalkPhaseTime,walkingMotion,rootMotionSampleDelta} from '../src/root-motion-speed.js';
+import {readFileSync} from 'node:fs';
+import {MIN_ROOT_TRAVEL,rootMotionSpeed,playbackRateForSpeed,mirroredWalkPhaseTime,walkingMotion,rootMotionSampleDelta,humanoidTargetSpeed,STRAFE_SPEED,STRAFE_SPRINT_SPEED,WALK_SPEED,playbackDirectionForMotion} from '../src/root-motion-speed.js';
 
 const info=(x,z,duration)=>({travel:{x,z},duration});
 
@@ -26,15 +27,19 @@ test('stationary walk is not mistaken for real root motion',()=>{
  assert.equal(rootMotionSpeed(info(1,0,0)),0);
 });
 
-test('authored 1.32m walking cycle matches existing 2.5m/s gameplay speed',()=>{
+test('authored 1.32m walk moves at 2.0m/s (20% slower than old rate)',()=>{
  const walk=info(0,1.32,1);
  const backward=info(0,-1.32,1);
  for(const clip of [walk,backward]){
   assert.equal(rootMotionSpeed(clip),1.32);
-  const rate=playbackRateForSpeed(clip,2.5);
-  assert.ok(Math.abs(rate-2.5/1.32)<1e-10);
-  assert.ok(Math.abs(rootMotionSpeed(clip)*rate-2.5)<1e-10);
-  assert.ok(Math.abs(1/rate-.528)<1e-10,'one 30-frame cycle spans 0.528 seconds at game speed');
+  const rate=playbackRateForSpeed(clip,WALK_SPEED);
+  assert.equal(WALK_SPEED,2.0);
+  assert.equal(humanoidTargetSpeed('Walk',false),WALK_SPEED);
+  assert.equal(humanoidTargetSpeed('WalkBackward',false),WALK_SPEED);
+  assert.ok(Math.abs(rate-2/1.32)<1e-10);
+  assert.ok(Math.abs(rootMotionSpeed(clip)*rate-2)<1e-10);
+  assert.ok(Math.abs(1/rate-.66)<1e-10,
+   'one 30-frame cycle spans 0.66 seconds at the new 2.0 m/s walking speed');
  }
 });
 
@@ -104,4 +109,71 @@ test('Three.js interpolant reuses one sample buffer: movement must be smooth eve
   assert.ok(Math.abs(accumulated-sign*7.5)<1e-4,
    '3 seconds of walking at 2.5 m/s moves 7.5m without discontinuities');
  }
+});
+
+
+test('authored 60cm side steps move farther, but play 20% slower',()=>{
+ const delta=.6,duration=26/30;
+ for(const sign of [1,-1]){
+  const strafe=info(sign*delta,0,duration);
+  assert.ok(Math.abs(rootMotionSpeed(strafe)-.6/duration)<1e-10);
+  for(const sprint of [false,true]){
+   const motion=sign>0?'StrafeLeft':'StrafeRight';
+   const target=humanoidTargetSpeed(motion,sprint);
+   assert.equal(target,sprint?STRAFE_SPRINT_SPEED:STRAFE_SPEED);
+   const rate=playbackRateForSpeed(strafe,target);
+   const previousRate=(sprint?1.5:1.0)/(.4/duration);
+   assert.ok(Math.abs(rate/previousRate-.8)<1e-10,
+     'strafe animation must play at 80% of the previous playback rate');
+   assert.ok(rate>1&&rate<3,'do not accelerate the two-step animation excessively');
+   assert.ok(Math.abs(rate*rootMotionSpeed(strafe)-target)<1e-8);
+  }
+ }
+ assert.equal(humanoidTargetSpeed('Walk',false),2.0);
+ assert.equal(humanoidTargetSpeed('WalkBackward',false),2.0);
+ assert.equal(humanoidTargetSpeed('Run',true),4.6);
+ // Run still bypasses computed root speed: preserve the existing fixed 1.2x.
+ const fs=readFileSync(new URL('../src/player.js',import.meta.url),'utf8');
+ assert.match(fs,/motion==='Run'\?1\.2:playbackRateForSpeed/);
+});
+
+test('left and right strafe root steps move smoothly on every frame through loop wrap',()=>{
+ const duration=26/30;
+ for(const sign of [1,-1]){
+  const reused=new Float32Array(3),dx=sign*.6;
+  const strafe={
+   duration,travel:{x:dx,y:0,z:0},
+   sampler:{evaluate(t){reused[0]=dx*t/duration;reused[1]=0;reused[2]=0;return reused;}},
+  };
+  const velocity=humanoidTargetSpeed('StrafeLeft',false);
+  const rate=playbackRateForSpeed(strafe,velocity);
+  const dt=1/60;
+  let previous=0,moved=0,loops=0;
+  for(let frame=1;frame<=240;frame++){
+   const fromAbsolute=(frame-1)*dt*rate;
+   const toAbsolute=frame*dt*rate;
+   const from=fromAbsolute%duration;
+   const to=toAbsolute%duration;
+   if(to<from)loops++;
+   const step=rootMotionSampleDelta(strafe,from,to,false);
+   assert.ok(Math.abs(step[0]-sign*velocity*dt)<.00001,
+    'no foot sliding, stall, or full-cycle teleport');
+   assert.ok(Math.abs(step[1])<1e-10&&Math.abs(step[2])<1e-10);
+   moved+=step[0];
+   previous=to;
+  }
+  assert.ok(loops>2);
+  assert.ok(Math.abs(moved-sign*4*velocity)<.0001);
+ }
+});
+
+
+test('dedicated left/right strafe clips must never reverse with backward camera motion',()=>{
+ for(const motion of ['StrafeLeft','StrafeRight','WalkBackward','Idle']){
+  assert.equal(playbackDirectionForMotion(motion,true),1);
+  assert.equal(playbackDirectionForMotion(motion,false),1);
+ }
+ assert.equal(playbackDirectionForMotion('Walk',true),-1);
+ assert.equal(playbackDirectionForMotion('Run',true),-1);
+ assert.equal(playbackDirectionForMotion('Run',false),1);
 });

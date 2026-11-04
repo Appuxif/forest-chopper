@@ -198,6 +198,48 @@ class HumanoidLiteTest(unittest.TestCase):
                         self.assertAlmostEqual(v,w,delta=2e-5,
                             msg=f'{gender}:{bone}: reverse phase must match')
 
+    def test_both_strafes_export_root_motion_and_held_open_arm_pose(self):
+        """Every 60cm lateral step includes the final planted pose and arm seam."""
+        import math
+        for gender,model in self.body.items():
+            payload=(GAME/f'body_{gender}.glb').read_bytes()
+            bank={a['name']:a for a in model['animations']}
+            for name,travel in (('strafe_left',.6),('strafe_right',-.6)):
+                clip=bank[name]
+                root=glb_animation_samples(payload,model,clip,'Root','translation')
+                self.assertEqual(len(root),27,(gender,name,'missing final strafe sample'))
+                self.assertAlmostEqual(root[-1][0]-root[0][0],travel,delta=.0001)
+                self.assertLess(max(row[1] for row in root)-min(row[1] for row in root),.0001,
+                                'Root vertical bobbing must stay on pelvis')
+                self.assertAlmostEqual(root[-1][2]-root[0][2],0,delta=.0001)
+                channel=next(c for c in clip['channels'] if
+                             model['nodes'][c['target']['node']]['name']=='Root' and
+                             c['target']['path']=='translation')
+                accessor=model['accessors'][clip['samplers'][channel['sampler']]['input']]
+                self.assertEqual(accessor['count'],27)
+                self.assertAlmostEqual(accessor['min'][0],0,delta=1e-7)
+                self.assertAlmostEqual(accessor['max'][0],26/30,delta=1e-7)
+                for bone in ('upperarm_l','upperarm_r',
+                             'lowerarm_l','lowerarm_r','hand_l','hand_r'):
+                    rotations=glb_animation_samples(payload,model,clip,bone,'rotation')
+                    self.assertEqual(len(rotations),27,(gender,name,bone))
+                    for start,end in zip(rotations[0],rotations[-1]):
+                        self.assertAlmostEqual(start,end,delta=2e-5,
+                            msg=f'{gender}:{name}:{bone} must loop with open arms')
+                    # Arms are deliberately held to the sides with small
+                    # pendulum sway, not swinging through the torso.
+                    first=rotations[0]
+                    for q in rotations:
+                        dot=min(1.,abs(sum(x*y for x,y in zip(first,q))))
+                        angle=math.degrees(2*math.acos(dot))
+                        self.assertLess(angle,5.0,(gender,name,bone,angle))
+            for bone in ('upperarm_l','upperarm_r'):
+                idle=glb_animation_samples(payload,model,bank['idle'],bone,'rotation')[0]
+                side=glb_animation_samples(payload,model,bank['strafe_left'],bone,'rotation')[0]
+                dot=min(1.,abs(sum(x*y for x,y in zip(idle,side))))
+                self.assertGreater(math.degrees(2*math.acos(dot)),4,
+                    f'{gender}:{bone}: strafe arms must be spread from idle')
+
     def test_backward_walk_looks_left_and_preserves_root_motion(self):
         """Runtime GLB has the new backward Action, not its obsolete pose."""
         import math

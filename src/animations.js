@@ -1,4 +1,4 @@
-import {rootMotionSpeed,mirroredWalkPhaseTime,rootMotionSampleDelta} from './root-motion-speed.js?v=20261104-walk-rootmotion2';
+import {rootMotionSpeed,mirroredWalkPhaseTime,rootMotionSampleDelta} from './root-motion-speed.js?v=20261104-strafe60-pace1';
 
 // Each actor owns exactly one visible skeleton, mixer and animation bank.
 // The modular male/female game GLBs contain the authored Run/Chop actions.
@@ -99,7 +99,7 @@ function rootStep(THREE,info,from,to,backward){
 
 export async function createAnimations(THREE){
  const modelActors=new Set();
- const {createLiteHumanoid}=await import('../characters/humanoid/humanoid-lite.js?v=20261104-walkback-look-left1');
+ const {createLiteHumanoid}=await import('../characters/humanoid/humanoid-lite.js?v=20261104-strafe60-pace1');
  let legacyTemplatePromise=null,axeAssetPromise=null;
  const {GLTFLoader}=await import('https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js');
  const loader=new GLTFLoader();
@@ -152,7 +152,7 @@ export async function createAnimations(THREE){
    if(lo.tracks.length)lower[clip.name]=mixer.clipAction(lo);
    if(hi.tracks.length)upper[clip.name]=mixer.clipAction(hi);
   }
-  for(const name of ['Walk','WalkBackward']){
+  for(const name of ['Walk','WalkBackward','StrafeLeft','StrafeRight']){
    lower[name]?.setLoop(THREE.LoopRepeat,Infinity);
    upper[name]?.setLoop(THREE.LoopRepeat,Infinity);
   }
@@ -168,6 +168,8 @@ export async function createAnimations(THREE){
   console.info('[Forest Chopper] Unified character',model, 'rigs=1',
    'Walk', {duration:rootMotion.Walk?.duration,meters:rootMotion.Walk?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.Walk)},
    'WalkBackward', {duration:rootMotion.WalkBackward?.duration,meters:rootMotion.WalkBackward?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.WalkBackward)},
+   'StrafeLeft', {duration:rootMotion.StrafeLeft?.duration,meters:rootMotion.StrafeLeft?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.StrafeLeft)},
+   'StrafeRight', {duration:rootMotion.StrafeRight?.duration,meters:rootMotion.StrafeRight?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.StrafeRight)},
    'Run', {duration:rootMotion.Run?.duration,meters:rootMotion.Run?.travel.length(),nativeSpeed:rootMotionSpeed(rootMotion.Run)});
   return actor;
  }
