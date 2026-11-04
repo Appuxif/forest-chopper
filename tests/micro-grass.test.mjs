@@ -2,6 +2,7 @@ import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {gladesForTile,gladeAtPoint,gladeDensity,GLADE_CELL} from '../src/grass-glades.js';
+import {GRASS_CLUSTER_DEFAULTS} from '../src/grass-clustering.js';
 import {generateGrassTile,createMicroGrass,effectiveGrassRadius,
   grassDistanceDensity,MICRO_GRASS_NIGHT_RADIUS} from '../src/micro-grass.js';
 
@@ -15,11 +16,13 @@ function fixture({radius=12,density=2}={}) {
   class Geometry {
     constructor() {this.attributes={};this.disposed=0;geometries.add(this);}
     setAttribute(key,attr){this.attributes[key]=attr;}
+    setIndex(indices){this.indices=indices;}
     getAttribute(key){return this.attributes[key];}
     computeVertexNormals(){}
     clone(){
       const copy=new Geometry();
       for(const [key,attr] of Object.entries(this.attributes))copy.setAttribute(key,attr.clone());
+      if(this.indices)copy.indices=this.indices.slice();
       return copy;
     }
     dispose(){this.disposed++;}
@@ -54,7 +57,9 @@ function fixture({radius=12,density=2}={}) {
     constructor(){
       this.position={x:0,y:0,z:0,set:(x,y,z)=>Object.assign(this.position,{x,y,z})};
       this.rotation={x:0,y:0,z:0,set:(x,y,z)=>Object.assign(this.rotation,{x,y,z})};
-      this.scale={x:1,y:1,z:1,setScalar:(n)=>Object.assign(this.scale,{x:n,y:n,z:n})};
+      this.scale={x:1,y:1,z:1,
+        set:(x,y,z)=>Object.assign(this.scale,{x,y,z}),
+        setScalar:(n)=>Object.assign(this.scale,{x:n,y:n,z:n})};
       this.matrix=null;
     }
     updateMatrix(){this.matrix={position:{...this.position},rotation:{...this.rotation},scale:{...this.scale}};}
@@ -580,5 +585,110 @@ test('for nonmonotonic offset below 1 CPU renders full tiles for safe shader LOD
   const uniform=[...sceneItems][0].material.userData.grassUniforms.fcGrassDensityShape.value;
   assert.equal(uniform.x,.25);
   assert.equal(uniform.y,.5);
+  grass.dispose();
+});
+
+
+test('game replaces low-poly grass with editor-curved four-leaf clumps',()=>{
+  const {ctx,sceneItems}=fixture({radius:12,density:2});
+  Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{grassClusterEnabled:true,
+    grassClusterDensity:30});
+  const grass=createMicroGrass(ctx);
+  const mesh=[...sceneItems].find(v=>v.userData.grassTier==='near');
+  assert.ok(mesh);
+  assert.equal(mesh.geometry.getAttribute('fcBladeProgress').count,
+    GRASS_CLUSTER_DEFAULTS.grassClusterBlades*
+    (GRASS_CLUSTER_DEFAULTS.grassClusterTriangles+2));
+  const pos=mesh.matrices.get(0);
+  assert.ok(pos.scale.y>=GRASS_CLUSTER_DEFAULTS.grassClusterMinHeight);
+  assert.ok(pos.scale.y<=GRASS_CLUSTER_DEFAULTS.grassClusterMaxHeight);
+  assert.equal(pos.scale.x,1);
+  assert.equal(mesh.material.userData.grassUniforms.fcGrassWindSpeed.value,
+    GRASS_CLUSTER_DEFAULTS.grassClusterWindSpeed);
+  const originalCount=grass.generatedTiles;
+  ctx.settings.grassClusterWindSpeed=.15;
+  grass.tick();
+  assert.equal(mesh.material.userData.grassUniforms.fcGrassWindSpeed.value,.15);
+  assert.equal(grass.generatedTiles,originalCount,
+    'wind animation is a uniform, no tile rebuild');
+  const shader={uniforms:{},vertexShader:'#include <common>\n#include <begin_vertex>',
+    fragmentShader:'#include <common>\n#include <color_fragment>'};
+  mesh.material.onBeforeCompile(shader);
+  assert.match(shader.vertexShader,/fcBladeCentre/);
+  assert.match(shader.vertexShader,/fcGrassDensityShape/);
+  assert.match(shader.vertexShader,/fcGrassDensityCurve/);
+  assert.match(shader.vertexShader,/fcGrassWindSpeed/);
+  assert.match(shader.vertexShader,/fcGrassPriority/);
+  assert.match(shader.vertexShader,/fcGrassClearings/);
+  grass.dispose();
+});
+
+test('curved two-sided grass shaders expose normals, AO and backlight controls',()=>{
+  for(const simple of [false,true]){
+    const {ctx,sceneItems}=fixture({radius:12,density:2});
+    Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{
+      grassClusterEnabled:true,grassClusterDensity:20,
+      grassInteraction:!simple,
+    });
+    ctx.sun={
+      position:{x:25,y:90,z:15},target:{position:{x:0,y:0,z:0}},intensity:2,
+    };
+    const grass=createMicroGrass(ctx);
+    const mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+    assert.ok(mesh);
+    const shader={
+      uniforms:{},
+      vertexShader:'#include <common>\n#include <begin_vertex>',
+      fragmentShader:'#include <common>\n#include <color_fragment>',
+    };
+    mesh.material.onBeforeCompile(shader);
+    assert.match(shader.vertexShader,/fcBladeTangent/);
+    assert.match(shader.vertexShader,/vFcSmoothLight/);
+    assert.match(shader.vertexShader,/fcGrassSunDirection/);
+    assert.match(shader.fragmentShader,/fcGrassProceduralNormals/);
+    assert.match(shader.fragmentShader,/fcGrassAOIntensity/);
+    assert.match(shader.fragmentShader,/fcGrassTranslucencyIntensity/);
+    assert.equal(shader.uniforms.fcGrassSunDirection,
+      mesh.material.userData.grassUniforms.fcGrassSunDirection);
+    const sunlight=shader.uniforms.fcGrassSunPower;
+    assert.ok(sunlight.value>.1);
+    const generated=grass.generatedTiles;
+    ctx.sun.intensity=0;
+    grass.tick();
+    assert.equal(sunlight.value,0);
+    assert.equal(grass.generatedTiles,generated);
+    grass.dispose();
+  }
+});
+
+test('legacy grass shaders keep original normal lighting and no cluster attributes',()=>{
+  const {ctx,sceneItems}=fixture();
+  ctx.settings.grassClusterEnabled=false;
+  const grass=createMicroGrass(ctx);
+  const mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+  const shader={
+    uniforms:{},
+    vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',
+    fragmentShader:'#include <common>\n#include <opaque_fragment>',
+  };
+  mesh.material.onBeforeCompile(shader);
+  assert.doesNotMatch(shader.vertexShader,/fcBulgedNormal|fcGrassRibbonSide/);
+  assert.doesNotMatch(shader.fragmentShader,/fcGrassTransmission/);
+  grass.dispose();
+});
+
+test('far clustered grass keeps coverage but uses fewer triangles per leaf',()=>{
+  const {ctx,sceneItems}=fixture({radius:38,density:1});
+  Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{
+    grassClusterEnabled:true,grassClusterDensity:12,
+  });
+  const grass=createMicroGrass(ctx);
+  const near=[...sceneItems].find(mesh=>mesh.userData.grassTier==='near');
+  const far=[...sceneItems].find(mesh=>mesh.userData.grassTier==='far');
+  assert.ok(near&&far,'both tiers must load');
+  assert.equal(near.geometry.indices.length/3,
+    GRASS_CLUSTER_DEFAULTS.grassClusterBlades*GRASS_CLUSTER_DEFAULTS.grassClusterTriangles);
+  assert.equal(far.geometry.indices.length/3,
+    GRASS_CLUSTER_DEFAULTS.grassClusterBlades*2);
   grass.dispose();
 });

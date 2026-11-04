@@ -32,7 +32,7 @@
 | WORLD-03 | LIVE | Водоёмы | Пруды/озёра, пляжи, песчаное дно, вода, брызги; плавания нет | `ponds.js`, `lakes.js`, `water-splashes.js` |
 | WORLD-04 | LIVE | Лес | Процедурные ели и берёзы, индивидуальный силуэт, hp и детерминированные ID; LOD/Instancing | `spruce-model.js`, `birch-model.js`, `world.js`, `tree-instancing.js` |
 | WORLD-05 | LIVE | Дальний лес | Independent 96-метровые GPU-сектора, frustum culling и worker-подготовка | `distant-forest.js`, `world-stream-worker.js` |
-| WORLD-06 | LIVE | Растительность | 2 LOD для micro-grass, цветы/грибы и плотность по графическим пресетам | `micro-grass.js`, `flowers.js`, `mushrooms.js`, `grass.js` |
+| WORLD-06 | LIVE | Растительность | Пучковая GPU-трава с геометрией из HTML-генератора (4×5 треугольников по умолчанию), Voronoi + микрогруппы, настраиваемые формы/ветер/освещение, 2 LOD и прежнее CPU+GPU-разреживание; микротрава или тёмная лесная подстилка, цветы/грибы | `micro-grass.js`, `grass-clustering.js`, `grass-clump-geometry.js`, `grass-clump-material.js`, `grass-ground-textures.js`, `grass.js` |
 | WORLD-07 | LIVE | День/ночь | Цикл 8 мин, offline сохранение фазы, online server-clock с периодической синхронизацией | `day-cycle.js`, `forest_server.py` |
 | WORLD-08 | LIVE | Атмосфера и тени | Солнце/луна, туман, освещение, обновляемые тени и GPU-ветер | `atmosphere.js`, `wind.js`, `tree-wind-shader.js` |
 | WORLD-09 | LIVE | Передвижение и коллизии | Root Motion, ходьба/бег, физика прыжка, столкновения с деревьями/камнями/брёвнами | `player.js`, `animations.js`, `physics.js`, `collision-world.js`, `collision-kinematic.js` |

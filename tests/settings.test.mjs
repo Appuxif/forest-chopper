@@ -5,9 +5,11 @@ import {sanitizeSettings,createSettings,lightingFieldMarkup,lookRangeMarkup,sett
 import {PERFORMANCE_DEFAULTS,PERFORMANCE_PRESETS,PERFORMANCE_LIGHTING_PRESETS} from '../src/performance-presets.js';
 import {DEFAULT_AUDIO,SOUND_CONTROLS} from '../src/sound-rules.js';
 import {CHARACTER_LOOK_FIELDS} from '../src/character-orientation.js';
+import {GRASS_CLUSTER_DEFAULTS} from '../src/grass-clustering.js';
 
-const defaults={...PERFORMANCE_DEFAULTS,performancePreset:'high',
- mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,
+const defaults={...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,
+  grassClusterEnabled:true,performancePreset:'high',
+  mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,
  fov:75,cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
  ...Object.fromEntries(Object.entries(CHARACTER_LOOK_FIELDS).map(([key,val])=>[key,val[3]])),
  audio:DEFAULT_AUDIO,

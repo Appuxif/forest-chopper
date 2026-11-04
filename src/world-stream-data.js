@@ -35,14 +35,14 @@ export function terrainGridData({seed,cx,cz,size=96,segments=48}){
         cz*size+row*step);
   return heights;
 }
-export function grassTileData({seed,tx,tz,size,density,tier}){
-  const records=generateGrassTile(seed,tx,tz,size,density,tier);
+export function grassTileData({seed,tx,tz,size,density,tier,clusterConfig=null}){
+  const records=generateGrassTile(seed,tx,tz,size,density,tier,clusterConfig);
   // x,y,z,angle,scale,tint,biome,patchKind,patchWeight
   const floats=new Float32Array(records.length*9);
   for(let i=0;i<records.length;i++){
     const o=records[i],j=i*9;
     floats[j]=o.x;floats[j+1]=terrainHeight(seed,o.x,o.z);
-    floats[j+2]=o.z;floats[j+3]=o.angle;floats[j+4]=o.scale;
+    floats[j+2]=o.z;floats[j+3]=o.yaw??o.angle;floats[j+4]=o.height??o.scale;
     floats[j+5]=o.tint;floats[j+6]=o.biome;
     floats[j+7]=o.patchKind;floats[j+8]=o.patchWeight;
   }

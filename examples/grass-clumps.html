@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Forest Chopper — конструктор пучковой травы</title>
+  <style>
+    :root { color-scheme: dark; font: 14px/1.45 system-ui,-apple-system,sans-serif; }
+    * { box-sizing: border-box; }
+    html,body { margin:0; width:100%; height:100%; overflow:hidden; background:#0c1512; }
+    #canvas { display:block; width:100%; height:100%; touch-action:none; }
+    .panel {
+      position:fixed; z-index:3; top:12px; left:12px; width:345px;
+      max-height:calc(100dvh - 24px); overflow-y:auto; color:#e7f2e7;
+      background:rgba(16,28,22,.94); border:1px solid #43614a;
+      border-radius:14px; padding:14px; box-shadow:0 14px 40px #0007;
+      backdrop-filter:blur(12px);
+    }
+    h1 { font-size:17px; line-height:1.3; margin:0 0 5px; }
+    h2 { font-size:13px; margin:15px 0 9px; border-top:1px solid #35513c; padding-top:12px; color:#bde6be; }
+    p { color:#b6c8b9; margin:0 0 12px; font-size:12px; }
+    .setting { display:block; margin:11px 0; }
+    .setting > span { display:flex; justify-content:space-between; gap:8px; margin-bottom:4px; font-size:13px; }
+    .setting output { color:#a7e2ae; font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    input[type=range] { width:100%; accent-color:#8dcc87; cursor:pointer; }
+    input[type=number] { background:#1c3024; color:#ecf5e8; border:1px solid #52745a; border-radius:6px; font:inherit; width:86px; padding:5px 7px; }
+    .inline,.buttonrow { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    button { background:#315c3c; border:1px solid #63946b; color:#f4fff3; border-radius:9px; padding:8px 11px; font:inherit; cursor:pointer; }
+    button:hover { background:#426e4c; }
+    button:focus-visible,input:focus-visible { outline:2px solid #a6e6ad; outline-offset:2px; }
+    .meter { position:fixed; z-index:2; right:12px; top:12px; color:#eff9f0;
+      background:rgba(16,28,22,.88); border:1px solid #466a51; border-radius:12px;
+      padding:12px 14px; min-width:220px; font:12px/1.55 ui-monospace,Consolas,monospace;
+      pointer-events:none; white-space:pre-line; font-variant-numeric:tabular-nums; }
+    .toggle { margin-top:10px; display:flex; align-items:center; gap:8px; color:#c7d8ca; }
+    .help { color:#9fb9a3; font-size:12px; margin:11px 0; }
+    #error { position:fixed; z-index:6; left:50%; bottom:15px; transform:translateX(-50%); max-width:90vw; background:#57231f; color:white; border-radius:9px; padding:10px; display:none; }
+    .panel.collapsed { width:auto; overflow:hidden; }
+    .panel.collapsed .panel-body { display:none; }
+    #panel-toggle { font-size:12px; padding:5px 9px; margin:8px 0 0; }
+    @media(max-width:650px) {
+      .panel { top:auto; bottom:10px; left:10px; width:min(340px,calc(100vw - 20px)); max-height:52dvh; padding:12px; }
+      .meter { top:10px; right:10px; min-width:164px; padding:8px; font-size:10px; }
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="canvas" aria-label="Трёхмерный предпросмотр травы"></canvas>
+  <aside class="panel" id="panel">
+    <h1>🌿 Генератор травы</h1>
+    <button type="button" id="panel-toggle">Скрыть параметры</button>
+    <div class="panel-body">
+      <p>Мягкая изогнутая трава: управляемый наклон, веерный разброс, направление ветра, дуга, волнистость и корень. Настройка освещения, Voronoi и LOD.</p>
+      <div id="sliders"></div>
+      <h2>Свет и объём</h2>
+      <label class="toggle"><input id="proceduralNormals" type="checkbox" checked> Procedural Normals (плавное освещение изгибов)</label>
+      <label class="toggle"><input id="translucency" type="checkbox" checked> Translucency (просвечивание на солнце)</label>
+      <label class="toggle"><input id="ambientOcclusion" type="checkbox" checked> AO (затенение основания)</label>
+      <h2>Покрытие земли</h2>
+      <label class="setting" for="groundTextureType">
+        <span>Текстура земли</span>
+        <select id="groundTextureType" style="width:100%;background:#1c3024;color:#ecf5e8;border:1px solid #52745a;border-radius:6px;padding:7px;font:inherit">
+          <option value="micrograss">🌿 Зелёная микротрава</option>
+          <option value="forest">🍂 Тёмная лесная подстилка</option>
+        </select>
+      </label>
+      <label class="toggle"><input id="groundTextureEnabled" type="checkbox" checked> Показывать текстуру земли</label>
+      <h2>Прочее</h2>
+      <div class="inline">
+        <label for="seed">Seed</label>
+        <input id="seed" type="number" value="7" step="1">
+        <button type="button" id="random-seed">Другой seed</button>
+      </div>
+      <label class="toggle"><input id="grid" type="checkbox"> Сетка 1 м</label>
+      <label class="toggle"><input id="limitDpr" type="checkbox" checked> Ограничить DPR до 1.5</label>
+      <div class="buttonrow" style="margin-top:14px">
+        <button type="button" id="camera-close">Вблизи</button>
+        <button type="button" id="camera-overview">Общий вид</button>
+        <button type="button" id="export-settings">Экспорт настроек</button>
+        <button type="button" id="reset">Сбросить параметры</button>
+      </div>
+      <p class="help">Мышь: ЛКМ — вращение, колёсико — масштаб, ПКМ — перемещение. Touch: жесты двумя пальцами.</p>
+      <p class="help">Мин./макс. шаг между группами задаёт размещение их центров; радиус группы — насколько кучно собираются пучки. При силе 0 остаётся прежнее распределение. Базовый шаг между пучками до группировки может нарушаться после их сближения. Дальний LOD обновляется при перемещении камеры. Frustum culling работает по тайлам 10×10 м.</p>
+    </div>
+  </aside>
+  <div id="metrics" class="meter" aria-live="off">Инициализация…</div>
+  <div id="error" role="alert"></div>
+  <script type="module" src="./grass-clumps.js"></script>
+</body>
+</html>

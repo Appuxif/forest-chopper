@@ -15,8 +15,9 @@ import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
 import {createGrass} from './grass.js';
-import {createMicroGrass} from './micro-grass.js?v=20261103-grass-unbounded1';
+import {createMicroGrass} from './micro-grass.js?v=20261104-grass-editor-in-game1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
+import {createGroundMicrograssTexture,createForestGroundTexture} from './grass-ground-textures.js';
 import {TerrainSystem} from './terrain.js?v=20261102-night-grass30';
 import {createPhysics} from './physics.js?v=20261103-debug-player1';
 import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bounce-fix1';
@@ -175,6 +176,37 @@ const settings=createSettings(document,null,
   {spruce:spruceParts?.stats,birch:birchParts?.stats},
   ()=>refreshPerformance(),
   (category,exact=false)=>exact?gameAudio?.previewClip(category):gameAudio?.preview(category));
+// Use the editor's exact tileable textures on the existing streamed terrain.
+// Keep the same ground material so lake sand, shore masks and grass shadows
+// continue working. Only a map/color/uniform change; terrain isn't rebuilt.
+const grassGroundTextures=new Map();
+let currentGroundCoverKey='';
+function updateGrassGroundCover(){
+  const clustered=settings.grassClusterEnabled;
+  const enabled=clustered&&settings.grassClusterGroundTexture;
+  const type=settings.grassClusterGroundType;
+  const scale=settings.grassClusterTextureScale;
+  const key=[clustered,enabled,type,scale].join('/');
+  if(key===currentGroundCoverKey)return;
+  currentGroundCoverKey=key;
+  let texture=clustered&&!enabled?null:groundTexture;
+  if(enabled){
+    texture=grassGroundTextures.get(type);
+    if(!texture){
+      texture=type==='forest'
+        ?createForestGroundTexture(THREE,renderer,document)
+        :createGroundMicrograssTexture(THREE,renderer,document);
+      grassGroundTextures.set(type,texture);
+    }
+    texture.repeat.set(2000/scale,2000/scale);
+  }
+  groundMaterial.map=texture;
+  groundMaterial.color.setHex(clustered&&!enabled?0x597844:
+    enabled&&type==='forest'?0xe7d9c8:0xffffff);
+  groundMaterial.needsUpdate=true;
+}
+updateGrassGroundCover();
+
 const atmosphere=createAtmosphere({
  THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
  getCharacterShadowCasters(){
@@ -368,6 +400,7 @@ const ctx={
  get metal(){return metal;},
  get mushrooms(){return mushrooms;},
  get microGrass(){return microGrass;},
+ updateGrassGroundCover,
  get waterSplashes(){return waterSplashes;},
  get plantInteraction(){return plantInteraction;},
  get modelActors(){return modelActors;},
@@ -419,6 +452,7 @@ const ctx={
  get rockMat(){return rockMat;},
  get rootMotion(){return ownAvatar?.rootMotion??{};},
  get scene(){return scene;},
+ get sun(){return sun;},
  get settings(){return settings;},
  get audio(){return gameAudio;},
  get seed(){return seed;}, set seed(value){seed=value;terrain.setSeed(value);},

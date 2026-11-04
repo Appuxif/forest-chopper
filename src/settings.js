@@ -2,6 +2,7 @@
 import {collectDiagnostics, formatDiagnostics, getGpuRendererName} from './diagnostics.js?v=20261101-gpu-renderer1';
 import {FPS_OPTIONS} from './frame-limiter.js';
 import {CHARACTER_LOOK_FIELDS} from './character-orientation.js';
+import {GRASS_CLUSTER_FIELDS,GRASS_CLUSTER_DEFAULTS,GRASS_CLUSTER_FLAGS} from './grass-clustering.js';
 import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js?v=20261103-shared-birch-all1';
 import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS,PERFORMANCE_LIGHTING_PRESETS} from './performance-presets.js?v=20261103-grass-presets-tuned1';
 import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261105-mob-hit-audio1';
@@ -55,8 +56,9 @@ const PREVIOUS_LIGHTING_DEFAULTS=Object.freeze({
  torchNightIntensity:3.3,torchNightRadius:16,
 });
 const DEFAULT=Object.freeze({
- ...PERFORMANCE_DEFAULTS,performancePreset:'high',
- mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,fov:75,
+ ...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,grassClusterEnabled:true,
+  performancePreset:'high',
+  mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,fov:75,
  cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
  ...Object.fromEntries(Object.entries(CHARACTER_LOOK_FIELDS).map(([key,val])=>[key,val[3]])),
  audio:DEFAULT_AUDIO,
@@ -131,6 +133,18 @@ export function sanitizeSettings(value) {
       ? source.characterShadowDistance : DEFAULT.characterShadowDistance,
     shadowContrast: Number.isInteger(source.shadowContrast) && source.shadowContrast >= 0
       && source.shadowContrast <= 100 ? source.shadowContrast : DEFAULT.shadowContrast,
+    grassClusterEnabled: source.grassClusterEnabled!==false,
+    ...Object.fromEntries(GRASS_CLUSTER_FIELDS.map(([key,fallback,min,max,step])=>{
+      const value=source[key];
+      return [key,typeof value==='number'&&Number.isFinite(value)&&
+        value>=min&&value<=max?
+        Number((Math.round(value/step)*step).toFixed(4)):fallback];
+    })),
+    ...Object.fromEntries(GRASS_CLUSTER_FLAGS.map(([key])=>[key,
+      typeof source[key]==='boolean'?source[key]:GRASS_CLUSTER_DEFAULTS[key]])),
+    grassClusterGroundType:['micrograss','forest'].includes(source.grassClusterGroundType)
+      ?source.grassClusterGroundType:GRASS_CLUSTER_DEFAULTS.grassClusterGroundType,
+
     grassDensity: Number.isInteger(source.grassDensity) && source.grassDensity >= 1
       && source.grassDensity <= 50 ? source.grassDensity : DEFAULT.grassDensity,
     grassDistance: Number.isInteger(source.grassDistance) && source.grassDistance >= 12
@@ -148,7 +162,7 @@ export function sanitizeSettings(value) {
       && source.grassFarDensityPercent >= 0 && source.grassFarDensityPercent <= 100
       ? source.grassFarDensityPercent : DEFAULT.grassFarDensityPercent,
     grassFarWidthBonus: Number.isInteger(source.grassFarWidthBonus)
-      && source.grassFarWidthBonus >= 0 && source.grassFarWidthBonus <= 100
+      && source.grassFarWidthBonus >= 0 && source.grassFarWidthBonus <= 500
       ? source.grassFarWidthBonus : DEFAULT.grassFarWidthBonus,
     // Experimental shape parameters accept any finite floating-point value.
     grassDensitySharpness: Number.isFinite(source.grassDensitySharpness)
@@ -196,6 +210,12 @@ export function sanitizeSettings(value) {
     settings.lakeForestMode=PERFORMANCE_DEFAULTS.lakeForestMode;
   if(!['simple','high'].includes(settings.waterQuality))
     settings.waterQuality=PERFORMANCE_DEFAULTS.waterQuality;
+  for(const [lo,hi] of [
+    ['grassClusterMinHeight','grassClusterMaxHeight'],
+    ['grassClusterGapMin','grassClusterGapMax'],
+    ['grassClusterBladeGapMin','grassClusterBladeGapMax'],
+    ['grassClusterMicroGapMin','grassClusterMicroGapMax'],
+  ])if(settings[lo]>settings[hi])settings[hi]=settings[lo];
   if(settings.grassMinSize > settings.grassMaxSize)
     [settings.grassMinSize,settings.grassMaxSize] = [settings.grassMaxSize,settings.grassMinSize];
   return settings;
@@ -330,6 +350,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 
   const css = doc.createElement('style');
   css.textContent = `
+.fc-grass-legacy-inactive{opacity:.45}
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
 /* In-game graphics changes must remain visible through the backdrop. */
 .fc-settings-backdrop{position:fixed;inset:0;z-index:28;background:transparent;backdrop-filter:none}
@@ -483,10 +504,47 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     </section>
     <section class="fc-settings-page" data-category="trees" aria-label="Модели деревьев" hidden><div id="fc-tree-editor">${treeModelEditorMarkup()}</div></section>
     <section class="fc-settings-page" data-category="grass" aria-label="Трава" hidden>
-    <label>Треугольники мелкой травы
+    <details class="fc-light-group" open id="fc-grass-cluster-section">
+      <summary>🌿 Кластеризация</summary>
+      <label><input type="checkbox" id="fc-grass-cluster-enabled"> Voronoi Clumping — пучковая трава</label>
+      <button type="button" id="fc-grass-apply-generator-preset">🌿 Применить параметры из генератора</button>
+
+      <small>Травинки наклоняются в одну сторону, с отдельным разбросом
+        направления. Угол задаётся от вертикали. Дальнее прореживание
+        остаётся по формуле из dev.</small>
+      ${GRASS_CLUSTER_FIELDS.map(([key,,min,max,step,label,unit])=>`
+      <label>${label}: <output id="fc-${key}-value"></output> ${unit}
+        <input id="fc-${key}" type="range" min="${min}" max="${max}" step="${step}"></label>`).join('')}
+      <h3>Освещение и покрытие земли</h3>
+      ${GRASS_CLUSTER_FLAGS.map(([key,,label])=>`
+        <label><input id="fc-${key}" type="checkbox"> ${label}</label>`).join('')}
+      <label>Текстура земли
+        <select id="fc-grass-cluster-ground-type">
+          <option value="micrograss">Зелёная микротрава</option>
+          <option value="forest">Тёмная лесная подстилка</option>
+        </select></label>
+    <label>Разброс направления травинок: <output id="fc-grass-turn-value"></output>
+      <span class="fc-angle-pair" id="fc-grass-turn-pair">
+        <span class="fc-angle-track" id="fc-grass-turn-track"></span>
+        <input id="fc-grass-turn-min" type="range" min="-90" max="90" step="1"
+          aria-label="Минимальный поворот, от -90 до 0 градусов">
+        <input id="fc-grass-turn-max" type="range" min="-90" max="90" step="1"
+          aria-label="Максимальный поворот, от 0 до 90 градусов">
+      </span>
+    </label>
+      <small>Максимальный интервал задаёт разброс размещения; из-за ограничения
+        плотности расстояния между соседними пучками могут быть больше.
+        Минимальный интервал соблюдается внутри каждого тайла. При выключении
+        кластеризации возвращается прежняя трава.</small>
+    </details>
+    <small>Выделенные серым настройки одиночной травы действуют только
+      при отключённой кластеризации. Дальность и коэффициенты рациональной
+      формулы LOD общие; для пучков начало прореживания, процент и ширина
+      задаются отдельными ползунками выше.</small>
+    <label>Треугольники мелкой травы (без кластеризации)
       <select id="fc-grass-triangles"><option value="6">6 — плавные</option><option value="3">3 — облегчённые</option><option value="1">1 — минимальные</option></select></label>
     <label><input type="checkbox" id="fc-grass-interaction"> Сгибание травы и взаимодействие с окружением</label>
-    <label>Плотность мелкой травы: <output id="fc-grass-density-value"></output>
+    <label>Плотность одиночной травы: <output id="fc-grass-density-value"></output>
       <input id="fc-grass-density" type="range" min="1" max="50" step="1"></label>
     <label>Дальность мелкой травы: <output id="fc-grass-distance-value"></output> м
       <input id="fc-grass-distance" type="range" min="12" max="100" step="1"></label>
@@ -506,7 +564,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <input id="fc-grass-density-offset" type="number" step="any" inputmode="decimal"></label>
     <small>Можно вводить любые конечные числа, в том числе отрицательные. Если кривая немонотонна, CPU не прореживает плитки; итоговая плотность ограничена диапазоном 0–100%.</small>
     <label>Дополнительная ширина вдали: +<output id="fc-grass-far-width-bonus-value"></output>%
-      <input id="fc-grass-far-width-bonus" type="range" min="0" max="100" step="1"></label>
+      <input id="fc-grass-far-width-bonus" type="range" min="0" max="500" step="5"></label>
     <small>После указанного расстояния плотность плавно снижается до выбранного процента,
       а ширина оставшихся травинок постепенно увеличивается. 100% плотности и +0% ширины отключают эффект.</small>
     <label>Размер травинок: <output id="fc-grass-size-range-value"></output>
@@ -520,15 +578,6 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     </label>
     <label>Ширина травинок: <output id="fc-grass-width-value"></output>
       <input id="fc-grass-width" type="range" min="0.25" max="4" step="0.25"></label>
-    <label>Разброс поворота травинок: <output id="fc-grass-turn-value"></output>
-      <span class="fc-angle-pair" id="fc-grass-turn-pair">
-        <span class="fc-angle-track" id="fc-grass-turn-track"></span>
-        <input id="fc-grass-turn-min" type="range" min="-90" max="90" step="1"
-          aria-label="Минимальный поворот, от -90 до 0 градусов">
-        <input id="fc-grass-turn-max" type="range" min="-90" max="90" step="1"
-          aria-label="Максимальный поворот, от 0 до 90 градусов">
-      </span>
-    </label>
     <small>Меняется сразу; высокая плотность и дальность могут увеличить нагрузку. На полянках действуют собственные параметры травы.</small>
     </section>
     <section class="fc-settings-page" data-category="controls" aria-label="Управление" hidden>
@@ -699,6 +748,12 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const grassMinSizeInput = panel.querySelector('#fc-grass-min-size');
   const grassMaxSizeInput = panel.querySelector('#fc-grass-max-size');
   const grassWidthInput = panel.querySelector('#fc-grass-width');
+  const grassClusterEnabled=panel.querySelector('#fc-grass-cluster-enabled');
+  const grassClusterFields=GRASS_CLUSTER_FIELDS.map(([key])=>
+    [key,panel.querySelector('#fc-'+key)]);
+  const grassClusterFlags=GRASS_CLUSTER_FLAGS.map(([key])=>
+    [key,panel.querySelector('#fc-'+key)]);
+  const grassClusterGroundType=panel.querySelector('#fc-grass-cluster-ground-type');
   const grassLodFields=[
     ['grassFullDensityDistance','grass-full-density-distance'],
     ['grassFarDensityPercent','grass-far-density-percent'],
@@ -781,6 +836,26 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     shadowContrastValue.textContent = String(state.shadowContrast);
     shadowDistanceValue.textContent = String(state.shadowDistance);
     shadowRefreshValue.textContent = state.shadowRefreshSeconds===0?'каждый кадр':String(state.shadowRefreshSeconds)+' с';
+    grassClusterEnabled.checked=state.grassClusterEnabled;
+    for(const [key,input] of grassClusterFlags)input.checked=state[key];
+    grassClusterGroundType.value=state.grassClusterGroundType;
+    for(const id of [
+      'grass-triangles','grass-density','grass-min-size','grass-max-size',
+      'grass-width','grass-turn-min','grass-turn-max',
+      'grass-full-density-distance','grass-far-density-percent',
+      'grass-far-width-bonus',
+    ]){
+      const legacy=panel.querySelector('#fc-'+id);
+      if(!legacy)continue;
+      legacy.disabled=state.grassClusterEnabled;
+      legacy.closest?.('label')?.classList?.toggle?.(
+        'fc-grass-legacy-inactive',state.grassClusterEnabled);
+    }
+    for(const [key,input] of grassClusterFields){
+      input.value=String(state[key]);
+      panel.querySelector('#fc-'+key+'-value').textContent=
+        /Height|Gap|Spread|Width/.test(key) ? state[key].toFixed(3) : String(state[key]);
+    }
     grassDensityInput.value = String(state.grassDensity);
     grassDistanceInput.value = String(state.grassDistance);
     grassDensityValue.textContent = String(state.grassDensity);
@@ -1006,6 +1081,42 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   shadowContrastInput.oninput = () => {
     state.shadowContrast = sanitizeSettings({...state,
       shadowContrast:Number(shadowContrastInput.value)}).shadowContrast;
+    reflect();save();
+  };
+  panel.querySelector('#fc-grass-apply-generator-preset').onclick=()=>{
+    Object.assign(state,GRASS_CLUSTER_DEFAULTS,{
+      grassClusterEnabled:true,grassDistance:100,grassFullDensityDistance:10,
+      grassFarDensityPercent:0,grassFarWidthBonus:455,
+      grassDensitySharpness:.005,grassDensityCoefficient:.25,grassDensityOffset:1,
+    });
+    reflect();save();
+  };
+  grassClusterEnabled.onchange=()=>{
+    state.grassClusterEnabled=grassClusterEnabled.checked;
+    reflect();save();
+  };
+  for(const [key,input] of grassClusterFields){
+    input.oninput=()=>{
+      state[key]=sanitizeSettings({...state,[key]:Number(input.value)})[key];
+      for(const [min,max] of [
+        ['grassClusterMinHeight','grassClusterMaxHeight'],
+        ['grassClusterGapMin','grassClusterGapMax'],
+        ['grassClusterBladeGapMin','grassClusterBladeGapMax'],
+        ['grassClusterMicroGapMin','grassClusterMicroGapMax'],
+      ]){
+        if(state[min]>state[max]){
+          if(key===max)state[min]=state[max];
+          else state[max]=state[min];
+        }
+      }
+      reflect();save();
+    };
+  }
+  for(const [key,input] of grassClusterFlags){
+    input.onchange=()=>{state[key]=input.checked;reflect();save();};
+  }
+  grassClusterGroundType.onchange=()=>{
+    state.grassClusterGroundType=grassClusterGroundType.value;
     reflect();save();
   };
   grassDensityInput.oninput = () => {
@@ -1267,6 +1378,46 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get characterShadowsEnabled(){return state.characterShadowsEnabled;},
     get characterShadowDistance(){return state.characterShadowDistance;},
     get shadowContrast(){return state.shadowContrast;},
+    get grassClusterEnabled(){return state.grassClusterEnabled;},
+    get grassClusterBlades(){return state.grassClusterBlades;},
+    get grassClusterTriangles(){return state.grassClusterTriangles;},
+    get grassClusterMinHeight(){return state.grassClusterMinHeight;},
+    get grassClusterMaxHeight(){return state.grassClusterMaxHeight;},
+    get grassClusterSpread(){return state.grassClusterSpread;},
+    get grassClusterTilt(){return state.grassClusterTilt;},
+    get grassClusterBladeWidth(){return state.grassClusterBladeWidth;},
+    get grassClusterGapMin(){return state.grassClusterGapMin;},
+    get grassClusterGapMax(){return state.grassClusterGapMax;},
+    get grassClusterBladeGapMin(){return state.grassClusterBladeGapMin;},
+    get grassClusterBladeGapMax(){return state.grassClusterBladeGapMax;},
+    get grassClusterDensity(){return state.grassClusterDensity;},
+    get grassClusterCells(){return state.grassClusterCells;},
+    get grassClusterStrength(){return state.grassClusterStrength;},
+    get grassClusterSoftness(){return state.grassClusterSoftness;},
+    get grassClusterWindSpeed(){return state.grassClusterWindSpeed;},
+    get grassClusterBend(){return state.grassClusterBend;},
+    get grassClusterWave(){return state.grassClusterWave;},
+    get grassClusterRootUpright(){return state.grassClusterRootUpright;},
+    get grassClusterAngleSpread(){return state.grassClusterAngleSpread;},
+    get grassClusterWindAlignment(){return state.grassClusterWindAlignment;},
+    get grassClusterWindDirection(){return state.grassClusterWindDirection;},
+    get grassClusterMicroGapMin(){return state.grassClusterMicroGapMin;},
+    get grassClusterMicroGapMax(){return state.grassClusterMicroGapMax;},
+    get grassClusterMicroRadius(){return state.grassClusterMicroRadius;},
+    get grassClusterMicroStrength(){return state.grassClusterMicroStrength;},
+    get grassClusterTranslucencyIntensity(){return state.grassClusterTranslucencyIntensity;},
+    get grassClusterAOIntensity(){return state.grassClusterAOIntensity;},
+    get grassClusterTextureScale(){return state.grassClusterTextureScale;},
+    get grassClusterDensityCurve(){return state.grassClusterDensityCurve;},
+    get grassClusterDensityStart(){return state.grassClusterDensityStart;},
+    get grassClusterDensityReduction(){return state.grassClusterDensityReduction;},
+    get grassClusterWidthIncrease(){return state.grassClusterWidthIncrease;},
+    get grassClusterSeed(){return state.grassClusterSeed;},
+    get grassClusterProceduralNormals(){return state.grassClusterProceduralNormals;},
+    get grassClusterTranslucency(){return state.grassClusterTranslucency;},
+    get grassClusterAO(){return state.grassClusterAO;},
+    get grassClusterGroundTexture(){return state.grassClusterGroundTexture;},
+    get grassClusterGroundType(){return state.grassClusterGroundType;},
     get grassDensity(){return state.grassDensity;},
     get grassDistance(){return state.grassDistance;},
     get grassMinSize(){return state.grassMinSize;},

@@ -159,6 +159,18 @@ mask projections удалены. В текущих файлах проекта f
 - Дальний лес объединяется в независимые 96-метровые сектора GPU Instancing;
   frustum culling выполняет Three.js.
 - Трава использует отдельные near/far LOD и пул InstancedMesh.
+  Геометрия изогнутых пучков едина у игрового кода и HTML-генератора
+  (`src/grass-clump-geometry.js`, `src/grass-clumps-core.mjs`), а
+  `grass-clustering.js` строит Voronoi-области и микрогруппы в мировых
+  координатах. `micro-grass.js` сохраняет worker/LRU, два LOD, frustum
+  culling, clearings, actor bending и рациональную формулу dev с
+  настраиваемой степенью. `grass-clump-material.js` даёт двусторонний
+  шейдер без alpha/overdraw. `grass-ground-textures.js` создаёт в игре
+  те же CanvasTexture-покрытия, что и в лаборатории, без новых мешей.
+  Пресет — `assets/presets/grass-generator-default.json`,
+  отображение настроек — `grass-generator-defaults.js`/`settings.js`.
+  `mapSize` и `fieldSize` применимы только в прототипе, поскольку
+  игровой мир стримится по чанкам.
 - Пресеты графики объявлены в `src/performance-presets.js`: Ultra/High
   используют MSAA, Medium/Low — без MSAA. Изменение антиалиасинга требует
   нового WebGL-контекста; остальные поддерживаемые параметры применяются

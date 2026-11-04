@@ -37,6 +37,15 @@ src/micro-grass.js, src/world.js, src/world-startup.js.
   decides individual visibility, avoiding whole-page density jumps. Far blades
   can widen with distance. Presets in `performance-presets.js` configure these
   values; regression coverage is in `tests/micro-grass.test.mjs`.
+- Новая пучковая трава использует тот же streaming-контракт: 9 float на
+  инстанс (x,y,z,yaw,height,tint,biome,patch,weight). В worker
+  вычисляются world-space Voronoi и микрогруппы; GPU получает ту же
+  геометрию травинок, что и HTML-генератор. Старая рациональная формула
+  `grassDistanceDensity` осталась; степень `t`curve` задаётся параметром
+  поверх неё, и CPU продолжает передавать только безопасный префикс
+  инстансов. Far LOD использует `ceil(trianglesPerBlade/3)` треугольника
+  вместо near-профиля. Переход ночного радиуса, кешированные страницы,
+  dynamic clearings и actor bending не меняются.
 - LRU budgets: terrain grids 32MiB, far-forest records 24MiB, grass records
   20MiB, plus up to one inactive tree-model preset capped at 96MiB. Grass
   keeps its existing limited GPU-mesh pool.
