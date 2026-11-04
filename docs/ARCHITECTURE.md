@@ -68,7 +68,7 @@ index.html / index_debug.html
 | Оркестрация | `main.js` | Собирает `ctx`; поддерживает offline и online |
 | Мир | `world.js`, `tree-spacing.js`, `terrain-noise.js`, `ponds.js`, `lakes.js` | Детерминированное распределение по seed и координатам |
 | Стриминг | `world-task-scheduler.js`, `world-stream-data.js`, `world-stream-worker.js`, `terrain.js`, `distant-forest.js`, `micro-grass.js` | Генерация вне render loop, ограниченное применение результатов; см. [world-streaming.md](world-streaming.md) |
-| Персонаж | `animations.js`, `player.js`, `physics.js`, `orbit-camera.js`, `characters/humanoid/humanoid-lite.js` | Один видимый риг и один AnimationMixer на каждого аватара; Root Motion берётся из его же Run; коллизии в координатах мира |
+| Персонаж | `animations.js`, `player.js`, `physics.js`, `orbit-camera.js`, `characters/humanoid/humanoid-lite.js` | Один видимый риг и один AnimationMixer на каждого аватара; Root Motion берётся из его же Run/Walk/WalkBackward; коллизии в координатах мира |
 | Игра | `chopping.js`, `building.js`, `inventory.js`, `crafting.js`, `vitals.js` | Действия, ограничения, ресурсы |
 | Подбор | `forest-resources.js`, `collectible-decor.js`, `resource-zones.js`, `ground-boxes.js`, `pickup-interaction.js`, `aim-state.js` | Доступность, расстояние, наведение и визуальный feedback; сервер подтверждает онлайн-действия |
 | Персистентность | `offline-save.js`, `save-slots.js`, `progress.js`, `tutorial.js`, `day-cycle.js` | Валидация локальных данных, сохранение прогресса/фазы |
@@ -84,6 +84,18 @@ URL shortcut (`?type=continue|new|multiplayer`, `seed`, `force`, `performance`, 
 скелеты. Отдельный `src/humanoid-player-model.js` и невидимый driver удалены.
 Классический персонаж остаётся отдельным вариантом и использует собственный
 `lumberjack/lumberjack.glb` — тоже без второй модели-драйвера.
+
+Ходьба W/S мужского и женского персонажа теперь использует независимые Actions
+`walk` / `walk_backward` с противоположными Root Motion ±1,32 м/цикл.
+При экспорте `walk_backward` заменяет старый `walk_back` в том же 13-клиповом
+банке. Чтобы устранить пропущенный последний кадр, экспортёр временно переводит
+их Blender-ключи 1.25–31.25 в точные кадры 0–30 при 30 FPS: GLB содержит
+31 сэмпл, длительность строго 1,0 с, одинаковые позы начала/конца.
+`src/root-motion-speed.js` рассчитывает playback rate по дистанции/длительности
+для 2,5 м/с, а при смене W↔S зеркалирует фазу обоих слоёв тела.
+`src/animations.js` компенсирует переход Root Motion через границу цикла,
+чтобы все шаги накапливались в мировых координатах без скачка.
+Для классического лесоруба остаётся прежний реверс `Walk`.
 
 Пайплайн: `python3 characters/humanoid/build_all_lite.py --bodies-only --jobs 3`.
 Скрипт временно генерирует базовые геометрии/варианты лица, экспортирует **все

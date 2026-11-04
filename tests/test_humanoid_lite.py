@@ -164,6 +164,40 @@ class HumanoidLiteTest(unittest.TestCase):
                         node=model['nodes'][channel['target']['node']]
                         self.assertIn(node['name'],joints(model))
 
+    def test_forward_and_backward_walk_have_complete_seamless_root_motion(self):
+        """Blender 30-frame loop must export all 31 endpoints, not drop frame 30."""
+        for gender,model in self.body.items():
+            buf=(GAME/f'body_{gender}.glb').read_bytes()
+            bank={a['name']:a for a in model['animations']}
+            self.assertIn('walk',bank)
+            self.assertIn('walk_back',bank)
+            for name,expected in (('walk',1.32),('walk_back',-1.32)):
+                clip=bank[name]
+                root=glb_animation_samples(buf,model,clip,'Root','translation')
+                self.assertEqual(len(root),31,(gender,name,'must have every sample from 0..30'))
+                self.assertAlmostEqual(root[-1][2]-root[0][2],expected,delta=.0002)
+                self.assertAlmostEqual(root[-1][0],root[0][0],delta=.0001)
+                self.assertAlmostEqual(root[-1][1],root[0][1],delta=.0001)
+                track=next(c for c in clip['channels']
+                           if model['nodes'][c['target']['node']]['name']=='Root'
+                           and c['target']['path']=='translation')
+                sampler=clip['samplers'][track['sampler']]
+                time=model['accessors'][sampler['input']]
+                self.assertEqual(time['count'],31)
+                self.assertAlmostEqual(time['min'][0],0,delta=1e-7)
+                self.assertAlmostEqual(time['max'][0],1,delta=1e-7)
+            # Every pose key on the backwards clip mirrors the forward
+            # clip in the opposite direction, including the contact feet.
+            for bone in ('foot_l','foot_r','pelvis','upperarm_l','hand_r'):
+                forwards=glb_animation_samples(buf,model,bank['walk'],bone,'rotation')
+                backwards=glb_animation_samples(buf,model,bank['walk_back'],bone,'rotation')
+                self.assertEqual(len(forwards),31)
+                self.assertEqual(len(backwards),31)
+                for f,b in zip(forwards,reversed(backwards)):
+                    for v,w in zip(f,b):
+                        self.assertAlmostEqual(v,w,delta=2e-5,
+                            msg=f'{gender}:{bone}: reverse phase must match')
+
     def test_gender_action_override_preserves_other_gender_bank(self):
         """An authored female__run replaces female Run only, never male Run."""
         import sys

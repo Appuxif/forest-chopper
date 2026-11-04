@@ -16,6 +16,8 @@ test('two independent runtime gender GLBs each contain 13 production Actions, on
   assert.equal(asset.skins[0].joints.length,53);
   const clips=new Map(asset.animations.map(clip=>[clip.name,clip]));
   assert.ok(clips.has('run'));
+  assert.ok(clips.has('walk'));
+  assert.ok(clips.has('walk_back'),'authored backward root motion replaces old stock clip');
   assert.ok(clips.has('Chop'));
   assert.ok(clips.has('idle'));
   assert.equal(asset.animations.length,13);

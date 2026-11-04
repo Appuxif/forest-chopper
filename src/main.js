@@ -3,7 +3,7 @@ import {createMobs} from './mobs.js?v=20261105-corpse-cursor1';
 import {createMobileHud} from './mobile-hud.js?v=20261104-fps3';
 import {createRagdoll} from './ragdoll.js?v=20261104-humanoid-ragdoll-merge1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
-import {createAnimations} from './animations.js?v=20261104-unified-chop1';
+import {createAnimations} from './animations.js?v=20261104-walk-rootmotion2';
 import {createWorld} from './world.js?v=20261103-region-default-3';
 import {generateSpruceParts} from './spruce-model.js?v=20261103-shared-birch-all1';
 import {generateBirchParts} from './birch-model.js?v=20261103-shared-birch-all1';
@@ -24,7 +24,7 @@ import {createCollisionWorld} from './collision-world.js?v=20261102-collision-wo
 import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261105-mob-hit-audio1';
 import {createControls} from './controls.js?v=20261105-corpse-cursor1';
-import {createPlayer} from './player.js?v=20261104-unified-chop1';
+import {createPlayer} from './player.js?v=20261104-walk-rootmotion2';
 import {createMultiplayer} from './multiplayer.js?v=20261104-unified-chop1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';

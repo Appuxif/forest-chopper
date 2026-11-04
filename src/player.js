@@ -1,7 +1,7 @@
 import {debugFlightDelta} from './debug-flight-motion.js';
 import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
 import {createPlayerMotionTracker} from './ragdoll-motion.js';
-import {rootMotionSpeed,playbackRateForSpeed} from './root-motion-speed.js';
+import {rootMotionSpeed,playbackRateForSpeed,walkingMotion} from './root-motion-speed.js?v=20261104-walk-rootmotion2';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js?v=20261105-empty-loot3';
@@ -109,12 +109,16 @@ function animate(now){
  const sprint=!flying&&moving&&wantsSprint&&(!ctx.vitals||ctx.vitals.canSprint());
  if(!dead)ctx.vitals?.tick(sprint);
  ctx.sprinting=sprint;
- const motion=!moving?'Idle':Math.abs(forward)>.1?(sprint?'Run':'Walk'):(side<0?'StrafeLeft':'StrafeRight');
- // The actual GLB cycle duration and Root travel determine the feet playback.
- // Run is played at an experimental fixed rate; Walk currently has no
- // authored forward Root travel and uses input-driven fallback.
+ const motion=!moving?'Idle':Math.abs(forward)>.1
+  ?(sprint?'Run':walkingMotion(ctx.ownAvatar,forward<-.1))
+  :(side<0?'StrafeLeft':'StrafeRight');
+ // Both authored walking clips travel 1.32m in a one-second loop.
+ // Match the playback rate to game speed so feet do not slide, while
+ // keeping classic (and running) reverse playback unchanged.
  const targetSpeed=sprint?4.6:2.5;
- const rate=(motion==='Run'?1.2:playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed))*(forward<-.1?-1:1);
+ const backwardsPlayback=forward<-.1 && motion!=='WalkBackward';
+ const rate=(motion==='Run'?1.2:playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed))*
+   (backwardsPlayback?-1:1);
  if(!posing&&!dead&&!flying)ctx.simulateVertical(dt);
  let dx=0,dz=0;
  if(ctx.ownAvatar&&!posing&&!dead){
@@ -191,8 +195,8 @@ function animate(now){
  const mob=mobTarget?.record??null;
  const pursuing=!ctx.buildMode&&sprint&&forward>.1&&!!((ctx.mobs??ctx.hens)?.pursuitTarget?.());
  refreshCrosshair(mob,pursuing,lootOpen);
- // Animation mixer and camera have both updated: resolve any frame-18 tree
- // contact using the *current* crosshair, not the mouse-down position.
+ // Animation mixer and camera have both updated: resolve contact-frame
+ // impacts using the *current* crosshair, not the mouse-down position.
  ctx.tickChopImpact?.(now,mobTarget);
  // The real skinned meshes cast shadows on every rendered frame.
  // The shadow pass runs after both local and remote animation poses update.
@@ -215,8 +219,13 @@ for(const avatar of ctx.avatars.values()){
    const vx=avatar.goal.x-avatar.group.position.x,vz=avatar.goal.z-avatar.group.position.z;
    const a=avatar.group.rotation.y,front=-Math.sin(a)*vx-Math.cos(a)*vz,right=Math.cos(a)*vx-Math.sin(a)*vz;
    const moving=avatar.moveSpeed>.55;
-   const remoteMotion=!moving?'Idle':Math.abs(right)>Math.abs(front)*1.5?(right>0?'StrafeRight':'StrafeLeft'):(avatar.moveSpeed>3.3?'Run':'Walk');
-   const rate=(remoteMotion==='Run'?1.2:playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],Math.min(4.6,Math.max(0.5,avatar.moveSpeed))))*(front<0?-1:1);
+   const remoteMotion=!moving?'Idle':Math.abs(right)>Math.abs(front)*1.5
+    ?(right>0?'StrafeRight':'StrafeLeft')
+    :(avatar.moveSpeed>3.3?'Run':walkingMotion(avatar.actor,front<0));
+   const rate=(remoteMotion==='Run'?1.2:
+     playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
+       Math.min(4.6,Math.max(0.5,avatar.moveSpeed))))*
+     (front<0&&remoteMotion!=='WalkBackward'?-1:1);
    ctx.tickActor(avatar.actor,dt,remoteMotion,avatar.jumping,rate);
   }
  }

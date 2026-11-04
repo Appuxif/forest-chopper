@@ -22,6 +22,31 @@ for action in references:
 names={a.name for a in bpy.data.actions}
 assert all(not name.startswith('REF_') for name in names)
 assert len(names)>=13,('Expected game Actions',names)
+# Imported walking loops begin at Blender frame 1.25; the glTF exporter
+# otherwise adds a 1.25/30s motionless lead-in at every loop boundary.
+# Rebase only these two Actions to [0,30] in the disposable export process.
+# The user's Blender workbench and all other Actions remain unchanged.
+for name in ('walk','walk_backward'):
+ action=bpy.data.actions.get(name)
+ if not action:continue
+ start=float(action.frame_range[0])
+ for layer in action.layers:
+  for strip in layer.strips:
+   for bag in strip.channelbags:
+    for curve in bag.fcurves:
+     for key in curve.keyframe_points:
+      shifted=key.co.x-start
+      # Blender's last 31.249998 frame would become 29.999998,
+      # dropping the final frame from the glTF sampler.
+      if abs(shifted-round(shifted))<1e-3:
+       shifted=float(round(shifted))
+      dx=shifted-key.co.x
+      key.co.x=shifted
+      key.handle_left.x+=dx
+      key.handle_right.x+=dx
+     curve.update()
+ assert abs(action.frame_range[0])<1e-4 and abs(action.frame_range[1]-30)<1e-3, (name,action.frame_range)
+ print('NORMALIZED_WALK_LOOP',name,'source_start',start,'export_duration',30/30)
 print('OMITTED_WORKBENCH_REFERENCES',len(references))
 if rig.animation_data:
  rig.animation_data.action=None
