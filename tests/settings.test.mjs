@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {sanitizeSettings,createSettings,lightingFieldMarkup,settingsExportJSON,LIGHTING_FIELDS,LIGHTING_FLAGS} from '../src/settings.js';
+import {sanitizeSettings,createSettings,lightingFieldMarkup,lookRangeMarkup,settingsExportJSON,LIGHTING_FIELDS,LIGHTING_FLAGS} from '../src/settings.js';
 import {PERFORMANCE_DEFAULTS,PERFORMANCE_PRESETS,PERFORMANCE_LIGHTING_PRESETS} from '../src/performance-presets.js';
 import {DEFAULT_AUDIO,SOUND_CONTROLS} from '../src/sound-rules.js';
+import {CHARACTER_LOOK_FIELDS} from '../src/character-orientation.js';
 
 const defaults={...PERFORMANCE_DEFAULTS,performancePreset:'high',
  mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,
  fov:75,cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
+ ...Object.fromEntries(Object.entries(CHARACTER_LOOK_FIELDS).map(([key,val])=>[key,val[3]])),
  audio:DEFAULT_AUDIO,
  ...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,val])=>[key,val[3]])),
  ...LIGHTING_FLAGS,...PERFORMANCE_LIGHTING_PRESETS.high,
@@ -839,7 +841,7 @@ test('shadow settings have their own tab beside lighting with all controls moved
   assert.ok(lighting.includes(field),'lighting keeps '+field);
  }
  assert.equal(shadows.includes('sunNearShadowRefreshSeconds'),false);
- assert.equal(source.includes("if(!['graphics','grass','trees','controls','camera','audio','lighting','shadows','world']"),true);
+ assert.equal(source.includes("if(!['graphics','grass','trees','controls','pose','camera','audio','lighting','shadows','world']"),true);
  assert.equal(source.includes('const nearDue=shadowsEnabled'),false,
   'shadow tab does not accidentally own render logic');
 });
@@ -1127,4 +1129,102 @@ test('touch control visibility is applied immediately and saved independently of
  const checkbox=element('#fc-touch-controls');checkbox.checked=true;checkbox.onchange();
  assert.equal(settings.showTouchControls,true);assert.equal(classes.get('hide-touch-controls'),false);
  assert.equal(writes.at(-1).showTouchControls,true);
+});
+
+
+test('pose sliders have safe ranges, validated defaults, and no effect on graphics presets',()=>{
+ const defaults=sanitizeSettings(null);
+ assert.deepEqual([defaults.lookTorsoYaw,defaults.lookHeadYaw,defaults.lookFreeYaw],
+  [60,60,120]);
+ assert.equal(Object.keys(CHARACTER_LOOK_FIELDS).length,11);
+ for(const [key,[min,max,step,fallback,label,unit]] of Object.entries(CHARACTER_LOOK_FIELDS)){
+  assert.equal(defaults[key],fallback,key);
+  const html=lookRangeMarkup(key);
+  assert.ok(html.includes('id="fc-look-'+key+'"'),key);
+  assert.ok(html.includes('min="'+min+'"'),key);
+  assert.ok(html.includes('max="'+max+'"'),key);
+  assert.ok(html.includes('step="'+step+'"'),key);
+  assert.ok(html.includes(label),key);
+  assert.ok(html.includes(unit),key);
+  assert.equal(sanitizeSettings({[key]:min})[key],min,key+' lower bound');
+  assert.equal(sanitizeSettings({[key]:max})[key],max,key+' upper bound');
+  for(const bad of [min-1,max+1,'80',NaN,Infinity,-Infinity,{},null])
+   assert.equal(sanitizeSettings({[key]:bad})[key],fallback,
+    key+' rejects invalid value');
+ }
+ assert.throws(()=>lookRangeMarkup('not-a-key'),/Unknown character pose setting/);
+ const custom=sanitizeSettings({lookTorsoYaw:55,lookHeadYaw:70,lookFreeYaw:125});
+ assert.deepEqual([custom.lookTorsoYaw,custom.lookHeadYaw,custom.lookFreeYaw],[55,70,125]);
+ const low=sanitizeSettings({...custom,performancePreset:'low'});
+ assert.equal(low.lookTorsoYaw,55,'performance preset must not reset anatomy');
+});
+
+test('pose slider inputs apply live, persist across sessions, and reset without clearing camera',()=>{
+ const elements=new Map(),values=new Map();
+ const element=id=>{
+  if(!elements.has(id))elements.set(id,{value:'',checked:false,style:{},textContent:'',
+   setAttribute(){},querySelector:element});
+  return elements.get(id);
+ };
+ const panels=[];
+ const doc={
+  createElement:tag=>{
+   const node={tag,hidden:false,innerHTML:'',setAttribute(){},querySelector:element};
+   panels.push(node);
+   return node;
+  },
+  head:{append(){}},body:{append(){}},
+ };
+ const storage={
+  getItem:key=>values.get(key)??null,
+  setItem:(key,value)=>values.set(key,value),
+ };
+ const initial=createSettings(doc,storage);
+ const sectionMarkup=panels.map(node=>node.innerHTML).join(' ');
+ assert.ok(sectionMarkup.includes('data-category="pose" aria-label="Поза персонажа"'));
+ assert.ok(sectionMarkup.includes('data-category="pose" aria-selected="false"'));
+ for(const key of Object.keys(CHARACTER_LOOK_FIELDS)){
+  assert.equal(typeof element('#fc-look-'+key).oninput,'function',key);
+  assert.equal(element('#fc-look-'+key).value,
+   String(CHARACTER_LOOK_FIELDS[key][3]),key);
+ }
+ assert.equal(initial.lookSettings.lookTorsoYaw,60);
+ const chest=element('#fc-look-lookTorsoYaw');
+ chest.value='65';chest.oninput();
+ assert.equal(initial.lookSettings.lookTorsoYaw,65);
+ assert.equal(element('#fc-look-lookTorsoYaw-value').textContent,'65');
+ const neck=element('#fc-look-lookHeadYaw');
+ neck.value='95';neck.oninput();
+ const free=element('#fc-look-lookFreeYaw');
+ free.value='180';free.oninput();
+ assert.deepEqual([
+  initial.lookSettings.lookTorsoYaw,
+  initial.lookSettings.lookHeadYaw,
+  initial.lookSettings.lookFreeYaw,
+ ],[65,95,180]);
+ const stored=JSON.parse(values.get('forest-chopper:settings:v1'));
+ assert.deepEqual([stored.lookTorsoYaw,stored.lookHeadYaw,stored.lookFreeYaw],
+  [65,95,180]);
+ assert.equal(stored.position,undefined,'pose must live in settings, never world saves');
+ const reloaded=createSettings(doc,storage);
+ assert.deepEqual([reloaded.lookSettings.lookTorsoYaw,
+  reloaded.lookSettings.lookHeadYaw,reloaded.lookSettings.lookFreeYaw],
+  [65,95,180]);
+ const camera=element('#fc-camera-pitch-limit');
+ camera.value='35';camera.oninput({target:camera});
+ const speed=element('#fc-look-lookHeadTurnSpeed');
+ speed.value='8';speed.oninput();
+ assert.equal(reloaded.lookSettings.lookHeadTurnSpeed,8);
+ element('#fc-look-defaults').onclick();
+ assert.equal(reloaded.cameraPitchLimit,35);
+ assert.deepEqual([
+  reloaded.lookSettings.lookTorsoYaw,
+  reloaded.lookSettings.lookHeadYaw,
+  reloaded.lookSettings.lookFreeYaw,
+  reloaded.lookSettings.lookHeadTurnSpeed,
+ ],[60,60,120,14]);
+ assert.equal(JSON.parse(values.get('forest-chopper:settings:v1')).cameraPitchLimit,35);
+ element('#fc-reset-settings').onclick();
+ assert.equal(reloaded.lookSettings.lookFreeYaw,120);
+ assert.equal(reloaded.cameraPitchLimit,80,'full reset still resets everything');
 });

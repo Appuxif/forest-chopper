@@ -1,4 +1,5 @@
 import {rootMotionSpeed,mirroredWalkPhaseTime,rootMotionSampleDelta,weightedHorizontalRootTravel} from './root-motion-speed.js?v=20261104-ori03';
+import {createProceduralLook} from './procedural-look.js';
 
 // Each actor owns exactly one visible skeleton, mixer and animation bank.
 // The modular male/female game GLBs contain the authored Run/Chop actions.
@@ -163,6 +164,7 @@ export async function createAnimations(THREE){
   const shadowMeshes=[];
   visual.traverse(node=>{if(node.isMesh)shadowMeshes.push(node);});
   const actor={group,visual,mixer,lower,upper,rootMotion,shadowMeshes,human,
+   proceduralLook:human?createProceduralLook(THREE,human.bones):null,
    lowerState:'',upperState:'',chopEnd:0,rmTimes:{},model};
   actor.actions={...lower,Chop2:upper.Chop2};
   modelActors.add(actor);
@@ -199,6 +201,9 @@ export async function createAnimations(THREE){
   transitionLayer(THREE,actor,'lower',motion,rate);
   if(canTransitionUpperBody(actor,performance.now()))
    transitionLayer(THREE,actor,'upper',motion,actor.model==='legacy'?1:rate);
+  // Undo last frame's additive look before the mixer samples the authored
+  // animation. Never allow an unkeyed pose to accumulate procedural offsets.
+  actor.proceduralLook?.restore();
   // The same mixer that moves the rendered bones supplies Root Motion.
   if(actor.human){actor.human.motionName=motion.toLowerCase();actor.human.update(dt);}
   else actor.mixer.update(dt);

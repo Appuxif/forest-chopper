@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {
  createCharacterOrientation,shortestYawDelta,approachYaw,
- LEG_TURN_RATE_MOVING,LEG_TURN_RATE_IDLE,
+ LEG_TURN_RATE_MOVING,LEG_TURN_RATE_IDLE,IDLE_FREE_LOOK_YAW,
+ MAX_TORSO_YAW,MAX_HEAD_YAW,MAX_TORSO_DOWN,MAX_TORSO_UP,
+ MAX_HEAD_DOWN,MAX_HEAD_UP,
 } from '../src/character-orientation.js';
 import {movementInput,locomotionMode,targetLegsYaw}
   from '../src/locomotion-input.js';
@@ -74,7 +76,8 @@ test('ORI-03 steers diagonals within per-frame turn-rate limits',()=>{
  pose.setMovementIntent(right,locomotionMode(right),targetLegsYaw(0,right));
  pose.steerLegs(1/60);
  close(pose.legsYaw,-LEG_TURN_RATE_MOVING/60);
- close(pose.torsoYaw,pose.legsYaw);
+ pose.steerUpper(1/60);
+ close(pose.torsoYaw,-LEG_TURN_RATE_MOVING/120); // partial chest correction
  pose.steerLegs(1/2);
  close(pose.legsYaw,-Math.PI/4);
  // Body/legs can be independent from camera; future ORI-04 will compensate
@@ -101,7 +104,7 @@ test('backwards running keeps hips forward and angles toward backwards diagonal'
  close(pose.legsYaw,.7-Math.PI/4);
 });
 
-test('pure strafe maintains camera-facing hips and settles smoothly after release',()=>{
+test('pure strafe maintains camera-facing hips; idle free-look keeps feet planted',()=>{
  const pose=createCharacterOrientation({cameraYaw:0});
  const diagonal=movementInput({keys:{KeyW:true,KeyD:true}});
  pose.setMovementIntent(diagonal,'forward',targetLegsYaw(0,diagonal));
@@ -113,12 +116,14 @@ test('pure strafe maintains camera-facing hips and settles smoothly after releas
  close(pose.legsYaw,-Math.PI/4+LEG_TURN_RATE_MOVING/60);
  const idle=movementInput({});
  pose.setMovementIntent(idle,'idle',targetLegsYaw(0,idle));
+ const settledFacing=pose.legsYaw;
  pose.steerLegs(1);
- close(pose.legsYaw,0);
- pose.cameraYaw=Math.PI/2;
+ close(pose.legsYaw,settledFacing);
+ pose.cameraYaw=1.2; // ~105° from planted feet, below the 120° threshold
  pose.setMovementIntent(idle,'idle',targetLegsYaw(pose.cameraYaw,idle));
  pose.steerLegs(1/60);
- close(pose.legsYaw,LEG_TURN_RATE_IDLE/60);
+ close(pose.legsYaw,settledFacing,
+  1e-10); // ~105° is still within the 120° free-look zone
 });
 
 test('turning across ±180 degrees takes the shorter path and cannot jump frames',()=>{
@@ -166,4 +171,140 @@ test('player implements the sprint-based gait for both keyboard and joystick',()
  assert.match(player,/targetLegsYaw\(ctx\.cameraYaw,moveIntent,\{mode,sprinting:lateralRun\}\)/);
  assert.match(player,/const movementSteering=createMovementSteering\(\)/);
  assert.match(player,/const moveIntent=movementSteering\.update\(intent,ctx\.cameraYaw,dt,/);
+});
+
+test('ORI-04 spine and neck share camera yaw while feet retain their direction',()=>{
+ const pose=createCharacterOrientation({cameraYaw:0,cameraPitch:0});
+ const degrees=v=>v*Math.PI/180;
+ pose.legsYaw=-degrees(45);
+ pose.steerUpper(1);
+ close(shortestYawDelta(pose.legsYaw,pose.torsoYaw),degrees(22.5));
+ close(pose.headYaw,degrees(22.5));
+ close(shortestYawDelta(pose.legsYaw,pose.torsoYaw)+pose.headYaw,degrees(45));
+ close(pose.cameraYaw,0);
+ close(pose.legsYaw,-degrees(45));
+});
+
+test('ORI-04 low target bends spine, neck completes the downward angle',()=>{
+ const pose=createCharacterOrientation({cameraPitch:-Math.PI/3});
+ pose.steerUpper(1);
+ close(pose.torsoPitch,-Math.PI/3*.62);
+ close(pose.headPitch,-Math.PI/3*.38);
+ close(pose.torsoPitch+pose.headPitch,pose.cameraPitch);
+ assert.ok(pose.torsoPitch<-.5,'chest must bend toward a ground-level target');
+ pose.cameraPitch=-Math.PI/2;
+ pose.steerUpper(1);
+ close(pose.torsoPitch,-MAX_TORSO_DOWN);
+ close(pose.headPitch,-MAX_HEAD_DOWN);
+});
+
+test('ORI-04 limits upward look and extreme yaw to anatomical sectors',()=>{
+ const pose=createCharacterOrientation({cameraPitch:Math.PI/2,cameraYaw:Math.PI});
+ pose.legsYaw=0;pose.torsoYaw=0; // camera spins behind planted feet
+ pose.steerUpper(1);
+ close(pose.torsoPitch,MAX_TORSO_UP);
+ close(pose.headPitch,MAX_HEAD_UP);
+ close(Math.abs(shortestYawDelta(pose.legsYaw,pose.torsoYaw)),MAX_TORSO_YAW);
+ close(Math.abs(pose.headYaw),MAX_HEAD_YAW);
+ assert.ok(IDLE_FREE_LOOK_YAW>MAX_HEAD_YAW);
+});
+
+test('ORI-04 look follows moving camera with bounded joint speeds',()=>{
+ const pose=createCharacterOrientation();
+ const step=.016;
+ pose.cameraYaw=Math.PI/2;
+ pose.cameraPitch=-Math.PI/3;
+ pose.steerUpper(step);
+ assert.ok(pose.torsoPitch<0&&pose.torsoPitch>=-6*step-1e-9);
+ assert.ok(pose.headPitch<0&&pose.headPitch>=-14*step-1e-9);
+ assert.ok(Math.abs(pose.headYaw)<=MAX_HEAD_YAW);
+ pose.cameraYaw=-Math.PI/2;
+ pose.cameraPitch=Math.PI/3;
+ pose.steerUpper(step);
+ assert.ok(Number.isFinite(pose.torsoYaw));
+ assert.ok(Number.isFinite(pose.headYaw));
+});
+
+test('ORI-04 idle allows free head look before legs slowly catch up',()=>{
+ const pose=createCharacterOrientation();
+ const idle=movementInput({});
+ pose.cameraYaw=1; // below 65° free-look threshold
+ pose.setMovementIntent(idle,'idle',targetLegsYaw(1,idle));
+ pose.steerLegs(.25);pose.steerUpper(.25);
+ close(pose.legsYaw,0);
+ assert.ok(pose.headYaw>0);
+ pose.cameraYaw=Math.PI;
+ pose.setMovementIntent(idle,'idle',targetLegsYaw(Math.PI,idle));
+ pose.steerLegs(.05);
+ close(pose.legsYaw,LEG_TURN_RATE_IDLE*.05);
+});
+
+test('ORI-04 reset preserves camera pose and clears procedural offsets',()=>{
+ const pose=createCharacterOrientation({cameraYaw:.7,cameraPitch:-.8});
+ pose.steerUpper(.3);
+ assert.ok(pose.torsoPitch<0);
+ pose.alignToCamera();
+ close(pose.legsYaw,.7);
+ close(pose.torsoYaw,.7);
+ close(pose.headYaw,0);
+ close(pose.headPitch,0);
+ close(pose.torsoPitch,0);
+ close(pose.cameraPitch,-.8);
+});
+
+
+test('160-degree free look twists chest 80 and head another 80 without moving feet',()=>{
+ const pose=createCharacterOrientation();
+ const settings={lookTorsoYaw:80,lookHeadYaw:80,lookFreeYaw:160};
+ pose.cameraYaw=160*Math.PI/180;
+ pose.steerLegs(1,{settings});
+ pose.steerUpper(1,{settings});
+ close(pose.legsYaw,0);
+ close(pose.torsoYaw,80*Math.PI/180);
+ close(pose.headYaw,80*Math.PI/180);
+ close(shortestYawDelta(pose.legsYaw,pose.torsoYaw)+pose.headYaw,
+  pose.cameraYaw);
+ pose.cameraYaw=170*Math.PI/180;
+ pose.steerLegs(.05,{settings});
+ close(pose.legsYaw,LEG_TURN_RATE_IDLE*.05);
+});
+
+test('sliders change chest/neck limits and the free-look threshold at runtime',()=>{
+ const pose=createCharacterOrientation();
+ const settings={lookTorsoYaw:40,lookHeadYaw:35,lookFreeYaw:75};
+ pose.cameraYaw=Math.PI/2;
+ pose.steerLegs(0,{settings});
+ pose.steerUpper(1,{settings});
+ close(pose.torsoYaw,40*Math.PI/180);
+ close(pose.headYaw,35*Math.PI/180);
+ close(pose.legsYaw,0);
+ pose.steerLegs(1,{settings});
+ assert.ok(pose.legsYaw>0);
+ settings.lookTorsoYaw=80;
+ settings.lookHeadYaw=80;
+ settings.lookFreeYaw=160;
+ pose.cameraYaw=0;pose.alignToCamera();pose.cameraYaw=160*Math.PI/180;
+ pose.steerLegs(1,{settings});pose.steerUpper(1,{settings});
+ close(pose.legsYaw,0);
+ close(pose.headYaw,80*Math.PI/180);
+});
+
+test('pose sliders independently limit pitch and turning speed',()=>{
+ const pose=createCharacterOrientation({cameraYaw:1,cameraPitch:-Math.PI/2});
+ pose.legsYaw=0;pose.torsoYaw=0;
+ const settings={
+  lookTorsoYaw:80,lookHeadYaw:80,
+  lookTorsoDown:10,lookTorsoUp:10,lookHeadDown:20,lookHeadUp:15,
+  lookTorsoTurnSpeed:1,lookHeadTurnSpeed:2,
+ };
+ pose.steerUpper(.05,{settings});
+ assert.ok(Math.abs(pose.torsoYaw)<=.05+1e-9);
+ assert.ok(Math.abs(pose.headYaw)<=.1+1e-9);
+ pose.steerUpper(3,{settings});
+ close(pose.torsoPitch,-10*Math.PI/180);
+ close(pose.headPitch,-20*Math.PI/180);
+ settings.lookTorsoDown=80;settings.lookHeadDown=90;
+ pose.steerUpper(3,{settings});
+ close(pose.torsoPitch,-Math.PI/2*.62);
+ close(pose.headPitch,-Math.PI/2*.38);
 });

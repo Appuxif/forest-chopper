@@ -1,6 +1,7 @@
 // Lightweight client-only preferences. No framework or new dependencies.
 import {collectDiagnostics, formatDiagnostics, getGpuRendererName} from './diagnostics.js?v=20261101-gpu-renderer1';
 import {FPS_OPTIONS} from './frame-limiter.js';
+import {CHARACTER_LOOK_FIELDS} from './character-orientation.js';
 import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js?v=20261103-shared-birch-all1';
 import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS,PERFORMANCE_LIGHTING_PRESETS} from './performance-presets.js?v=20261103-grass-presets-tuned1';
 import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261105-mob-hit-audio1';
@@ -57,6 +58,7 @@ const DEFAULT=Object.freeze({
  ...PERFORMANCE_DEFAULTS,performancePreset:'high',
  mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,fov:75,
  cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
+ ...Object.fromEntries(Object.entries(CHARACTER_LOOK_FIELDS).map(([key,val])=>[key,val[3]])),
  audio:DEFAULT_AUDIO,
  ...Object.fromEntries(Object.entries(LIGHTING_FIELDS).map(([key,val])=>[key,val[3]])),
  ...LIGHTING_FLAGS,
@@ -165,6 +167,12 @@ export function sanitizeSettings(value) {
     cameraSide: validCameraNumber(source.cameraSide,-1.5,1.5,DEFAULT.cameraSide),
     cameraDistance: validCameraNumber(source.cameraDistance,1.2,6,DEFAULT.cameraDistance),
     cameraPitchLimit: validCameraNumber(source.cameraPitchLimit,10,80,DEFAULT.cameraPitchLimit,0),
+    // These preferences are independent of the performance preset.
+    ...Object.fromEntries(Object.entries(CHARACTER_LOOK_FIELDS).map(([key,[min,max,step,fallback]])=>{
+      const value=source[key];
+      return [key,typeof value==='number'&&Number.isFinite(value)&&value>=min&&value<=max
+        ?Number((Math.round(value/step)*step).toFixed(4)):fallback];
+    })),
   };
   const ranges={
     renderScale:[50,125,5],shadowMapSize:[512,4096,512],treeTrianglesSpruce:[2000,40000,500],
@@ -208,6 +216,15 @@ export function lightingFieldMarkup(key){
  }
  return `<label>${label}: <output id="fc-light-${key}-value"></output>
    <input id="fc-light-${key}" type="range" min="${min}" max="${max}" step="${step}"></label>`;
+}
+
+// One slider renderer for all procedural pose parameters.
+export function lookRangeMarkup(key){
+ const spec=CHARACTER_LOOK_FIELDS[key];
+ if(!spec)throw Error('Unknown character pose setting: '+key);
+ const [min,max,step,,label,unit]=spec;
+ return `<label>${label}: <output id="fc-look-${key}-value"></output> ${unit}
+   <input type="range" id="fc-look-${key}" min="${min}" max="${max}" step="${step}"></label>`;
 }
 
 // Portable snapshot: current values and tree generator profiles, no world save.
@@ -405,6 +422,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <button type="button" class="fc-settings-tab" data-category="grass" aria-selected="false">🌿 Трава</button>
       <button type="button" class="fc-settings-tab" data-category="trees" aria-selected="false">🌲 Деревья</button>
       <button type="button" class="fc-settings-tab" data-category="controls" aria-selected="false">🎮 Управление</button>
+      <button type="button" class="fc-settings-tab" data-category="pose" aria-selected="false">🧍 Поза</button>
       <button type="button" class="fc-settings-tab" data-category="camera" aria-selected="false">📷 Камера</button>
       <button type="button" class="fc-settings-tab" data-category="audio" aria-selected="false">🔊 Звук</button>
       <button type="button" class="fc-settings-tab" data-category="lighting" aria-selected="false">💡 Освещение</button>
@@ -526,6 +544,17 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <div>V — камера · R — повернуть постройку · Esc — закрыть окно</div>
       <small>На сенсорном экране — джойстик, свайп и кнопки действий.</small>
     </div>
+    </section>
+    <section class="fc-settings-page" data-category="pose" aria-label="Поза персонажа" hidden>
+      <small>Экспериментальные ограничения мужского и женского персонажа. Все изменения применяются сразу и сохраняются автоматически. Классического лесоруба не затрагивают.</small>
+      <h3>↔ Поворот в стороны</h3>
+      ${['lookTorsoYaw','lookHeadYaw','lookFreeYaw'].map(lookRangeMarkup).join('')}
+      <small>Лимиты корпуса и головы складываются относительно ног: например, 60° + 60° = 120°. Свободный обзор — порог, после которого ноги начинают доворачиваться при стоянии.</small>
+      <h3>↕ Наклоны</h3>
+      ${['lookTorsoDown','lookTorsoUp','lookHeadDown','lookHeadUp'].map(lookRangeMarkup).join('')}
+      <h3>⏱ Скорости доворачивания</h3>
+      ${['lookLegTurnMoving','lookLegTurnIdle','lookTorsoTurnSpeed','lookHeadTurnSpeed'].map(lookRangeMarkup).join('')}
+      <button id="fc-look-defaults" type="button">↺ Сбросить только позу</button>
     </section>
     <section class="fc-settings-page" data-category="camera" aria-label="Камера" hidden>
     <small>Камера от третьего лица · изменения применяются сразу.</small>
@@ -714,6 +743,10 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       panel.querySelector('#fc-'+id).value=String(state[key]);
       panel.querySelector('#fc-'+id+'-value').textContent=state[key].toFixed(digits);
     }
+    for(const key of Object.keys(CHARACTER_LOOK_FIELDS)){
+      panel.querySelector('#fc-look-'+key).value=String(state[key]);
+      panel.querySelector('#fc-look-'+key+'-value').textContent=String(state[key]);
+    }
     range.value = state.mouseSensitivity;
     output.textContent = String(state.mouseSensitivity.toFixed(1));
     checkbox.checked = state.showFps;
@@ -794,7 +827,7 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const pages=Array.from(panel.querySelectorAll?.('.fc-settings-page')??[]);
   let activeCategory='graphics';
   function activateCategory(category) {
-    if(!['graphics','grass','trees','controls','camera','audio','lighting','shadows','world'].includes(category))return;
+    if(!['graphics','grass','trees','controls','pose','camera','audio','lighting','shadows','world'].includes(category))return;
     activeCategory=category;
     for(const tab of tabButtons)tab.setAttribute('aria-selected',String(tab.dataset.category===category));
     for(const page of pages)page.hidden=page.dataset.category!==category;
@@ -880,6 +913,17 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       reflect();save();
     };
   }
+  for(const key of Object.keys(CHARACTER_LOOK_FIELDS)){
+    const input=panel.querySelector('#fc-look-'+key);
+    input.oninput=()=>{
+      state[key]=sanitizeSettings({...state,[key]:Number(input.value)})[key];
+      reflect();save();
+    };
+  }
+  panel.querySelector('#fc-look-defaults').onclick=()=>{
+    for(const [key,spec] of Object.entries(CHARACTER_LOOK_FIELDS))state[key]=spec[3];
+    reflect();save();
+  };
   for(const [key,id] of Object.entries(PERFORMANCE_INPUTS)){
     const el=panel.querySelector('#fc-'+id);
     if(!el)continue;
@@ -1155,6 +1199,8 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get cameraHeight(){return state.cameraHeight;},
     get cameraSide(){return state.cameraSide;},
     get cameraPitchLimit(){return state.cameraPitchLimit;},
+    // Live, validated values; avoid allocations in the per-frame character tick.
+    get lookSettings(){return state;},
     get cameraDistance(){return state.cameraDistance;},
     get mouseSensitivity(){return state.mouseSensitivity;},
     get showFps(){return state.showFps;},

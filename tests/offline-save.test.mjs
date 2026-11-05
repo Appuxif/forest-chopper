@@ -420,6 +420,8 @@ test('new mob save envelope validates and reloads, retaining old hen saves as a 
  const before=world.snapshot();assert.equal(f.save.restoreSnapshot(JSON.stringify(state),{replace:false}),true);
  assert.deepEqual(world.snapshot(),before);
  const bad=structuredClone(state);bad.mobs.populations.unknown=bad.mobs.populations.chicken;assert.equal(parseOfflineSave(JSON.stringify(bad)),null);
+});
+
 test('loading a pre-orientation save initializes legs and torso from saved camera yaw',()=>{
  const earlier=fixture();
  assert.equal(earlier.save.save(),true);

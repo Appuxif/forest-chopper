@@ -137,7 +137,13 @@ function animate(now){
  // The classic lumberjack, death and ragdoll retain their original facing.
  ctx.characterOrientation.steerLegs(dt,{
   locked:posing||dead||ctx.ownAvatar?.model==='legacy',
+  settings:ctx.settings.lookSettings,
  });
+ ctx.characterOrientation.steerUpper(dt,{
+  locked:posing||dead||ctx.ownAvatar?.model==='legacy',
+  settings:ctx.settings.lookSettings,
+ });
+ if(posing||dead)ctx.ownAvatar?.proceduralLook?.discard();
  if(!dead)ctx.vitals?.tick(sprint);
  ctx.sprinting=sprint;
  const motion=mode==='idle'?'Idle':mode==='strafe'
@@ -161,6 +167,9 @@ function animate(now){
  if(ctx.ownAvatar&&!posing&&!dead){
   ctx.ownAvatar.group.rotation.y=ctx.legsYaw;
   const rootDelta=ctx.tickActor(ctx.ownAvatar,dt,motion,!ctx.onGround,rate);
+  // Apply the same bounded look to Walk, Run, RunBackward and Chop2 AFTER
+  // AnimationMixer.update(), without modifying authoring clips or Root Motion.
+  ctx.ownAvatar.proceduralLook?.apply(ctx.characterOrientation);
   dx=rootDelta.x;dz=rootDelta.z;
   // Root Motion controls *distance* while the joystick controls direction.
   // During W<->S and walk<->strafe cross-fades, summing signed root
