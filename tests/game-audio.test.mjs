@@ -4,12 +4,13 @@ import {createGameAudio} from '../src/game-audio.js';
 import {DEFAULT_AUDIO} from '../src/sound-rules.js';
 
 function fixture(){
- const listeners=new Map(),sources=[],gains=[];
+ const listeners=new Map(),sources=[],gains=[],pans=[];
  const doc={addEventListener(type,fn){listeners.set(type,fn)},removeEventListener(type){listeners.delete(type)}};
  class FakeContext{
   constructor(){this.destination={};this.currentTime=1;this.state='running';}
   createGain(){const node={gain:{value:1,setTargetAtTime(v){this.value=v}},connect(){},disconnect(){}};gains.push(node);return node;}
   createBufferSource(){const source={loop:false,playbackRate:{value:1},connect(){},disconnect(){},start(){this.started=true},stop(){this.stopped=true}};sources.push(source);return source;}
+  createStereoPanner(){const node={pan:{value:0},connect(){},disconnect(){}};pans.push(node);return node;}
   async decodeAudioData(){return {duration:1};}
   async close(){this.state='closed';}
  }
@@ -21,7 +22,7 @@ function fixture(){
   deathSystem:{active:false}};
  const audio=createGameAudio(ctx,{doc,AudioContextClass:FakeContext,
   fetchAudio:async()=>({ok:true,arrayBuffer:async()=>new ArrayBuffer(4)}),random:()=>.99});
- return {ctx,audio,sources,gains,listeners};
+ return {ctx,audio,sources,gains,pans,listeners};
 }
 test('WebAudio waits for user gesture, loads local files and creates looping ambience',async()=>{
  const f=fixture();
@@ -169,4 +170,20 @@ test('jump vocal selection uses gender and independent volume, without using hur
  f.ctx.deathSystem.active=true;
  assert.equal(f.audio.jump('female'),false,'dead characters cannot play jump vocals');
  f.audio.dispose();
+});
+
+test('hen samples are one-shots with distance attenuation, stereo direction and independent volume',async()=>{
+ const f=fixture();assert.equal(f.audio.effect('hen_alarm',{x:1,z:0}),false);
+ f.audio.unlock();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.audio.effect('hen_alarm',{x:1,z:0}),true);assert.equal(f.sources.at(-1).loop,false);assert.equal(f.sources.at(-1).playbackRate.value,1);assert.ok(f.pans.at(-1).pan.value>0);
+ const near=f.gains.at(-1).gain.value;assert.equal(f.audio.effect('hen_alarm',{x:-8,z:0}),true);assert.ok(f.pans.at(-1).pan.value<0);assert.ok(f.gains.at(-1).gain.value<near);
+ assert.equal(f.audio.effect('hen_cluck_1',{x:15,z:0}),false);assert.equal(f.audio.effect('hen_cluck_1'),false);
+ f.ctx.settings.audio.henAlarm=0;assert.equal(f.audio.effect('hen_alarm',{x:1,z:0}),false);
+ assert.equal(f.audio.effect('hen_cluck_1',{x:1,z:0}),true);f.ctx.settings.audio.henClucks=0;assert.equal(f.audio.effect('hen_cluck_2',{x:1,z:0}),false);f.audio.dispose();
+});
+test('mob voice concurrency is capped and completed voices release their slot',async()=>{
+ const f=fixture();f.audio.unlock();await new Promise(resolve=>setImmediate(resolve));
+ const before=f.sources.length;for(let i=0;i<8;i++)assert.equal(f.audio.effect('hen_cluck_1',{x:1,z:0}),true);
+ assert.equal(f.audio.effect('hen_alarm',{x:1,z:0}),false);assert.equal(f.sources.length-before,8);
+ f.sources[before].onended();assert.equal(f.audio.effect('hen_alarm',{x:1,z:0}),true);f.audio.dispose();
 });

@@ -18,6 +18,16 @@ export function chooseVoiceClip(gender,kind,random=Math.random){
  return set[Math.floor(unit*set.length)];
 }
 export const AXE_VARIANTS=Object.freeze(Array.from({length:7},(_,i)=>`axe_chop_${i+1}`));
+export const MOB_VOICE_PROFILES=Object.freeze({
+ chicken:Object.freeze({alarm:'hen_alarm',death:'hen_death',deathControl:'henDeath',alarmControl:'henAlarm',cluckControl:'henClucks',clucks:Object.freeze(Array.from({length:5},(_,i)=>`hen_cluck_${i+1}`)),
+  radius:14,alarmPause:.65,panicGap:Object.freeze([.25,.55]),idleGap:Object.freeze([12,28]),burstGap:Object.freeze([.25,.45]),burstCount:Object.freeze([2,4])}),
+});
+export const MOB_SOUND_RULES=Object.freeze(Object.fromEntries(Object.values(MOB_VOICE_PROFILES).flatMap(profile=>[
+ [profile.alarm,Object.freeze({category:profile.alarmControl,radius:profile.radius,gain:.9})],
+ [profile.death,Object.freeze({category:profile.deathControl,radius:profile.radius,gain:.9})],
+ ...profile.clucks.map(id=>[id,Object.freeze({category:profile.cluckControl,radius:profile.radius,gain:.7})]),
+])));
+export const MOB_SOUND_CATEGORIES=Object.freeze(Object.fromEntries(Object.entries(MOB_SOUND_RULES).map(([id,rule])=>[id,rule.category])));
 // Sound registry shared by the mixer and the Settings / Sound tab.
 // A new sound category is registered only here; it automatically gets a slider.
 export const AUDIO_FILES=Object.freeze({
@@ -28,6 +38,8 @@ export const AUDIO_FILES=Object.freeze({
  tree_fall:'chopping/tree_fall.mp3',tree_creak:'ambience/tree_creak.mp3',
  fire:'ambience/fire.mp3',water:'ambience/water.mp3',forest:'ambience/forest_base.mp3',birds:'ambience/forest_day.mp3',
  crickets:'ambience/forest_night.mp3',pickup:'inventory/pickup.mp3',drop:'inventory/drop.mp3',chat_blip:'ui/chat_blip.mp3',
+ hen_alarm:'voices/hen/01_long_cluck_scream.wav',hen_death:'voices/hen/07_hen_death.wav',
+ ...Object.fromEntries(MOB_VOICE_PROFILES.chicken.clucks.map((id,i)=>[id,`voices/hen/${String(i+2).padStart(2,'0')}_short_cluck_${String(i+1).padStart(2,'0')}.wav`])),
  ...Object.fromEntries(Object.values(VOICE_VARIANTS).flatMap(sounds=>sounds.map(id=>[id,`voices/${id.includes('female')?'female':'male'}/${id.startsWith('hurt_')?'hurt':id.startsWith('jump_')?'jump':'death'}/${id}.mp3`]))),
 });
 export const SOUND_CONTROLS=Object.freeze([
@@ -48,6 +60,9 @@ export const SOUND_CONTROLS=Object.freeze([
  {key:'hurtFemale',label:'Урон — женский голос',group:'effects',default:78},
  {key:'deathMale',label:'Смерть — мужской голос',group:'effects',default:76},
  {key:'deathFemale',label:'Смерть — женский голос',group:'effects',default:76},
+ {key:'henAlarm',label:'Курица — крик тревоги',group:'effects',default:100},
+ {key:'henDeath',label:'Курица — попадание топором',group:'effects',default:100},
+ {key:'henClucks',label:'Курица — кудахтанье',group:'effects',default:100},
  {key:'fire',label:'Треск костра и факелов',group:'ambience',default:40},
  {key:'water',label:'Тихая вода у озера',group:'ambience',default:40},
  {key:'forest',label:'Шорох леса и ветер',group:'ambience',default:40},

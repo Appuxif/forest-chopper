@@ -368,7 +368,7 @@ class MobPopulation:
         rows = []
         for hen in self.live.values():
             if math.hypot(hen['x']-x, hen['z']-z) <= radius:
-                rows.append({k: hen[k] for k in ('id','x','y','z','yaw','vx','vz','state','state_start','health','category','faction','subcategory')} | {'type':self.type_id})
+                rows.append({k: hen[k] for k in ('id','x','y','z','yaw','vx','vz','state','state_start','health','category','faction','subcategory')} | {'type':self.type_id,'flock_following':hen.get('flock_following',False)})
         for ident, corpse in self.corpses.items():
             if now-corpse['dead_at'] < self.definition.corpse_ttl and math.hypot(corpse['x']-x, corpse['z']-z) <= radius:
                 rows.append({'id': ident, 'x': corpse['x'], 'y': corpse['y'], 'z': corpse['z'],

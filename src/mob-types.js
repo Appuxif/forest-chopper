@@ -1,7 +1,7 @@
 // Species data is separate from simulation, presentation, AI and physics.
 // Server equivalents live in mob_definitions.py; parity is covered by tests.
 export const CHICKEN_TYPE={
- id:'chicken',name:'Курица',category:'chicken',faction:'wildlife',
+ id:'chicken',name:'Курица',category:'chicken',faction:'wildlife',voiceProfile:'chicken',
  subcategories:Object.fromEntries(['russet','white','black','golden','speckled'].map(id=>[id,{id,name:({russet:'Рыжая',white:'Белая',black:'Чёрная',golden:'Золотистая',speckled:'Пёстрая'})[id],texture:`./assets/models/hen/textures/hen_plumage_${id}.png`}])),
  stats:{maxHealth:1,damage:0,speeds:{walk:.34,fast:1.17,run:3.6}},
  behavior:{flock:{radius:6,catchUpRadius:12,separation:1,cohesion:.7},id:'wary',noticeRadius:6,safeRadius:10,calmSeconds:3,actionSeconds:[3,8]},
@@ -15,6 +15,7 @@ export const CHICKEN_TYPE={
 export function validateMobType(d){
  const positive=n=>Number.isFinite(n)&&n>0,nonnegative=n=>Number.isFinite(n)&&n>=0;
  if(!d||!/^[-a-z0-9_]+$/.test(d.id??'')||typeof d.name!=='string'||!d.name||typeof d.faction!=='string'||typeof d.category!=='string'||!d.category)return false;
+ if(d.voiceProfile!==undefined&&(typeof d.voiceProfile!=='string'||!d.voiceProfile))return false;
  if(!positive(d.stats?.maxHealth)||!nonnegative(d.stats?.damage)||!['walk','fast','run'].every(k=>nonnegative(d.stats?.speeds?.[k])))return false;
  if(typeof d.behavior?.id!=='string'||!positive(d.behavior.noticeRadius)||!positive(d.behavior.safeRadius)||d.behavior.safeRadius<d.behavior.noticeRadius||!nonnegative(d.behavior.calmSeconds))return false;
  if(!Array.isArray(d.behavior.actionSeconds)||d.behavior.actionSeconds.length!==2||!d.behavior.actionSeconds.every(positive)||d.behavior.actionSeconds[1]<d.behavior.actionSeconds[0])return false;

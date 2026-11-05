@@ -19,17 +19,17 @@ test('every registered sound ships in the repo and has independent settings',()=
  assert.deepEqual(sanitizeSettings({audio:{birds:0,crickets:87}}).audio,
   {...DEFAULT_AUDIO,birds:0,crickets:87});
 });
-test('audio layout matches registry, without loose or untracked MP3 files',()=>{
+test('audio layout matches registry, without loose or untracked runtime audio files',()=>{
  const root=new URL('../assets/audio/',import.meta.url);
  const walk=(dir,prefix='')=>readdirSync(dir,{withFileTypes:true}).flatMap(entry=>{
   const rel=prefix+entry.name;
   return entry.isDirectory()?walk(new URL(`${entry.name}/`,dir),`${rel}/`):
-   rel.endsWith('.mp3')?[rel]:[];
+   /\.(mp3|wav)$/i.test(rel)?[rel]:[];
  });
  const actual=walk(root).sort();
  const registered=Object.values(AUDIO_FILES).sort();
- assert.deepEqual(actual,registered,'all bundled MP3s must be registered exactly once');
- assert.equal(registered.length,44);
+ assert.deepEqual(actual,registered,'all bundled MP3/WAV files must be registered exactly once');
+ assert.equal(registered.length,51);
  for(const file of registered){
   assert.ok(!file.startsWith('/')&&!file.split('/').includes('..'),`unsafe path: ${file}`);
   assert.ok(file.includes('/'),`audio not organized in a subfolder: ${file}`);
@@ -163,4 +163,17 @@ test('selected choppingtree cutlist contains 10–15s at 1.3x tree fall and seve
  assert.ok(!existsSync(new URL('../assets/audio/step_grass_cozy.mp3',import.meta.url)));
  for(const name of ['axe_hit_1.mp3','axe_hoe_1.mp3','axe_hoe_2.mp3'])
   assert.ok(!existsSync(new URL('../assets/audio/'+name,import.meta.url)),name);
+});
+
+test('seven approved hen WAVs are valid local PCM with preserved selection metadata',()=>{
+ const metadata=JSON.parse(readFileSync(new URL('../assets/audio/metadata/HEN_VOICES.json',import.meta.url)));
+ assert.equal(metadata.clips.length,7);
+ for(const clip of metadata.clips){
+  assert.equal(AUDIO_FILES[clip.id],clip.file);
+  const data=readFileSync(new URL('../assets/audio/'+clip.file,import.meta.url));
+  assert.equal(data.toString('ascii',0,4),'RIFF');assert.equal(data.toString('ascii',8,12),'WAVE');
+  assert.equal(data.readUInt16LE(20),1);assert.equal(data.readUInt16LE(22),1);assert.equal(data.readUInt32LE(24),48000);assert.equal(data.readUInt16LE(34),16);
+  assert.ok(clip.duration>.05&&clip.duration<1);assert.equal(clip.frames,Math.round(clip.duration*clip.sample_rate));
+ }
+ assert.equal(DEFAULT_AUDIO.henDeath,100);assert.equal(DEFAULT_AUDIO.henAlarm,100);assert.equal(DEFAULT_AUDIO.henClucks,100);
 });

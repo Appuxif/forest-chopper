@@ -5,7 +5,8 @@ venv/
 forest_world.json
 *.tmp
 .idea/
-tools/
+tools/*
+!tools/audio-cutter/
 characters/lumberjack/lumberjack.blend1
 
 .codex/

@@ -92,3 +92,10 @@ class MobMovementTests(unittest.TestCase):
             if row['source'].startswith('0,0:'):
                 self.assertFalse(row.get('flock_following'))
                 self.assertNotEqual(row['state'],'Run')
+
+    def test_network_view_distinguishes_flock_running_from_panic(self):
+        population=MobPopulation(1,CHICKEN);row=population._spawn_record(0,0,0,0)
+        row.update(x=0,y=0,z=0,state='Run',flock_following=True);population.live[row['id']]=row
+        self.assertTrue(population.views(0,0,1000)[0]['flock_following'])
+        row['flock_following']=False
+        self.assertFalse(population.views(0,0,1000)[0]['flock_following'])

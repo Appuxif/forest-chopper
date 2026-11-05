@@ -1,7 +1,7 @@
 // Browser WebAudio mixer. No CDN or procedural sound approximations: all
 // samples ship locally. AudioContext is created only after user interaction.
-import {AUDIO_FILES,AXE_VARIANTS,VOICE_CATEGORIES,VOICE_VARIANTS,chooseVoiceClip,audioSetting,nightBlend,distanceGain,nearestLitFire,
- waterProximity,stepSurface,stepClip,stepVolumeKey} from './sound-rules.js?v=20261102-jump-voices1';
+import {AUDIO_FILES,AXE_VARIANTS,VOICE_CATEGORIES,VOICE_VARIANTS,MOB_VOICE_PROFILES,MOB_SOUND_CATEGORIES,MOB_SOUND_RULES,chooseVoiceClip,audioSetting,nightBlend,distanceGain,nearestLitFire,
+ waterProximity,stepSurface,stepClip,stepVolumeKey} from './sound-rules.js?v=20261105-hen-voices1';
 
 export function createGameAudio(ctx,{
  doc=typeof document==='undefined'?null:document,
@@ -13,7 +13,7 @@ export function createGameAudio(ctx,{
  let audio=null,master=null,ambience=null,effects=null,pending=null;
  let disposed=false,unlocked=false,stepDistance=0,lastPosition=null,stepNumber=0;
  let lastAmbient=-Infinity,nextTreeCreak=0;
- const buffers=new Map(),loops=new Map(),voices=new Set();
+ const buffers=new Map(),loops=new Map(),voices=new Set(),mobVoices=new Set();
  let audition=null;
  const assetUrl=name=>new URL('../assets/audio/'+AUDIO_FILES[name],import.meta.url).href;
  const config=()=>ctx.settings?.audio;
@@ -58,14 +58,18 @@ export function createGameAudio(ctx,{
  const resume=()=>unlock();
  doc?.addEventListener?.('pointerdown',resume,{capture:true,passive:true});
  doc?.addEventListener?.('keydown',resume,{capture:true});
- function play(name,category,gain=.7,{pitch=1,previewSeconds=0}={}){
+ function play(name,category,gain=.7,{pitch=1,previewSeconds=0,mobVoice=false,pan=null}={}){
   if(!unlocked||disposed||!audio||!buffers.has(name)||volume('master')<=0||volume(category)<=0)return false;
+  if(mobVoice&&mobVoices.size>=8)return false;
   const source=audio.createBufferSource(),g=audio.createGain();
   source.buffer=buffers.get(name);source.playbackRate.value=pitch;
   g.gain.value=gain*volume(category);
-  source.connect(g);g.connect(effects);
+  let panner=null;source.connect(g);
+  if(pan!==null&&typeof audio.createStereoPanner==='function'){panner=audio.createStereoPanner();panner.pan.value=Math.max(-1,Math.min(1,pan));g.connect(panner);panner.connect(effects);}
+  else g.connect(effects);
   voices.add(source);
-  source.onended=()=>{voices.delete(source);if(audition===source)audition=null;source.disconnect();g.disconnect();};
+  if(mobVoice)mobVoices.add(source);
+  source.onended=()=>{voices.delete(source);mobVoices.delete(source);if(audition===source)audition=null;source.disconnect();g.disconnect();panner?.disconnect();};
   source.start();
   // Audition buttons should never launch 30–45 second background recordings.
   if(previewSeconds>0){
@@ -75,7 +79,15 @@ export function createGameAudio(ctx,{
   }
   return true;
  }
- function effect(name){
+ function effect(name,position){
+  const mobRule=MOB_SOUND_RULES[name];
+  if(mobRule){
+   if(!Number.isFinite(position?.x)||!Number.isFinite(position?.z))return false;
+   const dx=position.x-ctx.px,dz=position.z-ctx.pz,distance=Math.hypot(dx,dz),gain=distanceGain(distance,mobRule.radius);
+   if(gain<=0)return false;
+   const yaw=ctx.yaw??0,pan=(dx*Math.cos(yaw)-dz*Math.sin(yaw))/Math.max(1,distance);
+   return play(name,mobRule.category,gain*mobRule.gain,{mobVoice:true,pan,pitch:1});
+  }
   if(name==='axe'){
    const index=Math.min(AXE_VARIANTS.length-1,Math.floor(random()*AXE_VARIANTS.length));
    return play(AXE_VARIANTS[index],'axe',.83,{pitch:.97+random()*.06});
@@ -103,7 +115,7 @@ export function createGameAudio(ctx,{
   return clip?play(clip,gender==='female'?'deathFemale':'deathMale',.98):false;
  }
  function previewClip(id){
-  const category=VOICE_CATEGORIES[id]??(AXE_VARIANTS.includes(id)?'axe':null);
+  const category=VOICE_CATEGORIES[id]??MOB_SOUND_CATEGORIES[id]??(AXE_VARIANTS.includes(id)?'axe':null);
   if(!category)return false;
   unlock();
   const playSample=()=>play(id,category,.75,{previewSeconds:8});
@@ -167,6 +179,7 @@ export function createGameAudio(ctx,{
    hurtMale:VOICE_VARIANTS.hurtMale[0],hurtFemale:VOICE_VARIANTS.hurtFemale[0],
    jumpMale:VOICE_VARIANTS.jumpMale[0],jumpFemale:VOICE_VARIANTS.jumpFemale[0],
    deathMale:VOICE_VARIANTS.deathMale[0],deathFemale:VOICE_VARIANTS.deathFemale[0],
+   henDeath:MOB_VOICE_PROFILES.chicken.death,henAlarm:MOB_VOICE_PROFILES.chicken.alarm,henClucks:MOB_VOICE_PROFILES.chicken.clucks[0],
    fire:'fire',water:'water',forest:'forest',treeCreak:'tree_creak',birds:'birds',crickets:'crickets'})[category];
   if(chosen){
    const previewSeconds=category==='treeFall'?8:
@@ -182,7 +195,7 @@ export function createGameAudio(ctx,{
   doc?.removeEventListener?.('keydown',resume,{capture:true});
   for(const {source} of loops.values())source.stop();
   for(const source of voices)source.stop();
-  loops.clear();voices.clear();buffers.clear();
+  loops.clear();voices.clear();mobVoices.clear();buffers.clear();
   void audio?.close?.();
  }
  return {unlock,tick,effect,hurt,jump,death,preview,previewClip,dispose,

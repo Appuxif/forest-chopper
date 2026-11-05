@@ -3,7 +3,7 @@ import {collectDiagnostics, formatDiagnostics, getGpuRendererName} from './diagn
 import {FPS_OPTIONS} from './frame-limiter.js';
 import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js?v=20261103-shared-birch-all1';
 import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS,PERFORMANCE_LIGHTING_PRESETS} from './performance-presets.js?v=20261103-grass-presets-tuned1';
-import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261102-jump-voices1';
+import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261105-hen-voices1';
 const KEY = 'forest-chopper:settings:v1';
 export const LIGHTING_FIELDS=Object.freeze({
  dayAmbient:[0,3,.05,1.2,'☀️ Рассеянный свет дня'],

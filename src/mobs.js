@@ -2,6 +2,7 @@ import {validMobPoses,captureMobPose,applyMobPose} from './mob-pose.js';
 import {createMobWorld} from './mob-world.js';
 import {createMobTypeRegistry} from './mob-types.js';
 import {createMobBehaviorRegistry} from './mob-ai.js';
+import {createMobVocalizations} from './mob-vocalizations.js';
 import {createMobRagdoll} from './mob-ragdoll.js';
 import {createMobRagdollProfiles} from './mob-ragdoll-profiles.js';
 import {loadMobAssets} from './mob-assets.js';
@@ -18,6 +19,7 @@ export async function createMobs(ctx,{registry=createMobTypeRegistry(),behaviors
  for(const type of registry.list())if(!profiles.get(type.model.ragdoll))throw new Error('Missing mob ragdoll profile: '+type.model.ragdoll);
  const {THREE}=ctx,assets=await loadAssets(THREE,registry);
  const savedPoses=new Map();
+ const vocalizations=createMobVocalizations({definitionFor:type=>registry.get(type),emit:(id,mob)=>ctx.audio?.effect(id,{x:mob.x,z:mob.z})??false});
  const actors=new Map();let runningRagdolls=0;let model=null,records=[],online=false,opened=null,serverTime=0,receivedAt=0,genericNetwork=false;
  const ray=new THREE.Raycaster(),center=new THREE.Vector2(),point=new THREE.Vector3();
  const positionOf=r=>mobInteractionPosition(r,actors.get(r.id));
@@ -49,7 +51,7 @@ export async function createMobs(ctx,{registry=createMobTypeRegistry(),behaviors
   return model;
  }
  function disposeActor(id){const a=actors.get(id);if(!a)return;if(a.dead&&!a.transient){savedPoses.set(id,captureMobPose(id,a.visual));while(savedPoses.size>32)savedPoses.delete(savedPoses.keys().next().value);}a.disposed=true;if(a.physicsSlot){runningRagdolls--;a.physicsSlot=false;}a.rag?.dispose();a.mixer.stopAllAction();a.mixer.uncacheRoot(a.visual);ctx.scene.remove(a.group);actors.delete(id);}
- function clear(){for(const id of [...actors.keys()])disposeActor(id);model=null;records=[];genericNetwork=false;savedPoses.clear();lootActions.clear();close();}
+ function clear(){for(const id of [...actors.keys()])disposeActor(id);model=null;records=[];genericNetwork=false;savedPoses.clear();lootActions.clear();vocalizations.clear();close();}
  function close(){opened=null;panel.hidden=true;lootPointer.clear();}
  function setNetwork(data){
   if(data.hens&&genericNetwork)return;
@@ -57,7 +59,7 @@ export async function createMobs(ctx,{registry=createMobTypeRegistry(),behaviors
   if(!online){clear();online=true;}
   if(data.mobs)genericNetwork=true;
   serverTime=data.server_time??Date.now()/1000;receivedAt=performance.now()/1000;
-  records=rows.filter(r=>registry.get(r.type??'chicken')).map(h=>{const type=registry.get(h.type??'chicken');return {...h,type:type.id,displayName:type.name,category:h.category??type.category,stateStart:h.state_start??h.stateStart,deathAt:h.dead_at??h.deathAt,velocityX:h.vx??0,velocityZ:h.vz??0,hp:h.state==='dead'?0:(h.hp??h.health??type.stats.maxHealth)};});
+  records=rows.filter(r=>registry.get(r.type??'chicken')).map(h=>{const type=registry.get(h.type??'chicken');return {...h,type:type.id,displayName:type.name,category:h.category??type.category,stateStart:h.state_start??h.stateStart,deathAt:h.dead_at??h.deathAt,velocityX:h.vx??0,velocityZ:h.vz??0,flockFollowing:h.flock_following??h.flockFollowing??false,hp:h.state==='dead'?0:(h.hp??h.health??type.stats.maxHealth)};});
   if(opened)renderPanel();
  }
  function targeted(deadOnly=false){
@@ -128,6 +130,7 @@ export async function createMobs(ctx,{registry=createMobTypeRegistry(),behaviors
   lootActions.prune();
   if(online&&!ctx.isOnline()){clear();online=false;}
   if(!online&&!ctx.isOnline())records=ensure().tick(elapsed,[{x:ctx.px,z:ctx.pz}],{clockRunning:ctx.settings.dayCycleEnabled&&!ctx.dayCycle?.frozen});
+  vocalizations.tick(elapsed,records);
   const ids=new Set(records.map(r=>r.id));for(const id of actors.keys())if(!ids.has(id))disposeActor(id);
   for(const r of records){
    const asset=assets.get(r.type);if(!asset)continue;

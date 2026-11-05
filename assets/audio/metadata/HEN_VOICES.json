@@ -1,0 +1,80 @@
+{
+  "source_title": "chicken sound",
+  "source_author": "wings_of_freedom",
+  "source_url": "https://pixabay.com/sound-effects/nature-chicken-sound-402826/",
+  "license": "Pixabay Content License",
+  "license_url": "https://pixabay.com/service/license-summary/",
+  "selection": "Seven user-selected WAV cuts from the provided source; used directly without re-encoding or normalizing. Original timecodes were not supplied with the edited files.",
+  "clips": [
+    {
+      "id": "hen_alarm",
+      "file": "voices/hen/01_long_cluck_scream.wav",
+      "sha256": "19cafafd47d6e33497313dba944cff0484924dfed693479603d23aa9f565ef52",
+      "duration": 0.49554166666666666,
+      "sample_rate": 48000,
+      "channels": 1,
+      "bits": 16,
+      "frames": 23786
+    },
+    {
+      "id": "hen_cluck_1",
+      "file": "voices/hen/02_short_cluck_01.wav",
+      "sha256": "6d4be84431a146166f3958d4b29341a9d4059386136f6b8186602b76b9f2d468",
+      "duration": 0.1613125,
+      "sample_rate": 48000,
+      "channels": 1,
+      "bits": 16,
+      "frames": 7743
+    },
+    {
+      "id": "hen_cluck_2",
+      "file": "voices/hen/03_short_cluck_02.wav",
+      "sha256": "9c5661d0ca47310c5c8759ec8007a72ac3c9615ab979473ca996b250a46901ea",
+      "duration": 0.14764583333333334,
+      "sample_rate": 48000,
+      "channels": 1,
+      "bits": 16,
+      "frames": 7087
+    },
+    {
+      "id": "hen_cluck_3",
+      "file": "voices/hen/04_short_cluck_03.wav",
+      "sha256": "778dbc6bcd6f439a9615a563c403daf41e37a3801a45267074010430cfd5a6f5",
+      "duration": 0.18116666666666667,
+      "sample_rate": 48000,
+      "channels": 1,
+      "bits": 16,
+      "frames": 8696
+    },
+    {
+      "id": "hen_cluck_4",
+      "file": "voices/hen/05_short_cluck_04.wav",
+      "sha256": "ab37a62ac75d3002e2588ada14a101afd3631030cdb5390e6024f2d39f09f249",
+      "duration": 0.16439583333333332,
+      "sample_rate": 48000,
+      "channels": 1,
+      "bits": 16,
+      "frames": 7891
+    },
+    {
+      "id": "hen_cluck_5",
+      "file": "voices/hen/06_short_cluck_05.wav",
+      "sha256": "edbee1d74c1ee8044d0ef48b68a9a6a5547751cf639771da69ff94dd8b945ff4",
+      "duration": 0.17214583333333333,
+      "sample_rate": 48000,
+      "channels": 1,
+      "bits": 16,
+      "frames": 8263
+    },
+    {
+      "id": "hen_death",
+      "file": "voices/hen/07_hen_death.wav",
+      "sha256": "b2667d9d1ad39d124922dbbb6608d480071cbe4e18e62dbf2a7c98853ade1707",
+      "duration": 0.32977083333333335,
+      "sample_rate": 48000,
+      "channels": 1,
+      "bits": 16,
+      "frames": 15829
+    }
+  ]
+}

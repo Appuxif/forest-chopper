@@ -176,3 +176,23 @@ test('online corpse closes on authoritative empty update, not an unconfirmed tak
   assert.equal(mobs.opened,null);assert.equal(mobs.open(row.id),false);
  }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
 });
+
+
+test('online mob voices distinguish regrouping from fear across repeated snapshots',{skip:!deps},async()=>{
+ const T=await three(),previous=globalThis.document,sounds=[];
+ globalThis.document={createElement:()=>new Element(),head:new Element(),body:new Element(),addEventListener(){}};
+ try{
+  const ctx={THREE:T,px:0,pz:0,isOnline:()=>true,audio:{effect(id,position){sounds.push({id,position});return true;}}};
+  const mobs=await createMobs(ctx,{loadAssets:async()=>new Map()});
+  const row={id:'online-hen',type:'chicken',x:3,z:4,health:1,state:'Run',flock_following:true};
+  const update=()=>{mobs.setNetwork({mobs:[row]});mobs.tick(.1);};
+  update();assert.equal(sounds.length,0,'running towards the flock is quiet');
+  row.flock_following=false;update();
+  assert.deepEqual(sounds,[{id:'hen_alarm',position:{x:3,z:4}}]);
+  update();update();assert.equal(sounds.length,1,'repeated server snapshots do not restart the alarm');
+  row.health=0;row.state='dead';update();
+  for(let i=0;i<20;i++)mobs.tick(.1);
+  assert.deepEqual(sounds.map(s=>s.id),['hen_alarm','hen_death'],'confirmed death plays once without more clucks');
+  mobs.clear();
+ }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
+});

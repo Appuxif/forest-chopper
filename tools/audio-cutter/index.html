@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Обрезка аудио — Forest Chopper</title>
+<style>
+:root{color-scheme:dark;--bg:#102019;--card:#1b3025;--line:#42604a;--text:#eff5eb;--muted:#b8cbbd;--accent:#c6e998}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif}main{max-width:1100px;margin:auto;padding:28px 18px 70px}h1{font-size:28px;line-height:1.2;margin:0 0 8px}h2{font-size:18px;margin:0}p{margin:8px 0;color:var(--muted)}button,input{font:inherit}button{min-height:42px;padding:8px 14px;border:1px solid #769177;border-radius:8px;background:#31513b;color:var(--text);cursor:pointer}button:hover:not(:disabled){background:#426c4c}button:disabled{opacity:.45;cursor:default}.primary{background:var(--accent);color:#17271b;font-weight:700}.primary:hover:not(:disabled){background:#def7bb}button:focus-visible,input:focus-visible,canvas:focus-visible{outline:2px solid var(--accent);outline-offset:3px}input{min-width:0;min-height:40px;background:#10251b;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 9px}.file{display:block;width:100%;padding:18px;border:2px dashed var(--line);margin:22px 0 12px;border-radius:12px;background:#162b20}.file.dragover{border-color:var(--accent)}.file input{width:100%;border:0;background:none;padding:0}.box,.clip{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:14px}.tools,.heading,.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.tools{margin:14px 0}.tools .spacer{flex:1}.fade{display:flex;align-items:center;gap:8px;color:var(--muted)}.fade input{width:76px}.meta{font-size:13px;color:var(--muted)}canvas{display:block;width:100%;height:180px;background:#102219;border-radius:8px;touch-action:none;cursor:crosshair;margin:12px 0}audio{display:block;width:100%;margin-top:12px}.heading{justify-content:space-between}.clip.active{border-color:var(--accent);box-shadow:0 0 0 1px #c6e99855}.clip .name{flex:1;min-width:130px}.clip .select{font-weight:700;min-width:58px}.delete{background:transparent;border-color:transparent;font-size:23px;min-width:42px;padding:2px}.ranges{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:14px 0}.boundary label{display:block;color:var(--muted);margin-bottom:5px}.boundary .fields{display:flex;gap:6px}.boundary input{width:100%}.boundary button{padding:6px 9px;white-space:nowrap;min-height:40px}.duration{flex:1;font-variant-numeric:tabular-nums}.error{color:#ffad99;font-size:13px}.status{min-height:24px;margin-top:10px}.empty{text-align:center;padding:30px 10px;color:var(--muted)}[hidden]{display:none!important}@media(max-width:600px){main{padding:20px 12px 50px}h1{font-size:24px}.ranges{grid-template-columns:1fr;gap:10px}.tools .spacer{display:none}.tools{align-items:stretch}.tools>button{flex:1}canvas{height:150px}.box,.clip{padding:12px}.actions>button{flex:1}.duration{flex-basis:100%}}
+</style>
+</head>
+<body><main>
+<h1>Обрезка аудио</h1><p>Выбери файл → добавь фрагменты → уточни миллисекунды → прослушай и скачай.</p>
+<p class="meta">Всё обрабатывается в браузере. Файл никуда не отправляется. Этот HTML можно сохранить и открывать отдельно без сервера.</p>
+<div class="file" id="drop"><label for="file">Исходный аудиофайл · можно перетащить сюда</label><input id="file" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac,.aac"><p class="meta">Выбор нового файла сбросит текущий список фрагментов после успешной загрузки.</p></div>
+<div id="status" class="status" role="status" aria-live="polite">Выбери MP3, WAV или другой поддерживаемый браузером аудиофайл.</div>
+<section id="source" class="box" hidden>
+<div class="heading"><h2 id="filename"></h2><span id="info" class="meta"></span></div>
+<canvas id="wave" tabindex="0" aria-label="Волна звука. Перетаскивайте выделение или его границы; точные миллисекунды доступны ниже."></canvas>
+<p class="meta">Потяни по волне, чтобы выделить диапазон. За края выделения можно тянуть отдельно. Для точной подстройки используй поля ниже.</p>
+<div class="tools"><button id="original" type="button">▶ Исходник</button><button id="stop" type="button">■ Стоп</button><span class="spacer"></span><label class="fade">Затухание краёв, мс <input id="fade" type="number" min="0" max="1000" step="1" value="3"></label></div>
+<audio id="player" controls preload="none"></audio><p id="playing" class="meta">Экспорт: WAV PCM 16 бит. Исходная громкость сохраняется; 0 мс отключает затухание.</p>
+</section>
+<div class="tools"><button id="add" type="button" class="primary" disabled>＋ Добавить фрагмент</button><button id="zip" type="button" disabled>Скачать все · ZIP</button></div>
+<div id="empty" class="empty">После выбора файла нажми «＋ Добавить фрагмент».</div><section id="clips" aria-label="Фрагменты"></section>
+</main>
+<script id="audio-core">
+const AudioCutterCore=(()=>{
+ function range(frameCount,sampleRate,startMs,endMs){
+  if(!Number.isSafeInteger(frameCount)||frameCount<1||!Number.isInteger(sampleRate)||sampleRate<1)throw Error('Нет декодированного звука.');
+  if(!Number.isFinite(startMs)||!Number.isFinite(endMs))throw Error('Укажи обе границы в миллисекундах.');
+  const total=frameCount/sampleRate*1000;
+  if(startMs<0||endMs>total+.000001)throw Error('Границы должны находиться внутри исходного файла.');
+  const start=Math.round(startMs*sampleRate/1000),end=Math.min(frameCount,Math.round(endMs*sampleRate/1000));
+  if(endMs<=startMs||end<=start)throw Error('Конец должен быть позже начала хотя бы на один сэмпл.');
+  return {start,end,frames:end-start,durationMs:(end-start)/sampleRate*1000};
+ }
+ function wav(channels,sampleRate,startMs,endMs,fadeMs=0){
+  if(!Array.isArray(channels)||!channels.length||channels.length>32||channels.some(c=>c.length!==channels[0].length))throw Error('Некорректные аудиоканалы.');
+  if(!Number.isFinite(fadeMs)||fadeMs<0)throw Error('Затухание должно быть неотрицательным числом.');
+  const r=range(channels[0].length,sampleRate,startMs,endMs),count=channels.length,bytes=r.frames*count*2;
+  if(bytes>0xffffffff-36)throw Error('Фрагмент слишком большой для обычного WAV.');
+  const buffer=new ArrayBuffer(44+bytes),v=new DataView(buffer),text=(at,s)=>{for(let i=0;i<s.length;i++)v.setUint8(at+i,s.charCodeAt(i));};
+  text(0,'RIFF');v.setUint32(4,36+bytes,true);text(8,'WAVE');text(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,count,true);v.setUint32(24,sampleRate,true);v.setUint32(28,sampleRate*count*2,true);v.setUint16(32,count*2,true);v.setUint16(34,16,true);text(36,'data');v.setUint32(40,bytes,true);
+  const fade=Math.min(Math.round(fadeMs*sampleRate/1000),Math.floor(r.frames/2));let pos=44;
+  for(let i=0;i<r.frames;i++){
+   const gain=fade>1?Math.min(1,i/(fade-1),(r.frames-1-i)/(fade-1)):1;
+   for(const channel of channels){let x=channel[r.start+i];x=Number.isFinite(x)?Math.max(-1,Math.min(1,x))*gain:0;v.setInt16(pos,Math.round(x*(x<0?32768:32767)),true);pos+=2;}
+  }
+  return buffer;
+ }
+ function peaks(channels,buckets=1400){
+  const length=channels[0]?.length??0;if(!length)return [];
+  const count=Math.max(1,Math.min(4096,Math.floor(buckets),length)),result=[];
+  for(let b=0;b<count;b++){let min=0,max=0;const from=Math.floor(b*length/count),to=Math.floor((b+1)*length/count);
+   for(const channel of channels)for(let i=from;i<to;i++){min=Math.min(min,channel[i]);max=Math.max(max,channel[i]);}result.push({min,max});}
+  return result;
+ }
+ function filename(value){
+  let name=String(value??'').replace(/\.(mp3|wav|ogg|flac|m4a|aac)$/i,'').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').trim().replace(/[. ]+$/g,'').replace(/^\.+/,'').slice(0,120);
+  if(!name)name='fragment';if(/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(name))name='_'+name;return name;
+ }
+ const crcTable=Array.from({length:256},(_,n)=>{let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;return c>>>0;});
+ function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return (c^0xffffffff)>>>0;}
+ function zip(entries){
+  if(entries.length>65535)throw Error('Слишком много файлов для ZIP.');
+  const encoder=new TextEncoder(),files=entries.map(e=>({name:encoder.encode(e.name),data:new Uint8Array(e.data)}));
+  let size=22;for(const f of files){if(f.name.length>65535)throw Error('Слишком длинное имя файла.');size+=76+f.name.length*2+f.data.length;}
+  if(size>0xffffffff)throw Error('Набор слишком большой для обычного ZIP.');
+  const out=new Uint8Array(size),v=new DataView(out.buffer);let at=0;const central=[];
+  for(const f of files){const offset=at,crc=crc32(f.data);v.setUint32(at,0x04034b50,true);v.setUint16(at+4,20,true);v.setUint16(at+6,0x800,true);v.setUint16(at+12,0x21,true);v.setUint32(at+14,crc,true);v.setUint32(at+18,f.data.length,true);v.setUint32(at+22,f.data.length,true);v.setUint16(at+26,f.name.length,true);at+=30;out.set(f.name,at);at+=f.name.length;out.set(f.data,at);at+=f.data.length;central.push({...f,offset,crc});}
+  const centralStart=at;
+  for(const f of central){v.setUint32(at,0x02014b50,true);v.setUint16(at+4,20,true);v.setUint16(at+6,20,true);v.setUint16(at+8,0x800,true);v.setUint16(at+14,0x21,true);v.setUint32(at+16,f.crc,true);v.setUint32(at+20,f.data.length,true);v.setUint32(at+24,f.data.length,true);v.setUint16(at+28,f.name.length,true);v.setUint32(at+42,f.offset,true);at+=46;out.set(f.name,at);at+=f.name.length;}
+  v.setUint32(at,0x06054b50,true);v.setUint16(at+8,files.length,true);v.setUint16(at+10,files.length,true);v.setUint32(at+12,at-centralStart,true);v.setUint32(at+16,centralStart,true);return out.buffer;
+ }
+ return {range,wav,peaks,filename,crc32,zip};
+})();
+</script>
+<script id="audio-app">
+(()=>{
+ const $=id=>document.getElementById(id),fileInput=$('file'),canvas=$('wave'),player=$('player'),C=AudioCutterCore;
+ let audioContext=null,buffer=null,channels=[],envelope=[],clips=[],active=null,nextId=1,base='audio',sourceUrl=null,previewUrl=null,loadVersion=0,busy=false,drag=null,playStart=0,animation=0;
+ const totalMs=()=>buffer?buffer.length/buffer.sampleRate*1000:0;
+ const round=n=>Math.round(n*1000)/1000;
+ const activeClip=()=>clips.find(c=>c.id===active);
+ function status(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error);}
+ function setButtons(){if(busy)for(const clip of clips)for(const button of clip.element.querySelectorAll('.play,.download'))button.disabled=true;$('add').disabled=busy||!buffer;$('zip').disabled=busy||!clips.length;$('original').disabled=busy||!buffer;$('empty').hidden=!!clips.length;}
+ function fade(){const n=Number($('fade').value);if($('fade').value===''||!Number.isFinite(n)||n<0||n>1000)throw Error('Затухание: от 0 до 1000 мс.');return n;}
+ function clipRange(clip){if(clip.start===''||clip.end==='')throw Error('Укажи обе границы.');return C.range(buffer.length,buffer.sampleRate,Number(clip.start),Number(clip.end));}
+ function stop(){player.pause();player.currentTime=0;cancelAnimationFrame(animation);animation=0;draw();}
+ function clearPreview(){stop();player.removeAttribute('src');player.load();if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null;}}
+ function select(id){active=id;for(const c of clips){c.element.classList.toggle('active',c.id===id);c.element.querySelector('.select').setAttribute('aria-pressed',String(c.id===id));}draw();}
+ function validate(clip){
+  let error='',r;try{r=clipRange(clip);fade();}catch(e){error=e.message;}
+  clip.element.querySelector('.error').textContent=error;clip.element.querySelector('.error').hidden=!error;
+  clip.element.querySelector('.duration').textContent=r?round(r.durationMs)+' мс · '+r.frames.toLocaleString('ru-RU')+' сэмплов':'';
+  for(const button of clip.element.querySelectorAll('.play,.download'))button.disabled=!!error||busy;
+  draw();return !error;
+ }
+ function updateFields(clip){clip.element.querySelector('.start').value=clip.start;clip.element.querySelector('.end').value=clip.end;validate(clip);}
+ function makeWav(clip){clipRange(clip);return C.wav(channels,buffer.sampleRate,Number(clip.start),Number(clip.end),fade());}
+ function download(data,name,type){const url=URL.createObjectURL(new Blob([data],{type})),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),15000);}
+ async function preview(clip){
+  try{const data=makeWav(clip);clearPreview();previewUrl=URL.createObjectURL(new Blob([data],{type:'audio/wav'}));player.src=previewUrl;playStart=clipRange(clip).start/buffer.sampleRate*1000;$('playing').textContent='Фрагмент: '+(clip.name||'без имени');await player.play();}
+  catch(e){status(e.message,true);}
+ }
+ function addClip(){
+  if(!buffer||busy)return null;
+  const previous=activeClip(),start=previous&&Number(previous.end)<totalMs()?Math.max(0,Number(previous.end)):0;
+  const end=clips.length?Math.min(totalMs(),start+1000):totalMs();
+  const clip={id:nextId++,name:base+'_'+String(clips.length+1).padStart(2,'0'),start:round(start),end:round(end)};
+  // Keep the final boundary exact enough to include the last decoded sample.
+  if(end===totalMs())clip.end=totalMs();
+  const element=document.createElement('article');clip.element=element;element.className='clip';
+  element.innerHTML='<div class="heading"><button type="button" class="select"></button><input class="name" aria-label="Имя фрагмента"><button type="button" class="delete" aria-label="Удалить фрагмент">×</button></div><div class="ranges"><div class="boundary"><label>От, мс</label><div class="fields"><button type="button" class="start-less" aria-label="Начало на 10 мс раньше">−10</button><input class="start" type="number" min="0" step="1" aria-label="Начало, миллисекунды"><button type="button" class="start-more" aria-label="Начало на 10 мс позже">+10</button></div></div><div class="boundary"><label>До, мс</label><div class="fields"><button type="button" class="end-less" aria-label="Конец на 10 мс раньше">−10</button><input class="end" type="number" min="0" step="1" aria-label="Конец, миллисекунды"><button type="button" class="end-more" aria-label="Конец на 10 мс позже">+10</button></div></div></div><p class="error" hidden></p><div class="actions"><span class="duration"></span><button type="button" class="play">▶ Прослушать</button><button type="button" class="download">Скачать WAV</button></div>';
+  const q=s=>element.querySelector(s);q('.select').textContent='№ '+clip.id;q('.select').onclick=()=>select(clip.id);q('.name').value=clip.name;q('.name').oninput=e=>{clip.name=e.target.value;};
+  for(const key of ['start','end']){
+   const input=q('.'+key);input.max=totalMs();input.onfocus=()=>select(clip.id);input.oninput=()=>{clip[key]=input.value===''?'':Number(input.value);select(clip.id);validate(clip);};
+   for(const [suffix,delta] of [['less',-10],['more',10]])q('.'+key+'-'+suffix).onclick=()=>{clip[key]=Math.min(totalMs(),round(Math.max(0,Math.min(totalMs(),Number(clip[key])+delta))));select(clip.id);updateFields(clip);};
+  }
+  q('.play').onclick=()=>{select(clip.id);preview(clip);};q('.download').onclick=()=>{try{download(makeWav(clip),C.filename(clip.name)+'.wav','audio/wav');status('Скачан '+C.filename(clip.name)+'.wav');}catch(e){status(e.message,true);}};
+  q('.delete').onclick=()=>{stop();clips=clips.filter(c=>c!==clip);element.remove();if(active===clip.id)active=clips.at(-1)?.id??null;if(active!==null)select(active);else draw();setButtons();};
+  clips.push(clip);$('clips').append(element);updateFields(clip);select(clip.id);setButtons();return clip;
+ }
+ function draw(){
+  const rect=canvas.getBoundingClientRect();if(!rect.width||!buffer)return;
+  const ratio=Math.min(devicePixelRatio||1,2),width=Math.round(rect.width*ratio),height=Math.round(rect.height*ratio);
+  if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;}
+  const ctx=canvas.getContext('2d');ctx.clearRect(0,0,width,height);const mid=height/2,clip=activeClip();
+  let r=null;try{if(clip)r=clipRange(clip);}catch{}
+  if(r){ctx.fillStyle='#bfe89522';ctx.fillRect(r.start/buffer.length*width,0,r.frames/buffer.length*width,height);}
+  ctx.strokeStyle='#a9d4b0';ctx.lineWidth=ratio;ctx.beginPath();
+  for(let i=0;i<envelope.length;i++){const x=(i+.5)/envelope.length*width;ctx.moveTo(x,mid-envelope[i].max*(mid-18*ratio));ctx.lineTo(x,mid-envelope[i].min*(mid-18*ratio));}ctx.stroke();
+  if(r){ctx.strokeStyle='#d6f3a7';ctx.lineWidth=2*ratio;for(const frame of [r.start,r.end]){const x=frame/buffer.length*width;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke();ctx.fillStyle='#d6f3a7';ctx.fillRect(x-4*ratio,0,8*ratio,15*ratio);}}
+  if(!player.paused&&!player.ended){const x=(playStart+player.currentTime*1000)/totalMs()*width;ctx.strokeStyle='#ffba7c';ctx.lineWidth=2*ratio;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke();}
+  ctx.font=(11*ratio)+'px system-ui';ctx.fillStyle='#c9d8cc';ctx.fillText('0 мс',8*ratio,height-6*ratio);const text=round(totalMs())+' мс';ctx.fillText(text,Math.max(8*ratio,width-ctx.measureText(text).width-8*ratio),height-6*ratio);
+ }
+ async function load(file){
+  if(!file)return;const version=++loadVersion;busy=true;setButtons();status('Декодирование '+file.name+'…');
+  try{
+   const Context=window.AudioContext||window.webkitAudioContext;if(!Context)throw Error('Браузер не поддерживает Web Audio.');
+   audioContext??=new Context();const decoded=await audioContext.decodeAudioData(await file.arrayBuffer());if(version!==loadVersion)return;
+   if(!decoded.length)throw Error('В файле нет аудиосэмплов.');
+   const data=Array.from({length:decoded.numberOfChannels},(_,i)=>decoded.getChannelData(i)),wave=C.peaks(data);
+   clearPreview();if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceUrl=URL.createObjectURL(file);
+   buffer=decoded;channels=data;envelope=wave;clips=[];active=null;nextId=1;base=C.filename(file.name);$('clips').replaceChildren();$('source').hidden=false;
+   $('filename').textContent=file.name;$('info').textContent=round(totalMs())+' мс · '+buffer.numberOfChannels+' кан. · '+buffer.sampleRate.toLocaleString('ru-RU')+' Гц';
+   status('Файл готов. Добавь фрагмент кнопкой «＋».');$('playing').textContent='Экспорт: WAV PCM 16 бит. Громкость не нормализуется.';draw();
+  }catch(e){if(version===loadVersion)status('Не удалось открыть аудио: '+e.message,true);}
+  finally{if(version===loadVersion){busy=false;setButtons();for(const clip of clips)validate(clip);}}
+ }
+ function pointerTime(event){const rect=canvas.getBoundingClientRect();return Math.max(0,Math.min(totalMs(),(event.clientX-rect.left)/rect.width*totalMs()));}
+ canvas.addEventListener('pointerdown',event=>{
+  if(!buffer||busy||event.button!==0)return;event.preventDefault();stop();const clip=activeClip()||addClip(),time=pointerTime(event),width=canvas.getBoundingClientRect().width;
+  select(clip.id);const a=Number(clip.start),b=Number(clip.end),nearA=Math.abs(time-a)/totalMs()*width,nearB=Math.abs(time-b)/totalMs()*width;
+  drag={id:event.pointerId,clip,origin:time,edge:Math.min(nearA,nearB)<14?(nearA<=nearB?'start':'end'):'range'};
+  canvas.setPointerCapture(event.pointerId);
+ });
+ canvas.addEventListener('pointermove',event=>{
+  if(!drag||drag.id!==event.pointerId)return;const t=pointerTime(event),c=drag.clip,sample=1000/buffer.sampleRate;
+  if(drag.edge==='start')c.start=round(Math.max(0,Math.min(t,Number(c.end)-sample)));
+  else if(drag.edge==='end')c.end=Math.min(totalMs(),Math.max(t,Number(c.start)+sample));
+  else{c.start=Math.max(0,Math.min(drag.origin,t,totalMs()-sample));c.end=Math.min(totalMs(),Math.max(drag.origin,t,c.start+sample));}
+  updateFields(c);
+ });
+ for(const name of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(name,event=>{if(drag?.id===event.pointerId)drag=null;});
+ fileInput.onchange=()=>load(fileInput.files[0]);$('drop').addEventListener('dragover',e=>{e.preventDefault();$('drop').classList.add('dragover');});$('drop').addEventListener('dragleave',()=>$('drop').classList.remove('dragover'));$('drop').addEventListener('drop',e=>{e.preventDefault();$('drop').classList.remove('dragover');load(e.dataTransfer.files[0]);});
+ $('add').onclick=()=>{const clip=addClip();clip?.element.scrollIntoView({behavior:'auto',block:'nearest'});};$('stop').onclick=stop;
+ $('original').onclick=async()=>{if(!buffer)return;try{clearPreview();player.src=sourceUrl;playStart=0;$('playing').textContent='Исходный файл';await player.play();}catch(e){status(e.message,true);}};
+ $('fade').oninput=()=>{for(const clip of clips)validate(clip);};
+ $('zip').onclick=()=>{try{if(!clips.length)return;const entries=clips.map((clip,i)=>({name:String(i+1).padStart(2,'0')+'_'+C.filename(clip.name)+'.wav',data:makeWav(clip)}));download(C.zip(entries),base+'_cuts.zip','application/zip');status('Скачан ZIP: '+entries.length+' фрагментов.');}catch(e){status('Проверь границы фрагментов: '+e.message,true);}};
+ function animate(){draw();if(!player.paused&&!player.ended)animation=requestAnimationFrame(animate);else animation=0;}
+ player.addEventListener('play',()=>{cancelAnimationFrame(animation);animation=requestAnimationFrame(animate);});for(const name of ['ended','pause'])player.addEventListener(name,()=>{cancelAnimationFrame(animation);animation=0;draw();});
+ if(window.ResizeObserver)new ResizeObserver(draw).observe(canvas);else window.addEventListener('resize',draw);
+ window.addEventListener('pagehide',event=>{player.pause();if(event.persisted)return;if(sourceUrl)URL.revokeObjectURL(sourceUrl);if(previewUrl)URL.revokeObjectURL(previewUrl);audioContext?.close();});
+})();
+</script>
+</body></html>
