@@ -1,13 +1,15 @@
 /**
  * Forest Chopper: simple, game-oriented modular humanoid.
- * One 53-bone skinned armature per character, two fixed bodies, CC0 outfit library.
- * One game/body_{gender}.glb per gender, each with its own Action bank and face morph targets.
- * Outfit and hair GLBs remain separately skinned onto the active character rig.
+ * One 53-bone skinned armature, mixer and independent Action bank per avatar.
+ * Three body GLBs (male, female, classic lumberjack) share one runtime loader.
+ * Two modular bodies support separately skinned clothes and hair, while the
+ * lumberjack keeps his own authored meshes and original materials.
  */
 import * as THREE from 'https://esm.sh/three@0.170.0';
 import {GLTFLoader} from 'https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js';
 import {clone as cloneSkinned} from 'https://esm.sh/three@0.170.0/examples/jsm/utils/SkeletonUtils.js';
 import {applyBodyMaskFromOutfit} from './body-mask-runtime.js?v=20261102-matrix1';
+import {CHARACTER_PROFILES} from '../../src/character-model-selection.js?v=20261105-lumberjack-chop-1812';
 
 const BASE=new URL('./',import.meta.url);
 const loader=new GLTFLoader();
@@ -42,7 +44,10 @@ const loadJSON=relative=>{
     fetch(new URL(relative,BASE)).then(r=>{if(!r.ok)throw Error('Missing '+relative);return r.json()}));
   return jsonCache.get(relative);
 };
-export const BODIES=['male','female'];
+// The pure-data registry is also used by the game menu and animation
+// loader. Keeping this alias avoids maintaining two lists of characters.
+export const CHARACTER_BODY_ASSETS=CHARACTER_PROFILES;
+export const BODIES=['male','female']; // modular clothing preview choices
 export const FACE_PRESETS=['default','angular','soft'];
 export const SOCKET_BONES={
   handRight:'hand_r',handLeft:'hand_l',head:'head',
@@ -249,11 +254,12 @@ export class LiteHumanoid {
     for(const [slot,mesh] of this.parts)if(slot!=='hair')mesh.visible=true;
     return this;
   }
-  attach(slot,object,{position,rotation,scale}={}){
+  attach(slot,object,{position,rotation,quaternion,scale}={}){
     const socket=this.sockets.get(slot);
     if(!socket)throw Error('Unknown attachment socket: '+slot);
     if(position)socket.position.fromArray(position);
     if(rotation)socket.rotation.set(...rotation);
+    if(quaternion)socket.quaternion.fromArray(quaternion);
     if(scale)socket.scale.fromArray(scale);
     socket.add(object);
     return object;
@@ -293,10 +299,20 @@ export class LiteHumanoid {
 }
 export async function createLiteHumanoid(options={}){
  const appearance={...DEFAULT_APPEARANCE,...options};
- if(!BODIES.includes(appearance.body))throw Error('Unknown body: '+appearance.body);
+ if(!Object.hasOwn(CHARACTER_BODY_ASSETS,appearance.body))
+  throw Error('Unknown body: '+appearance.body);
+ const profile=CHARACTER_BODY_ASSETS[appearance.body];
  if(!FACE_PRESETS.includes(appearance.face))throw Error('Unknown face preset: '+appearance.face);
+ if(!profile.outfit){
+   // The classic appearance is baked into its own 53-bone GLB.
+   Object.assign(appearance,{top:null,bottom:null,shoes:null,outerwear:null,
+     underwear:null,bra:null,hair:null,maskEditor:true});
+ }
  const [glb,catalog]=await Promise.all([
-   loadGLTF('game/body_'+appearance.body+'.glb?v=fc-backrun-root-20261104'),getHumanoidCatalog()
+   loadGLTF(profile.file),
+   profile.outfit?getHumanoidCatalog():Promise.resolve({
+     clothing:{slots:[],items:[]},hair:{styles:[]},variants:{items:{}},
+   }),
  ]);
  const model=cloneSkinned(glb.scene);
  const actor=new LiteHumanoid(model,glb.animations,appearance,catalog);

@@ -33,8 +33,8 @@ export function mirroredWalkPhaseTime(time,sourceDuration,targetDuration){
  return ((1-phase)%1)*targetDuration;
 }
 
-// Prefer the genuine backward-walking clip when available. Legacy models
-// still play their forward Walk Action backwards, exactly as before.
+// Backward walking has an independently authored clip on all three models.
+// Keep a compatibility fallback only for incomplete imported assets.
 export function walkingMotion(actor,backward){
  return backward&&actor?.lower?.WalkBackward?'WalkBackward':'Walk';
 }

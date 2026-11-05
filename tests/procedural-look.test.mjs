@@ -184,5 +184,5 @@ test('look applies after mixer update and is disabled for ragdoll/death',()=>{
  assert.match(animations,/actor\.proceduralLook\?\.restore\(\);[\s\S]*actor\.human\.update\(dt\)/);
  assert.match(player,/ctx\.tickActor\(ctx\.ownAvatar,dt,motion,!ctx\.onGround,rate\);[\s\S]*ctx\.ownAvatar\.proceduralLook\?\.apply\(ctx\.characterOrientation\)/);
  assert.match(player,/if\(posing\|\|dead\)ctx\.ownAvatar\?\.proceduralLook\?\.discard\(\)/);
- assert.match(animations,/proceduralLook:human\?createProceduralLook\(THREE,human\.bones\):null/);
+ assert.match(animations,/proceduralLook:createProceduralLook\(THREE,human\.bones\)/);
 });

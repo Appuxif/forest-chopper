@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RIG = ROOT / 'characters/humanoid/animation/preview/body_lumberjack_retarget.glb'
-AXE = ROOT / 'lumberjack/lumberjack_axe.glb'
+AXE = ROOT / 'characters/humanoid/game/axe_shared.glb'
 SOURCE = ROOT / 'lumberjack/lumberjack.glb'
 
 MOTIONS = {
@@ -145,12 +145,16 @@ class LumberjackAssetsTest(unittest.TestCase):
         gltf = self.axe
         self.assertEqual(len(gltf.get('skins', [])), 0)
         self.assertEqual(len(gltf.get('animations', [])), 0)
-        self.assertEqual(len(gltf['meshes']), 2)
+        self.assertEqual(len(gltf['meshes']), 5)
+        self.assertEqual(len(gltf['nodes']), 6)
+        self.assertEqual(len(gltf.get('materials', [])), 5)
         nodes = gltf['nodes']
-        self.assertIn('AXE_GRIP', {n['name'] for n in nodes})
+        self.assertEqual(len([n for n in nodes if n['name'].startswith('AXE_GRIP')]), 1)
         self.assertEqual(
             {n['name'] for n in nodes if 'mesh' in n},
-            {'Axe blade', 'Axe handle'}
+            {'Axe End pin · Male', 'Axe Forged blade · Male',
+             'Axe Handle · Male', 'Axe Leather grip · Male',
+             'Axe Steel collar · Male'}
         )
 
 

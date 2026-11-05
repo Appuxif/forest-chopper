@@ -308,3 +308,44 @@ test('pose sliders independently limit pitch and turning speed',()=>{
  close(pose.torsoPitch,-Math.PI/2*.62);
  close(pose.headPitch,-Math.PI/2*.38);
 });
+
+
+test('running divides both lateral torso/head yaw limits by the selected factor',()=>{
+ const deg=Math.PI/180;
+ const pose=createCharacterOrientation({cameraYaw:Math.PI});
+ pose.legsYaw=0;
+ const settings={lookTorsoYaw:60,lookHeadYaw:60,lookRunYawReduction:5};
+ pose.steerUpper(1,{settings,running:true});
+ close(shortestYawDelta(pose.legsYaw,pose.torsoYaw),12*deg);
+ close(pose.headYaw,12*deg);
+ // Back to walking or idle: both use full limits again.
+ pose.steerUpper(1,{settings,running:false});
+ close(shortestYawDelta(pose.legsYaw,pose.torsoYaw),60*deg);
+ close(pose.headYaw,60*deg);
+ // 1x is exactly the original behavior even while running.
+ pose.steerUpper(1,{settings:{...settings,lookRunYawReduction:1},running:true});
+ close(shortestYawDelta(pose.legsYaw,pose.torsoYaw),60*deg);
+ close(pose.headYaw,60*deg);
+});
+
+test('changing to running immediately enforces reduced yaw without affecting pitch',()=>{
+ const deg=Math.PI/180;
+ const pose=createCharacterOrientation({cameraYaw:Math.PI,cameraPitch:-.6});
+ pose.legsYaw=0;
+ const settings={lookRunYawReduction:10};
+ pose.steerUpper(1,{settings,running:false});
+ close(shortestYawDelta(pose.legsYaw,pose.torsoYaw),60*deg);
+ close(pose.headYaw,60*deg);
+ const chestPitch=pose.torsoPitch,headPitch=pose.headPitch;
+ pose.steerUpper(.016,{settings,running:true});
+ assert.ok(Math.abs(shortestYawDelta(pose.legsYaw,pose.torsoYaw))<=6*deg+1e-10);
+ assert.ok(Math.abs(pose.headYaw)<=6*deg+1e-10);
+ close(pose.torsoPitch,chestPitch);
+ close(pose.headPitch,headPitch);
+});
+
+test('run-only look reduction is wired to both Run and RunBackward in gameplay',()=>{
+ const player=readFileSync(new URL('../src/player.js',import.meta.url),'utf8');
+ assert.match(player,/running:motion==='Run'\|\|motion==='RunBackward'/);
+ assert.match(player,/ctx\.characterOrientation\.steerUpper\(dt,/);
+});

@@ -64,7 +64,7 @@ test('ragdoll uses a fixed torso and bounded, softly-restoring anatomical hinges
 
 
 test('modular humanoid ragdolls have passive, anatomically bounded arms and legs',()=>{
- assert.equal(ragdollJointProfile('legacy'),RAGDOLL_JOINTS);
+ assert.equal(ragdollJointProfile('legacy'),RAGDOLL_HUMANOID_JOINTS);
  assert.equal(ragdollJointProfile('male'),RAGDOLL_HUMANOID_JOINTS);
  assert.equal(ragdollJointProfile('female'),RAGDOLL_HUMANOID_JOINTS);
  for(const name of ['UpperArm.L','UpperArm.R','Forearm.L','Forearm.R',

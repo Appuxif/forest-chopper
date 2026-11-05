@@ -1136,7 +1136,10 @@ test('pose sliders have safe ranges, validated defaults, and no effect on graphi
  const defaults=sanitizeSettings(null);
  assert.deepEqual([defaults.lookTorsoYaw,defaults.lookHeadYaw,defaults.lookFreeYaw],
   [60,60,120]);
- assert.equal(Object.keys(CHARACTER_LOOK_FIELDS).length,11);
+ assert.equal(Object.keys(CHARACTER_LOOK_FIELDS).length,12);
+ assert.deepEqual(CHARACTER_LOOK_FIELDS.lookRunYawReduction.slice(0,4),[1,10,1,1]);
+ assert.equal(sanitizeSettings({lookRunYawReduction:5}).lookRunYawReduction,5);
+ assert.equal(sanitizeSettings({lookRunYawReduction:11}).lookRunYawReduction,1);
  for(const [key,[min,max,step,fallback,label,unit]] of Object.entries(CHARACTER_LOOK_FIELDS)){
   assert.equal(defaults[key],fallback,key);
   const html=lookRangeMarkup(key);
@@ -1197,6 +1200,10 @@ test('pose slider inputs apply live, persist across sessions, and reset without 
  neck.value='95';neck.oninput();
  const free=element('#fc-look-lookFreeYaw');
  free.value='180';free.oninput();
+ const runReduction=element('#fc-look-lookRunYawReduction');
+ runReduction.value='5';runReduction.oninput();
+ assert.equal(initial.lookSettings.lookRunYawReduction,5);
+ assert.equal(element('#fc-look-lookRunYawReduction-value').textContent,'5');
  assert.deepEqual([
   initial.lookSettings.lookTorsoYaw,
   initial.lookSettings.lookHeadYaw,
@@ -1206,10 +1213,12 @@ test('pose slider inputs apply live, persist across sessions, and reset without 
  assert.deepEqual([stored.lookTorsoYaw,stored.lookHeadYaw,stored.lookFreeYaw],
   [65,95,180]);
  assert.equal(stored.position,undefined,'pose must live in settings, never world saves');
+ assert.equal(stored.lookRunYawReduction,5,'run limit divisor is persisted');
  const reloaded=createSettings(doc,storage);
  assert.deepEqual([reloaded.lookSettings.lookTorsoYaw,
   reloaded.lookSettings.lookHeadYaw,reloaded.lookSettings.lookFreeYaw],
   [65,95,180]);
+ assert.equal(reloaded.lookSettings.lookRunYawReduction,5);
  const camera=element('#fc-camera-pitch-limit');
  camera.value='35';camera.oninput({target:camera});
  const speed=element('#fc-look-lookHeadTurnSpeed');
@@ -1223,6 +1232,7 @@ test('pose slider inputs apply live, persist across sessions, and reset without 
   reloaded.lookSettings.lookFreeYaw,
   reloaded.lookSettings.lookHeadTurnSpeed,
  ],[60,60,120,14]);
+ assert.equal(reloaded.lookSettings.lookRunYawReduction,1,'pose reset restores 1x');
  assert.equal(JSON.parse(values.get('forest-chopper:settings:v1')).cameraPitchLimit,35);
  element('#fc-reset-settings').onclick();
  assert.equal(reloaded.lookSettings.lookFreeYaw,120);

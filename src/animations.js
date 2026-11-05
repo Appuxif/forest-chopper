@@ -1,20 +1,24 @@
 import {rootMotionSpeed,mirroredWalkPhaseTime,rootMotionSampleDelta,weightedHorizontalRootTravel} from './root-motion-speed.js?v=20261104-ori03';
 import {createProceduralLook} from './procedural-look.js';
+import {SHARED_AXE_ASSET} from './character-model-selection.js?v=20261105-lumberjack-chop-1812';
 
 // Each actor owns exactly one visible skeleton, mixer and animation bank.
-// The modular male/female game GLBs contain the authored Run/Chop actions.
-// No invisible driver character and no second animation timeline.
+// Each of the three 53-bone game GLBs contains its OWN authored animations.
+// No legacy driver rig, model-specific mixer or alternate gameplay timing.
 const LOWER_BONES=new Set(['root','pelvis','hips','thighl','thighr','calfl','calfr','shinl','shinr','footl','footr','balll','ballr']);
 const ROOT_MOTIONS=['Walk','WalkBackward','Run','RunBackward','StrafeLeft','StrafeRight'];
 const HUMANOID_CLIP_NAMES={
- idle:'Idle',walk:'Walk',walk_back:'WalkBackward',run:'Run',run_backward:'RunBackward',
+ idle:'Idle',idle_breathe:'IdleBreathe',idle_fidget:'IdleFidget',idle_look:'IdleLook',
+ walk:'Walk',walk_back:'WalkBackward',walk_backward:'WalkBackward',
+ run:'Run',run_backward:'RunBackward',
  strafe_left:'StrafeLeft',strafe_right:'StrafeRight',
- jump:'Jump',fall:'Fall',Chop:'Chop2'
+ jump:'Jump',fall:'Fall',land:'Land',Chop:'Chop2'
 };
-// The classic GLB already contains DIFFERENT actions named Chop and Chop2.
-// Never rename its Chop to Chop2: doing so overwrites the real axe swing.
+// Blender keeps each artist's lowercase action names; the game uses one
+// canonical set of identifiers for all three GLBs. The model ID is ignored
+// intentionally: identity changes artwork, not animation semantics.
 export function runtimeClipName(model,name){
- return model==='legacy'?name:(HUMANOID_CLIP_NAMES[name]??name);
+ return HUMANOID_CLIP_NAMES[name]??name;
 }
 const normalizeBone=name=>name.replace(/[._\s-]/g,'').toLowerCase();
 export const CHOP_SPEED=1.6;
@@ -57,10 +61,7 @@ export function transitionLayer(THREE,actor,layer,name,rate=1){
    next.time=speed<0?Math.max(0,next.getClip().duration-1e-5):0;
    actor.rmTimes[name]=next.time;
   }
-  // The classic actor never retimed its upper-body action once playing:
-  // only its lower-body locomotion rate changed with movement input.
-  if(name!=='Chop2'&&(layer==='lower'||actor.model!=='legacy'))
-   next.setEffectiveTimeScale(speed);
+  if(name!=='Chop2')next.setEffectiveTimeScale(speed);
   return;
  }
  const previous=bank[actor[field]];
@@ -85,15 +86,10 @@ export function transitionLayer(THREE,actor,layer,name,rate=1){
  actor[field]=name;
 }
 
-// The classic axe finishes when its AnimationAction reaches the last
-// frame, even if browser rendering/physics was throttled or paused.
-// Modern humanoids keep their existing clock-based chop lifecycle.
+// Identical chop lifecycle on every skeleton. Mixer time is authoritative
+// for the actual contact frame; elapsed time blocks upper-body transitions.
 export function canTransitionUpperBody(actor,now){
  if(actor.upperState!=='Chop2')return true;
- if(actor.model==='legacy'){
-  const chop=actor.upper.Chop2;
-  return !chop||chop.time>=chop.getClip().duration-1e-5;
- }
  return now>=actor.chopEnd;
 }
 
@@ -103,39 +99,39 @@ function rootStep(THREE,info,from,to,backward){
 
 export async function createAnimations(THREE){
  const modelActors=new Set();
- const {createLiteHumanoid}=await import('../characters/humanoid/humanoid-lite.js?v=20261104-backrun-root1');
- let legacyTemplatePromise=null,axeAssetPromise=null;
+ const {createLiteHumanoid,CHARACTER_BODY_ASSETS}=await import('../characters/humanoid/humanoid-lite.js?v=20261105-lumberjack-chop-1812');
+ let axeAssetPromise=null;
  const {GLTFLoader}=await import('https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js');
  const loader=new GLTFLoader();
 
  async function createAvatar(model='male',layer=3){
+  if(!Object.hasOwn(CHARACTER_BODY_ASSETS,model))
+   throw Error('Unknown character model: '+model);
   const group=new THREE.Group();
-  let visual,mixer,rawClips,human=null;
-  if(model==='legacy'){
-   // The optional classic character uses its own GLB for both appearance and
-   // locomotion. It is a model choice, never an invisible animation driver.
-   const [{clone},gltf]=await Promise.all([
-    import('https://esm.sh/three@0.170.0/examples/jsm/utils/SkeletonUtils.js'),
-    legacyTemplatePromise??=(loader.loadAsync('./lumberjack/lumberjack.glb')),
-   ]);
-   visual=clone(gltf.scene);
-   mixer=new THREE.AnimationMixer(visual);
-   rawClips=gltf.animations;
-  }else{
-   if(model!=='male'&&model!=='female')throw Error('Unknown character model: '+model);
-   human=await createLiteHumanoid({body:model,face:'default',hair:'short02',top:'shirt',bottom:'jeans',shoes:'shoes',outerwear:null});
-   human.mixer.stopAllAction();
-   human.action=null;
-   visual=human.root;
-   mixer=human.mixer;
-   rawClips=human.clips;
-   const axeGLTF=await (axeAssetPromise??=(loader.loadAsync('./characters/humanoid/lite/axe_preview.glb')));
-   const hand=human.bones.get('hand_r');
-   let grip=null;
-   axeGLTF.scene.traverse(node=>{if(node.name.startsWith('AXE_GRIP'))grip=node;});
-   if(!hand||!grip)throw Error('Missing right hand or axe grip');
-   hand.add(grip.clone(true));
+  const human=await createLiteHumanoid({
+   body:model,face:'default',hair:'short02',top:'shirt',bottom:'jeans',
+   shoes:'shoes',outerwear:null,
+  });
+  human.mixer.stopAllAction();
+  human.action=null;
+  const visual=human.root,mixer=human.mixer,rawClips=human.clips;
+  // One GLB and one in-flight load for every body. Clones share GPU
+  // geometry/material resources while keeping independent object transforms.
+  if(!axeAssetPromise){
+   axeAssetPromise=loader.loadAsync('./'+SHARED_AXE_ASSET).catch(error=>{
+    axeAssetPromise=null;
+    throw error;
+   });
   }
+  const axeGLTF=await axeAssetPromise;
+  let grip=null;
+  axeGLTF.scene.traverse(node=>{if(node.name.startsWith('AXE_GRIP'))grip=node;});
+  if(!grip)throw Error('Missing axe grip for '+model);
+  // The same AXE_GRIP geometry attaches through one socket API on every
+  // rig. Each body can author a grip correction as data without branching
+  // on model or modifying weapon geometry or bone animations.
+  const axeGrip=human.attach('handRight',grip.clone(true),
+    CHARACTER_BODY_ASSETS[model].handRight);
   visual.rotation.y=Math.PI;
   visual.traverse(node=>{if(node.isMesh){node.castShadow=true;node.layers.set(layer);}});
   group.add(visual);
@@ -163,8 +159,9 @@ export async function createAnimations(THREE){
   if(upper.Chop2){upper.Chop2.setLoop(THREE.LoopOnce,1);upper.Chop2.clampWhenFinished=true;}
   const shadowMeshes=[];
   visual.traverse(node=>{if(node.isMesh)shadowMeshes.push(node);});
-  const actor={group,visual,mixer,lower,upper,rootMotion,shadowMeshes,human,
-   proceduralLook:human?createProceduralLook(THREE,human.bones):null,
+  const actor={group,visual,mixer,lower,upper,rootMotion,shadowMeshes,human,axeGrip,
+   setAxeEquipped(equipped){axeGrip.visible=!!equipped;},
+   proceduralLook:createProceduralLook(THREE,human.bones),
    lowerState:'',upperState:'',chopEnd:0,rmTimes:{},model};
   actor.actions={...lower,Chop2:upper.Chop2};
   modelActors.add(actor);
@@ -184,12 +181,10 @@ export async function createAnimations(THREE){
   const action=actor?.upper?.Chop2;
   if(!action)return;
   if(actor.upperState==='Chop2'){action.stop();actor.upperState='';}
-  if(actor.model!=='legacy'){
-   const playbackSpeed=CHOP_SPEED*Math.max(.1,axeSpeed);
-   actor.chopEnd=performance.now()+action.getClip().duration/playbackSpeed*1000+30;
-  }
-  // Model-specific contact (frame 18/25) is measured on this same action; the visual
-  // swing must use the equipped axe's rate, not the default 1.6x rate.
+  const playbackSpeed=CHOP_SPEED*Math.max(.1,axeSpeed);
+  actor.chopEnd=performance.now()+action.getClip().duration/playbackSpeed*1000+30;
+  // Contact is frame 25/30 for each independently authored 53-bone Chop.
+  // The visible swing uses the equipped axe's playback rate.
   transitionLayer(THREE,actor,'upper','Chop2',axeSpeed);
  }
 
@@ -200,13 +195,13 @@ export async function createAnimations(THREE){
   motion=jumping&&actor.lower.Jump?'Jump':actor.lower[motion]?motion:'Idle';
   transitionLayer(THREE,actor,'lower',motion,rate);
   if(canTransitionUpperBody(actor,performance.now()))
-   transitionLayer(THREE,actor,'upper',motion,actor.model==='legacy'?1:rate);
+   transitionLayer(THREE,actor,'upper',motion,rate);
   // Undo last frame's additive look before the mixer samples the authored
   // animation. Never allow an unkeyed pose to accumulate procedural offsets.
   actor.proceduralLook?.restore();
   // The same mixer that moves the rendered bones supplies Root Motion.
-  if(actor.human){actor.human.motionName=motion.toLowerCase();actor.human.update(dt);}
-  else actor.mixer.update(dt);
+  actor.human.motionName=motion.toLowerCase();
+  actor.human.update(dt);
   for(const name of ROOT_MOTIONS){
    const info=actor.rootMotion[name],action=actor.lower[name];
    if(!info||!action)continue;

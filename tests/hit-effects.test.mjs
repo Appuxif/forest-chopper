@@ -47,7 +47,7 @@ function setup(online=false) {
     setAim(value){canAim=value;},setAimTarget(mesh){aimTarget=mesh;},chopping:createChopping(ctx)};
 }
 
-test('empty-space swing can land if player aims at a tree exactly on frame 18 (offline)',()=>{
+test('empty-space swing can land if player aims at a tree exactly on frame 25 (offline)',()=>{
  const f=setup();
  f.setAim(false);
  f.chopping.chop();
@@ -56,7 +56,7 @@ test('empty-space swing can land if player aims at a tree exactly on frame 18 (o
  assert.equal(f.tree.userData.hp,5);
  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+700),false);
  f.setAim(true);
- assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
  assert.equal(f.tree.userData.hp,4);
  assert.equal(f.ctx.particles.length,7);
  assert.deepEqual(f.events,['swing','axe']);
@@ -68,7 +68,7 @@ test('empty-space swing never hits if there is no tree at contact',()=>{
  f.setAim(false);
  f.ctx.vitals={canChop:true,hit:()=>{throw Error('miss must not spend stamina')}};
  f.chopping.chop();
- assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),false);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),false);
  assert.equal(f.tree.userData.hp,5);
  assert.equal(f.ctx.particles.length,0);
  assert.deepEqual(f.events,['swing']);
@@ -82,7 +82,7 @@ test('empty-space swing sends online hit only at contact, not before',()=>{
  f.chopping.chop();
  assert.deepEqual(f.sent,[]);
  f.setAim(true);
- assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
  assert.deepEqual(f.sent,[{type:'hit',tree:f.tree.userData.id}]);
  assert.equal(f.tree.userData.hp,5,'HP remains server-authoritative');
  assert.equal(f.ctx.particles.length,7);
@@ -97,11 +97,11 @@ test('offline successful chop keeps entire trunk material, scale and rotation co
   chopping.chop();
   assert.equal(tree.userData.hp,5,'click itself does not damage');
   assert.equal(ctx.particles.length,0,'click itself does not spawn chips');
-  assert.equal(chopping.tickImpact(ctx.lastHit+700),false,'before frame 18');
-  assert.equal(chopping.tickImpact(ctx.lastHit+715),true,'frame 18 collision');
+  assert.equal(chopping.tickImpact(ctx.lastHit+700),false,'before frame 25');
+  assert.equal(chopping.tickImpact(ctx.lastHit+835),true,'frame 25 collision');
   assert.equal(tree.userData.hp,4);
   assert.deepEqual(f.events,['swing','axe']);
-  assert.equal(chopping.tickImpact(ctx.lastHit+2000),false,'frame 18 cannot apply twice');
+  assert.equal(chopping.tickImpact(ctx.lastHit+2000),false,'frame 25 cannot apply twice');
   assert.equal(tree.userData.scar,undefined,'no rectangular damage overlay');
   assert.equal(trunk.material,material,'no full-trunk flash');
   assert.deepEqual(trunk.scale,originalTrunkScale,'no full-trunk scaling');
@@ -115,10 +115,10 @@ test('online chop sends request but waits for authoritative tree_hit to show fee
   const f=setup(true);
   f.chopping.chop();
   assert.deepEqual(f.sent,[],'server receives nothing until contact');
-  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
   assert.deepEqual(f.sent,[{type:'hit',tree:'0,0:1'}]);
   assert.deepEqual(f.events,['swing','axe']);
-  assert.equal(f.ctx.particles.length,7,'predicted local chips appear on frame 18');
+  assert.equal(f.ctx.particles.length,7,'predicted local chips appear on frame 25');
   assert.equal(f.tree.userData.hp,5);
   assert.equal(f.tree.userData.scar,undefined);
   assert.equal(f.ctx.particles.length,7,'online local player sees one burst at impact');
@@ -145,7 +145,7 @@ test('previous cached hit effect API is inert for compatibility',()=>{
   assert.equal(fx.activeCount,0);
 });
 
-test('aiming away at frame 18 is a complete miss: no sound, stamina, damage or chips',()=>{
+test('aiming away at frame 25 is a complete miss: no sound, stamina, damage or chips',()=>{
  const f=setup();
  f.ctx.vitals={canChop:true,hit:()=>{throw Error('miss spends stamina')}};
  f.chopping.chop();
@@ -157,7 +157,7 @@ test('aiming away at frame 18 is a complete miss: no sound, stamina, damage or c
  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+600),false);
 });
 
-test('aiming from tree A to B before frame 18 damages only B',()=>{
+test('aiming from tree A to B before frame 25 damages only B',()=>{
  const f=setup(),a=f.tree;
  const bMesh=new f.ctx.THREE.Mesh({},f.material);
  const b={children:[bMesh],position:{x:2.2,z:0},rotation:{x:0,y:0,z:0},
@@ -167,7 +167,7 @@ test('aiming from tree A to B before frame 18 damages only B',()=>{
  f.chopping.chop();
  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+700),false);
  f.setAimTarget(bMesh);
- assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
  assert.equal(a.userData.hp,5,'original target A remains untouched');
  assert.equal(b.userData.hp,5,'current target B receives exactly one hit');
  assert.equal(f.damage.get(b.userData.id),5);
@@ -185,7 +185,7 @@ test('empty-space swing can aim at B instead of A by contact frame',()=>{
  f.setAim(false);
  f.chopping.chop();
  f.setAim(true);f.setAimTarget(bMesh);
- assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
  assert.equal(f.tree.userData.hp,5);
  assert.equal(b.userData.hp,5);
  assert.deepEqual(f.events,['swing','axe']);
@@ -207,16 +207,16 @@ test('ragdoll or death before contact cancels pending impact permanently',()=>{
 
 test('impact uses actual mixer time, not wall-clock, and supports fast axes',()=>{
  const f=setup();
- const action={time:0,getClip(){return {duration:1.7916667}}};
+ const action={time:0,getClip(){return {duration:46/30}}};
  f.ctx.ownAvatar={upper:{Chop2:action},actions:{Chop2:action}};
  f.ctx.CHOP_SPEED=1.6;
  f.ctx.inventory={selected:'axe',equipped:true,axe:{speed:1.5,damage:2},
   state:{selectedQuick:0,quickItem(){return {id:'axe'}}}};
  f.chopping.chop();
  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false,'mixer not yet at impact');
- action.time=17/24-.001;
+ action.time=25/30-.001;
  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false);
- action.time=17/24;
+ action.time=25/30;
  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),true);
  assert.equal(f.tree.userData.hp,3);
  assert.deepEqual(f.events,['swing','axe']);
@@ -226,7 +226,7 @@ test('server confirms locally predicted chips once; remote hits remain visible',
  const f=setup(true);
  f.ctx.myId=11;
  f.chopping.chop();
- assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
  assert.equal(f.ctx.particles.length,7);
  assert.equal(f.chopping.acknowledgeLocalChop('0,0:1',12),false,
   'other player hits must not consume local prediction');
@@ -241,11 +241,12 @@ test('a temporary aim deviation recovers if crosshair returns by the contact fra
  f.setAim(false);
  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+400),false);
  f.setAim(true);
- assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
  assert.equal(f.tree.userData.hp,4);
  assert.deepEqual(f.events,['swing','axe']);
 });
 
+<<<<<<< HEAD
 test('hen target is acquired only at the Chop2 contact frame and cannot receive the same swing twice',()=>{
  const f=setup(false);const hits=[];let hen=null;
  f.ctx.hens={aimed:()=>hen?{record:hen}:null,hit:r=>{hits.push(r.id);return true;}};
@@ -284,6 +285,10 @@ test('an open corpse UI prevents a new swing and cancels an already pending impa
  assert.equal(f.tree.userData.hp,5);
 test('male and female wait for frame 25 before aim, stamina, HP, chips and sound',()=>{
  for(const model of ['male','female']){
+=======
+test('all three models wait for frame 25 before aim, stamina, HP, chips and sound',()=>{
+ for(const model of ['legacy','male','female']){
+>>>>>>> 2112c0c (Unify humanoid animation runtime and shared axe across three characters)
   const f=setup();
   const action={time:0,getClip(){return {duration:47/30}}};
   f.ctx.ownAvatar={model,upper:{Chop2:action},actions:{Chop2:action}};
@@ -295,7 +300,7 @@ test('male and female wait for frame 25 before aim, stamina, HP, chips and sound
   action.time=17/24;
   f.setAim(true);
   assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false,
-   `${model}: classic frame 18 must not hit`);
+   `${model}: classic frame 25 must not hit`);
   action.time=25/30-.001;
   assert.equal(f.chopping.tickImpact(f.ctx.lastHit+5000),false,
    `${model}: before frame 25 must not hit`);
@@ -315,7 +320,7 @@ test('male and female wait for frame 25 before aim, stamina, HP, chips and sound
 });
 
 test('new humanoid aim and online hit are both evaluated on frame 25',()=>{
- for(const model of ['male','female']){
+ for(const model of ['legacy','male','female']){
   const f=setup(true);
   const action={time:0,getClip(){return {duration:47/30}}};
   f.ctx.ownAvatar={model,upper:{Chop2:action},actions:{Chop2:action}};

@@ -298,9 +298,9 @@ def transferred_body(src,tgt,meshes,body_coll):
        'vertices, same 53-bone rig + original materials',flush=True)
 
 def separate_axe(src,tgt,meshes,axe_coll):
- # Original axe is a 100% rigid skin to Hand.R. Convert to socket-local
- # static geometry; meshes can be visible for Chop editing and separately
- # exported as a two-piece GLB when needed.
+ # Preserve the original two axe parts as temporary placement references
+ # while transferring the 13-bone body. They are then replaced by the exact
+ # five-part shared axe used by male and female; no separate runtime GLB.
  # Clear the duplicated male's last animated pose; otherwise the new
  # socket's parent world matrix is sampled in a non-rest pose and the
  # reference axe inherits a permanent ~1m offset throughout Chop2.
@@ -540,7 +540,11 @@ def main():
  transferred_body(source,rig,body_parts,body_coll)
  socket=separate_axe(source,rig,body_parts,axe_coll)
  assert len(body_coll.objects)==len(body_parts)-2
- assert len(socket.children)==2
+ import sys
+ sys.path.insert(0,str(Path(__file__).resolve().parent))
+ from use_shared_axe_workbench import use_shared_axe_reference
+ use_shared_axe_reference()
+ assert len(socket.children)==1 and len(socket.children[0].children)==5
  for name in TARGET_NAMES:
   origin,mode=BASE_MOTION[name]
   retarget_action(source,rig,source_actions[origin],name,mode)

@@ -546,10 +546,10 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     </div>
     </section>
     <section class="fc-settings-page" data-category="pose" aria-label="Поза персонажа" hidden>
-      <small>Экспериментальные ограничения мужского и женского персонажа. Все изменения применяются сразу и сохраняются автоматически. Классического лесоруба не затрагивают.</small>
+      <small>Ограничения всех трёх персонажей. Изменения применяются сразу и сохраняются автоматически.</small>
       <h3>↔ Поворот в стороны</h3>
-      ${['lookTorsoYaw','lookHeadYaw','lookFreeYaw'].map(lookRangeMarkup).join('')}
-      <small>Лимиты корпуса и головы складываются относительно ног: например, 60° + 60° = 120°. Свободный обзор — порог, после которого ноги начинают доворачиваться при стоянии.</small>
+      ${['lookTorsoYaw','lookHeadYaw','lookFreeYaw','lookRunYawReduction'].map(lookRangeMarkup).join('')}
+      <small>Лимиты корпуса и головы складываются относительно ног: 60° + 60° = 120°. Во время бега боковой поворот каждого делится на выбранный множитель (например, 5× → 12° + 12°). При ходьбе и стоянии множитель не действует. Свободный обзор — порог поворота ног при стоянии.</small>
       <h3>↕ Наклоны</h3>
       ${['lookTorsoDown','lookTorsoUp','lookHeadDown','lookHeadUp'].map(lookRangeMarkup).join('')}
       <h3>⏱ Скорости доворачивания</h3>

@@ -36,11 +36,37 @@
 
 - Male: AXE_GRIP · rotate here to adjust handle, коллекция 03 - Axe.
 - Female: AXE_GRIP · Female, коллекция Axe · female (reference only).
-- Lumberjack: Socket.handRight · Lumberjack, коллекция
-  Axe · lumberjack (reference only). Под сокетом лежат оригинальные
-  детали Axe blade и Axe handle, уже без старого Armature Modifier.
+- Lumberjack: Socket.handRight · Lumberjack → AXE_GRIP · Lumberjack,
+  коллекция Axe · lumberjack (reference only). Под сокетом теперь
+  те же пять деталей, что у male/female, с общими мешами и материалами.
 
-Все три держатся за кость hand_r (логический socket handRight).
+Все три используют один и тот же топор, закреплённый на hand_r
+(логический socket handRight). Отдельного оружия дровосека нет.
+
+### Исправление ориентации топора дровосека (2026-11-05)
+
+У дровосека pose кости hand_r корректен, но отличается от позы мужского
+персонажа. Вставленный напрямую общий AXE_GRIP разворачивал рукоять
+почти горизонтально. Риг и Actions не меняли: откалиброван только
+Socket.handRight · Lumberjack (положение + quaternion) относительно
+оригинального lumberjack.glb.
+
+- В Idle рукоять снова наклонена на ~9,72° от вертикали.
+- Лезвие снова направлено вперёд как в оригинале.
+- Нижний конец рукояти находится примерно в 2,7 см от hand_r.
+- Игровой код применяет соответствующее смещение из
+  CHARACTER_PROFILES.legacy.handRight через единый human.attach().
+  Геометрия axe_shared.glb одна для всех трёх моделей.
+
+Повторно применить текущий выверенный хват в workbench можно командой:
+
+    blender -b characters/humanoid/animation/humanoid_animation_workbench.blend --python-exit-code 1 --python characters/humanoid/animation/fix_lumberjack_axe_grip.py
+
+Это переписывает только положение и поворот Empty Socket.handRight
+у дровосека. Если позже вручную поправишь положение хвата, нужно также
+обновить соответствующие значения в CHARACTER_PROFILES.
+Проверки: validate_multi_workbench.py и
+tests/lumberjack-axe-orientation.test.mjs.
 
 Для старого дровосека: **EDIT · lumberjack → Lumberjack_Rig53 →
 Action lumberjack__Chop**. Это ретаргетированная оригинальная Chop2,
@@ -48,9 +74,12 @@ Action lumberjack__Chop**. Это ретаргетированная ориги�
 ручной коррекции удара. Отдельный AXE_GRIP можно двигать относительно кисти
 без переписывания ключей костей.
 
-Для будущего runtime attachment топор вынесен отдельно:
-**lumberjack/lumberjack_axe.glb**. В нём два статических меша без скелета
-и анимаций. Preview дровосека топор в собственную геометрию не включает.
+Один runtime asset для всех:
+**characters/humanoid/game/axe_shared.glb**. В нём пять деталей,
+материалы и исходный AXE_GRIP, но скелета и анимаций нет.
+Он извлечён из детального axe_preview.glb скриптом build_shared_axe.py
+с сохранением геометрии, материалов и локального положения хвата.
+Тело дровосека экспортируется без оружия.
 
 ### Исправление левой кисти (2026-11-05)
 
@@ -150,7 +179,17 @@ match_lumberjack_root_motion.py, не пересоздавая сцену.
 Результаты:
 - characters/humanoid/animation/preview/body_lumberjack_retarget.glb
   (53 кости, 56 мешей тела, 14 собственных анимаций).
-- lumberjack/lumberjack_axe.glb (только топор).
+- characters/humanoid/game/body_legacy.glb — тот же проверенный
+  GLB, используемый игровым загрузчиком.
+- characters/humanoid/game/axe_shared.glb — один общий топор для
+  всех трёх моделей (сборка отдельно, см. ниже).
+
+Для обновления общего топора из исходного axe_preview.glb:
+
+    python3 characters/humanoid/animation/build_shared_axe.py
+
+Когда правишь геометрию единого топора, обнови источник и GLB.
+use_shared_axe_workbench.py синхронизирует референс дровосека.
 
 Для текущего мужского/женского анимационного банка:
 
@@ -161,18 +200,35 @@ match_lumberjack_root_motion.py, не пересоздавая сцену.
 исключает. Далее build_game_bodies.py выбирает нужный Action для каждого
 персонажа. Этот шаг не меняет исходный workbench.
 
-## Не сделано сейчас — запланировано отдельно
+## Единый игровой загрузчик (2026-11-05)
 
-- **Нормализация времён анимаций, точек контакта, Root Motion и расстояний.**
-  Preview пока сохраняет движения оригинального Lumberjack.
-- Переключение трёх runtime GLB через **единый игровой загрузчик**.
-  Живая игра по-прежнему использует старый lumberjack.glb.
-- Ручная визуальная доводка черновых клипов и весов новых суставов.
-  Старому персонажу всё ещё потребуется работа с skin weights.
+У всех трёх моделей одна система: LiteHumanoid, 53 кости, свои Actions,
+handRight socket, единое время и Root Motion, один mixer на персонажа.
+Идентификатор legacy сохраняется ради старых настроек/сохранений,
+но старый 13-костный GLB больше не загружается.
 
-Скрипт prepare_lumberjack_workbench.py — для **однократной конвертации**
-чистого workbench. **Не запускай его повторно на уже подготовленном файле.**
-Все последующие правки делаются напрямую в одном .blend и сохраняются Ctrl+S.
+Единый конфиг: src/character-model-selection.js (CHARACTER_PROFILES).
+Body и outfit выбираются данными, оружие всегда одно:
+SHARED_AXE_ASSET, закреплённое на handRight для всех моделей.
+Специальных веток для legacy в player.js, animations.js и ragdoll.js нет.
 
-Резервная копия исходного .blend:
-~/.local/share/forest-chopper/blender-backups/humanoid_animation_workbench_before_lumberjack_20261105.blend
+Игровые GLB:
+- characters/humanoid/game/body_male.glb
+- characters/humanoid/game/body_female.glb
+- characters/humanoid/game/body_legacy.glb
+
+Все 14 клипов совпадают по абсолютному времени начала и окончания.
+Наземная Root Motion (по порядку walk, walk_backward, run,
+run_backward, strafe_left/right): 1.32, 1.32, 3.40782, 1.16,
+0.60 и 0.60 метра. В Blender ключи не перемещаются к нулю,
+требуемые rebase и retiming выполняются лишь при экспорте.
+Root Motion нормализована для самой модели отдельным скриптом.
+
+Время удара Chop для всех равно 25/30 секунды; фактический визуальный
+момент контакта в lumberjack__Chop можно поправить вручную.
+Скрипт normalize_lumberjack_clip_timing.py изменяет только длительности
+IdleBreathe/Fidget/Look/Jump/Fall/Land, сохраняя позы.
+
+Осталось: визуальный тест Chop и ragdoll, при желании ручная доводка
+skin weights старой геометрии и моделирование отдельных пальцев.
+Дробные ключи male/female не редактировались по просьбе автора.

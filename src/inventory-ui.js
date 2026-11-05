@@ -109,7 +109,7 @@ export function createInventory(ctx,doc=document){
    const splitting=state.slots[usedSlot()];
    bag.querySelector('[data-action="split"]').disabled=!splitting||splitting.id==='axe'||splitting.count<2||!state.hasSpace();
    ctx.axe.visible=!ctx.thirdPerson&&state.equipped();
-   ctx.ownAvatar?.visual?.traverse?.(node=>{if(/^Axe (blade|handle)$|^AXE_GRIP/.test(node.name))node.visible=state.equipped();});
+   ctx.ownAvatar?.setAxeEquipped?.(state.equipped());
    if(ctx.$('wood'))ctx.$('wood').textContent=state.wood();
  }
  function changed({equip=true}={}){

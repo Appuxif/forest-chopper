@@ -35,9 +35,8 @@ const JOINTS={
  'Shin.L':{kind:'hinge',axis:[1,0,0],limits:[-.25,.7],spring:8},
  'Shin.R':{kind:'hinge',axis:[1,0,0],limits:[-.25,.7],spring:8},
 };
-// Classic lumberjack needs its stiffer joints to keep the simple 13-bone rig
-// recognizable. The modular 53-bone bodies have proper elbow/knee geometry:
-// passive joints should *fall*, not be pulled back to the standing pose.
+// Retain the old joint definitions as baseline physical data for tests and
+// debugging. All playable 53-bone bodies use the passive joint overrides.
 export const RAGDOLL_JOINTS=JOINTS;
 const HUMANOID_JOINT_OVERRIDES={
   Head:{limits:[-.45,.45],spring:1.5},
@@ -55,13 +54,13 @@ export const RAGDOLL_HUMANOID_JOINTS=Object.fromEntries(
     name,{...config,...HUMANOID_JOINT_OVERRIDES[name]},
   ]),
 );
+// All selectable models now use the same 53-bone anatomical rig.
 export function ragdollJointProfile(model){
- return model==='male'||model==='female'?RAGDOLL_HUMANOID_JOINTS:RAGDOLL_JOINTS;
+ return RAGDOLL_HUMANOID_JOINTS;
 }
 const normal=name=>name.replace(/[._\s-]/g,'').toLowerCase();
-// Both the classic 13-bone lumberjack and the two 53-bone modular humanoids
-// use the same physics chain. Keep the original physics names stable; only the
-// lookup changes. In particular, calf_l/r are the new rigs' shin bones.
+// Historical physics segment IDs map onto a shared 53-bone humanoid rig.
+ // The first alias is retained only for older test fixtures and saves.
 export const RAGDOLL_BONE_ALIASES={
   Hips:['Hips','pelvis'],
   Spine:['Spine','spine_03'],
@@ -143,14 +142,12 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
        points.set(name,bone.getWorldPosition(new THREE.Vector3()));
        boneQ.set(name,bone.getWorldQuaternion(new THREE.Quaternion()));
      }
-     const humanoid=actor.model==='male'||actor.model==='female';
-     const jointSettings=ragdollJointProfile(actor.model);
+     const jointSettings=ragdollJointProfile();
      const anatomicalEnds=new Map(),alignments=new Map();
-     if(humanoid)for(const [name,boneName] of Object.entries(RAGDOLL_LIMB_END_BONES)){
-       // Unlike the old lumberjack, the 53-bone models have actual wrists
-       // and ankles. Using the parent direction for a terminal segment used
-       // to orient a bent forearm as though the elbow was already straight.
-       const endpoint=actor.human?.bones.get(boneName)?.getWorldPosition(new THREE.Vector3());
+     for(const [name,boneName] of Object.entries(RAGDOLL_LIMB_END_BONES)){
+       // All playable bodies now expose wrists and ankles. Terminal segments
+       // should use their real endpoints rather than extrapolated directions.
+       const endpoint=actor.human.bones.get(boneName)?.getWorldPosition(new THREE.Vector3());
        if(!endpoint)continue;
        anatomicalEnds.set(name,endpoint);
        const alignment=calibrateLimbJoint(
@@ -180,7 +177,7 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
        const desc=physics.RigidBodyDesc.dynamic()
          .setTranslation(center.x,center.y,center.z)
          .setRotation({x:bodyRotation.x,y:bodyRotation.y,z:bodyRotation.z,w:bodyRotation.w})
-         .setLinearDamping(1.25).setAngularDamping(humanoid?1.4:2.7);
+         .setLinearDamping(1.25).setAngularDamping(1.4);
        const body=world.createRigidBody(desc);
        const capsule=physics.ColliderDesc.capsule(Math.max(.035,length/2-radius*.65),radius)
          .setDensity(name==='Hips'||name==='Spine'?750:450)

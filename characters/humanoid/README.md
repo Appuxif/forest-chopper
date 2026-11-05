@@ -1,8 +1,30 @@
-# Forest Chopper — modular anatomical Humanoid (WIP)
+# Forest Chopper — Humanoid
 
-**This is a new character system, not a rework of the game's legacy lumberjack.**
-The previous procedural Rowan character was deleted. The production
-`characters/lumberjack/lumberjack.blend`, `lumberjack/lumberjack.glb`, and JS loader are unchanged.
+**Current architecture (2026-11-05):** male, female and classic lumberjack
+are loaded by ONE 53-bone LiteHumanoid system. Each character has its own
+14 animation clips in a separate body GLB. The source 13-bone
+lumberjack/lumberjack.glb is preserved for reference and is not loaded
+by the game anymore.
+
+Workbench: characters/humanoid/animation/humanoid_animation_workbench.blend
+Export: characters/humanoid/animation/export_lumberjack_preview.py
+Runtime assets: game/body_male.glb, game/body_female.glb, game/body_legacy.glb
+Character selection keys and saved world settings remain compatible.
+
+All three actors equip the same characters/humanoid/game/axe_shared.glb,
+built by running:
+    python3 characters/humanoid/animation/build_shared_axe.py
+The high-detail five-mesh weapon is loaded once, then cloned into each
+handRight socket. The separate lumberjack_axe.glb was deleted; the original
+lumberjack.glb remains as historical source. All three rigs have the same
+weapon reference in the animation workbench.
+The classic rig has a calibrated handRight socket offset in
+src/character-model-selection.js; all three models still use the same axe GLB.
+The authoring socket is Socket.handRight · Lumberjack in the shared workbench.
+This fixes the classic model's original upright handle/blade alignment without
+retargeting any hand animation or adding a model-specific loader branch.
+
+**The historical WIP notes below describe older iterations.**
 
 ## Live editable Blender scene
 

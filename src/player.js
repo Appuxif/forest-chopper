@@ -3,7 +3,6 @@ import {tickFallingTrees} from './falling-trees.js?v=20261102-treefall-sync13';
 import {createPlayerMotionTracker} from './ragdoll-motion.js';
 import {rootMotionSpeed,playbackRateForSpeed,walkingMotion,runningMotion,humanoidTargetSpeed,playbackDirectionForMotion,BACKWARD_RUN_SPEED} from './root-motion-speed.js?v=20261104-ori03';
 import {movementInput,locomotionMode,targetLegsYaw,worldMoveDirection,joystickSprintActive,createMovementSteering} from './locomotion-input.js?v=20261104-turn-inertia1';
-import {classicLocalRate,classicRemoteRate} from './legacy-animation-rates.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js?v=20261105-empty-loot3';
@@ -119,48 +118,45 @@ function animate(now){
  const sprint=!flying&&moving&&wantsSprint&&(!ctx.vitals||ctx.vitals.canSprint());
  // Ease only the direction of real travel, not the Root Motion step length.
  // Reset for zero input, ragdoll, death and debug flight. Keep the camera
- // fully responsive and preserve the legacy character's established feel.
+ // Movement/turning rules now apply to every 53-bone model.
  const moveIntent=movementSteering.update(intent,ctx.cameraYaw,dt,{
   sprinting:sprint,
-  disabled:posing||dead||flying||ctx.ownAvatar?.model==='legacy',
+  disabled:posing||dead||flying,
  });
  const {forward,side,strength}=moveIntent;
- // Modern humanoids run toward lateral input when sprinting; normal A/D
- // remains strafe. Preserve the classic lumberjack's old locomotion.
- const lateralRun=sprint&&ctx.ownAvatar?.model!=='legacy';
+ // All three humanoids run toward lateral input when sprinting.
+ const lateralRun=sprint;
  const mode=locomotionMode(moveIntent,lastMoveMode,lateralRun);
  if(posing||dead)lastMoveMode='idle';
  else if(mode!=='idle')lastMoveMode=mode;
- ctx.characterOrientation.setMovementIntent(moveIntent,mode,
-  targetLegsYaw(ctx.cameraYaw,moveIntent,{mode,sprinting:lateralRun}));
- // Leg/hip facing approaches the intended diagonal on the shortest arc.
- // The classic lumberjack, death and ragdoll retain their original facing.
- ctx.characterOrientation.steerLegs(dt,{
-  locked:posing||dead||ctx.ownAvatar?.model==='legacy',
-  settings:ctx.settings.lookSettings,
- });
- ctx.characterOrientation.steerUpper(dt,{
-  locked:posing||dead||ctx.ownAvatar?.model==='legacy',
-  settings:ctx.settings.lookSettings,
- });
- if(posing||dead)ctx.ownAvatar?.proceduralLook?.discard();
- if(!dead)ctx.vitals?.tick(sprint);
- ctx.sprinting=sprint;
  const motion=mode==='idle'?'Idle':mode==='strafe'
   ?(side<0?'StrafeLeft':'StrafeRight')
   :(sprint?runningMotion(ctx.ownAvatar,mode==='backward')
     :walkingMotion(ctx.ownAvatar,mode==='backward'));
+ ctx.characterOrientation.setMovementIntent(moveIntent,mode,
+  targetLegsYaw(ctx.cameraYaw,moveIntent,{mode,sprinting:lateralRun}));
+ // Leg/hip facing approaches the intended diagonal on the shortest arc.
+ // Death and ragdoll still lock steering while their physics owns the pose.
+ ctx.characterOrientation.steerLegs(dt,{
+  locked:posing||dead,
+  settings:ctx.settings.lookSettings,
+ });
+ ctx.characterOrientation.steerUpper(dt,{
+  locked:posing||dead,
+  settings:ctx.settings.lookSettings,
+  running:motion==='Run'||motion==='RunBackward',
+ });
+ if(posing||dead)ctx.ownAvatar?.proceduralLook?.discard();
+ if(!dead)ctx.vitals?.tick(sprint);
+ ctx.sprinting=sprint;
  // An analog input at 40% travel must drive both the motion speed and
  // its root displacement at 40%, not play a full-speed animation in place.
  // Existing forward Run stays 1.2x at full tilt; backward Run is 30% faster
  // than backward Walk (2.6 m/s vs 2.0 m/s).
- const targetSpeed=ctx.ownAvatar?.model==='legacy'
-  ?(sprint?4.6:2.5):humanoidTargetSpeed(motion,sprint);
- const rate=ctx.ownAvatar?.model==='legacy'
-  ?classicLocalRate(motion,sprint,forward)*(moving?strength:1)
-  :((motion==='Idle'?1:motion==='Run'?1.2*strength:
-    playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed*strength)) *
-    playbackDirectionForMotion(motion,mode==='backward'));
+ const targetSpeed=humanoidTargetSpeed(motion,sprint);
+ const rate=(motion==='Idle'?1:motion==='Run'?1.2*strength:
+   playbackRateForSpeed(ctx.rootMotion[motion],targetSpeed*strength))*
+   playbackDirectionForMotion(motion,mode==='backward');
  const moveDirection=worldMoveDirection(ctx.cameraYaw,moveIntent);
  if(!posing&&!dead&&!flying)ctx.simulateVertical(dt);
  let dx=0,dz=0;
@@ -271,14 +267,12 @@ for(const avatar of ctx.avatars.values()){
     ?(right>0?'StrafeRight':'StrafeLeft')
     :((avatar.sprinting||avatar.moveSpeed>3.3)
       ?runningMotion(avatar.actor,front<0):walkingMotion(avatar.actor,front<0));
-   const rate=avatar.actor.model==='legacy'
-    ?classicRemoteRate(remoteMotion)
-    :(remoteMotion==='Run'?1.2:remoteMotion==='RunBackward'
-      ?playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
-         Math.min(BACKWARD_RUN_SPEED,Math.max(.5,avatar.moveSpeed))):
-       playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
-         Math.min(4.6,Math.max(0.5,avatar.moveSpeed))))*
-       playbackDirectionForMotion(remoteMotion,front<0);
+   const rate=(remoteMotion==='Run'?1.2:remoteMotion==='RunBackward'
+     ?playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
+        Math.min(BACKWARD_RUN_SPEED,Math.max(.5,avatar.moveSpeed))):
+      playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
+        Math.min(4.6,Math.max(0.5,avatar.moveSpeed))))*
+      playbackDirectionForMotion(remoteMotion,front<0);
    ctx.tickActor(avatar.actor,dt,remoteMotion,avatar.jumping,rate);
   }
  }

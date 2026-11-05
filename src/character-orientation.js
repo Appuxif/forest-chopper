@@ -7,6 +7,7 @@
 export const CHARACTER_LOOK_FIELDS=Object.freeze({
  lookTorsoYaw:[0,90,5,60,'Корпус · влево / вправо','°'],
  lookHeadYaw:[0,100,5,60,'Голова и шея · влево / вправо','°'],
+ lookRunYawReduction:[1,10,1,1,'Бег · уменьшение поворота корпуса и головы','×'],
  lookFreeYaw:[0,180,5,120,'Свободный обзор без поворота ног','°'],
  lookTorsoDown:[0,80,5,40,'Корпус · наклон вниз','°'],
  lookTorsoUp:[0,80,5,20,'Корпус · наклон вверх','°'],
@@ -61,7 +62,7 @@ export function createCharacterOrientation({cameraYaw=0,cameraPitch=0}={}){
       this.moveMode=mode;
       this.legsTargetYaw=targetYaw;
     },
-    // Only reset facing for legacy rigs, ragdoll/death or explicit teleports.
+    // Reset facing only for ragdoll/death or explicit teleports.
     alignToCamera(){
       this.legsYaw=this.cameraYaw;
       this.torsoYaw=this.cameraYaw;
@@ -85,11 +86,14 @@ export function createCharacterOrientation({cameraYaw=0,cameraPitch=0}={}){
         Math.max(0,dt)*field(settings,moving?'lookLegTurnMoving':'lookLegTurnIdle'));
       return this;
     },
-    steerUpper(dt,{locked=false,settings=null}={}){
+    steerUpper(dt,{locked=false,settings=null,running=false}={}){
       if(locked)return this.alignToCamera();
       const seconds=Math.max(0,dt);
-      const torsoLimit=field(settings,'lookTorsoYaw')*deg;
-      const headLimit=field(settings,'lookHeadYaw')*deg;
+      // While running, only the lateral torso/head limits are reduced.
+      // Pitch limits, turn speeds and idle/walk free-look remain unchanged.
+      const yawDivisor=running?field(settings,'lookRunYawReduction'):1;
+      const torsoLimit=field(settings,'lookTorsoYaw')*deg/yawDivisor;
+      const headLimit=field(settings,'lookHeadYaw')*deg/yawDivisor;
       const torsoSpeed=field(settings,'lookTorsoTurnSpeed');
       const headSpeed=field(settings,'lookHeadTurnSpeed');
       const delta=shortestYawDelta(this.legsYaw,this.cameraYaw);
@@ -100,7 +104,8 @@ export function createCharacterOrientation({cameraYaw=0,cameraPitch=0}={}){
         -torsoLimit,torsoLimit);
       const neckTarget=clamp(shortestYawDelta(this.torsoYaw,this.cameraYaw),
         -headLimit,headLimit);
-      this.headYaw=step(this.headYaw,neckTarget,headSpeed*seconds);
+      this.headYaw=clamp(step(this.headYaw,neckTarget,headSpeed*seconds),
+        -headLimit,headLimit);
       const torsoPitchTarget=clamp(this.cameraPitch*.62,
         -field(settings,'lookTorsoDown')*deg,field(settings,'lookTorsoUp')*deg);
       this.torsoPitch=step(this.torsoPitch,torsoPitchTarget,torsoSpeed*seconds);

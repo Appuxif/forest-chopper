@@ -31,7 +31,7 @@ export function lookJointAngles(orientation){
 
 export function createProceduralLook(THREE,bones){
  if(!bones||[...SPINE_JOINTS,...HEAD_JOINTS].some(name=>!bones.get(name)))
-   return null; // Legacy rig is not an ORI-04 target.
+   return null; // Incomplete/malformed rigs cannot use procedural look.
  const joints=[...SPINE_JOINTS,...HEAD_JOINTS].map(name=>bones.get(name));
  const animated=new Map(); // pre-procedural pose, restored before next mixer tick
  const worldUp=new THREE.Vector3(0,1,0);

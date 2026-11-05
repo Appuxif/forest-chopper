@@ -58,7 +58,7 @@ if(ctx.vitals&&!ctx.vitals.canChop&&aimed()){
 const now=performance.now();
 const axeSpeed=Math.max(.1,ctx.inventory?.axe?.speed??1);
 const playbackSpeed=(ctx.CHOP_SPEED??1.6)*axeSpeed;
-const chopCooldown=(ctx.ownAvatar?.actions?.Chop2?.getClip().duration??1.7916667)/playbackSpeed*1000+35;
+const chopCooldown=(ctx.ownAvatar?.actions?.Chop2?.getClip().duration??46/30)/playbackSpeed*1000+35;
 if(pendingSwing||now-ctx.lastHit<chopCooldown)return;
 ctx.lastHit=now;
 ctx.swing=1;
@@ -101,10 +101,10 @@ const t=aimed();
      return;
    }
  }
- // Aim is evaluated only on the model's contact frame (18 legacy, 25
- // modular), not at click time. An empty-space swing can hit a tree acquired mid-swing,
+ // Aim is evaluated on the same frame-25 contact for every rig,
+ // not at click time. An empty-space swing can hit a tree acquired mid-swing,
  // or switch from tree A to B before the axe makes contact.
- pendingSwing={startedAt:now,playbackSpeed,model:ctx.ownAvatar?.model};
+ pendingSwing={startedAt:now,playbackSpeed};
 }
 function tickImpact(now=performance.now(),currentMobTarget=undefined){
  if(!pendingSwing)return false;
@@ -113,7 +113,7 @@ function tickImpact(now=performance.now(),currentMobTarget=undefined){
    pendingSwing=null;return false;
  }
  const action=ctx.ownAvatar?.upper?.Chop2??ctx.ownAvatar?.actions?.Chop2;
- if(!chopContactReached(action,pendingSwing.startedAt,now,pendingSwing.playbackSpeed,pendingSwing.model))return false;
+ if(!chopContactReached(action,pendingSwing.startedAt,now,pendingSwing.playbackSpeed))return false;
  pendingSwing=null; // Exactly once, even if the animation remains on its contact frame.
  // Whichever tree the crosshair points at now receives the hit.
  // No tree under the crosshair = a clean miss.

@@ -1,4 +1,4 @@
-"""Export isolated 53-bone Lumberjack preview and separate socket-ready axe.
+"""Export the classic 53-bone body; the axe is one shared runtime asset.
 
 Run from the repository root:
  blender -b characters/humanoid/animation/humanoid_animation_workbench.blend \
@@ -6,15 +6,16 @@ Run from the repository root:
    --python characters/humanoid/animation/export_lumberjack_preview.py
 
 This runs in a disposable Blender process and NEVER saves/modifies .blend.
-The preview is for validating bone/Action layout; timing and Root Motion will
-be standardized in the later asset-normalization stage.
+The same validated body is also exported to game/body_legacy.glb.
+Walk/backward/strafe timestamps are rebased in a disposable copy to exactly
+match the runtime male/female GLBs, without touching the edited .blend.
 """
 from pathlib import Path
-import bpy,json,struct
+import bpy,json,struct,shutil
 
 ROOT=Path(__file__).resolve().parents[3]
 PREVIEW=ROOT/'characters/humanoid/animation/preview/body_lumberjack_retarget.glb'
-AXE=ROOT/'lumberjack/lumberjack_axe.glb'
+RUNTIME=ROOT/'characters/humanoid/game/body_legacy.glb'
 RIG='Lumberjack_Rig53'
 PREFIX='lumberjack__'
 
@@ -72,6 +73,35 @@ def normalize_strafe_export_samples():
   print('NORMALIZED_STRAFE_EXPORT',name,'duration_s',26/30,flush=True)
 
 
+def rebase_locomotion_export_time():
+ """Match the male/female runtime clips that start at GLB time 0.
+
+ Our authored Blender Actions begin at frame 1. Only these three actions
+ were exported at 0..N by the existing male/female animation-bank builder.
+ A 1/30-second lead-in would otherwise make the supposed same-duration
+ Lumberjack loops 1/30-second LONGER in Three.js than male/female.
+ This edit occurs only in the disposable exporter process.
+ """
+ target_frames={'walk':30,'walk_backward':30,'run_backward':20}
+ for name,expected_frames in target_frames.items():
+  action=bpy.data.actions[name]
+  start,end=action.frame_range
+  assert abs((end-start)-expected_frames)<1e-3,(name,action.frame_range)
+  for layer in action.layers:
+   for strip in layer.strips:
+    for bag in strip.channelbags:
+     for curve in bag.fcurves:
+      for key in curve.keyframe_points:
+       key.co.x-=start
+       key.handle_left.x-=start
+       key.handle_right.x-=start
+      curve.update()
+  assert abs(action.frame_range[0])<1e-3
+  assert abs(action.frame_range[1]-expected_frames)<1e-3
+  print('REBASED_LOCOMOTION_EXPORT',name,'duration_s',
+        expected_frames/30,flush=True)
+
+
 def main():
  scene=bpy.context.scene
  if bpy.context.window:
@@ -82,41 +112,26 @@ def main():
   if not action.name.startswith(PREFIX):bpy.data.actions.remove(action)
  for action in bpy.data.actions:action.name=action.name.removeprefix(PREFIX)
  normalize_strafe_export_samples()
+ rebase_locomotion_export_time()
  for track in rig.animation_data.nla_tracks:track.mute=True
  action=bpy.data.actions['idle']
  rig.animation_data.action=action
  rig.animation_data.action_slot=action.slots[0]
  scene.frame_set(1)
  body=[o for o in bpy.context.view_layer.objects
-       if o.type=='MESH' and o.name.startswith('Lumberjack.') and
-       not o.name.startswith(('Lumberjack.Axe blade','Lumberjack.Axe handle'))]
+       if o.type=='MESH' and o.name.startswith('Lumberjack.')]
  assert len(body)==56,len(body)
  result=export(PREVIEW,[rig,*body],animated=True)
  bones={result['nodes'][i]['name'] for i in result['skins'][0]['joints']}
  assert len(bones)==53,len(bones)
  assert len(result['animations'])==14,[a['name'] for a in result['animations']]
- # Isolate static axe geometry under a neutral pivot, not a 53-joint
- # skeleton; its local axes match Socket.handRight in the workbench.
- socket=bpy.data.objects['Socket.handRight · Lumberjack']
- pivot=bpy.data.objects.new('AXE_GRIP',None)
- scene.collection.objects.link(pivot)
- pivot.location=(0,0,0)
- copies=[]
- for original in socket.children:
-  clone=original.copy()
-  clone.data=original.data.copy()
-  clone.name=original.name.replace('Lumberjack.','')
-  scene.collection.objects.link(clone)
-  clone.parent=pivot
-  clone.parent_type='OBJECT'
-  clone.parent_bone=''
-  clone.matrix_parent_inverse.identity()
-  clone.matrix_basis.identity()
-  copies.append(clone)
- axe_result=export(AXE,[pivot,*copies],animated=False)
- assert len(axe_result.get('skins',[]))==0
- assert len(axe_result.get('animations',[]))==0
- assert len(axe_result.get('meshes',[]))==2
- print('PREVIEW_SUCCESS: 53 bones, 14 own Actions, independent static axe',flush=True)
+ # This is not the old 13-bone game GLB: all three playable characters now
+ # load one standard 53-bone body + independent 14-clip animation bank.
+ RUNTIME.parent.mkdir(parents=True,exist_ok=True)
+ shutil.copyfile(PREVIEW,RUNTIME)
+ print('RUNTIME_LUMBERJACK_EXPORTED',RUNTIME,'bytes',RUNTIME.stat().st_size,flush=True)
+ # The weapon is exported independently from the dedicated shared-axe
+ # builder. Do not generate a classic-specific GLB or duplicate its geometry.
+ print('PREVIEW_SUCCESS: 53 bones, 14 own Actions, shared weapon excluded',flush=True)
 
 if __name__=='__main__':main()
