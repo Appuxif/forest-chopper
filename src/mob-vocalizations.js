@@ -1,4 +1,4 @@
-import {MOB_VOICE_PROFILES} from './sound-rules.js?v=20261105-hen-voices1';
+import {MOB_VOICE_PROFILES} from './sound-rules.js?v=20261105-mob-hit-audio1';
 
 // Client presentation only. Timers are bounded per visible entity; neither
 // simulation/save clocks nor WebAudio sources belong to this scheduler.

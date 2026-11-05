@@ -1,7 +1,7 @@
-export function createCorpseLootPanel({doc,onTake,onClose,itemLabel}){
+export function createCorpseLootPanel({doc,onTake,onClose,onTakeAllDone,itemLabel}){
  const panel=doc.createElement('section');panel.className='hen-loot corpse-loot';panel.hidden=true;
  panel.setAttribute('role','dialog');panel.setAttribute('aria-label','Добыча');
- let record=null,selected=null,signature=null,rows=[],aimedButton=null;
+ let record=null,selected=null,signature=null,rows=[];
  const items=value=>Object.entries(value?.loot??{}).filter(([,count])=>Number.isFinite(count)&&count>0);
  const label=(id)=>itemLabel?.(id)??id;
  function highlight(){for(const row of rows){const active=row.dataset.item===selected;row.classList.toggle('selected',active);row.setAttribute('aria-selected',String(active));}}
@@ -10,7 +10,7 @@ export function createCorpseLootPanel({doc,onTake,onClose,itemLabel}){
   if(!available.some(([id])=>id===selected))selected=available[0]?.[0]??null;
   const next=JSON.stringify([value?.id,value?.displayName,value?.name,available]);
   if(next===signature){highlight();return;}
-  clearAim();signature=next;rows=[];panel.replaceChildren();
+  signature=next;rows=[];panel.replaceChildren();
   const title=doc.createElement('h3');title.textContent=value?.displayName||value?.name||'Добыча';panel.append(title);
   for(const [id,count] of available){
    const text=label(id),b=doc.createElement('button');b.className='hen-loot-row corpse-loot-row';b.dataset.item=id;
@@ -24,19 +24,6 @@ export function createCorpseLootPanel({doc,onTake,onClose,itemLabel}){
  function cycle(delta){if(!rows.length||!delta)return;const index=rows.findIndex(r=>r.dataset.item===selected);selected=rows[(index+(delta>0?1:-1)+rows.length)%rows.length].dataset.item;highlight();}
  function activate(id){if(record&&id&&record.loot?.[id]>0)return onTake(record.id,id);}
  function takeSelected(){return activate(selected);}
- function takeAll(){if(!record)return;for(const [id] of items(record))activate(id);}
- function clearAim(){aimedButton?.classList.toggle('crosshair-hover',false);aimedButton=null;}
- function aimAt(x,y){
-  const hit=panel.hidden?null:doc.elementFromPoint(x,y);
-  if(!hit||!panel.contains(hit)){clearAim();return null;}
-  const candidate=hit.closest('button'),button=candidate&&panel.contains(candidate)&&!candidate.disabled?candidate:null;
-  if(button!==aimedButton){
-   clearAim();aimedButton=button;
-   if(button?.dataset.item){selected=button.dataset.item;highlight();}
-   button?.classList.toggle('crosshair-hover',true);
-  }
-  return {inside:true,actionable:!!button,label:button?.getAttribute('aria-label')||button?.textContent||'Окно добычи'};
- }
- function clickAimed(){aimedButton?.click();}
- return {panel,render,cycle,takeSelected,takeAll,aimAt,clearAim,clickAimed,get selected(){return selected;}};
+ function takeAll(){if(!record)return;for(const [id] of items(record))activate(id);onTakeAllDone?.();}
+ return {panel,render,cycle,takeSelected,takeAll,get selected(){return selected;}};
 }

@@ -7,8 +7,8 @@ import {createMobRagdoll} from './mob-ragdoll.js';
 import {createMobRagdollProfiles} from './mob-ragdoll-profiles.js';
 import {loadMobAssets} from './mob-assets.js';
 import {createCorpseLootActions,hasCorpseLoot} from './corpse-loot-actions.js?v=20261105-empty-loot3';
-import {createCorpseLootPanel} from './corpse-loot-ui.js?v=20261105-corpse-pointer1';
-import {createCorpseLootPointer} from './corpse-loot-pointer.js?v=20261105-corpse-pointer1';
+import {createCorpseLootPanel} from './corpse-loot-ui.js?v=20261105-corpse-cursor1';
+import {createCorpseLootPointer} from './corpse-loot-pointer.js?v=20261105-corpse-cursor1';
 import {ITEM_STACK} from './inventory.js';
 import {itemDisplayName,itemDisplayIcon} from './item-display.js';
 import {shapeFootprint,shapeHeight} from './collision-world.js';
@@ -20,17 +20,16 @@ export async function createMobs(ctx,{registry=createMobTypeRegistry(),behaviors
  const {THREE}=ctx,assets=await loadAssets(THREE,registry);
  const savedPoses=new Map();
  const vocalizations=createMobVocalizations({definitionFor:type=>registry.get(type),emit:(id,mob)=>ctx.audio?.effect(id,{x:mob.x,z:mob.z})??false});
- const actors=new Map();let runningRagdolls=0;let model=null,records=[],online=false,opened=null,serverTime=0,receivedAt=0,genericNetwork=false;
+ const actors=new Map();let runningRagdolls=0;let model=null,records=[],online=false,opened=null,returnOnEmpty=false,panelAnchor=null,serverTime=0,receivedAt=0,genericNetwork=false;
  const ray=new THREE.Raycaster(),center=new THREE.Vector2(),point=new THREE.Vector3();
  const positionOf=r=>mobInteractionPosition(r,actors.get(r.id));
  const lootActions=createCorpseLootActions(ctx,{getRecord:id=>{const r=records.find(r=>r.id===id);return r?{...r,...positionOf(r)}:null;},world:ensure,validItem:item=>Object.hasOwn(ITEM_STACK,item),transport:{takePacket:(id,item)=>({type:'mob_take',id,item}),receiptField:'corpse_loot'},
   refresh(){records=ensure().tick(0,[{x:ctx.px,z:ctx.pz}],{clockRunning:false});renderPanel();}});
- const lootUI=createCorpseLootPanel({doc:document,onTake:take,onClose:close,itemLabel:id=>itemDisplayIcon(id)+' '+itemDisplayName(id)}),panel=lootUI.panel;
- const lootPointer=createCorpseLootPointer(ctx,lootUI,{positionPanel});
- const style=document.createElement('style');style.textContent=`.corpse-loot{position:fixed;z-index:1002;background:#13271ff5;color:#fff;border:1px solid #a4c19c;border-radius:12px;padding:12px;width:230px;box-sizing:border-box;max-width:calc(100vw - 16px);box-shadow:0 6px 22px #0008}.corpse-loot[hidden]{display:none!important}.corpse-loot button{min-height:38px;background:#345640;color:#fff;border:1px solid #91ac8a;border-radius:6px;margin:4px;padding:6px}.corpse-loot .corpse-loot-row{display:block;width:100%;margin:5px 0;text-align:left;background:#203e30}.corpse-loot .corpse-loot-row.selected{background:#45654b;border-color:#c4d6b0}.corpse-loot button.crosshair-hover{outline:2px solid #e3f4c4;background:#45654b}.corpse-loot h3{margin:0 0 6px}.corpse-loot p{margin:4px}`;
+ const lootUI=createCorpseLootPanel({doc:document,onTake:take,onClose:()=>close(true),onTakeAllDone:()=>close(true),itemLabel:id=>itemDisplayIcon(id)+' '+itemDisplayName(id)}),panel=lootUI.panel;
+ const lootPointer=createCorpseLootPointer(ctx);
+ const style=document.createElement('style');style.textContent=`.corpse-loot{position:fixed;z-index:1002;background:#13271ff5;color:#fff;border:1px solid #a4c19c;border-radius:12px;padding:12px;width:230px;box-sizing:border-box;max-width:calc(100vw - 16px);box-shadow:0 6px 22px #0008}.corpse-loot[hidden]{display:none!important}.corpse-loot button{min-height:38px;background:#345640;color:#fff;border:1px solid #91ac8a;border-radius:6px;margin:4px;padding:6px}.corpse-loot .corpse-loot-row{display:block;width:100%;margin:5px 0;text-align:left;background:#203e30}.corpse-loot .corpse-loot-row.selected{background:#45654b;border-color:#c4d6b0}.corpse-loot h3{margin:0 0 6px}.corpse-loot p{margin:4px}`;
  document.head.append(style);
- // Keep the panel and crosshair in the same stacking context (#game).
- // A child crosshair cannot rise above a body-level fixed overlay by z-index.
+ // Keep the dialog inside the fullscreen game host.
  (ctx.renderer?.domElement?.parentElement??document.body).append(panel);
  for(const name of ['pointerdown','click','wheel'])panel.addEventListener(name,e=>e.stopPropagation());
  const heightAt=(x,z)=>ctx.terrain.heightAt(x,z);
@@ -52,7 +51,7 @@ export async function createMobs(ctx,{registry=createMobTypeRegistry(),behaviors
  }
  function disposeActor(id){const a=actors.get(id);if(!a)return;if(a.dead&&!a.transient){savedPoses.set(id,captureMobPose(id,a.visual));while(savedPoses.size>32)savedPoses.delete(savedPoses.keys().next().value);}a.disposed=true;if(a.physicsSlot){runningRagdolls--;a.physicsSlot=false;}a.rag?.dispose();a.mixer.stopAllAction();a.mixer.uncacheRoot(a.visual);ctx.scene.remove(a.group);actors.delete(id);}
  function clear(){for(const id of [...actors.keys()])disposeActor(id);model=null;records=[];genericNetwork=false;savedPoses.clear();lootActions.clear();vocalizations.clear();close();}
- function close(){opened=null;panel.hidden=true;lootPointer.clear();}
+ function close(returnPointer=false){opened=null;panel.hidden=true;panelAnchor=null;returnOnEmpty=false;lootPointer.close(returnPointer);}
  function setNetwork(data){
   if(data.hens&&genericNetwork)return;
   const rows=data.mobs??data.hens;if(!Array.isArray(rows))return;
@@ -102,16 +101,21 @@ export async function createMobs(ctx,{registry=createMobTypeRegistry(),behaviors
   }
   return best;
  }
- function take(id,item){return lootActions.take(id,item);}
+ function take(id,item){
+  const previous=returnOnEmpty;returnOnEmpty=true;
+  const taken=lootActions.take(id,item);
+  if(!taken)returnOnEmpty=previous;
+  return taken;
+ }
  function acceptLoot(data){lootActions.accept(data);}
- function renderPanel(){const r=records.find(r=>r.id===opened);if(!r||!hasCorpseLoot(r)){close();return;}lootUI.render({...r,displayName:registry.get(r.type)?.name??r.displayName});}
+ function renderPanel(){const r=records.find(r=>r.id===opened);if(!r||!hasCorpseLoot(r)){close(returnOnEmpty);return;}lootUI.render({...r,displayName:registry.get(r.type)?.name??r.displayName});}
  function open(id){
   const r=records.find(r=>r.id===id);if(!r||r.hp>0||!hasCorpseLoot(r))return false;
-  opened=id;renderPanel();panel.hidden=false;return true;
+  opened=id;returnOnEmpty=false;panelAnchor=null;renderPanel();panel.hidden=false;lootPointer.open();positionPanel();return true;
  }
  function handleKey(event){
-  if(!opened||panel.hidden||ctx.inventory?.isOpen||ctx.inventory?.isBookOpen||ctx.storages?.opened!=null||!['KeyE','KeyR'].includes(event.code))return false;
-  if(!event.repeat){if(event.code==='KeyE')ctx.pickupInteraction.interact();else lootUI.takeAll();}
+  if(!opened||panel.hidden||ctx.inventory?.isOpen||ctx.inventory?.isBookOpen||ctx.storages?.opened!=null||!['KeyE','KeyR','Escape'].includes(event.code))return false;
+  if(!event.repeat){if(event.code==='Escape')close();else if(event.code==='KeyE')lootUI.takeSelected();else lootUI.takeAll();}
   return true;
  }
  document.addEventListener('wheel',event=>{
@@ -167,23 +171,22 @@ export async function createMobs(ctx,{registry=createMobTypeRegistry(),behaviors
    a.mixer.update(Math.min(.25,elapsed));
    a.boundsDirty=true;
   }
-  if(opened){const r=records.find(r=>r.id===opened),body=r&&positionOf(r);if(!r||!hasCorpseLoot(r)||Math.hypot(body.x-ctx.px,body.z-ctx.pz)>3||ctx.deathSystem?.active||ctx.inventory?.isOpen||ctx.inventory?.isBookOpen){close();return;}
+  if(opened){const r=records.find(r=>r.id===opened),body=r&&positionOf(r);if(!r||Math.hypot(body.x-ctx.px,body.z-ctx.pz)>3||ctx.deathSystem?.active||ctx.inventory?.isOpen||ctx.inventory?.isBookOpen){close();return;}
+   if(!hasCorpseLoot(r)){close(returnOnEmpty);return;}
    if(online)renderPanel();
+   positionPanel();
   }
  }
 
  function positionPanel(){
   const r=records.find(r=>r.id===opened);if(!r)return;
-  const body=positionOf(r);point.set(body.x,body.y,body.z).project(ctx.camera);
-  const locked=!!ctx.renderer?.domElement&&document.pointerLockElement===ctx.renderer.domElement;
-  // With a locked cursor every row must be able to cross screen centre,
-  // including on short displays; with a real cursor keep the whole card in view.
-  const minX=locked?24-(panel.offsetWidth||230):8,maxX=locked?innerWidth-24:innerWidth-238;
-  const minY=locked?24-panel.offsetHeight:8,maxY=locked?innerHeight-24:innerHeight-panel.offsetHeight-(matchMedia('(pointer:coarse)').matches||innerWidth<650?180:100);
-  panel.style.left=`${Math.max(minX,Math.min(maxX,(point.x*.5+.5)*innerWidth+24))}px`;
-  // Anchor the bottom above the corpse so the last row stays reachable near
-  // the camera pitch limit and does not move down as earlier rows disappear.
-  panel.style.top=`${Math.max(minY,Math.min(maxY,(-point.y*.5+.5)*innerHeight-panel.offsetHeight-48))}px`;
+  const body=positionOf(r);
+  if(ctx.camera)point.set(body.x,body.y,body.z).project(ctx.camera);else point.set(0,0,0);
+  if(!panelAnchor)panelAnchor={x:(point.x*.5+.5)*innerWidth+24,y:(-point.y*.5+.5)*innerHeight-panel.offsetHeight-48};
+  const width=panel.offsetWidth||230,height=panel.offsetHeight||230;
+  const bottom=matchMedia('(pointer:coarse)').matches||innerWidth<650?180:24;
+  panel.style.left=`${Math.max(8,Math.min(innerWidth-width-8,panelAnchor.x))}px`;
+  panel.style.top=`${Math.max(8,Math.min(innerHeight-height-bottom,panelAnchor.y))}px`;
  }
 
  function spawnDebug(type,x,z,options={}){
@@ -197,5 +200,5 @@ export async function createMobs(ctx,{registry=createMobTypeRegistry(),behaviors
   const ids=ensure().clearTransient();for(const id of ids){disposeActor(id);savedPoses.delete(id);if(opened===id)close();}
   records=records.filter(r=>!ids.includes(r.id));return ids.length;
  }
- return {registry,tick,clear,spawnDebug,clearDebug,setNetwork,acceptLoot,handleKey,handlePointer:lootPointer.handlePointer,updatePanelAim:lootPointer.update,get panelAimed(){return lootPointer.aimed;},takeSelected:()=>lootUI.takeSelected(),candidate,open,aimed:()=>targeted(false),pursuitTarget,hit,snapshot(){for(const [id,a] of actors)if(a.dead&&!a.transient)savedPoses.set(id,captureMobPose(id,a.visual));return {...ensure().snapshot(),poses:[...savedPoses.values()].slice(-32)};},restore(value){clear();if(value?.poses!==undefined){if(!validMobPoses(value.poses))return false;for(const p of value.poses)savedPoses.set(p.id,p);}return value?ensure().restore(value):true;},get shadowActors(){return [...actors.values()].map(a=>({group:a.group,shadowMeshes:(()=>{const meshes=[];a.visual.traverse(n=>{if(n.isMesh)meshes.push(n);});return meshes;})()}));},get records(){return records;},get opened(){return opened;}};
+ return {registry,tick,clear,spawnDebug,clearDebug,setNetwork,acceptLoot,handleKey,handlePointer:lootPointer.handlePointer,takeSelected:()=>lootUI.takeSelected(),candidate,open,aimed:()=>targeted(false),pursuitTarget,hit,snapshot(){for(const [id,a] of actors)if(a.dead&&!a.transient)savedPoses.set(id,captureMobPose(id,a.visual));return {...ensure().snapshot(),poses:[...savedPoses.values()].slice(-32)};},restore(value){clear();if(value?.poses!==undefined){if(!validMobPoses(value.poses))return false;for(const p of value.poses)savedPoses.set(p.id,p);}return value?ensure().restore(value):true;},get shadowActors(){return [...actors.values()].map(a=>({group:a.group,shadowMeshes:(()=>{const meshes=[];a.visual.traverse(n=>{if(n.isMesh)meshes.push(n);});return meshes;})()}));},get records(){return records;},get opened(){return opened;}};
 }

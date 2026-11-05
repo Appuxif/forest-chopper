@@ -275,11 +275,11 @@ test('contact consumes the same current-frame mob target shown by the reticle wi
  }
 });
 
-test('aiming into corpse UI prevents a new swing and cancels an already pending impact',()=>{
- const f=setup(false);f.ctx.mobs={panelAimed:true};
+test('an open corpse UI prevents a new swing and cancels an already pending impact',()=>{
+ const f=setup(false);f.ctx.mobs={opened:'corpse'};
  f.chopping.chop();assert.deepEqual(f.events,[]);
- f.ctx.mobs.panelAimed=false;f.chopping.chop();assert.deepEqual(f.events,['swing']);
- f.ctx.mobs.panelAimed=true;assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),false);
- f.ctx.mobs.panelAimed=false;assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1000),false);
+ f.ctx.mobs.opened=null;f.chopping.chop();assert.deepEqual(f.events,['swing']);
+ f.ctx.mobs.opened='corpse';assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),false);
+ f.ctx.mobs.opened=null;assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1000),false);
  assert.equal(f.tree.userData.hp,5);
 });

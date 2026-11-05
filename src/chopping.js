@@ -31,7 +31,7 @@ function aimed(){
  let best=null,dist=5.2;for(const t of ctx.trees.values()){if(Math.hypot(t.position.x-ctx.px,t.position.z-ctx.pz)>6)continue;const hits=ray.intersectObjects(t.userData.hitMeshes??t.children,false);if(hits.length&&hits[0].distance<dist){best=t;dist=hits[0].distance}}return best}
 const chipGeo=new ctx.THREE.BoxGeometry(.1,.1,.1),chipMat=new ctx.THREE.MeshLambertMaterial({color:0xc59560});function spawnChips(t){for(let i=0;i<Math.min(7,Math.max(0,96-ctx.particles.length));i++){const mesh=new ctx.THREE.Mesh(chipGeo,chipMat);mesh.position.set(t.position.x+(Math.random()-.5)*.7,1.15+Math.random()*.5,t.position.z+(Math.random()-.5)*.7);ctx.scene.add(mesh);ctx.particles.push({mesh,vx:(Math.random()-.5)*3,vy:1+Math.random()*3,vz:(Math.random()-.5)*3,life:.7})}}
 function chop(){
- if((ctx.mobs??ctx.hens)?.panelAimed)return;
+ if(((ctx.mobs??ctx.hens)?.opened!=null))return;
  // A mouse click may be needed to acquire pointer lock while lying down.
  // It must never launch Chop2 or interact with the world before getting up.
  if(ctx.deathSystem?.active || ctx.ragdoll?.active || ctx.ragdollControls?.busy ||
@@ -108,7 +108,7 @@ const t=aimed();
 }
 function tickImpact(now=performance.now(),currentMobTarget=undefined){
  if(!pendingSwing)return false;
- if((ctx.mobs??ctx.hens)?.panelAimed||ctx.deathSystem?.active||ctx.ragdoll?.active||ctx.ragdollControls?.busy||
+ if(((ctx.mobs??ctx.hens)?.opened!=null)||ctx.deathSystem?.active||ctx.ragdoll?.active||ctx.ragdollControls?.busy||
     (ctx.ragdollControls?.mode&&ctx.ragdollControls.mode!=='none')){
    pendingSwing=null;return false;
  }

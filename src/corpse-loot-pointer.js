@@ -1,21 +1,28 @@
-// Pointer-locked events are sent to the canvas. Resolve the UI under the
-// screen centre explicitly and consume even clicks on the panel background.
-export function createCorpseLootPointer(ctx,ui,{doc=document,viewport=()=>({width:innerWidth,height:innerHeight}),positionPanel=()=>{}}={}){
- let aim=null;
- function clear(){aim=null;ui.clearAim();}
- function update(){
-  if(ui.panel.hidden){clear();return null;}
-  positionPanel();
-  const canvas=ctx.renderer?.domElement;
-  if(!canvas||doc.pointerLockElement!==canvas){clear();return null;}
-  const {width,height}=viewport();
-  aim=ui.aimAt(width/2,height/2);return aim;
+// A corpse dialog uses a real cursor. Restore only a lock that this dialog
+// released, and never fight Escape, another modal, death or a background tab.
+export function createCorpseLootPointer(ctx,{doc=document}={}){
+ let active=false,restore=false;
+ const canvas=()=>ctx.renderer?.domElement;
+ const hint=()=>ctx.notify?.('Нажмите по игре, чтобы продолжить','info');
+ function open(){
+  if(active)return;
+  active=true;restore=!!canvas()&&doc.pointerLockElement===canvas();
+  if(restore)doc.exitPointerLock?.();
+  ctx.drag=null;
+  for(const key in ctx.keys??{})ctx.keys[key]=false;
+ }
+ function close(returnPointer=false){
+  const wanted=active&&restore&&returnPointer;active=false;restore=false;
+  if(!wanted||doc.hasFocus?.()===false||ctx.deathSystem?.active||ctx.inventory?.isOpen||ctx.inventory?.isBookOpen||ctx.storages?.opened!=null)return;
+  if(doc.pointerLockElement===canvas())return;
+  try{
+   const result=canvas()?.requestPointerLock?.();
+   result?.catch?.(hint);
+  }catch{hint();}
  }
  function handlePointer(event){
-  if(event.pointerType!=='mouse'||!update())return false;
-  event.preventDefault();event.stopImmediatePropagation();
-  if(event.button===0)ui.clickAimed();
-  return true;
+  if(!active)return false;
+  event.preventDefault?.();event.stopImmediatePropagation?.();return true;
  }
- return {update,handlePointer,clear,get aimed(){return !!aim?.inside;}};
+ return {open,close,handlePointer};
 }

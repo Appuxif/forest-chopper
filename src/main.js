@@ -1,5 +1,5 @@
 import {loadRagdollPhysics} from './rapier-loader.js';
-import {createMobs} from './mobs.js?v=20261105-hen-voices1';
+import {createMobs} from './mobs.js?v=20261105-corpse-cursor1';
 import {createMobileHud} from './mobile-hud.js?v=20261104-fps3';
 import {createRagdoll} from './ragdoll.js?v=20261103-ragdoll-save-recovery1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
@@ -22,8 +22,8 @@ import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bou
 import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
 import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261105-mob-hit-audio1';
-import {createControls} from './controls.js?v=20261105-corpse-pointer1';
-import {createPlayer} from './player.js?v=20261105-empty-loot3';
+import {createControls} from './controls.js?v=20261105-corpse-cursor1';
+import {createPlayer} from './player.js?v=20261105-corpse-cursor1';
 import {createMultiplayer} from './multiplayer.js?v=20261103-decor-region2';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';

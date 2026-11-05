@@ -55,8 +55,8 @@ ctx.motionVelocity=motionTracker.reset(ctx.px,ctx.pz,ctx.yaw);
 let wasPosing=false;
 let lastWorldTick=-Infinity;
 let reticleTree=null,reticleInteraction=null,reticleError='';
-function refreshCrosshair(mob,pursuing,panelAim){
- updateCrosshair(ctx.$('crosshair'),aimState(ctx.buildMode,reticleTree,reticleError,reticleInteraction,mob,{pursuing,ui:panelAim}));
+function refreshCrosshair(mob,pursuing,lootOpen){
+ updateCrosshair(ctx.$('crosshair'),lootOpen?{kind:'idle',text:'',label:'Окно добычи'}:aimState(ctx.buildMode,reticleTree,reticleError,reticleInteraction,mob,{pursuing}));
 }
 function toggleView(){ctx.thirdPerson=!ctx.thirdPerson;
  orbitCamera.reset();
@@ -183,11 +183,11 @@ function animate(now){
  // Raycasters must see this frame's camera, including frames skipped by the
  // render limiter. Small moving mobs can cross the reticle between HUD ticks.
  ctx.camera.updateMatrixWorld(true);
- const panelAim=(ctx.mobs??ctx.hens)?.updatePanelAim?.()??null;
- const mobTarget=ctx.buildMode||panelAim?null:(ctx.mobs??ctx.hens)?.aimed?.()??null;
+ const lootOpen=(ctx.mobs??ctx.hens)?.opened!=null;
+ const mobTarget=ctx.buildMode||lootOpen?null:(ctx.mobs??ctx.hens)?.aimed?.()??null;
  const mob=mobTarget?.record??null;
  const pursuing=!ctx.buildMode&&sprint&&forward>.1&&!!((ctx.mobs??ctx.hens)?.pursuitTarget?.());
- refreshCrosshair(mob,pursuing,panelAim);
+ refreshCrosshair(mob,pursuing,lootOpen);
  // Animation mixer and camera have both updated: resolve any frame-18 tree
  // contact using the *current* crosshair, not the mouse-down position.
  ctx.tickChopImpact?.(now,mobTarget);
@@ -196,8 +196,8 @@ function animate(now){
  ctx.swing=Math.max(0,ctx.swing-dt*3.8);ctx.axe.rotation.z=-.25-ctx.swing*.9;ctx.axe.rotation.x=ctx.swing*.65;ctx.axe.position.y=-.7+ctx.swing*.15;
 tickFallingTrees(ctx,dt);
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}
-ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx.offlineSave.tick(now);ctx.progress.trackPosition(ctx.px,ctx.pz,ctx.seed);ctx.discoveries.check(now);ctx.updateChunks();ctx.forestResources?.tick(now);ctx.inventory?.tickBook?.();ctx.updatePreview();ctx.pickupInteraction?.update?.();const interaction=ctx.pickupInteraction?.current;const t=ctx.buildMode||mob||pursuing||panelAim||interaction?.empty?null:ctx.aimed();ctx.highlight.update(t);if(t)ctx.tutorial.complete('tree-aimed');reticleTree=t;reticleInteraction=interaction;reticleError=ctx.buildMode?(ctx.inventory?.selected==='bench'?ctx.crafting?.placeError?.(ctx.placement):(ctx.preview?.userData?.previewError??ctx.placeError(ctx.placement))):'';refreshCrosshair(mob,pursuing,panelAim);ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`${u.species==='birch'?'🌳 Берёза':'🌲 Дерево'} · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':
-   panelAim?(panelAim.actionable?panelAim.label+' · ЛКМ':''):mob?(mob.displayName??'Существо')+' · Атаковать':pursuing?'':interaction?interaction.label+' · '+(interaction.verb??(interaction.type==='box'||interaction.type==='resource'?'Подобрать':'Открыть')):''}if(ctx.isOnline()&&!dead&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}ctx.debugPlayers?.tick?.(now,dt);
+ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx.offlineSave.tick(now);ctx.progress.trackPosition(ctx.px,ctx.pz,ctx.seed);ctx.discoveries.check(now);ctx.updateChunks();ctx.forestResources?.tick(now);ctx.inventory?.tickBook?.();ctx.updatePreview();ctx.pickupInteraction?.update?.();const interaction=ctx.pickupInteraction?.current;const t=ctx.buildMode||mob||pursuing||lootOpen||interaction?.empty?null:ctx.aimed();ctx.highlight.update(t);if(t)ctx.tutorial.complete('tree-aimed');reticleTree=t;reticleInteraction=interaction;reticleError=ctx.buildMode?(ctx.inventory?.selected==='bench'?ctx.crafting?.placeError?.(ctx.placement):(ctx.preview?.userData?.previewError??ctx.placeError(ctx.placement))):'';refreshCrosshair(mob,pursuing,lootOpen);ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`${u.species==='birch'?'🌳 Берёза':'🌲 Дерево'} · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':
+   lootOpen?'':mob?(mob.displayName??'Существо')+' · Атаковать':pursuing?'':interaction?interaction.label+' · '+(interaction.verb??(interaction.type==='box'||interaction.type==='resource'?'Подобрать':'Открыть')):''}if(ctx.isOnline()&&!dead&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.yaw,jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}ctx.debugPlayers?.tick?.(now,dt);
 for(const avatar of ctx.avatars.values()){
  if(avatar.debugDead)continue;
  const previousX=avatar.group.position.x,previousZ=avatar.group.position.z;

@@ -8,7 +8,6 @@ import {CHICKEN_TYPE} from '../src/mob-types.js';
 import {createPickupInteraction} from '../src/pickup-interaction.js';
 import {createInventoryModel} from '../src/inventory.js';
 import {aimState} from '../src/aim-state.js';
-import {orbitOffset} from '../src/orbit-camera.js';
 
 const deps=process.env.HEN_PHYSICS_NODE_MODULES;
 const three=()=>import(pathToFileURL(deps+'/three/build/three.module.js'));
@@ -83,28 +82,24 @@ test('restored displaced corpse offers Open, E loots at body range and a wall hi
   const panel=host.children.find(e=>e.tag==='section');
   assert.ok(panel,'loot panel must share the game host with the crosshair instead of a body-level stacking context');
   assert.equal(panel.parent,crosshair.parentElement);
-  document.pointerLockElement=canvas;
-  document.elementFromPoint=()=>panel.children.find(e=>e.dataset.item==='feather');
-  assert.equal(mobs.updatePanelAim()?.actionable,true);assert.equal(mobs.panelAimed,true);
-  const bodyScreen=new T.Vector3(bird.x+1.5,.3,bird.z).project(camera);
-  assert.ok(parseFloat(panel.style.top)+panel.offsetHeight<bodyScreen.y*-.5*innerHeight+innerHeight/2,'panel is anchored above the body');
-  const bottom=parseFloat(panel.style.top)+panel.offsetHeight;panel.offsetHeight=185;mobs.updatePanelAim();
-  assert.ok(Math.abs(parseFloat(panel.style.top)+panel.offsetHeight-bottom)<1e-6,'removing rows keeps the lower edge stable');panel.offsetHeight=230;
-  const oldPosition=camera.position.clone(),oldRotation=camera.quaternion.clone(),oldPx=ctx.px,oldPz=ctx.pz;
-  const pitch=-80*Math.PI/180,offset=orbitOffset(0,pitch,1.7,.4);ctx.px=bird.x+1.5;ctx.pz=bird.z+.25;
-  camera.position.set(ctx.px+offset.x,2.3+offset.y,ctx.pz+offset.z);camera.rotation.set(pitch,0,0);camera.updateMatrixWorld(true);mobs.updatePanelAim();
-  assert.ok(parseFloat(panel.style.top)+panel.offsetHeight-35<=innerHeight/2+19,'close row reaches the crosshair before the downward camera limit when close to the body');
-  ctx.px=oldPx;ctx.pz=oldPz;camera.position.copy(oldPosition);camera.quaternion.copy(oldRotation);camera.updateMatrixWorld(true);mobs.updatePanelAim();
-  const oldLeft=panel.style.left;camera.lookAt(bird.x+1.5,.3,bird.z+.2);camera.updateMatrixWorld(true);mobs.updatePanelAim();
-  assert.notEqual(panel.style.left,oldLeft,'panel stays at its world anchor when the camera turns');
+  mobs.handleKey({code:'Escape'});assert.equal(mobs.opened,null);
+  let locks=0;canvas.requestPointerLock=()=>{locks++;document.pointerLockElement=canvas;};
+  document.exitPointerLock=()=>{document.pointerLockElement=null;};
+  document.pointerLockElement=canvas;assert.equal(mobs.open(bird.id),true);
+  assert.equal(document.pointerLockElement,null,'opening must release the mouse');
+  const oldLeft=panel.style.left,oldTop=panel.style.top;
+  camera.lookAt(bird.x+1.5,.3,bird.z+.2);camera.updateMatrixWorld(true);mobs.tick(0);
+  assert.equal(panel.style.left,oldLeft);assert.equal(panel.style.top,oldTop,'card stays fixed while the camera changes');
   const click={pointerType:'mouse',button:0,preventDefault(){},stopImmediatePropagation(){}};
-  document.elementFromPoint=()=>panel.children.at(-1);assert.equal(mobs.handlePointer(click),true);
-  assert.equal(mobs.opened,null);assert.equal(state.count('feather'),0,'manual close must not take loot');
+  assert.equal(mobs.handlePointer(click),true,'canvas click cannot attack while looting');
+  assert.equal(state.count('feather'),0,'crosshair cannot take a row');
+  panel.children.at(-1).click();assert.equal(mobs.opened,null);assert.equal(locks,1);
+  assert.equal(document.pointerLockElement,canvas);
   assert.equal(mobs.open(bird.id),true);
-  document.elementFromPoint=()=>panel.children.find(e=>e.dataset.item==='feather');
-  assert.equal(mobs.handlePointer(click),true);assert.ok(state.count('feather')>0);assert.deepEqual(sounds,['pickup','pickup']);
+  panel.children.find(e=>e.dataset.item==='feather').click();
+  assert.ok(state.count('feather')>0);assert.deepEqual(sounds,['pickup','pickup']);
   assert.equal(mobs.opened,null,'taking the last stack must close immediately');assert.equal(panel.hidden,true);
-  assert.equal(mobs.panelAimed,false);assert.equal(document.pointerLockElement,canvas);
+  assert.equal(document.pointerLockElement,canvas);assert.equal(locks,2);
   assert.equal(mobs.open(bird.id),false,'empty corpse must never reopen');assert.equal(panel.hidden,true);
   camera.lookAt(bird.x+1.5,.3,bird.z);camera.updateMatrixWorld(true);
   assert.equal(mobs.candidate()?.verb,'Пусто');assert.equal(mobs.candidate()?.empty,true);
@@ -163,18 +158,26 @@ test('live mob reticle shares exact hit detection, range and occlusion with axe 
 });
 
 test('online corpse closes on authoritative empty update, not an unconfirmed take request',{skip:!deps},async()=>{
- const T=await three(),previous=globalThis.document;
+ const T=await three(),previous={document:globalThis.document,innerWidth:globalThis.innerWidth,innerHeight:globalThis.innerHeight,matchMedia:globalThis.matchMedia};
  globalThis.document={createElement:tag=>new Element(tag),head:new Element(),body:new Element(),addEventListener(){}};
+ globalThis.innerWidth=800;globalThis.innerHeight=600;globalThis.matchMedia=()=>({matches:false});
  try{
-  const sent=[],sounds=[],ctx={THREE:T,px:0,pz:0,isOnline:()=>true,sendNet:p=>sent.push(p),inventory:{state:createInventoryModel(),render(){}},audio:{effect:id=>sounds.push(id)}};
+  let locks=0;const canvas={requestPointerLock(){locks++;document.pointerLockElement=canvas;}};
+  document.exitPointerLock=()=>{document.pointerLockElement=null;};document.pointerLockElement=canvas;
+  const sent=[],sounds=[],ctx={THREE:T,px:0,pz:0,renderer:{domElement:canvas},isOnline:()=>true,sendNet:p=>sent.push(p),inventory:{state:createInventoryModel(),render(){}},audio:{effect:id=>sounds.push(id)}};
   const mobs=await createMobs(ctx,{loadAssets:async()=>new Map()});
   const row={id:'hen:network:0',type:'chicken',x:0,y:0,z:0,state:'dead',loot:{chicken_meat:1,feather:0}};
   mobs.setNetwork({mobs:[row]});assert.equal(mobs.open(row.id),true);mobs.takeSelected();
-  assert.equal(sent[0].type,'mob_take');assert.equal(mobs.opened,row.id);assert.deepEqual(sounds,[]);
+  assert.equal(sent[0].type,'mob_take');assert.equal(mobs.opened,row.id);assert.deepEqual(sounds,[]);assert.equal(locks,0);assert.equal(document.pointerLockElement,null);
   mobs.acceptLoot({corpse_loot:{id:row.id,item:'chicken_meat',count:1}});assert.deepEqual(sounds,['pickup']);
   mobs.setNetwork({mobs:[{...row,loot:{chicken_meat:0,feather:0}}]});
-  assert.equal(mobs.opened,null);assert.equal(mobs.open(row.id),false);
- }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
+  assert.equal(mobs.opened,null);assert.equal(mobs.open(row.id),false);assert.equal(locks,1);
+  mobs.setNetwork({mobs:[row]});assert.equal(mobs.open(row.id),true);
+  assert.equal(mobs.handleKey({code:'KeyR'}),true);assert.equal(mobs.opened,null);
+  assert.equal(locks,2,'R returns the pointer in its keyboard gesture without waiting for the server');
+  assert.equal(sent.length,2);mobs.setNetwork({mobs:[{...row,loot:{chicken_meat:0}}]});
+  assert.equal(locks,2,'late server confirmation does not capture again');
+ }finally{for(const [key,value] of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}}
 });
 
 
@@ -195,4 +198,29 @@ test('online mob voices distinguish regrouping from fear across repeated snapsho
   assert.deepEqual(sounds.map(s=>s.id),['hen_alarm','hen_death'],'confirmed death plays once without more clucks');
   mobs.clear();
  }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
+});
+
+
+test('full bag keeps a clicked corpse open; R always closes and restores the mouse',{skip:!deps},async()=>{
+ const T=await three(),previous={document:globalThis.document,innerWidth:globalThis.innerWidth,innerHeight:globalThis.innerHeight,matchMedia:globalThis.matchMedia};
+ globalThis.document={createElement:tag=>new Element(tag),head:new Element(),body:new Element(),addEventListener(){}};
+ globalThis.innerWidth=800;globalThis.innerHeight=600;globalThis.matchMedia=()=>({matches:false});
+ try{
+  const world=createMobWorld({seed:12}),bird=world.tick(0,[{x:0,z:0}])[0];world.hit(bird.id);
+  const state=createInventoryModel(),warnings=[],sounds=[];let locks=0;
+  for(let i=0;i<11;i++)assert.equal(state.addItem({id:'axe',tier:0}),true);
+  const canvas={requestPointerLock(){locks++;document.pointerLockElement=canvas;}};
+  document.exitPointerLock=()=>{document.pointerLockElement=null;};document.pointerLockElement=canvas;
+  const ctx={THREE:T,seed:12,px:bird.x,pz:bird.z,renderer:{domElement:canvas},
+   terrain:{heightAt:()=>0},settings:{dayCycleEnabled:false},isOnline:()=>false,
+   inventory:{state,render(){}},notify:m=>warnings.push(m),audio:{effect:id=>sounds.push(id)}};
+  const mobs=await createMobs(ctx,{loadAssets:async()=>new Map()});mobs.restore(world.snapshot());mobs.tick(0);
+  assert.equal(mobs.open(bird.id),true);const panel=document.body.children.find(e=>e.tag==='section');
+  panel.children.find(e=>e.dataset.item==='chicken_meat').click();
+  assert.equal(mobs.opened,bird.id);assert.equal(document.pointerLockElement,null);assert.equal(locks,0);
+  assert.deepEqual(warnings,['В сумке нет места']);assert.deepEqual(sounds,[]);
+  assert.equal(mobs.handleKey({code:'KeyR'}),true);assert.equal(mobs.opened,null);assert.equal(locks,1);
+  assert.equal(document.pointerLockElement,canvas);assert.equal(state.count('chicken_meat'),0);
+  mobs.clear();
+ }finally{for(const [key,value] of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}}
 });

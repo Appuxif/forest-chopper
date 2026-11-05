@@ -73,13 +73,13 @@ test('sprinting after a visible mob suppresses nearby pickup coloring until stop
  }finally{if(previous===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=previous;}
 });
 
-test('corpse window uses the updated camera, overrides world aim and gives impact no mob target',()=>{
+test('corpse window hides the crosshair and gives impact no mob target',()=>{
  const previous=globalThis.requestAnimationFrame;globalThis.requestAnimationFrame=()=>{};
  try{
-  const f=fixture(),ui={inside:true,actionable:true,label:'Закрыть'};
-  f.ctx.mobs.updatePanelAim=()=>ui;
+  const f=fixture();
+  f.ctx.mobs.opened='corpse';
   f.ctx.mobs.aimed=()=>assert.fail('window must cover world targets');
-  f.player.animate(1000);assert.equal(f.$('crosshair').dataset.kind,'ui');
-  assert.deepEqual(f.events,[['impact',null,'ui']]);
+  f.player.animate(1000);assert.equal(f.$('crosshair').dataset.kind,'idle');
+  assert.deepEqual(f.events,[['impact',null,'idle']]);
  }finally{if(previous===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=previous;}
 });

@@ -37,7 +37,7 @@ function fixture(){
    if(value===undefined)delete globalThis[key];else globalThis[key]=value;
   }
  }
- return {ctx,keydown,restore,FakeElement,doc,canvasEvents};
+ return {ctx,keydown,restore,FakeElement,doc,canvasEvents,events};
 }
 
 test('Fn laptop PgUp/PgDn works by logical key, even when the physical code differs',()=>{
@@ -134,5 +134,27 @@ test('canvas mouse down routes to corpse UI before starting an axe swing or requ
   f.doc.pointerLockElement=f.ctx.renderer.domElement;
   f.canvasEvents.get('pointerdown')({pointerType:'mouse',button:0});assert.equal(attacks,0);
   consumed=false;f.canvasEvents.get('pointerdown')({pointerType:'mouse',button:0});assert.equal(attacks,1);
+ }finally{f.restore();}
+});
+
+
+test('first free-cursor click only captures the mouse, the next locked click attacks',()=>{
+ const f=fixture();let locks=0,attacks=0;
+ try{
+  f.ctx.chop=()=>attacks++;
+  f.ctx.renderer.domElement.requestPointerLock=()=>{locks++;f.doc.pointerLockElement=f.ctx.renderer.domElement;};
+  f.canvasEvents.get('pointerdown')({pointerType:'mouse',button:0});
+  assert.equal(locks,1);assert.equal(attacks,0);
+  f.canvasEvents.get('pointerdown')({pointerType:'mouse',button:0});assert.equal(attacks,1);
+ }finally{f.restore();}
+});
+
+
+test('an open corpse dialog blocks camera rotation while pointer unlock is pending',()=>{
+ const f=fixture();
+ try{
+  f.doc.pointerLockElement=f.ctx.renderer.domElement;f.ctx.mobs={opened:'corpse'};
+  f.events.get('mousemove')({movementX:50,movementY:20});assert.equal(f.ctx.yaw,0);assert.equal(f.ctx.pitch,0);
+  f.ctx.mobs.opened=null;f.events.get('mousemove')({movementX:50,movementY:20});assert.notEqual(f.ctx.yaw,0);
  }finally{f.restore();}
 });
