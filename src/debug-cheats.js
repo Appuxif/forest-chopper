@@ -1,3 +1,4 @@
+import {createDebugMobSpawner} from './debug-mob-spawn.js';
 import {ITEM_STACK,AXE_STATS} from './inventory.js';
 import {itemDisplayName,itemDisplayIcon} from './item-display.js';
 import {createDebugPlayers,MAX_DEBUG_PLAYERS} from './debug-players.js?v=20261103-debug-player1';
@@ -36,6 +37,7 @@ export function installDebugCheats(ctx){
   for(const key of Object.keys(state))state[key]=false;
   ctx.verticalSpeed=0;updateFlightButtons();
  }
+ const spawnMob=createDebugMobSpawner(ctx,{findSafePoint:safeTeleportPoint});
  const cheats={
   state,
   tick(){
@@ -104,6 +106,8 @@ export function installDebugCheats(ctx){
    ctx.dayCycle.tick(performance.now());ctx.offlineSave?.markDirty?.();
    return hour;
   },
+  spawnMob(type,options){onlyOffline();return spawnMob(type,options);},
+  clearMobs(){onlyOffline();return ctx.mobs.clearDebug();},
   spawnPlayer(count=1){onlyOffline();return debugPlayers.spawn(count);},
   followPlayer(id,enabled=true){onlyOffline();return debugPlayers.follow(id,enabled);},
   damagePlayer(id,amount=1){onlyOffline();return debugPlayers.damage(id,amount);},
@@ -116,9 +120,12 @@ export function installDebugCheats(ctx){
  ctx.debugCheatsController=cheats;
  const style=document.createElement('style');
  style.textContent=`
- #fc-cheats{position:fixed;top:52px;right:12px;z-index:1200;width:min(350px,calc(100vw - 24px));max-height:calc(100dvh - 65px);overflow:auto;background:#13221ff5;color:#eff4ee;border:1px solid #637965;border-radius:12px;box-shadow:0 12px 40px #0008;padding:14px;font:13px system-ui}
+ #fc-cheats{position:fixed;top:52px;right:12px;z-index:1200;display:flex;flex-direction:column;width:min(350px,calc(100vw - 24px));max-height:calc(100dvh - 65px);overflow:hidden;background:#13221ff5;color:#eff4ee;border:1px solid #637965;border-radius:12px;box-shadow:0 12px 40px #0008;padding:14px;font:13px system-ui}
  #fc-cheats[hidden]{display:none!important}
- #fc-cheats h3{margin:0 0 10px;font-size:17px}#fc-cheats section{border-top:1px solid #455448;padding:10px 0;display:grid;gap:7px}
+ #fc-cheats .cheats-header{display:flex;flex-shrink:0;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+ #fc-cheats .cheats-body{min-height:0;overflow-y:auto;overscroll-behavior:contain}
+ #fc-cheats h3{margin:0;font-size:17px}#fc-cheats section{border-top:1px solid #455448;padding:10px 0;display:grid;gap:7px}
+ #fc-cheats #fc-cheats-close{flex-shrink:0;min-width:96px;min-height:44px;font-size:14px;font-weight:700;white-space:nowrap}
  #fc-cheats label{display:flex;align-items:center;gap:8px}#fc-cheats input:not([type=checkbox]):not([type=range]){width:100%;min-width:0;box-sizing:border-box;background:#192e28;color:white;border:1px solid #637965;border-radius:6px;padding:7px}
  #fc-cheats button,#fc-cheats-toggle{background:#345741;color:#fff;border:1px solid #76977c;border-radius:7px;padding:6px 9px;cursor:pointer;font:13px system-ui}
  #fc-cheats .fields{display:flex;gap:6px}#fc-cheats .fields>*{min-width:0;flex:1}
@@ -135,10 +142,14 @@ export function installDebugCheats(ctx){
  const toggle=document.createElement('button');
  toggle.id='fc-cheats-toggle';toggle.textContent='🎮 Читы';
  const panel=document.createElement('aside');panel.id='fc-cheats';panel.hidden=true;
- panel.innerHTML=`<h3>🎮 Читы · одиночная игра</h3>
+ panel.innerHTML=`<div class="cheats-header"><h3>🎮 Читы · одиночная игра</h3><button id="fc-cheats-close" type="button" aria-label="Закрыть окно читов" title="Закрыть">Закрыть ×</button></div>
+ <div class="cheats-body">
  <section id="fc-cheat-flags"></section>
  <section><b>📍 Безопасный телепорт</b><div class="fields"><input id="fc-tpx" type="number" step="1" placeholder="X"><input id="fc-tpz" type="number" step="1" placeholder="Z"><button id="fc-tp">Перейти</button></div><span class="note">Проверка деревьев, построек, предметов и воды; поиск рядом с точкой.</span></section>
  <section><b>🎒 Каталог предметов</b><input id="fc-search" placeholder="Поиск по названию или ID"><div id="fc-catalog" class="catalog"></div><span id="fc-choice" class="note">Выбери предмет</span><div class="fields"><input id="fc-count" type="number" min="1" max="100" value="1"><select id="fc-tier"><option value="0">Топор 1</option><option value="1">Топор 2</option><option value="2">Топор 3</option><option value="3">Топор 4</option></select><button id="fc-add">Добавить</button></div></section>
+ <section><b>🐔 Тестовые мобы · Курица</b><span class="note">Перед игроком, только offline. До 8 тестовых мобов, без сохранения.</span>
+ <div class="fields"><select id="fc-mob-color"><option value="">Случайный окрас</option></select><input id="fc-mob-count" type="number" min="1" max="8" step="1" value="1"></div>
+ <div class="fields"><button id="fc-mob-spawn">Создать курицу</button><button id="fc-mob-clear">Удалить тестовых мобов</button></div></section>
  <section><b>👤 Тестовые игроки</b><span class="note">Создаются той же моделью, что и участники сети. Имеют отдельные здоровье, голод, выносливость, инвентарь и ragdoll. Не сохраняются в мире и не подключаются к серверу.</span>
  <div class="fields"><input id="fc-player-count" type="number" min="1" max="8" step="1" value="1"><button id="fc-player-spawn">Создать игрока</button></div>
  <label>Выбранный игрок<select id="fc-player-select" aria-label="Тестовый игрок"></select></label>
@@ -147,7 +158,7 @@ export function installDebugCheats(ctx){
  <button id="fc-player-clear">Удалить всех тестовых игроков</button>
  <span id="fc-player-status" class="note" aria-live="polite">Игроков нет (максимум 8).</span></section>
  <section><b>🌗 Время дня <output id="fc-time-label">0</output>/15</b><input id="fc-time" type="range" min="0" max="15" step="1" value="0"><button id="fc-settime">Установить</button><span class="note">0 — начало суток, 8 — середина ночи; цикл 16 минут.</span></section>
- <div id="fc-cheat-msg" role="status" class="note"></div>`;
+ <div id="fc-cheat-msg" role="status" class="note"></div></div>`;
  downButton=document.createElement('button');
  downButton.id='fc-fly-down';downButton.type='button';downButton.textContent='⬇';
  downButton.setAttribute('aria-label','Спуститься в режиме полёта');
@@ -167,6 +178,7 @@ export function installDebugCheats(ctx){
  document.body.append(toggle,panel,downButton);
  toggle.onclick=()=>{panel.hidden=!panel.hidden;};
  const $=id=>panel.querySelector('#'+id);
+ $('fc-cheats-close').onclick=()=>{panel.hidden=true;toggle.focus({preventScroll:true});};
  const notice=(message,error=false)=>{const node=$('fc-cheat-msg');node.textContent=message;node.style.color=error?'#ff9c8c':'#c7e8b5';};
  const perform=fn=>{try{notice(String(fn()));}catch(e){notice(e.message,true);}};
  const flags=$('fc-cheat-flags');
@@ -194,6 +206,15 @@ export function installDebugCheats(ctx){
  $('fc-choice').textContent='Выбран: '+itemDisplayName(selected);
  $('fc-tier').hidden=true;renderCatalog();
  $('fc-add').onclick=()=>perform(()=>{const n=cheats.grant(selected,$('fc-count').value,$('fc-tier').value);return 'Добавлено: '+n+' × '+itemDisplayName(selected);});
+ const colors=ctx.mobs?.registry.get('chicken')?.subcategories??{};
+ for(const [id,variant] of Object.entries(colors)){
+  const option=document.createElement('option');option.value=id;option.textContent=variant.name??id;$('fc-mob-color').append(option);
+ }
+ $('fc-mob-spawn').onclick=()=>perform(()=>{
+  const created=cheats.spawnMob('chicken',{count:$('fc-mob-count').value,subcategory:$('fc-mob-color').value||undefined});
+  return 'Куриц создано: '+created.length;
+ });
+ $('fc-mob-clear').onclick=()=>perform(()=>'Удалено: '+cheats.clearMobs());
  const playerSelect=$('fc-player-select');
  function updateDebugPlayers(preferred=null){
   const players=debugPlayers.list();

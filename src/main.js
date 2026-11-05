@@ -1,3 +1,5 @@
+import {loadRagdollPhysics} from './rapier-loader.js';
+import {createMobs} from './mobs.js?v=20261105-empty-loot3';
 import {createMobileHud} from './mobile-hud.js?v=20261104-fps3';
 import {createRagdoll} from './ragdoll.js?v=20261103-ragdoll-save-recovery1';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
@@ -19,9 +21,9 @@ import {createPhysics} from './physics.js?v=20261103-debug-player1';
 import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bounce-fix1';
 import {createCollisionWorld} from './collision-world.js?v=20261102-collision-world1';
 import {createBuilding} from './building.js?v=20261102-build-height1';
-import {createChopping} from './chopping.js?v=20261102-chop-current-target1';
-import {createControls} from './controls.js?v=20261104-hud2';
-import {createPlayer} from './player.js?v=20261104-mobile1';
+import {createChopping} from './chopping.js?v=20261105-corpse-pointer1';
+import {createControls} from './controls.js?v=20261105-corpse-pointer1';
+import {createPlayer} from './player.js?v=20261105-empty-loot3';
 import {createMultiplayer} from './multiplayer.js?v=20261103-decor-region2';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
@@ -53,8 +55,8 @@ import {createGroundBoxes} from './ground-boxes.js?v=20261104-save-slots1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 import {WorldTaskScheduler} from './world-task-scheduler.js';
 import {createWorldStartupGate} from './world-startup.js';
-import {installGameLeaveGuard} from './leave-guard.js?v=20261103-guard1';
-import {createPickupInteraction} from './pickup-interaction.js?v=20261102-audio1';
+import {installGameLeaveGuard} from './leave-guard.js?v=20261105-shortcut-guard1';
+import {createPickupInteraction} from './pickup-interaction.js?v=20261105-empty-loot3';
 import {createDeathSystem} from './death.js?v=20261103-ragdoll-save-recovery1';
 
 // Read and consume launch mode before touching any saved game data.
@@ -70,7 +72,11 @@ try{
 const $=id=>document.getElementById(id),host=$('game'),loading=$('load');let THREE;try{THREE=await import('https://esm.sh/three@0.170.0')}catch(e){loading.innerHTML='<b>Не удалось загрузить Three.js</b><span>Для первого запуска требуется интернет.</span>';throw e}
 
 
-const {modelActors,CHOP_SPEED,createLumberjack,actorChop,tickActor,rootMotion}=await createAnimations(THREE);
+const [animations]=await Promise.all([
+ createAnimations(THREE),
+ loadRagdollPhysics().catch(error=>console.warn('Rapier preload failed; retrying on ragdoll',error)),
+]);
+const {modelActors,CHOP_SPEED,createLumberjack,actorChop,tickActor,rootMotion}=animations;
 const treeModels=readActiveTreeConfig();
 let spruceParts=generateSpruceParts(treeModels.models.spruce);
 let birchParts=generateBirchParts(treeModels.models.birch);
@@ -95,6 +101,7 @@ let distantBirchParts=generateBirchParts({
 });
 let distantTreeParts={conifer:distantSpruceParts,birch:distantBirchParts};
 const treeWindShader=createTreeWindShader({motionQuery:typeof matchMedia==='function'?matchMedia('(prefers-reduced-motion: reduce)'):{matches:false}});
+let mobs=null;
 let ownAvatar=null,thirdPerson=true,ragdoll=null,ragdollControls=null,ragdollCamera=null;
 let refreshPerformance=()=>{};
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa4c8be);scene.fog=new THREE.FogExp2(0xa4c8be,.012);
@@ -168,7 +175,7 @@ const settings=createSettings(document,null,
 const atmosphere=createAtmosphere({
  THREE,renderer,scene,camera,sun,hemisphere,ground,settings,trees,
  getCharacterShadowCasters(){
-  return selectCharacterShadowCasters(ownAvatar,avatars.values(),px,pz,
+  return selectCharacterShadowCasters(ownAvatar,[...avatars.values(),...(mobs?.shadowActors??[])],px,pz,
     {near:settings.characterShadowDistance});
  },
  getDecorShadowCasters(x,z,radius,limit){
@@ -258,6 +265,8 @@ const ctx={
  get playerList(){return playerList;},
  get crafting(){return crafting;},
  get campStructures(){return campStructures;},
+ get mobs(){return mobs;},
+ get hens(){return mobs;},
  get inventory(){return inventory;},
  get storages(){return storages;},
  get vitals(){return vitals;},
@@ -601,6 +610,7 @@ gameAudio=createGameAudio(ctx);
 const highlight=createInteractionHighlight(ctx);
 const discoveries=createDiscoveries(ctx);
 const communityGoal=createCommunityGoal(ctx);
+mobs=await createMobs(ctx);
 offlineSave=createOfflineSave(ctx,{slot:menuLaunch.slot || 1});
 if(menuLaunch.mode==='continue')offlineSave.restore();
 else if(menuLaunch.mode==='new')offlineSave.reset({preserve:true});
@@ -654,7 +664,7 @@ if(menuLaunch.mode==='online'){
 }
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261103-region-default-3');
+  const { installDebug } = await import('./debug.js?v=20261104-cheats-close2');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

@@ -245,3 +245,41 @@ test('a temporary aim deviation recovers if crosshair returns by the contact fra
  assert.equal(f.tree.userData.hp,4);
  assert.deepEqual(f.events,['swing','axe']);
 });
+
+test('hen target is acquired only at the Chop2 contact frame and cannot receive the same swing twice',()=>{
+ const f=setup(false);const hits=[];let hen=null;
+ f.ctx.hens={aimed:()=>hen?{record:hen}:null,hit:r=>{hits.push(r.id);return true;}};
+ f.setAim(false);f.chopping.chop();
+ assert.deepEqual(hits,[]);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+100),false);
+ hen={id:'hen:test',hp:1};
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.deepEqual(hits,['hen:test']);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1500),false);
+ assert.deepEqual(hits,['hen:test']);
+});
+test('death before the contact frame cancels an attack against a hen',()=>{
+ const f=setup(false);let hits=0;
+ f.ctx.hens={aimed:()=>({record:{id:'hen:test'}}),hit:()=>{hits++;return true;}};
+ f.setAim(false);f.chopping.chop();f.ctx.deathSystem={active:true};
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),false);assert.equal(hits,0);
+});
+
+test('contact consumes the same current-frame mob target shown by the reticle without a second query',()=>{
+ for(const acquired of [true,false]){
+  const f=setup(false),hits=[];f.setAim(false);f.chopping.chop();
+  f.ctx.mobs={aimed:()=>assert.fail('frame target must not be resolved twice'),hit:r=>{hits.push(r.id);return true;}};
+  const target=acquired?{record:{id:'hen:current-frame',hp:1}}:null;
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715,target),acquired);
+  assert.deepEqual(hits,acquired?['hen:current-frame']:[]);
+ }
+});
+
+test('aiming into corpse UI prevents a new swing and cancels an already pending impact',()=>{
+ const f=setup(false);f.ctx.mobs={panelAimed:true};
+ f.chopping.chop();assert.deepEqual(f.events,[]);
+ f.ctx.mobs.panelAimed=false;f.chopping.chop();assert.deepEqual(f.events,['swing']);
+ f.ctx.mobs.panelAimed=true;assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),false);
+ f.ctx.mobs.panelAimed=false;assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1000),false);
+ assert.equal(f.tree.userData.hp,5);
+});

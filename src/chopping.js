@@ -1,6 +1,7 @@
 import {chopContactReached} from './chop-timing.js';
 import {TREE_LOG_COUNT} from './ground-boxes.js';
 import {isStructureItem} from './structure-items.js';
+import {isFood} from './vitals.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 export function createChopping(ctx) {
 const ray=new ctx.THREE.Raycaster(),viewRay=new ctx.THREE.Raycaster();
@@ -30,13 +31,14 @@ function aimed(){
  let best=null,dist=5.2;for(const t of ctx.trees.values()){if(Math.hypot(t.position.x-ctx.px,t.position.z-ctx.pz)>6)continue;const hits=ray.intersectObjects(t.userData.hitMeshes??t.children,false);if(hits.length&&hits[0].distance<dist){best=t;dist=hits[0].distance}}return best}
 const chipGeo=new ctx.THREE.BoxGeometry(.1,.1,.1),chipMat=new ctx.THREE.MeshLambertMaterial({color:0xc59560});function spawnChips(t){for(let i=0;i<Math.min(7,Math.max(0,96-ctx.particles.length));i++){const mesh=new ctx.THREE.Mesh(chipGeo,chipMat);mesh.position.set(t.position.x+(Math.random()-.5)*.7,1.15+Math.random()*.5,t.position.z+(Math.random()-.5)*.7);ctx.scene.add(mesh);ctx.particles.push({mesh,vx:(Math.random()-.5)*3,vy:1+Math.random()*3,vz:(Math.random()-.5)*3,life:.7})}}
 function chop(){
+ if((ctx.mobs??ctx.hens)?.panelAimed)return;
  // A mouse click may be needed to acquire pointer lock while lying down.
  // It must never launch Chop2 or interact with the world before getting up.
  if(ctx.deathSystem?.active || ctx.ragdoll?.active || ctx.ragdollControls?.busy ||
     (ctx.ragdollControls?.mode && ctx.ragdollControls.mode!=='none'))return;
  if(ctx.inventory){
    const selected=ctx.inventory.state.quickItem(ctx.inventory.state.selectedQuick)?.id;
-   if(selected?.startsWith('mushroom:')||selected?.startsWith('flower:')){
+   if(isFood(selected)){
      ctx.vitals?.consume(ctx.inventory.state.selectedSlot());return;
    }
  }
@@ -104,9 +106,9 @@ const t=aimed();
  // or switch from tree A to B before the axe makes contact.
  pendingSwing={startedAt:now,playbackSpeed};
 }
-function tickImpact(now=performance.now()){
+function tickImpact(now=performance.now(),currentMobTarget=undefined){
  if(!pendingSwing)return false;
- if(ctx.deathSystem?.active||ctx.ragdoll?.active||ctx.ragdollControls?.busy||
+ if((ctx.mobs??ctx.hens)?.panelAimed||ctx.deathSystem?.active||ctx.ragdoll?.active||ctx.ragdollControls?.busy||
     (ctx.ragdollControls?.mode&&ctx.ragdollControls.mode!=='none')){
    pendingSwing=null;return false;
  }
@@ -115,6 +117,10 @@ function tickImpact(now=performance.now()){
  pendingSwing=null; // Exactly once, even if the animation remains on frame 18.
  // Whichever tree the crosshair points at now receives the hit.
  // No tree under the crosshair = a clean miss.
+ // The player loop already resolved this frame's reticle before damage.
+ // Standalone callers still resolve a fresh target at the contact frame.
+ const mobs=ctx.mobs??ctx.hens,target=currentMobTarget===undefined?mobs?.aimed?.():currentMobTarget;
+ if(target){return mobs.hit(target.record);}
  const t=aimed();
  if(!t)return false;
  if(ctx.vitals&&!ctx.vitals.canChop){

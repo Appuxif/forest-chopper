@@ -254,3 +254,20 @@ test('reticle and E use the same camp interaction as for a pickup',()=>{
   else globalThis.matchMedia=oldMatch;
  }
 });
+
+test('an empty corpse shows a neutral hint, disables touch opening and consumes E without ground pickup',()=>{
+ const previous=globalThis.matchMedia;globalThis.matchMedia=()=>({matches:true});
+ try{
+  let opened=0,collected=0;
+  class Vector3{set(){return this;}project(){Object.assign(this,{x:0,y:0,z:.5});return this;}}
+  const button={addEventListener(){},setAttribute(){}};
+  const corpse={type:'corpse',id:'empty',x:0,y:0,z:0,distance:1,maxDistance:2.8,label:'Курица',verb:'Пусто',empty:true};
+  const ctx={THREE:{Vector3},camera:{},$:()=>button,px:0,pz:0,
+   terrain:{heightAt:()=>0,waterDepthAt:()=>0},mobs:{candidate:()=>corpse,open:()=>opened++},
+   forestResources:{nodes:[{id:'branch',kind:'branch',x:.2,z:0}],collect:()=>collected++},groundBoxes:{boxes:[]}};
+  const picker=createPickupInteraction(ctx);assert.equal(picker.update()?.verb,'Пусто');assert.equal(button.disabled,true);
+  assert.equal(aimState(false,null,'',picker.current).kind,'empty');
+  assert.equal(aimState(false,{userData:{hp:3}},'',picker.current).kind,'empty','a tree behind the empty corpse must not replace its hint');
+  assert.equal(picker.interact(),true);assert.equal(opened,0);assert.equal(collected,0);
+ }finally{if(previous===undefined)delete globalThis.matchMedia;else globalThis.matchMedia=previous;}
+});

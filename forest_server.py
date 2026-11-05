@@ -16,6 +16,10 @@ from box_registry import BoxRegistry,AOI_RADIUS
 from server_bots import BotManager, can_stand
 from terrain_height import height_at, base_height
 from ponds import pond_depth_at, pond_height_before_lakes
+from hen_world import HenWorld
+from mob_world import MobWorld
+from mob_definitions import CHICKEN, DEFINITIONS
+from entity_combat import can_damage_entity
 
 MAX_MESSAGE = 2048
 # Initial 3 kg axe leaves room for nine 10 kg logs, regardless of bag slots.
@@ -68,10 +72,10 @@ FLOWER_SPECIES=('daisy','buttercup','pink_wildflower','blue_wildflower')
 DECOR_ITEM_IDS=tuple('mushroom:'+name for name in MUSHROOM_SPECIES)+tuple('flower:'+name for name in FLOWER_SPECIES)+('dry_grass',)
 STRUCTURE_KINDS=("campfire","torch","table","fence","workbench","alchemy_table","bed","chest","rack")
 STRUCTURE_WEIGHTS={"campfire":18,"torch":4,"table":18,"fence":12,"workbench":25,"alchemy_table":35,"bed":18,"chest":15,"rack":16}
-ITEM_LIMITS={**{name:1 for name in STRUCTURE_KINDS},"log":5,"branch":10,"stone":10,"bench":1,"axe":1,"potion:health":10,"potion:stamina":10,"potion:lumberjack":10,"potion:light_feet":10,"potion:night_vision":10,"food:mushroom_stew":10,"food:herbal_mushroom_stew":10,
+ITEM_LIMITS={**{name:1 for name in STRUCTURE_KINDS},"log":5,"branch":10,"stone":10,"bench":1,"axe":1,"chicken_meat":10,"feather":10,"potion:health":10,"potion:stamina":10,"potion:lumberjack":10,"potion:light_feet":10,"potion:night_vision":10,"food:mushroom_stew":10,"food:herbal_mushroom_stew":10,"food:roast_chicken":10,"food:chicken_mushrooms":10,"food:herbal_chicken":10,
              **{name:10 for name in DECOR_ITEM_IDS}}
 MAX_CARRY_WEIGHT=100
-ITEM_WEIGHT={**STRUCTURE_WEIGHTS,"log":10,"branch":0.5,"stone":2,"bench":15,"axe":3,"potion:health":0.5,"potion:stamina":0.5,"potion:lumberjack":0.5,"potion:light_feet":0.5,"potion:night_vision":0.5,"food:mushroom_stew":0.6,"food:herbal_mushroom_stew":0.7,
+ITEM_WEIGHT={**STRUCTURE_WEIGHTS,"log":10,"branch":0.5,"stone":2,"bench":15,"axe":3,"chicken_meat":0.5,"feather":0.01,"potion:health":0.5,"potion:stamina":0.5,"potion:lumberjack":0.5,"potion:light_feet":0.5,"potion:night_vision":0.5,"food:mushroom_stew":0.6,"food:herbal_mushroom_stew":0.7,"food:roast_chicken":0.5,"food:chicken_mushrooms":0.6,"food:herbal_chicken":0.6,
              **{name:0.1 for name in DECOR_ITEM_IDS}}
 
 def item_weight(item):
@@ -142,6 +146,7 @@ FOOD_EFFECTS={
     'mushroom:death_cap':(-1,0),
     'mushroom:milkcap':(0,1),
     'mushroom:boletus':(0,1),
+    'chicken_meat':(0,1),
     'flower:daisy':(1,0),
     'flower:buttercup':(0,0),
     'flower:pink_wildflower':(0,0),
@@ -153,10 +158,16 @@ FOOD_EFFECTS={
     'potion:night_vision':(-1,0),
     'food:mushroom_stew':(0,3),
     'food:herbal_mushroom_stew':(1,3),
+    'food:roast_chicken':(0,2),
+    'food:chicken_mushrooms':(0,3),
+    'food:herbal_chicken':(2,2),
 }
 FOOD_RECIPES={
     'food:mushroom_stew':{'mushroom:boletus':1,'mushroom:milkcap':1},
     'food:herbal_mushroom_stew':{'mushroom:boletus':1,'mushroom:milkcap':1,'flower:blue_wildflower':1},
+    'food:roast_chicken':{'chicken_meat':1},
+    'food:chicken_mushrooms':{'chicken_meat':1,'mushroom:boletus':1},
+    'food:herbal_chicken':{'chicken_meat':1,'flower:blue_wildflower':1},
 }
 POTION_RECIPES={
     'potion:health':{'flower:daisy':2,'mushroom:boletus':1},
@@ -702,6 +713,11 @@ class World:
         self.world_created_at=self.day_epoch
         self.last_day_sync=time.monotonic()
         self.bots=BotManager(self);self.bot_token=bot_token
+        for definition in DEFINITIONS.values():
+            self.validate_mob_definition(definition)
+        self.mobs=MobWorld(self.seed,definitions=DEFINITIONS.values())
+        self.hens=HenWorld(self.seed)
+        self.mobs.populations['chicken']=self.hens
         if self.path.exists():
             try:
                 data=json.loads(self.path.read_text())
@@ -807,16 +823,31 @@ class World:
                 self.day_epoch=epoch
                 self.world_created_at=created
                 self.seed=seed;self.felled=felled;self.damage=damage;self.logs=logs;self.furniture=furniture;self.next_furniture=max(furniture,default=0)+1;self.storages=storages;self.next_storage=max(storages,default=0)+1;self.camp_structures=camp;self.next_camp=max(camp,default=0)+1;self.community_cuts=community_cuts;self.resource_cooldowns=cooldowns
+                mob_snapshots=data.get('mobs') if isinstance(data.get('mobs'),dict) else {}
+                chicken_snapshot=mob_snapshots.get('chicken',data.get('hens',{}))
+                self.mobs=MobWorld(seed,definitions=DEFINITIONS.values(),snapshots=mob_snapshots | {'chicken':chicken_snapshot})
+                self.hens=HenWorld(seed,chicken_snapshot)
+                self.mobs.populations['chicken']=self.hens
                 self.next_log=max(saved_logs,default=0)+1
                 if migrated_legacy_logs or outdated_logs:self.save()
                 print('Loaded world:',self.path)
             except (ValueError,KeyError,TypeError) as exc:print('Invalid save, starting fresh:',exc)
     def save(self):
-        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'storages':self.storages,'camp_structures':self.camp_structures,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts,'day_epoch':self.day_epoch,'world_created_at':self.world_created_at}
+        data={'seed':self.seed,'terrain_version':3,'felled':list(self.felled),'damage':self.damage,'logs':self.logs,'furniture':self.furniture,'storages':self.storages,'camp_structures':self.camp_structures,'boxes':self.boxes,'resource_cooldowns':self.resource_cooldowns,'community_cuts':self.community_cuts,'day_epoch':self.day_epoch,'world_created_at':self.world_created_at,'hens':self.hens.save_data(),'mobs':self.mobs.save_data()}
         tmp=self.path.with_suffix('.tmp');tmp.write_text(json.dumps(data));os.replace(tmp,self.path)
     def ensure_box_index(self):
         if not isinstance(self.boxes,BoxRegistry):self.boxes=BoxRegistry(self.boxes)
         return self.boxes
+
+    def register_mob(self,definition,snapshot=None):
+        self.validate_mob_definition(definition)
+        return self.mobs.register(definition,snapshot)
+
+    @staticmethod
+    def validate_mob_definition(definition):
+        for item,amount_range in definition.loot.items():
+            if item not in ITEM_LIMITS or amount_range[1]>ITEM_LIMITS[item]:
+                raise ValueError(f'Unregistered or over-cap mob loot item: {item}')
 
     def visible_box_set(self,player):
         return set(ident for ident,_ in self.ensure_box_index().nearby(
@@ -843,6 +874,93 @@ class World:
     def resource_view(self,player,now=None):
         return {'type':'resources_state','resources':resource_nearby(
             self.seed,player['x'],player['z'],self.resource_cooldowns,now)}
+
+    def hen_view(self,player,now=None):
+        current=time.time() if now is None else now
+        return {'type':'hens_state','server_time':current,
+                'hens':self.hens.views(player['x'],player['z'],current)}
+
+    def mob_view(self,player,now=None):
+        current=time.time() if now is None else now
+        return {'type':'mobs_state','server_time':current,
+                'mobs':self.mobs.views(player['x'],player['z'],current)}
+
+    def hen_line_of_sight(self,player,hen):
+        dx,dz=hen['x']-player['x'],hen['z']-player['z']
+        distance=math.hypot(dx,dz)
+        steps=max(2,int(distance/.45))
+        start_y=player.get('y',height_at(self.seed,player['x'],player['z']))+1.4
+        end_y=hen['y']+.5
+        for i in range(1,steps):
+            t=i/steps
+            x,z=player['x']+dx*t,player['z']+dz*t
+            ground=height_at(self.seed,x,z)
+            if ground>start_y+(end_y-start_y)*t or not can_stand(self,x,z,ground):
+                return False
+        return True
+
+    async def hit_mob(self,player,ident,now,damage=1,legacy=False):
+        if not isinstance(ident,str) or len(ident)>100:return False
+        target=self.mobs.target(ident)
+        if (not target or target[2]!='live' or not player.get('axe_equipped')):
+            return False
+        population,mob,_=target
+        # Client axe reach is 2.6 m; allow 0.65 m for network movement.
+        # Both the reach and its former latency allowance were halved.
+        if (not can_damage_entity(player,mob,damage)
+            or math.hypot(player['x']-mob['x'],player['z']-mob['z'])>3.25
+            or not self.hen_line_of_sight(player,mob)):
+            return False
+        result=population.damage(ident,damage,time.time(),attacker=player)
+        if not result:return False
+        if result['alive']:
+            await self.broadcast({'type':'mob_hit','id':ident,'mob_type':population.type_id,
+                                  'health':result['health'],'alive':True,
+                                  'category':mob['category'],'subcategory':mob['subcategory']})
+            return True
+        corpse=result['corpse']
+        self.save()
+        packet={'type':'mob_death','id':ident,'mob_type':population.type_id,
+                              'health':0,'category':corpse['category'],'subcategory':corpse['subcategory'],'dead_at':corpse['dead_at'],
+                              'loot':corpse['loot'].copy(),'x':corpse['x'],'y':corpse['y'],
+                              'z':corpse['z'],'yaw':corpse['yaw'],'vx':corpse['vx'],'vz':corpse['vz']}
+        if legacy and population.type_id=='chicken':
+            await self.broadcast({'type':'hen_death','id':ident,'dead_at':corpse['dead_at'],
+                              'loot':corpse['loot'].copy(),'x':corpse['x'],'y':corpse['y'],
+                              'z':corpse['z'],'yaw':corpse['yaw'],'vx':corpse['vx'],'vz':corpse['vz']})
+        if not legacy:
+            await self.broadcast(packet)
+        return True
+
+    async def hit_hen(self,player,ident,now):
+        return await self.hit_mob(player,ident,now,damage=1,legacy=True)
+
+    def take_mob(self,player,ident,item,amount=None,now=None):
+        current=time.time() if now is None else now
+        target=self.mobs.target(ident)
+        if not target or target[2]!='corpse':return False,'invalid_target'
+        population,corpse,_=target
+        if (item not in population.definition.loot
+            or current-corpse['dead_at']>=population.definition.corpse_ttl
+            or math.hypot(player['x']-corpse['x'],player['z']-corpse['z'])>3.5
+            or not self.hen_line_of_sight(player,corpse)):
+            return False,'invalid_target'
+        available=corpse['loot'].get(item,0)
+        if not available:return False,'empty'
+        take=available if amount is None else amount
+        if type(take) is not int or take<1:return False,'invalid_amount'
+        take=min(take,available)
+        reward={'id':item,'count':take}
+        if not inv_add(player['inventory'],reward):
+            return False,inv_capacity_reason(player['inventory'],reward)
+        population.take(ident,item,take)
+        self.save()
+        return True,take
+
+    def take_hen(self,player,ident,item,amount=None,now=None):
+        if self.mobs.population_for(ident) is None or self.mobs.population_for(ident).type_id!='chicken':
+            return False,'invalid_target'
+        return self.take_mob(player,ident,item,amount,now)
 
     async def prune_resource_cooldowns(self,now=None):
         current=time.time() if now is None else now
@@ -939,6 +1057,22 @@ class World:
                     current-player.get('last_stamina_sent',0)>=.6):
                     player['last_stamina_sent']=current
                     await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
+
+    async def hen_simulation_loop(self):
+        previous=time.monotonic()
+        while True:
+            await asyncio.sleep(.1)
+            mono=time.monotonic();now=time.time();dt=min(.2,max(0.0,mono-previous));previous=mono
+            players=list(self.clients.values())
+            expired_hens=self.mobs.tick(players,dt,now,
+                lambda x,z: pond_depth_at(self.seed,x,z)<=.12 and can_stand(self,x,z,height_at(self.seed,x,z)),
+                lambda x,z: height_at(self.seed,x,z))
+            if expired_hens:self.save()
+            for ws,player in list(self.clients.items()):
+                if mono-player.get('last_hen_sync',0)>=.2:
+                    player['last_hen_sync']=mono
+                    await self.send(ws,self.hen_view(player,now))
+                    await self.send(ws,self.mob_view(player,now))
 
     async def send(self,ws,data):
         try:await ws.send(json.dumps(data,separators=(',',':')))
@@ -1096,7 +1230,7 @@ class World:
         await self.prune_boxes()
         player['visible_boxes']=self.visible_box_set(player)
         player['last_box_sync']=(player['x'],player['z'])
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'camp_structures':[{'id':k,**v} for k,v in self.camp_structures.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**self.boxes[k]} for k in sorted(player['visible_boxes'])],'resources':self.resource_view(player)['resources'],'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'camp_structures':[{'id':k,**v} for k,v in self.camp_structures.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**self.boxes[k]} for k in sorted(player['visible_boxes'])],'resources':self.resource_view(player)['resources'],'hens':self.hens.views(player['x'],player['z'],time.time()),'mobs':self.mobs.views(player['x'],player['z'],time.time()),'server_time':time.time(),'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -1563,6 +1697,34 @@ class World:
                     player['last_build']=now
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                     self.save()
+                elif kind in ('hen_hit','mob_hit'):
+                    advance_hunger(player,now)
+                    advance_stamina(player,now)
+                    if not player['axe_equipped'] or not server_can_hit(player):
+                        await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
+                        if not server_can_hit(player):
+                            await self.send(ws,{'type':'action_denied','reason':server_chop_warning(player)})
+                        continue
+                    tier=min(max(player.get('axe_tier',0),0),len(AXE_LEVELS)-1)
+                    _,speed=AXE_LEVELS[tier]
+                    if now-player['last_hit']<.28/speed:continue
+                    player['last_hit']=now
+                    tier=min(max(player.get('axe_tier',0),0),len(AXE_LEVELS)-1)
+                    damage=AXE_LEVELS[tier][0]*chop_damage_multiplier(player) if kind=='mob_hit' else 1
+                    if await self.hit_mob(player,data.get('id'),now,damage=damage,legacy=(kind=='hen_hit')):
+                        spend_hit_stamina(player)
+                        player['last_stamina_sent']=now
+                        await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
+                elif kind in ('hen_take','mob_take'):
+                    ok,result=self.take_mob(player,data.get('id'),data.get('item'),data.get('count'))
+                    if not ok:
+                        if result not in ('invalid_target','invalid_amount','empty'):
+                            await self.send(ws,{'type':'action_denied','reason':result})
+                        continue
+                    loot={'id':data.get('id'),'item':data.get('item'),'count':result}
+                    response={'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood'],'corpse_loot':loot}
+                    if kind=='hen_take':response['hen_loot']=loot
+                    await self.send(ws,response)
                 elif kind=='hit':
                     if not player['axe_equipped']:continue
                     advance_hunger(player,now)
@@ -1593,12 +1755,14 @@ async def main():
     async with serve(world.handler,args.host,args.port,max_size=MAX_MESSAGE,ping_interval=20):
         simulation=asyncio.create_task(world.bots.run())
         expiry_task=asyncio.create_task(world.box_expiration_loop())
+        hen_task=asyncio.create_task(world.hen_simulation_loop())
         print(f'Forest Chopper multiplayer: ws://{args.host}:{args.port} (up to 32 players)')
         try:await asyncio.Future()
         finally:
+            world.save()
             world.bots.running=False
-            simulation.cancel();expiry_task.cancel()
-            await asyncio.gather(simulation,expiry_task,return_exceptions=True)
+            simulation.cancel();expiry_task.cancel();hen_task.cancel()
+            await asyncio.gather(simulation,expiry_task,hen_task,return_exceptions=True)
 
 if __name__=='__main__':
     try:asyncio.run(main())

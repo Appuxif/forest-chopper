@@ -397,3 +397,26 @@ test('preparing a replacement preserves the old world until the new snapshot is 
  f.save.reset({preserve:true});assert.equal(f.storage.getItem(slotKey(1)),old);
  f.ctx.seed=987;f.save.save();assert.equal(JSON.parse(f.storage.getItem(slotKey(1))).seed,987);
 });
+
+test('hen state uses the selected world snapshot and malformed animal data is rejected',async()=>{
+ const {createHenWorld}=await import('../src/hen-rules.js');
+ const f=fixture();const hens=createHenWorld({seed:f.ctx.seed});
+ const r=hens.tick(0,[{x:0,z:0}])[0];hens.hit(r.id);
+ f.ctx.hens=hens;const state=f.save.snapshot();
+ assert.ok(state.hens.corpses.length===1);
+ const parsed=parseOfflineSave(JSON.stringify(state));assert.ok(parsed);
+ assert.equal(parsed.hens.corpses[0].id,r.id);
+ assert.equal(parseOfflineSave(JSON.stringify({...state,hens:{version:1,clock:Infinity}})),null);
+ assert.equal(parseOfflineSave(JSON.stringify({...state,hens:{...state.hens,seed:98765}})),null);
+});
+
+test('new mob save envelope validates and reloads, retaining old hen saves as a read fallback',async()=>{
+ const {createMobWorld}=await import('../src/mob-world.js');
+ const f=fixture(),world=createMobWorld({seed:f.ctx.seed});
+ const animal=world.tick(0,[{x:0,z:0}])[0];world.hit(animal.id,{id:'p',faction:'players',x:animal.x-1,z:animal.z});
+ f.ctx.mobs=world;const state=f.save.snapshot();assert.equal(state.hens,undefined);assert.ok(state.mobs.populations.chicken);
+ const parsed=parseOfflineSave(JSON.stringify(state));assert.ok(parsed);assert.ok(parsed.mobs.populations.chicken.corpses.some(r=>r.id===animal.id));
+ const before=world.snapshot();assert.equal(f.save.restoreSnapshot(JSON.stringify(state),{replace:false}),true);
+ assert.deepEqual(world.snapshot(),before);
+ const bad=structuredClone(state);bad.mobs.populations.unknown=bad.mobs.populations.chicken;assert.equal(parseOfflineSave(JSON.stringify(bad)),null);
+});
