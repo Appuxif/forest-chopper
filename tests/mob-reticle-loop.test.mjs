@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createPlayer} from '../src/player.js';
+import {createCharacterOrientation} from '../src/character-orientation.js';
 
 function fixture(){
  const noop=()=>{},nodes=new Map(),events=[];
@@ -9,6 +10,7 @@ function fixture(){
  let target=null,cameraUpdated=false;
  const ctx={THREE:{Vector3},$: $,px:0,pz:0,yaw:0,pitch:0,feetY:0,onGround:true,thirdPerson:false,
   lastTime:1000,frame:0,joyX:0,joyY:0,keys:{},swing:0,particles:[],falling:[],avatars:new Map(),
+  cameraYaw:0,cameraPitch:0,characterOrientation:createCharacterOrientation(),
   camera:{near:.1,position:new Vector3(),rotation:{set(){cameraUpdated=false;}},updateMatrixWorld(){cameraUpdated=true;}},
   axe:{position:{y:0},rotation:{x:0,z:0}},scene:{},renderer:{render:noop},
   rootMotion:{},settings:{maxFps:30,autoSprint:false,tickPhysics:noop,tick:noop},

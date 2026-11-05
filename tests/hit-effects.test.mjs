@@ -271,7 +271,7 @@ test('hen target is acquired only at the Chop2 contact frame and cannot receive 
  assert.deepEqual(hits,[]);
  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+100),false);
  hen={id:'hen:test',hp:1};
- assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),true);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
  assert.deepEqual(hits,['hen:test']);
  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1500),false);
  assert.deepEqual(hits,['hen:test']);
@@ -288,7 +288,7 @@ test('contact consumes the same current-frame mob target shown by the reticle wi
   const f=setup(false),hits=[];f.setAim(false);f.chopping.chop();
   f.ctx.mobs={aimed:()=>assert.fail('frame target must not be resolved twice'),hit:r=>{hits.push(r.id);return true;}};
   const target=acquired?{record:{id:'hen:current-frame',hp:1}}:null;
-  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715,target),acquired);
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835,target),acquired);
   assert.deepEqual(hits,acquired?['hen:current-frame']:[]);
  }
 });
