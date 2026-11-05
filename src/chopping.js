@@ -120,7 +120,11 @@ function tickImpact(now=performance.now(),currentMobTarget=undefined){
  // The player loop already resolved this frame's reticle before damage.
  // Standalone callers still resolve a fresh target at the contact frame.
  const mobs=ctx.mobs??ctx.hens,target=currentMobTarget===undefined?mobs?.aimed?.():currentMobTarget;
- if(target){return mobs.hit(target.record);}
+ if(target){
+   const hit=mobs.hit(target.record);
+   if(hit)ctx.audio?.effect('fleshHit');
+   return hit;
+ }
  const t=aimed();
  if(!t)return false;
  if(ctx.vitals&&!ctx.vitals.canChop){

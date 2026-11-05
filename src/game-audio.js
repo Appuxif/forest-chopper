@@ -1,7 +1,7 @@
 // Browser WebAudio mixer. No CDN or procedural sound approximations: all
 // samples ship locally. AudioContext is created only after user interaction.
 import {AUDIO_FILES,AXE_VARIANTS,VOICE_CATEGORIES,VOICE_VARIANTS,MOB_VOICE_PROFILES,MOB_SOUND_CATEGORIES,MOB_SOUND_RULES,chooseVoiceClip,audioSetting,nightBlend,distanceGain,nearestLitFire,
- waterProximity,stepSurface,stepClip,stepVolumeKey} from './sound-rules.js?v=20261105-hen-voices1';
+ waterProximity,stepSurface,stepClip,stepVolumeKey} from './sound-rules.js?v=20261105-mob-hit-audio1';
 
 export function createGameAudio(ctx,{
  doc=typeof document==='undefined'?null:document,
@@ -93,6 +93,7 @@ export function createGameAudio(ctx,{
    return play(AXE_VARIANTS[index],'axe',.83,{pitch:.97+random()*.06});
   }
   if(name==='treeFall')return play('tree_fall','treeFall',.85,{pitch:1});
+  if(name==='fleshHit')return play('flesh_hit','fleshHit',.9,{pitch:1});
   if(name==='pickup')return play('pickup','pickup',.7,{pitch:1});
   if(name==='drop')return play('drop','drop',.7,{pitch:1});
   if(name==='chat')return play('chat_blip','chat',.5);

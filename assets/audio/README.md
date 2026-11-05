@@ -7,6 +7,7 @@ audio/
 ├── ambience/             # костёр, озеро, лес, птицы, сверчки, деревья
 ├── footsteps/            # шаги по листве, дереву, камням, грязи, воде
 ├── chopping/             # axe_chop_1..7 и tree_fall
+├── combat/               # flesh_hit — контактный удар по существу
 ├── inventory/            # pickup и обратный drop
 ├── ui/                   # звук чата
 ├── voices/
