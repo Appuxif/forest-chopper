@@ -1,7 +1,8 @@
 """Export production Actions only; leave REF_* in the workbench .blend.
 
-Optional gender-specific Action overrides use `male__run` / `female__run` names;
-those become the corresponding named clips when packed into their body's GLB.
+Every gender has an independent male__run / female__run Action bank.
+The shared source actions remain editable fallbacks. Exclude the separate
+lumberjack__* bank until its loader is introduced.
 """
 import bpy
 from pathlib import Path
@@ -13,10 +14,9 @@ rig=bpy.data.objects['Humanoid_Rig53']
 assert len(rig.data.bones)==53
 all_names={a.name for a in bpy.data.actions}
 assert {'idle','walk','run','Chop'}<=all_names
-# Workbench REF_* motions are experiments, not production assets. Removing
-# them from this disposable Blender session prevents glTF from serializing
-# their curves/bytes at all; the input .blend is never written or changed.
-references=[a for a in bpy.data.actions if a.name.startswith('REF_')]
+# REF_* motions and lumberjack__* Actions are not male/female runtime assets.
+# Remove them from this disposable export process, never from the .blend.
+references=[a for a in bpy.data.actions if a.name.startswith(('REF_','lumberjack__'))]
 for action in references:
  bpy.data.actions.remove(action)
 names={a.name for a in bpy.data.actions}
@@ -32,31 +32,35 @@ assert len(names)>=13,('Expected game Actions',names)
 # Run backward: authored 1..21 -> export 0..20 (21 samples), so there
 # is no extra frozen 1/30-second lead-in at each new loop.
 # The user's source .blend is NEVER written.
-for name in ('walk','walk_backward','strafe_left','strafe_right','run_backward'):
- action=bpy.data.actions.get(name)
- if not action:raise AssertionError(f'Missing production locomotion Action: {name}')
- start=float(action.frame_range[0])
- final=float(action.frame_range[1])
- end_frame=26 if name.startswith('strafe_') else 20 if name=='run_backward' else 30
- scale=end_frame/(final-start)
- for layer in action.layers:
-  for strip in layer.strips:
-   for bag in strip.channelbags:
-    for curve in bag.fcurves:
-     for key in curve.keyframe_points:
-      shifted=(key.co.x-start)*scale
-      # Blender stores walk frame 31.25 as 31.249998. Snap only near
-      # integer frames to preserve the final sample precisely.
-      if abs(shifted-round(shifted))<1e-3:
-       shifted=float(round(shifted))
-      dx=shifted-key.co.x
-      key.co.x=shifted
-      key.handle_left.x+=dx
-      key.handle_right.x+=dx
-     curve.update()
- assert abs(action.frame_range[0])<1e-4 and abs(action.frame_range[1]-end_frame)<1e-3,(name,action.frame_range)
- print('NORMALIZED_LOCOMOTION_LOOP',name,'source_start',start,'source_end',final,
-       'export_frames',end_frame,'export_duration_s',end_frame/30)
+for base_name in ('walk','walk_backward','strafe_left','strafe_right','run_backward'):
+ for prefix in ('','male__','female__'):
+  name=prefix+base_name
+  action=bpy.data.actions.get(name)
+  if not action:
+   if prefix:continue # Older workbenches may lack optional overrides.
+   raise AssertionError(f'Missing production locomotion Action: {name}')
+  start=float(action.frame_range[0])
+  final=float(action.frame_range[1])
+  end_frame=26 if base_name.startswith('strafe_') else 20 if base_name=='run_backward' else 30
+  scale=end_frame/(final-start)
+  for layer in action.layers:
+   for strip in layer.strips:
+    for bag in strip.channelbags:
+     for curve in bag.fcurves:
+      for key in curve.keyframe_points:
+       shifted=(key.co.x-start)*scale
+       # Blender stores walk frame 31.25 as 31.249998. Snap only near
+       # integer frames to preserve the final sample precisely.
+       if abs(shifted-round(shifted))<1e-3:
+        shifted=float(round(shifted))
+       dx=shifted-key.co.x
+       key.co.x=shifted
+       key.handle_left.x+=dx
+       key.handle_right.x+=dx
+      curve.update()
+  assert abs(action.frame_range[0])<1e-4 and abs(action.frame_range[1]-end_frame)<1e-3,(name,action.frame_range)
+  print('NORMALIZED_LOCOMOTION_LOOP',name,'source_start',start,'source_end',final,
+        'export_frames',end_frame,'export_duration_s',end_frame/30)
 print('OMITTED_WORKBENCH_REFERENCES',len(references))
 if rig.animation_data:
  rig.animation_data.action=None
