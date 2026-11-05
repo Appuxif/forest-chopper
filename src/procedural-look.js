@@ -4,7 +4,7 @@
 // transformed into each joint parent's local space. Using raw bone.rotation.y
 // would bend some joints sideways and twist the neck.
 //
-// This controller is LOCAL only until ORI-07 adds multiplayer look sectors.
+// ORI-07 also feeds this same additive look controller interpolated remote pose.
 // Run restore() BEFORE AnimationMixer.update and apply() AFTER it. Both male
 // and female rigs key every look joint in their animation clips.
 import {shortestYawDelta} from './character-orientation.js';

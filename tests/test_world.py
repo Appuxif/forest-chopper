@@ -13,6 +13,11 @@ from websockets.asyncio.client import connect
 from forest_server import DAY_CYCLE_SECONDS, DAY_SYNC_SECONDS, World, tree_info, inv_give_logs, inv_logs, inventory_view, resource_info, resource_nearby, resource_cell, decor_resource, nearby_decor, DECOR_ITEM_IDS, inv_count, inv_add, inv_weight, inv_weight_space, inv_can_add, inv_take_logs, MAX_CARRY_WEIGHT, vitals_view,advance_hunger,apply_food,FOOD_EFFECTS,LOW_VITALS_THRESHOLD,HUNGER_INTERVAL_SECONDS,advance_stamina,server_can_sprint,server_can_hit,spend_hit_stamina,STAMINA_SPRINT_DRAIN,STAMINA_REGEN,BOX_TTL_SECONDS, RESOURCE_LIMIT, RESOURCE_RESPAWN_SECONDS
 
 
+def face_target(player,tx,tz):
+    player['yaw']=math.atan2(-(tx-player['x']),-(tz-player['z']))
+    player['torsoYaw']=player['yaw']
+
+
 class WorldTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.folder = tempfile.TemporaryDirectory()
@@ -240,6 +245,8 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(asyncio.TimeoutError):
                     await asyncio.wait_for(bob.recv(),.055)
                 owner['last_build']=0
+                owner['x']=3.5;owner['z']=0
+                face_target(owner,2,0)
                 await alice.send(json.dumps({'type':'hit_structure','kind':'log','id':lid}))
                 removed=await self.receive(bob,'log_remove')
                 self.assertEqual(removed['wood'],3)
@@ -322,6 +329,8 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 await self.receive(bob,'equipment')
                 await self.receive(alice,'inventory_state')
                 owner['last_build']=0
+                owner['x']=5.5;owner['z']=0
+                face_target(owner,4,0)
                 await alice.send(json.dumps({'type':'hit_structure','kind':'bench','id':fid}))
                 removed=await self.receive(bob,'furniture_remove')
                 self.assertEqual(removed['wood'],0)
@@ -346,6 +355,8 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             # Also reject destructive axe hits if return resource cannot fit.
             owner['selected']=0
             self.world.furniture[100]={'kind':'bench','x':1,'z':0,'orientation':0}
+            owner['x']=2.5;owner['z']=0
+            face_target(owner,1,0)
             await alice.send(json.dumps({'type':'hit_structure','kind':'bench','id':100}))
             denied=await self.receive(alice,'action_denied')
             self.assertIn('100 кг',denied['reason'])
@@ -586,6 +597,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 tx,tz,_=tree_info(first,self.world.seed)
                 player=next(iter(self.world.clients.values()))
                 player.update(x=tx+1.5,z=tz)
+                face_target(player,tx,tz)
                 self.world.damage[first]=1
                 self.assertTrue(await self.world.hit_tree(player,first,0))
                 event=await self.receive(alice,'tree_fell')
@@ -597,6 +609,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 second=keys[1]
                 bx,bz,_=tree_info(second,self.world.seed)
                 bot.update(x=bx+1.5,z=bz)
+                face_target(bot,bx,bz)
                 self.world.damage[second]=1
                 self.assertTrue(await self.world.hit_tree(bot,second,0))
                 self.assertEqual((await self.receive(bob,'tree_fell'))['community_cuts'],21)
@@ -684,6 +697,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                        if tree_info(k,self.world.seed))
             tx,tz,_=tree_info(key,self.world.seed)
             player.update(x=tx+1.5,z=tz)
+            face_target(player,tx,tz)
             for health,hunger,reason in ((1,5,'Мало жизней'),(5,1,'Вы голодны'),(0,0,'Мало жизней')):
                 player.update(health=health,hunger=hunger,last_hit=0)
                 await ws.send(json.dumps({'type':'hit','tree':key}))
@@ -818,6 +832,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                 for z in range(-2,3) for i in range(8)) if tree_info(k,self.world.seed))
             tx,tz,_=tree_info(key,self.world.seed)
             player.update(x=tx+1.5,z=tz,last_hit=0)
+            face_target(player,tx,tz)
             await ws.send(json.dumps({'type':'hit','tree':key}))
             await self.receive(ws,'vitals_state')
             denied=await self.receive(ws,'action_denied')
@@ -838,6 +853,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
                      if tree_info(k,self.world.seed) and tree_info(k,self.world.seed)[2]>4)
             tx,tz,hp=tree_info(key,self.world.seed)
             player.update(x=tx+1.5,z=tz,health=4,stamina=5,last_hit=0)
+            face_target(player,tx,tz)
             player['lumberjack_until']=time.time()+45
             await ws.send(json.dumps({'type':'hit','tree':key,'damage':99999}))
             hit=await self.receive(ws,'tree_hit')
@@ -859,6 +875,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
             player = next(iter(self.world.clients.values()))
             # Set player position in this isolated world; no public game or save is involved.
             player.update(x=tx + 1.5, z=tz)
+            face_target(player,tx,tz)
             await ws.send(json.dumps({'type': 'hit', 'tree': key}))
             hit = await self.receive(ws, 'tree_hit')
             self.assertEqual(hit['hp'], hp - 1)

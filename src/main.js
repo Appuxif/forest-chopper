@@ -24,9 +24,9 @@ import {createCollisionWorld} from './collision-world.js?v=20261102-collision-wo
 import {createBuilding} from './building.js?v=20261102-build-height1';
 import {createChopping} from './chopping.js?v=20261105-ori06-attack-sector1';
 import {createControls} from './controls.js?v=20261105-corpse-cursor1';
-import {createPlayer} from './player.js?v=20261105-ori06-sideways-hip-pivot2';
+import {createPlayer} from './player.js?v=20261105-ori07-network-pose1';
 import {createCharacterOrientation} from './character-orientation.js?v=20261105-ori06-sideways-hip-pivot2';
-import {createMultiplayer} from './multiplayer.js?v=20261105-shared-axe1';
+import {createMultiplayer} from './multiplayer.js?v=20261105-ori07-network-pose1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
 import {createSettings} from './settings.js?v=20261105-run-look-limits1';

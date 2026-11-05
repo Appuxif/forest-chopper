@@ -67,7 +67,7 @@ test('main uses camera angles for view and legs yaw for mesh while legacy names 
   assert.match(player,/ctx\.characterOrientation\.steerLegs\(dt,/);
   assert.match(player,/ctx\.ownAvatar\.group\.rotation\.y=ctx\.legsYaw/);
   assert.match(player,/ctx\.camera\.rotation\.set\(ctx\.cameraPitch,ctx\.cameraYaw,0\)/);
-  assert.match(player,/yaw:ctx\.legsYaw/);
+  assert.match(player,/outgoingPose\(ctx\.characterOrientation,motion\)/);
 });
 
 test('ORI-03 steers diagonals within per-frame turn-rate limits',()=>{

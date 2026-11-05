@@ -33,6 +33,64 @@ FALLEN_LOG_GAP=.08
 # Matches the shortened 10–15s tree-fall audio accelerated by 1.3x.
 FALL_DURATION=5/1.3
 
+# ORI-07: 2D authoritative hit envelope, matching the client's weapon.
+AXE_HIT_RANGE=2.0
+AXE_SECTOR_HALF_RAD=math.radians(60)
+AXE_FRONT_HALF_RAD=math.pi/2
+MAX_CHEST_TWIST=math.radians(90)
+NETWORK_MOTIONS=frozenset((
+    'Idle','Walk','WalkBackward','Run','RunBackward',
+    'StrafeLeft','StrafeRight','Jump',
+))
+POSE_FIELDS=('yaw','torsoYaw','torsoPitch','headYaw','headPitch','motion')
+
+
+def shortest_yaw_delta(start,end):
+    return math.atan2(math.sin(end-start),math.cos(end-start))
+
+
+def read_network_pose(message):
+    # Reject booleans, NaNs, Infinity, impossible pose and unknown clips.
+    if type(message.get('yaw')) not in (int,float):
+        return None
+    yaw=message['yaw']
+    if not math.isfinite(yaw) or abs(yaw)>100_000:
+        return None
+    pose={'yaw':math.atan2(math.sin(yaw),math.cos(yaw))}
+    for key in ('torsoYaw','torsoPitch','headYaw','headPitch'):
+        value=message.get(key,pose['yaw'] if key=='torsoYaw' else 0.)
+        if type(value) not in (int,float) or not math.isfinite(value):
+            return None
+        limit=(100_000 if key=='torsoYaw' else
+               math.radians(100) if key=='headYaw' else math.pi/2)
+        if abs(value)>limit:return None
+        pose[key]=math.atan2(math.sin(value),math.cos(value)) if key=='torsoYaw' else float(value)
+    if abs(shortest_yaw_delta(pose['yaw'],pose['torsoYaw']))>MAX_CHEST_TWIST+1e-5:
+        return None
+    motion=message.get('motion')
+    if motion is not None and (not isinstance(motion,str) or motion not in NETWORK_MOTIONS):
+        return None
+    pose['motion']=motion
+    return pose
+
+
+def target_within_axe_arc(player,tx,tz,max_range=AXE_HIT_RANGE):
+    dx=tx-player['x']
+    dz=tz-player['z']
+    distance=math.hypot(dx,dz)
+    if not math.isfinite(distance) or not 1e-6<distance<=max_range:
+        return False
+    bearing=math.atan2(-dx,-dz)
+    yaw=player['yaw']
+    torso=player.get('torsoYaw',yaw)
+    return (abs(shortest_yaw_delta(yaw,bearing))<AXE_FRONT_HALF_RAD-1e-6
+            and abs(shortest_yaw_delta(torso,bearing))<=AXE_SECTOR_HALF_RAD+1e-6)
+
+
+def structure_within_axe_arc(player,structure):
+    return target_within_axe_arc(player,structure['x'],structure['z'])
+
+
 def fallen_log_mask(box):
     return box.get('mask',(1<<box['item']['count'])-1)
 
@@ -1017,6 +1075,7 @@ class World:
         player['last_hunger_at']=time.monotonic()
         player['last_stamina_at']=time.monotonic()
         player['stamina_sprint_locked']=False;player['sprinting']=False
+        player.update(torsoYaw=player['yaw'],torsoPitch=0.,headYaw=0.,headPitch=0.,motion='Idle')
         player['fall_peak']=None
         player['last_effect_ids']=frozenset()
         for key in STATUS_PLAYER_KEYS.values():player.pop(key,None)
@@ -1027,7 +1086,8 @@ class World:
         await self.sync_boxes(ws,player)
         await self.broadcast({'type':'equipment','by':player['id'],'axe_equipped':False})
         await self.broadcast({'type':'move','id':player['id'],
-          'x':player['x'],'z':player['z'],'y':player['y'],'yaw':player['yaw'],
+          'x':player['x'],'z':player['z'],'y':player['y'],
+          **{field:player.get(field) for field in POSE_FIELDS},
           'jumping':False},ws)
         self.save()
         return True
@@ -1161,7 +1221,7 @@ class World:
     async def hit_tree(self,player,uid_key,now,damage=1):
         key=str(uid_key)
         info=tree_info(key,self.seed)
-        if not info or key in self.felled or math.hypot(player['x']-info[0],player['z']-info[1])>6.5:
+        if not info or key in self.felled or not target_within_axe_arc(player,info[0],info[1]):
             return False
         hp=self.damage.get(key,info[2])-damage
         if hp<=0:
@@ -1225,12 +1285,12 @@ class World:
             await self.bot_handler(ws);return
         if len(self.clients)+len(self.bots.bots)>=32:await ws.close(1013,'Server full');return
         uid=self.next_id;self.next_id+=1
-        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':height_at(self.seed,0,0),'yaw':0,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'quick_refs':[0,1,2,3],'quick_ids':['axe',None,None,None],'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'starvation_progress':0.0,'last_hunger_at':time.monotonic(),'stamina':float(MAX_VITALS),'last_stamina_at':time.monotonic(),'stamina_sprint_locked':False,'sprinting':False,'last_stamina_sent':0,'spawn_bed':None,'last_jump':-10000,'jump_authorized_until':0}
+        player={'id':uid,'name':f'Игрок {uid}','x':0,'z':0,'y':height_at(self.seed,0,0),'yaw':0,'torsoYaw':0.,'torsoPitch':0.,'headYaw':0.,'headPitch':0.,'motion':None,'jumping':False,'wood':0,'cuts':0,'last_hit':0,'last_pos':time.monotonic(),'last_build':0,'last_chat':0,'last_map_ping':0,'last_emote':0,'axe_equipped':True,'axe_tier':0,'wood_capacity':DEFAULT_WOOD_CAPACITY,'inventory':new_inventory(),'selected':0,'quick_refs':[0,1,2,3],'quick_ids':['axe',None,None,None],'bag_tier':0,'health':MAX_VITALS,'hunger':MAX_VITALS,'hunger_progress':0.0,'starvation_progress':0.0,'last_hunger_at':time.monotonic(),'stamina':float(MAX_VITALS),'last_stamina_at':time.monotonic(),'stamina_sprint_locked':False,'sprinting':False,'last_stamina_sent':0,'spawn_bed':None,'last_jump':-10000,'jump_authorized_until':0}
         self.clients[ws]=player
         await self.prune_boxes()
         player['visible_boxes']=self.visible_box_set(player)
         player['last_box_sync']=(player['x'],player['z'])
-        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'camp_structures':[{'id':k,**v} for k,v in self.camp_structures.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','jumping','sprinting','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**self.boxes[k]} for k in sorted(player['visible_boxes'])],'resources':self.resource_view(player)['resources'],'hens':self.hens.views(player['x'],player['z'],time.time()),'mobs':self.mobs.views(player['x'],player['z'],time.time()),'server_time':time.time(),'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
+        await self.send(ws,{'type':'welcome','id':uid,'seed':self.seed,'day_phase':self.day_phase(),'felled':list(self.felled),'damage':self.damage,'logs':[{'id':k,**v} for k,v in self.logs.items()],'furniture':[{'id':k,**v} for k,v in self.furniture.items()],'storages':list(self.storages.values()),'camp_structures':[{'id':k,**v} for k,v in self.camp_structures.items()],'players':[{k:v for k,v in p.items() if k in ('id','name','x','z','y','yaw','torsoYaw','torsoPitch','headYaw','headPitch','motion','jumping','sprinting','axe_equipped')} for w,p in self.clients.items() if w!=ws]+[self.bots.player_data(b) for b in self.bots.players()],'wood':0,'cuts':0,'inventory':inventory_view(player),'vitals':vitals_view(player),'boxes':[{'id':k,**self.boxes[k]} for k in sorted(player['visible_boxes'])],'resources':self.resource_view(player)['resources'],'hens':self.hens.views(player['x'],player['z'],time.time()),'mobs':self.mobs.views(player['x'],player['z'],time.time()),'server_time':time.time(),'community_cuts':self.community_cuts,'chat':self.chat[-40:]})
         try:
             async for raw in ws:
                 if len(raw)>MAX_MESSAGE:continue
@@ -1459,7 +1519,7 @@ class World:
                     await self.send(ws,{'type':'inventory_state','inventory':inventory_view(player),'wood':player['wood']})
                 elif kind=='hello':
                     player['name']=str(data.get('name','Игрок'))[:22].strip() or f'Игрок {uid}'
-                    await self.broadcast({'type':'join','player':{k:player[k] for k in ('id','name','x','z','y','yaw','jumping','sprinting','axe_equipped')}},ws)
+                    await self.broadcast({'type':'join','player':{k:player[k] for k in ('id','name','x','z','y','yaw','torsoYaw','torsoPitch','headYaw','headPitch','motion','jumping','sprinting','axe_equipped')}},ws)
                 elif kind=='ping':
                     # Application-level RTT for browser clients; WebSocket control pings
                     # are not exposed to client-side JavaScript. Never broadcast it.
@@ -1533,7 +1593,10 @@ class World:
                     player['sprinting']=permitted_sprint
                     old_x,old_z=player['x'],player['z']
                     impact=record_fall_landing(player,player['y'],y,jumping)
-                    player.update(x=x,z=z,y=y,yaw=yaw,jumping=jumping,last_pos=now)
+                    pose=read_network_pose(data)
+                    if pose is None:continue
+                    player.update(x=x,z=z,y=y,jumping=jumping,last_pos=now,**pose)
+                    player['last_pose_at']=now
                     if impact:
                         drop,damage=impact
                         player['health']=max(0,player['health']-damage)
@@ -1549,7 +1612,8 @@ class World:
                     if stamina_changed and now-player['last_stamina_sent']>.6:
                         player['last_stamina_sent']=now
                         await self.send(ws,{'type':'vitals_state','vitals':vitals_view(player)})
-                    await self.broadcast({'type':'move','id':uid,'x':x,'z':z,'y':y,'yaw':yaw,'jumping':jumping,'sprinting':permitted_sprint},ws)
+                    await self.broadcast({'type':'move','id':uid,'x':x,'z':z,'y':y,
+                        **pose,'jumping':jumping,'sprinting':permitted_sprint},ws)
                     if (resource_cell(x,z)!=resource_cell(old_x,old_z) or
                         math.floor(x/DECOR_CHUNK_SIZE)!=math.floor(old_x/DECOR_CHUNK_SIZE) or
                         math.floor(z/DECOR_CHUNK_SIZE)!=math.floor(old_z/DECOR_CHUNK_SIZE)):
@@ -1657,14 +1721,14 @@ class World:
                     except (KeyError,TypeError,ValueError,OverflowError):continue
                     if typ=='bench':
                         old=self.furniture.get(ident)
-                        if old is None or math.hypot(old['x']-player['x'],old['z']-player['z'])>6:continue
+                        if old is None or not structure_within_axe_arc(player,old):continue
                         if not inv_add_bench(player['inventory']):
                             await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],{'id':'bench','count':1})});continue
                         del self.furniture[ident]
                         await self.broadcast({'type':'furniture_remove','id':ident,'by':uid,'wood':player['wood']})
                     elif typ=='camp':
                         old=self.camp_structures.get(ident)
-                        if old is None or math.hypot(old['x']-player['x'],old['z']-player['z'])>6:continue
+                        if old is None or not structure_within_axe_arc(player,old):continue
                         reward={'id':old['kind'],'count':1}
                         if not inv_add(player['inventory'],reward):
                             await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],reward)});continue
@@ -1677,7 +1741,7 @@ class World:
                         await self.broadcast({'type':'camp_remove','id':ident})
                     elif typ=='storage':
                         old=self.storages.get(ident)
-                        if old is None or math.hypot(old['x']-player['x'],old['z']-player['z'])>6:continue
+                        if old is None or not structure_within_axe_arc(player,old):continue
                         if (old['kind']=='chest' and any(old['slots'])) or (old['kind']=='rack' and old['logs']):
                             await self.send(ws,{'type':'action_denied','reason':'Сначала освободи хранилище'});continue
                         reward={'id':old['kind'],'count':1}
@@ -1687,7 +1751,7 @@ class World:
                         await self.broadcast({'type':'storage_remove','id':ident})
                     elif typ=='log':
                         old=self.logs.get(ident)
-                        if old is None or math.hypot(old['x']-player['x'],old['z']-player['z'])>6:continue
+                        if old is None or not structure_within_axe_arc(player,old):continue
                         if not inv_space_for(player['inventory'],'log'):
                             await self.send(ws,{'type':'action_denied','reason':inv_capacity_reason(player['inventory'],{'id':'log','count':1})});continue
                         inv_give_logs(player['inventory'],1);player['wood']+=1
@@ -1735,7 +1799,8 @@ class World:
                         continue
                     tier=min(max(player.get('axe_tier',0),0),len(AXE_LEVELS)-1)
                     damage,speed=AXE_LEVELS[tier]
-                    if now-player['last_hit']<.28/speed:continue
+                    # Match the authored 46-frame Chop2 at 30FPS, playback 1.6x.
+                    if now-player['last_hit']<(46/30)/(1.6*speed)+.035:continue
                     player['last_hit']=now
                     if await self.hit_tree(player,data.get('tree',''),now,damage=damage*chop_damage_multiplier(player)):
                         spend_hit_stamina(player)

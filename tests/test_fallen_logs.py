@@ -55,6 +55,7 @@ class FallenLogTests(unittest.IsolatedAsyncioTestCase):
                        if tree_info(k,self.world.seed))
             tx,tz,_=tree_info(tree,self.world.seed)
             owner.update(x=tx+1.5,z=tz)
+            owner['yaw']=math.pi/2;owner['torsoYaw']=math.pi/2
             other.update(x=tx+1.4,z=tz)
             # Fill 100kg: axe 3kg, 3 logs 30kg, stones 60kg, branches 7kg.
             owner['inventory'][1]={'id':'log','count':3}
@@ -160,6 +161,7 @@ class FallenLogTests(unittest.IsolatedAsyncioTestCase):
                  if tree_info(k,self.world.seed))
         tx,tz,_=tree_info(key,self.world.seed)
         bot.update(x=tx+1.5,z=tz)
+        bot['yaw']=math.pi/2;bot['torsoYaw']=math.pi/2
         self.world.damage[key]=1
         self.assertTrue(await self.world.hit_tree(bot,key,time.monotonic()))
         self.assertEqual(bot['wood'],0)

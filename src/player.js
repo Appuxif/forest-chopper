@@ -8,6 +8,7 @@ import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js?v=20261105-empty-loot3';
 import {createFrameLimiter} from './frame-limiter.js';
 import {activeWeaponAttack} from './weapon-profiles.js';
+import {outgoingPose,blendRemotePose} from './network-pose.js';
 import {createGpuFrameTimer} from './gpu-frame-timer.js';
 import {createOrbitCamera} from './orbit-camera.js?v=20261102-flight-distance1';
 // Clipping is a rendering property, not a collision between the camera and
@@ -254,13 +255,19 @@ function animate(now){
 tickFallingTrees(ctx,dt);
 for(let i=ctx.particles.length-1;i>=0;i--){const p=ctx.particles[i];p.life-=dt;p.vy-=9.8*dt;p.mesh.position.x+=p.vx*dt;p.mesh.position.y+=p.vy*dt;p.mesh.position.z+=p.vz*dt;p.mesh.rotation.x+=dt*8;if(p.life<=0||p.mesh.position.y<0){ctx.scene.remove(p.mesh);ctx.particles.splice(i,1)}}
 ctx.frame++;if(now-lastWorldTick>=120){lastWorldTick=now;ctx.updatePing(now);ctx.offlineSave.tick(now);ctx.progress.trackPosition(ctx.px,ctx.pz,ctx.seed);ctx.discoveries.check(now);ctx.updateChunks();ctx.forestResources?.tick(now);ctx.inventory?.tickBook?.();ctx.updatePreview();ctx.pickupInteraction?.update?.();const interaction=ctx.pickupInteraction?.current;const t=ctx.buildMode||mob||pursuing||lootOpen||interaction?.empty?null:ctx.aimed();ctx.highlight.update(t);if(t)ctx.tutorial.complete('tree-aimed');reticleTree=t;reticleInteraction=interaction;reticleError=ctx.buildMode?(ctx.inventory?.selected==='bench'?ctx.crafting?.placeError?.(ctx.placement):(ctx.preview?.userData?.previewError??ctx.placeError(ctx.placement))):'';refreshCrosshair(mob,pursuing,lootOpen);ctx.$('damage').style.display=t?'block':'none';if(t){const u=t.userData;ctx.$('target').textContent=`${u.species==='birch'?'🌳 Берёза':'🌲 Дерево'} · ${u.hp}/${u.maxHp} ударов`;ctx.$('damagebar').style.width=(u.hp/u.maxHp*100)+'%'}else if(!ctx.$('target').textContent.includes('+5'))ctx.$('target').textContent=ctx.buildMode?'🪵 Прицел — место установки':
-   lootOpen?'':mob?(mob.displayName??'Существо')+' · Атаковать':pursuing?'':interaction?interaction.label+' · '+(interaction.verb??(interaction.type==='box'||interaction.type==='resource'?'Подобрать':'Открыть')):''}if(ctx.isOnline()&&!dead&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,yaw:ctx.legsYaw,jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}ctx.debugPlayers?.tick?.(now,dt);
+   lootOpen?'':mob?(mob.displayName??'Существо')+' · Атаковать':pursuing?'':interaction?interaction.label+' · '+(interaction.verb??(interaction.type==='box'||interaction.type==='resource'?'Подобрать':'Открыть')):''}if(ctx.isOnline()&&!dead&&now-ctx.lastMoveSent>100){ctx.lastMoveSent=now;ctx.sendNet({type:'move',x:ctx.px,z:ctx.pz,y:ctx.feetY,...outgoingPose(ctx.characterOrientation,motion),jumping:!ctx.onGround,sprinting:ctx.sprinting===true})}ctx.debugPlayers?.tick?.(now,dt);
 for(const avatar of ctx.avatars.values()){
  if(avatar.debugDead)continue;
  const previousX=avatar.group.position.x,previousZ=avatar.group.position.z;
  avatar.group.position.lerp(avatar.goal,Math.min(1,dt*10));
  avatar.group.rotation.y+=Math.atan2(Math.sin(avatar.angle-avatar.group.rotation.y),Math.cos(avatar.angle-avatar.group.rotation.y))*Math.min(1,dt*8);
  if(avatar.actor){
+   if(avatar.poseTarget){
+    avatar.pose=blendRemotePose(avatar.pose??avatar.poseTarget,avatar.poseTarget,dt);
+    // Group yaw already interpolates legs; use that same facing for the
+    // additive chest/head controller so it never appears detached.
+    avatar.pose.legsYaw=avatar.group.rotation.y;
+   }
    // Infer the remote player's speed from actual replicated movement. Previously
    // every remote avatar played Walk, even when its local player was sprinting.
    const deltaX=avatar.group.position.x-previousX,deltaZ=avatar.group.position.z-previousZ;
@@ -273,13 +280,17 @@ for(const avatar of ctx.avatars.values()){
     ?(right>0?'StrafeRight':'StrafeLeft')
     :((avatar.sprinting||avatar.moveSpeed>3.3)
       ?runningMotion(avatar.actor,front<0):walkingMotion(avatar.actor,front<0));
-   const rate=(remoteMotion==='Run'?1.2:remoteMotion==='RunBackward'
-     ?playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
-        Math.min(BACKWARD_RUN_SPEED,Math.max(.5,avatar.moveSpeed))):
-      playbackRateForSpeed(avatar.actor.rootMotion[remoteMotion],
-        Math.min(4.6,Math.max(0.5,avatar.moveSpeed))))*
-      playbackDirectionForMotion(remoteMotion,front<0);
-   ctx.tickActor(avatar.actor,dt,remoteMotion,avatar.jumping,rate);
+   const playedMotion=avatar.motion&&avatar.actor.lower[avatar.motion]
+     ?avatar.motion:remoteMotion;
+   const rate=(playedMotion==='Idle'||playedMotion==='Jump'?1:playedMotion==='Run'?1.2:
+     playedMotion==='RunBackward'
+      ?playbackRateForSpeed(avatar.actor.rootMotion[playedMotion],
+         Math.min(BACKWARD_RUN_SPEED,Math.max(.5,avatar.moveSpeed)))
+      :playbackRateForSpeed(avatar.actor.rootMotion[playedMotion],
+         Math.min(4.6,Math.max(.5,avatar.moveSpeed))))*
+      playbackDirectionForMotion(playedMotion,front<0);
+   ctx.tickActor(avatar.actor,dt,playedMotion,avatar.jumping,rate);
+   if(avatar.poseTarget)avatar.actor.proceduralLook?.apply(avatar.pose);
   }
  }
  // Only GPU rendering and its shadow-map refresh are FPS-limited.
