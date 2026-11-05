@@ -45,9 +45,11 @@ test('serpentine crescent axe is a separate GLB/profile with damage 3 and unchan
  const original=weaponProfile('axe'),crescent=weaponProfile('axe_crescent');
  assert.notEqual(original,crescent);
  assert.equal(crescent.id,'axe_crescent');
- assert.match(crescent.asset,/axe_crescent\.glb\?/);
+ assert.match(crescent.asset,/characters\/humanoid\/game\/axe_crescent_low\.glb\?/);
+ assert.ok(!crescent.asset.includes('/axe_crescent.glb'),
+  'the actual game profile must load the LOW asset, not the HIGH one');
  assert.equal(crescent.socket,original.socket);
- assert.equal(crescent.gripNodePrefix,'AXE_GRIP_CRESCENT');
+ assert.equal(crescent.gripNodePrefix,'AXE_GRIP_CRESCENT_LOW');
  assert.equal(crescent.animation,original.animation,'uses each actor own Chop2 bank');
  assert.equal(crescent.basePlaybackRate,original.basePlaybackRate);
  assert.deepEqual(crescent.contact,original.contact);
@@ -133,11 +135,23 @@ test('exported crescent GLB reflects edited Blender scene: no swept razor edge o
  assert.equal(gltf.nodes.filter(n=>n.name?.startsWith('AXE_GRIP_CRESCENT')).length,1);
  assert.ok(gltf.nodes.every(n=>!n.name?.includes('Blade | sweeping razor edge')),
   'Deleted edge objects must not be exported back into the game');
+ const tris=gltf.meshes.reduce((sum,mesh)=>sum+mesh.primitives.reduce((subtotal,primitive)=>{
+  assert.equal(primitive.mode??4,4,'axe meshes must use triangle primitives');
+  return subtotal+gltf.accessors[primitive.indices].count/3;
+ },0),0);
+ assert.equal(tris,21156,'uniform resizing must preserve authored geometry');
+ assert.equal(gltf.meshes.length,34);
  const original=readFileSync(new URL('../characters/humanoid/game/axe_shared.glb',import.meta.url));
  const originalSize=original.readUInt32LE(12);
  const source=JSON.parse(original.toString('utf8',20,20+originalSize));
  const parent=gltf.nodes.find(n=>n.name?.startsWith('AXE_GRIP_CRESCENT'));
  const reference=source.nodes.find(n=>n.name?.startsWith('AXE_GRIP'));
+ assert.equal(parent.scale.length,3);
+ for(const axis of parent.scale)
+  assert.ok(Math.abs(axis-.81/1.06)<1e-6,
+   'the detailed axe handle must measure ~0.81m');
+ assert.equal(reference.scale.every(axis=>Math.abs(axis-1)<1e-6),true,
+  'regular axe must retain original scale');
  for(const field of ['rotation','translation']){
   assert.equal(parent[field].length,reference[field].length);
   parent[field].forEach((value,i)=>
@@ -166,4 +180,64 @@ test('crescent steel head is flipped 180 degrees relative to unchanged wooden ha
  assert.equal(handle?.rotation,undefined,
   'the wooden handle must not rotate with the steel head');
  assert.ok(grip,'shared hand attachment is unchanged');
+});
+
+
+test('the equipped crescent model uses the latest saved low-poly GLB',()=>{
+ const profile=weaponProfile('axe_crescent');
+ const cleanPath=profile.asset.split('?')[0];
+ const actual=readFileSync(new URL('../'+cleanPath,import.meta.url));
+ const authored=readFileSync(
+  new URL('../characters/humanoid/weapons/axe_crescent_low.glb',import.meta.url));
+ assert.ok(actual.equals(authored),'the shipped GLB must match the latest authored LOW export');
+ assert.ok(actual.byteLength<100000,'the production GLB should be much smaller than high poly');
+ const jsonLength=actual.readUInt32LE(12);
+ const gltf=JSON.parse(actual.toString('utf8',20,20+jsonLength));
+ const triangles=gltf.meshes.reduce((sum,mesh)=>
+  sum+mesh.primitives.reduce((n,p)=>n+gltf.accessors[p.indices].count/3,0),0);
+ assert.equal(triangles,1752);
+ assert.ok(triangles<=2000);
+ assert.equal(gltf.meshes.length,34);
+ assert.ok(gltf.nodes.some(n=>n.name==='AXE_GRIP_CRESCENT_LOW'));
+ assert.ok(gltf.nodes.some(n=>n.name==='GEOMETRY_AXES_Y_HANDLE_X_BLADE_LOW'));
+ assert.ok(gltf.nodes.every(n=>n.name!=='AXE_GRIP_CRESCENT'),
+  'game asset must not accidentally include the detailed axe');
+});
+
+test('low-poly crescent axe keeps details and original socket under 2k triangles',()=>{
+ const raw=readFileSync(new URL('../characters/humanoid/weapons/axe_crescent_low.glb',import.meta.url));
+ assert.equal(raw.toString('ascii',0,4),'glTF');
+ const len=raw.readUInt32LE(12);
+ const gltf=JSON.parse(raw.toString('utf8',20,20+len));
+ const total=gltf.meshes.reduce((count,m)=>count+m.primitives.reduce((sum,p)=>{
+  assert.equal(p.mode??4,4,'triangle-only meshes');
+  return sum+gltf.accessors[p.indices].count/3;
+ },0),0);
+ assert.equal(total,1752);
+ assert.ok(total<=2000,'low-poly budget must be respected by the exported GLB');
+ const smallBlade=gltf.meshes.find(m=>m.name.startsWith('Poll | compact hammered counterweight'));
+ assert.ok(smallBlade,'the lower secondary blade must be exported');
+ const secondaryBladeTris=smallBlade.primitives.reduce(
+  (total,part)=>total+gltf.accessors[part.indices].count/3,0);
+ assert.ok(secondaryBladeTris>=100,
+  'small blade must retain its connecting bevel geometry in the GLB');
+ assert.equal(gltf.meshes.length,34);
+ assert.equal(gltf.skins?.length??0,0);
+ assert.equal(gltf.animations?.length??0,0);
+ assert.ok(gltf.nodes.every(n=>!n.name?.includes('Blade | sweeping razor edge')));
+ const root=gltf.nodes.find(n=>n.name==='AXE_GRIP_CRESCENT_LOW');
+ assert.ok(root,'editable low-poly grip root must exist');
+ assert.ok(root.scale.every(v=>Math.abs(v-.81/1.06)<1e-5));
+ const hi=readFileSync(new URL('../characters/humanoid/game/axe_crescent.glb',import.meta.url));
+ const high=JSON.parse(hi.toString('utf8',20,20+hi.readUInt32LE(12)));
+ const hiRoot=high.nodes.find(n=>n.name==='AXE_GRIP_CRESCENT');
+ assert.ok(hiRoot,'high-poly grip must still be exportable');
+ assert.ok(hiRoot.scale.every((v,i)=>Math.abs(v-root.scale[i])<1e-5));
+ for(const field of ['translation','rotation']){
+  assert.deepEqual(root[field].map(v=>Math.round(v*1e4)),
+   hiRoot[field].map(v=>Math.round(v*1e4)),
+   'both variants must share hand socket placement and orientation');
+ }
+ assert.ok(raw.byteLength<hi.byteLength/2,
+  'the low-poly GLB should be significantly smaller');
 });

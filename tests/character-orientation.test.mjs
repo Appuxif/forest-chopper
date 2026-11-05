@@ -346,6 +346,11 @@ test('changing to running immediately enforces reduced yaw without affecting pit
 
 test('run-only look reduction is wired to both Run and RunBackward in gameplay',()=>{
  const player=readFileSync(new URL('../src/player.js',import.meta.url),'utf8');
- assert.match(player,/running:motion==='Run'\|\|motion==='RunBackward'/);
+ assert.match(player,/const runningMotionNow=motion==='Run'\|\|motion==='RunBackward'/);
+ assert.match(player,/running:runningMotionNow/);
+ assert.match(player,/const swingAttack=activeWeaponAttack\(ctx\.ownAvatar,now\)/);
+ assert.match(player,/ctx\.characterOrientation\.steerLegs\(dt,/);
  assert.match(player,/ctx\.characterOrientation\.steerUpper\(dt,/);
+ assert.equal((player.match(/attack:swingAttack/g)??[]).length,2,
+  'the same swing profile must steer both hips and torso');
 });

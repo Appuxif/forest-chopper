@@ -7,6 +7,7 @@ import {movementInput,locomotionMode,targetLegsYaw,worldMoveDirection,joystickSp
 import {shouldSprint} from './movement-preferences.js';
 import {aimState,updateCrosshair} from './aim-state.js?v=20261105-empty-loot3';
 import {createFrameLimiter} from './frame-limiter.js';
+import {activeWeaponAttack} from './weapon-profiles.js';
 import {createGpuFrameTimer} from './gpu-frame-timer.js';
 import {createOrbitCamera} from './orbit-camera.js?v=20261102-flight-distance1';
 // Clipping is a rendering property, not a collision between the camera and
@@ -137,14 +138,19 @@ function animate(now){
   targetLegsYaw(ctx.cameraYaw,moveIntent,{mode,sprinting:lateralRun}));
  // Leg/hip facing approaches the intended diagonal on the shortest arc.
  // Death and ragdoll still lock steering while their physics owns the pose.
+ const swingAttack=activeWeaponAttack(ctx.ownAvatar,now);
+ const runningMotionNow=motion==='Run'||motion==='RunBackward';
  ctx.characterOrientation.steerLegs(dt,{
   locked:posing||dead,
   settings:ctx.settings.lookSettings,
+  running:runningMotionNow,
+  attack:swingAttack,
  });
  ctx.characterOrientation.steerUpper(dt,{
   locked:posing||dead,
   settings:ctx.settings.lookSettings,
-  running:motion==='Run'||motion==='RunBackward',
+  running:runningMotionNow,
+  attack:swingAttack,
  });
  if(posing||dead)ctx.ownAvatar?.proceduralLook?.discard();
  if(!dead)ctx.vitals?.tick(sprint);

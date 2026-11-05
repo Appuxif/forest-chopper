@@ -5,8 +5,8 @@ import {SHARED_AXE_ASSET} from './character-model-selection.js';
 // metadata needed to play it. Future weapon types can provide their own
 // mesh, socket, contact timing and reach without creating a new actor rig.
 //
-// NOTE: sectorHalfAngleDeg/turnRateRadPerSecond are descriptors for ORI-06.
-// They are deliberately NOT enforced by the current tree hit logic.
+// ORI-06 uses sectorHalfAngleDeg at the actual contact frame and
+// turnRateRadPerSecond for smooth torso aiming during the swing.
 export const DEFAULT_WEAPON_ID='axe';
 
 export const WEAPON_PROFILES=Object.freeze({
@@ -31,9 +31,9 @@ export const WEAPON_PROFILES=Object.freeze({
  }),
  axe_crescent:Object.freeze({
   id:'axe_crescent',
-  asset:'characters/humanoid/game/axe_crescent.glb?v=20261105-head-180-1',
+  asset:'characters/humanoid/game/axe_crescent_low.glb?v=20261105-low-poly-game1',
   socket:'handRight',
-  gripNodePrefix:'AXE_GRIP_CRESCENT',
+  gripNodePrefix:'AXE_GRIP_CRESCENT_LOW',
   animation:'Chop2',
   basePlaybackRate:1.6,
   fallbackClipDuration:46/30,
@@ -97,4 +97,13 @@ export function equipWeaponGrips(grips,id){
  if(id!==null&&!grips.has(id))return false;
  for(const [weaponId,grip] of grips)grip.visible=weaponId===id;
  return true;
+}
+
+
+// Animation and physical aiming share one swing lifetime. An unequipped
+// weapon cannot leave behind an indefinitely active body-aim override.
+export function activeWeaponAttack(actor,now){
+ const attack=actor?.activeAttackProfile;
+ return attack&&actor.upperState===attack.animation&&
+   Number.isFinite(actor.chopEnd)&&now<actor.chopEnd?attack:null;
 }

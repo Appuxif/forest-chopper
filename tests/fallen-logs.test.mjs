@@ -54,6 +54,7 @@ function fixture(){
     logGeo:new Geometry(),logMat:new Material(),endMat:new Material(),
     makeLog:()=>{const mesh=new Mesh();mesh.rotation.z=Math.PI/2;return mesh;},
     terrain:{heightAt:()=>0},px:0,pz:0,yaw:0,feetY:0,thirdPerson:false,camera:{},
+    characterOrientation:{legsYaw:0,torsoYaw:0},
     inventory:{state,render(){},get equipped(){return true},get axe(){return {damage:1,speed:1}},selected:'axe'},
     isOnline:()=>false,offlineSave:{markDirty(){}},notify:(...args)=>messages.push(args),
     wood:0,cuts:0,trees:new Map(),treeDamage:new Map(),felled:new Set(),falling:[],particles:[],

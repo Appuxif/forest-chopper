@@ -71,10 +71,11 @@ export function createCharacterOrientation({cameraYaw=0,cameraPitch=0}={}){
       this.headPitch=0;
       return this;
     },
-    steerLegs(dt,{locked=false,settings=null}={}){
+    steerLegs(dt,{locked=false,settings=null,attack=null,running=false}={}){
       if(locked)return this.alignToCamera();
       const moving=this.moveStrength>0;
       let target=this.legsTargetYaw;
+      let speed=field(settings,moving?'lookLegTurnMoving':'lookLegTurnIdle');
       if(!moving){
         // Standing feet follow the camera only after the free-look threshold.
         const threshold=field(settings,'lookFreeYaw')*deg;
@@ -82,11 +83,24 @@ export function createCharacterOrientation({cameraYaw=0,cameraPitch=0}={}){
         target=Math.abs(delta)<=threshold?this.legsYaw:
           this.cameraYaw-Math.sign(delta)*threshold;
       }
-      this.legsYaw=approachYaw(this.legsYaw,target,
-        Math.max(0,dt)*field(settings,moving?'lookLegTurnMoving':'lookLegTurnIdle'));
+      if(attack){
+        // The chest may already be at its ±torsoLimit *before* a swing.
+        // Extra spine yaw cannot make a 120° sideways aim reachable when
+        // the user's maximum twist is 60°. Turn the physical hips/legs
+        // only by the excess angle, freeing the torso to follow the aim.
+        // Preserve the natural locomotion target if already in reach.
+        const divisor=running?field(settings,'lookRunYawReduction'):1;
+        const torsoLimit=field(settings,'lookTorsoYaw')*deg/divisor;
+        const delta=shortestYawDelta(this.legsYaw,this.cameraYaw);
+        if(Math.abs(delta)>torsoLimit)
+          target=this.legsYaw+Math.sign(delta)*(Math.abs(delta)-torsoLimit);
+        if(Number.isFinite(attack.turnRateRadPerSecond))
+          speed=Math.max(0,attack.turnRateRadPerSecond);
+      }
+      this.legsYaw=approachYaw(this.legsYaw,target,Math.max(0,dt)*speed);
       return this;
     },
-    steerUpper(dt,{locked=false,settings=null,running=false}={}){
+    steerUpper(dt,{locked=false,settings=null,running=false,attack=null}={}){
       if(locked)return this.alignToCamera();
       const seconds=Math.max(0,dt);
       // While running, only the lateral torso/head limits are reduced.
@@ -97,8 +111,17 @@ export function createCharacterOrientation({cameraYaw=0,cameraPitch=0}={}){
       const torsoSpeed=field(settings,'lookTorsoTurnSpeed');
       const headSpeed=field(settings,'lookHeadTurnSpeed');
       const delta=shortestYawDelta(this.legsYaw,this.cameraYaw);
-      const targetChest=this.legsYaw+clamp(delta*.5,-torsoLimit,torsoLimit);
-      this.torsoYaw=approachYaw(this.torsoYaw,targetChest,torsoSpeed*seconds);
+      // Regular look splits camera yaw between torso and neck. During a
+      // swing the chest instead follows the crosshair, smoothly and only
+      // as far as the existing body-twist limit permits. Do not snap legs,
+      // create a second animation, or bypass run-only look restrictions.
+      const attacking=attack!==null;
+      const aimRate=attacking&&Number.isFinite(attack.turnRateRadPerSecond)
+        ?Math.max(0,attack.turnRateRadPerSecond):torsoSpeed;
+      const targetChest=this.legsYaw+clamp(delta*(attacking?1:.5),
+        -torsoLimit,torsoLimit);
+      this.torsoYaw=approachYaw(this.torsoYaw,targetChest,
+        (attacking?aimRate:torsoSpeed)*seconds);
       // Keep animated chest within the configured limit relative to hips.
       this.torsoYaw=this.legsYaw+clamp(shortestYawDelta(this.legsYaw,this.torsoYaw),
         -torsoLimit,torsoLimit);

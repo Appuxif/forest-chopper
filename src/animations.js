@@ -238,6 +238,7 @@ export async function createAnimations(THREE){
   if(!action)return;
   if(actor.upperState===profile.animation){action.stop();actor.upperState='';}
   const playbackSpeed=weaponPlaybackSpeed(profile,axeSpeed);
+  actor.activeAttackProfile=profile;
   actor.chopEnd=performance.now()+action.getClip().duration/playbackSpeed*1000+profile.swingEndPaddingMs;
   // Contact frame and clip selection are part of the weapon profile;
   // each of the three rigs retains its own authored animation.

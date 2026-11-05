@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createChopping} from '../src/chopping.js';
 import {createHitEffects} from '../src/hit-effects.js';
+import {createCharacterOrientation} from '../src/character-orientation.js';
+import {weaponProfile} from '../src/weapon-profiles.js';
 
 function setup(online=false) {
   const sent=[], damage=new Map(), sceneObjects=[], events=[];
@@ -31,11 +33,12 @@ function setup(online=false) {
   }
   const material={name:'shared trunk material'};
   const trunk=new Mesh({},material);
-  const tree={children:[trunk],position:{x:2,z:0},rotation:{x:0,y:0,z:0},
-    userData:{id:'0,0:1',hp:5,maxHp:5,x:2,z:0}};
+  const tree={children:[trunk],position:{x:0,z:-1.5},rotation:{x:0,y:0,z:0},
+    userData:{id:'0,0:1',hp:5,maxHp:5,x:0,z:-1.5}};
   const ctx={
     THREE:{Mesh,Raycaster,Vector3,Vector2:class {},BoxGeometry:class {},MeshLambertMaterial:class {}},
     thirdPerson:true,px:0,pz:0,yaw:0,pitch:0,
+    characterOrientation:{legsYaw:0,torsoYaw:0},
     trees:new Map([[tree.userData.id,tree]]),scene:{add(mesh){sceneObjects.push(mesh);}},
     particles:[],CHOP_SPEED:1,lastHit:-100000,swing:0,ownAvatar:null,
     actorChop(){events.push('swing');},buildMode:false,wood:0,cuts:0,
@@ -175,8 +178,8 @@ test('aiming away at frame 25 is a complete miss: no sound, stamina, damage or c
 test('aiming from tree A to B before frame 25 damages only B',()=>{
  const f=setup(),a=f.tree;
  const bMesh=new f.ctx.THREE.Mesh({},f.material);
- const b={children:[bMesh],position:{x:2.2,z:0},rotation:{x:0,y:0,z:0},
-   userData:{id:'0,0:2',hp:6,maxHp:6,x:2.2,z:0}};
+ const b={children:[bMesh],position:{x:.3,z:-1.5},rotation:{x:0,y:0,z:0},
+   userData:{id:'0,0:2',hp:6,maxHp:6,x:.3,z:-1.5}};
  f.ctx.trees.set(b.userData.id,b);
  f.setAimTarget(f.trunk);
  f.chopping.chop();
@@ -194,8 +197,8 @@ test('aiming from tree A to B before frame 25 damages only B',()=>{
 test('empty-space swing can aim at B instead of A by contact frame',()=>{
  const f=setup();
  const bMesh=new f.ctx.THREE.Mesh({},f.material);
- const b={children:[bMesh],position:{x:2.2,z:0},rotation:{x:0,y:0,z:0},
-   userData:{id:'0,0:2',hp:6,maxHp:6,x:2.2,z:0}};
+ const b={children:[bMesh],position:{x:.3,z:-1.5},rotation:{x:0,y:0,z:0},
+   userData:{id:'0,0:2',hp:6,maxHp:6,x:.3,z:-1.5}};
  f.ctx.trees.set(b.userData.id,b);
  f.setAim(false);
  f.chopping.chop();
@@ -366,4 +369,145 @@ test('new humanoid online hit uses the tree aimed at frame 25',()=>{
  assert.deepEqual(f.events,['swing','axe']);
  assert.equal(f.ctx.particles.length,7);
  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+9000),false);
+});
+
+test('ORI-06: a tree behind the legs is never hittable even if the camera ray hits it',()=>{
+ for(const online of [false,true]){
+  const f=setup(online);
+  f.tree.position.z=+1.5;
+  f.tree.userData.z=+1.5;
+  // Looking backward with an extreme chest twist still cannot swing
+  // through the player's hips.
+  f.ctx.characterOrientation.legsYaw=0;
+  f.ctx.characterOrientation.torsoYaw=Math.PI;
+  f.ctx.yaw=Math.PI;
+  f.chopping.chop();
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),false);
+  assert.equal(f.tree.userData.hp,5);
+  assert.deepEqual(f.sent,[]);
+  assert.equal(f.ctx.particles.length,0);
+ }
+});
+
+test('ORI-06: a target at 84° needs the chest to turn before impact',()=>{
+ const f=setup();
+ f.tree.position.x=1.5;f.tree.position.z=-.15;
+ f.chopping.chop();
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),false,
+  'no damage if the chest remains facing straight ahead');
+ assert.equal(f.tree.userData.hp,5);
+ // A fresh chop can land if the actor has turned smoothly to the target.
+ f.ctx.characterOrientation.torsoYaw=-Math.PI/4;
+ f.ctx.lastHit=-100000;
+ f.chopping.chop();
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
+ assert.equal(f.tree.userData.hp,4);
+});
+
+test('ORI-06: aim moves from A to B in the allowed cone during the swing',()=>{
+ const f=setup(),a=f.tree;
+ const bMesh=new f.ctx.THREE.Mesh({},f.material);
+ const b={children:[bMesh],position:{x:.9,z:-1.3},rotation:{x:0,y:0,z:0},
+  userData:{id:'b',hp:6,maxHp:6,x:.9,z:-1.3}};
+ f.ctx.trees.set(b.userData.id,b);
+ f.setAimTarget(f.trunk);
+ f.chopping.chop();
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+700),false);
+ f.setAimTarget(bMesh);
+ f.ctx.characterOrientation.torsoYaw=-Math.PI/6;
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
+ assert.equal(a.userData.hp,5,'target A remains intact');
+ assert.equal(b.userData.hp,5,'B takes one hit');
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+900),false,
+  'switching targets never applies the same hit twice');
+});
+
+test('ORI-06: low stump at player feet is hittable while looking downward',()=>{
+ const f=setup();
+ f.tree.position.z=-1.2;f.tree.userData.z=-1.2;
+ f.ctx.pitch=-1;
+ f.chopping.chop();
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
+ assert.equal(f.tree.userData.hp,4);
+});
+
+test('ORI-06: structure dismantling now happens at contact, not mouse-down',()=>{
+ const f=setup();
+ f.setAim(false);
+ f.ctx.inventory={equipped:true,selected:'axe',axe:{damage:1,speed:1},
+  state:{selectedQuick:0,quickItem:()=>({id:'axe'})}};
+ const destroyed=[];
+ f.ctx.crafting={items:new Map([['workbench',{id:'workbench',x:0,z:-1.4}]]),
+  dismantle(id){destroyed.push(id);}};
+ f.chopping.chop();
+ assert.deepEqual(destroyed,[]);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+700),false);
+ assert.deepEqual(destroyed,[]);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
+ assert.deepEqual(destroyed,['workbench']);
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1000),false);
+});
+
+test('ORI-06: behind-the-back and out-of-range structures never dismantle',()=>{
+ for(const [x,z] of [[0,1.4],[2,0],[0,-2.1]]){
+  const f=setup();
+  f.setAim(false);
+  f.ctx.inventory={equipped:true,selected:'axe',axe:{damage:1,speed:1},
+   state:{selectedQuick:0,quickItem:()=>({id:'axe'})}};
+  let removed=0;
+  f.ctx.crafting={items:new Map([['bench',{id:'bench',x,z}]]),
+   dismantle(){removed++;}};
+  f.chopping.chop();
+  assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),false);
+  assert.equal(removed,0,'invalid structure x='+x+', z='+z);
+ }
+});
+
+test('ORI-06: a late switch to another structure is evaluated at frame 25',()=>{
+ const f=setup();
+ f.setAim(false);
+ f.ctx.inventory={equipped:true,selected:'axe',axe:{damage:1,speed:1},
+  state:{selectedQuick:0,quickItem:()=>({id:'axe'})}};
+ const destroyed=[];
+ f.ctx.crafting={items:new Map([['A',{id:'A',x:0,z:-1.5}]]),
+  dismantle(id){destroyed.push(id);}};
+ f.chopping.chop();
+ f.ctx.crafting.items.clear();
+ f.ctx.crafting.items.set('B',{id:'B',x:.2,z:-1.2});
+ assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true);
+ assert.deepEqual(destroyed,['B']);
+});
+
+
+test('ORI-06 sideways stationary hit lands after smooth hip/torso turn, for both axes',()=>{
+ const deg=Math.PI/180;
+ for(const angle of [-120,120]){
+  for(const id of ['axe','axe_crescent']){
+   const f=setup();
+   const p=weaponProfile(id);
+   const radians=angle*deg;
+   f.tree.position.x=-Math.sin(radians)*1.5;
+   f.tree.position.z=-Math.cos(radians)*1.5;
+   f.ctx.yaw=radians;
+   const pose=createCharacterOrientation({cameraYaw:radians});
+   pose.legsYaw=0;pose.torsoYaw=Math.sign(radians)*60*deg;
+   pose.moveStrength=0;pose.legsTargetYaw=0;
+   f.ctx.characterOrientation=pose;
+   const expectedDamage=id==='axe'?1:3;
+   f.ctx.inventory={selected:id,equipped:true,axe:{damage:expectedDamage,speed:1},
+    state:{selectedQuick:0,quickItem:()=>({id})}};
+   f.chopping.chop();
+   // Holding the crosshair still, the real animation advances ~32 frames
+   // before weapon contact. The hip pivot must make the target reachable.
+   for(let i=0;i<32;i++){
+    pose.steerLegs(1/60,{attack:p});
+    pose.steerUpper(1/60,{attack:p});
+   }
+   assert.ok(Math.abs(pose.legsYaw)>45*deg,
+    'hips must visibly rotate as the upper body runs out of twist');
+   assert.equal(f.chopping.tickImpact(f.ctx.lastHit+835),true,
+    'sideways aim should connect after a visible body turn: '+id+' '+angle);
+   assert.equal(f.tree.userData.hp,5-expectedDamage);
+  }
+ }
 });

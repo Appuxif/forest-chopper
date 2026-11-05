@@ -1,4 +1,5 @@
 import {chopContactReached} from './chop-timing.js';
+import {inAttackSector} from './attack-sector.js';
 import {
  DEFAULT_WEAPON_ID,weaponProfile,weaponPlaybackSpeed,
  weaponCooldownMs,weaponDamage,
@@ -23,7 +24,15 @@ function acknowledgeLocalChop(id,by){
  if(!queue.length)predictedChips.delete(id);
  return performance.now()-at<5000;
 }
-function resetChop(){pendingSwing=null;predictedChips.clear();}
+function resetChop(){
+ pendingSwing=null;
+ if(ctx.ownAvatar)ctx.ownAvatar.activeAttackProfile=null;
+ predictedChips.clear();
+}
+function inSwingSector(profile,x,z){
+ return inAttackSector(profile,ctx.characterOrientation??ctx,
+  {x:ctx.px,z:ctx.pz},{x,z});
+}
 function aimed(profile=axeProfile){
  ray.far=profile.range;
  if(ctx.thirdPerson){
@@ -34,8 +43,67 @@ function aimed(profile=axeProfile){
   target.copy(viewRay.ray.direction).multiplyScalar(8).add(viewRay.ray.origin);
   ray.set(origin,target.sub(origin).normalize());
  }else ray.setFromCamera(center,ctx.camera);
- let best=null,dist=profile.range;for(const t of ctx.trees.values()){if(Math.hypot(t.position.x-ctx.px,t.position.z-ctx.pz)>profile.treeSearchRange)continue;const hits=ray.intersectObjects(t.userData.hitMeshes??t.children,false);if(hits.length&&hits[0].distance<dist){best=t;dist=hits[0].distance}}return best}
+ let best=null,dist=profile.range;
+ for(const t of ctx.trees.values()){
+  const x=t.position.x,z=t.position.z;
+  if(Math.hypot(x-ctx.px,z-ctx.pz)>profile.treeSearchRange||
+     !inSwingSector(profile,x,z))continue;
+  const hits=ray.intersectObjects(t.userData.hitMeshes??t.children,false);
+  if(hits.length&&hits[0].distance<dist){best=t;dist=hits[0].distance;}
+ }
+ return best;
+}
 const chipGeo=new ctx.THREE.BoxGeometry(.1,.1,.1),chipMat=new ctx.THREE.MeshLambertMaterial({color:0xc59560});function spawnChips(t){for(let i=0;i<Math.min(7,Math.max(0,96-ctx.particles.length));i++){const mesh=new ctx.THREE.Mesh(chipGeo,chipMat);mesh.position.set(t.position.x+(Math.random()-.5)*.7,1.15+Math.random()*.5,t.position.z+(Math.random()-.5)*.7);ctx.scene.add(mesh);ctx.particles.push({mesh,vx:(Math.random()-.5)*3,vy:1+Math.random()*3,vz:(Math.random()-.5)*3,life:.7})}}
+function hitStructure(profile){
+ if(!ctx.inventory?.equipped)return false;
+ const fx=-Math.sin(ctx.yaw),fz=-Math.cos(ctx.yaw);
+ const hit=(x,z)=>{
+  const dx=x-ctx.px,dz=z-ctx.pz;
+  if(!inSwingSector(profile,x,z)||
+     Math.hypot(dx,dz)>=profile.structureRange)return Infinity;
+  const forward=dx*fx+dz*fz;
+  return forward>0&&Math.abs(dx*fz-dz*fx)<profile.structureHalfWidth
+   ?forward:Infinity;
+ };
+ let best=null;
+ for(const entry of ctx.crafting?.items?.values()??[]){
+  const d=hit(entry.x,entry.z);
+  if(d<(best?.d??Infinity))best={kind:'bench',id:entry.id,d};
+ }
+ for(const entry of ctx.campStructures?.items?.values()??[]){
+  const d=hit(entry.x,entry.z);
+  if(d<(best?.d??Infinity))best={kind:'camp',id:entry.id,d};
+ }
+ for(const entry of ctx.storages?.structures?.values()??[]){
+  const d=hit(entry.x,entry.z);
+  if(d<(best?.d??Infinity))best={kind:'storage',id:entry.id,d};
+ }
+ for(const entry of ctx.placed??[]){
+  const d=hit(entry.x,entry.z);
+  if(d<(best?.d??Infinity))best={kind:'log',id:entry.id,d,entry};
+ }
+ if(!best)return false;
+ if(best.kind==='bench'){ctx.crafting?.dismantle(best.id);return true;}
+ if(best.kind==='camp'){ctx.campStructures?.dismantle(best.id);return true;}
+ if(best.kind==='storage'){ctx.storages?.dismantle(best.id);return true;}
+ if(ctx.inventory.state.freeLogs()<1){
+  ctx.notify('Сумка заполнена или превышен лимит 100 кг','warning');
+  return true;
+ }
+ if(ctx.isOnline()){
+  if(best.id!=null)ctx.sendNet({type:'hit_structure',kind:'log',id:best.id});
+ }else{
+  const index=ctx.placed.indexOf(best.entry);
+  if(index>=0&&ctx.inventory.state.addLogs(1)===1){
+   ctx.scene.remove(best.entry.mesh);ctx.placed.splice(index,1);
+   ctx.collisionWorld?.invalidate?.();ctx.wood=ctx.inventory.state.wood();
+   ctx.inventory.render();ctx.atmosphere?.invalidateStaticShadows?.();
+   ctx.offlineSave.markDirty();
+   ctx.notify('🪵 Бревно возвращено в сумку','success');
+  }
+ }
+ return true;
+}
 function chop(){
  if(((ctx.mobs??ctx.hens)?.opened!=null))return;
  // A mouse click may be needed to acquire pointer lock while lying down.
@@ -73,44 +141,8 @@ if(pendingSwing||now-ctx.lastHit<chopCooldown)return;
 ctx.lastHit=now;
 ctx.swing=1;
 ctx.actorChop(ctx.ownAvatar,axeSpeed,profile.id);
-const t=aimed(profile);
- if(!t && ctx.inventory?.equipped){
-   const fx=-Math.sin(ctx.yaw),fz=-Math.cos(ctx.yaw);
-   const hit=(x,z)=>{const dx=x-ctx.px,dz=z-ctx.pz,dist=dx*fx+dz*fz;
-     return dist>0&&dist<profile.structureRange&&Math.abs(dx*fz-dz*fx)<profile.structureHalfWidth?dist:Infinity;};
-   let best=null;
-   for(const entry of ctx.crafting?.items?.values()??[]){
-     const d=hit(entry.x,entry.z);if(d<(best?.d??Infinity))best={kind:'bench',id:entry.id,d};
-   }
-   for(const entry of ctx.campStructures?.items?.values()??[]){
-     const d=hit(entry.x,entry.z);
-     if(d<(best?.d??Infinity))best={kind:'camp',id:entry.id,d};
-   }
-   for(const entry of ctx.storages?.structures?.values()??[]){
-     const d=hit(entry.x,entry.z);
-     if(d<(best?.d??Infinity))best={kind:'storage',id:entry.id,d};
-   }
-   for(const entry of ctx.placed??[]){
-     const d=hit(entry.x,entry.z);if(d<(best?.d??Infinity))best={kind:'log',id:entry.id,d,entry};
-   }
-   if(best){
-     if(best.kind==='bench'){ctx.crafting?.dismantle(best.id);return;}
-     if(best.kind==='camp'){ctx.campStructures?.dismantle(best.id);return;}
-     if(best.kind==='storage'){ctx.storages?.dismantle(best.id);return;}
-     if(ctx.inventory.state.freeLogs()<1){ctx.notify('Сумка заполнена или превышен лимит 100 кг','warning');return;}
-     if(ctx.isOnline()){
-       if(best.id!=null)ctx.sendNet({type:'hit_structure',kind:'log',id:best.id});
-     }else{
-       const index=ctx.placed.indexOf(best.entry);if(index>=0&&ctx.inventory.state.addLogs(1)===1){
-         ctx.scene.remove(best.entry.mesh);ctx.placed.splice(index,1);ctx.collisionWorld?.invalidate?.();ctx.wood=ctx.inventory.state.wood();
-         ctx.inventory.render();
-         ctx.atmosphere?.invalidateStaticShadows?.();
-         ctx.offlineSave.markDirty();ctx.notify('🪵 Бревно возвращено в сумку','success');
-       }
-     }
-     return;
-   }
- }
+// The target (tree or structure) is deliberately resolved on frame 25,
+// not at button-down. Retargeting the camera during a swing remains possible.
  // Aim is evaluated on the same frame-25 contact for every rig,
  // not at click time. An empty-space swing can hit a tree acquired mid-swing,
  // or switch from tree A to B before the axe makes contact.
@@ -138,7 +170,7 @@ function tickImpact(now=performance.now(),currentMobTarget=undefined){
    return hit;
  }
  const t=aimed(swing.profile);
- if(!t)return false;
+ if(!t)return hitStructure(swing.profile);
  if(ctx.vitals&&!ctx.vitals.canChop){
    ctx.notify?.(ctx.vitals.chopWarning(),'warning','vitals-chop');return false;
  }
