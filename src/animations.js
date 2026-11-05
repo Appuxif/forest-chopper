@@ -36,6 +36,21 @@ function maskedClip(THREE,clip,upper){
  return new THREE.AnimationClip(clip.name+(upper?'_upper':'_lower'),clip.duration,tracks);
 }
 
+// Lower-body locomotion never stops for an upper-body attack. When the
+// upper layer returns from Chop2, start it at the legs' CURRENT stride
+// phase instead of restarting the arm/torso cycle at frame zero. Both
+// clips belong to the same authored action, but their durations may
+// differ slightly after export, so synchronize by normalized phase.
+export function matchingLocomotionPhase(lowerAction,upperAction){
+ if(!lowerAction||!upperAction||!Number.isFinite(lowerAction.time))return null;
+ const lowerDuration=lowerAction.getClip()?.duration;
+ const upperDuration=upperAction.getClip()?.duration;
+ if(!Number.isFinite(lowerDuration)||lowerDuration<=0||
+    !Number.isFinite(upperDuration)||upperDuration<=0)return null;
+ const phase=((lowerAction.time/lowerDuration)%1+1)%1;
+ return phase*upperDuration;
+}
+
 function extractRootMotion(THREE,clips){
  const rootMotion={};
  for(const clip of clips){
@@ -82,8 +97,16 @@ export function transitionLayer(THREE,actor,layer,name,rate=1){
  const mirroredTime=reversedDirection
   ?mirroredWalkPhaseTime(previous.time,previous.getClip().duration,next.getClip().duration)
   :null;
+ // tickActor() transitions legs first. If an upper-body attack ended while
+ // walking/running, the lower action is already mid-cycle. Use it as the
+ // phase authority for the arm/torso animation as it fades back in.
+ // This also keeps forward/backward clip transitions phase-locked.
+ const matchingLower=layer==='upper'&&ROOT_MOTIONS.includes(name)&&
+   actor.lowerState===name?actor.lower?.[name]:null;
+ const matchingTime=matchingLocomotionPhase(matchingLower,next);
  next.reset().setEffectiveTimeScale(speed).setEffectiveWeight(1);
- if(mirroredTime!==null)next.time=mirroredTime;
+ if(matchingTime!==null)next.time=matchingTime;
+ else if(mirroredTime!==null)next.time=mirroredTime;
  else if(layer==='lower'&&speed<0)next.time=Math.max(0,next.getClip().duration-1e-5);
  if(layer==='lower')actor.rmTimes[name]=next.time;
  next.fadeIn(fade).play();

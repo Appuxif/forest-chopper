@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {transitionLayer} from '../src/animations.js';
+import {transitionLayer,matchingLocomotionPhase,canTransitionUpperBody} from '../src/animations.js';
 import {walkingMotion,playbackRateForSpeed} from '../src/root-motion-speed.js';
 
 function action(time=0,duration=1){
@@ -99,4 +99,75 @@ test('Run to RunBackward uses reverse-phase transition on both layers',()=>{
  actor.lowerState='RunBackward';
  transitionLayer(null,actor,'lower','Run',1.2);
  assert.ok(Math.abs(actor.lower.Run.time-((1-before/(2/3))*(2/3)))<1e-10);
+});
+
+
+test('upper-body walking resumes from the leg phase after Chop2, never from frame zero',()=>{
+ for(const model of ['legacy','male','female']){
+  for(const name of ['Walk','WalkBackward','Run','RunBackward','StrafeLeft','StrafeRight']){
+   const duration=name==='Run'||name==='RunBackward'?2/3:1;
+   const lower={[name]:action(duration*.63,duration)};
+   const upper={[name]:action(0,duration),Chop2:action(1.1,46/30)};
+   const actor={
+    model,lower,upper,lowerState:name,upperState:'Chop2',
+    chopEnd:500,rmTimes:{[name]:lower[name].time},
+   };
+   assert.equal(canTransitionUpperBody(actor,499),false);
+   assert.equal(canTransitionUpperBody(actor,501),true);
+   transitionLayer(null,actor,'upper',name,1.15);
+   assert.equal(actor.upperState,name);
+   assert.ok(Math.abs(upper[name].time-lower[name].time)<1e-12,
+    model+' '+name+' upper/lower stride phase differs');
+   assert.equal(upper[name].resets,1);
+   assert.equal(upper.Chop2.fadeOutMs,.18);
+   assert.equal(upper[name].fadeInMs,.18);
+   assert.equal(upper[name].scale,1.15);
+   // During subsequent animation frames the active clip isn't reset.
+   upper[name].time+=.07;
+   lower[name].time+=.07;
+   transitionLayer(null,actor,'upper',name,1.15);
+   assert.equal(upper[name].resets,1);
+   assert.ok(Math.abs(upper[name].time-lower[name].time)<1e-12);
+  }
+ }
+});
+
+test('switching direction during an attack resumes the current lower-body motion',()=>{
+ const actor={
+  lower:{WalkBackward:action(.79),Walk:action(.2)},
+  upper:{WalkBackward:action(0),Walk:action(.15),Chop2:action(.99,46/30)},
+  lowerState:'WalkBackward',upperState:'Chop2',chopEnd:750,rmTimes:{},
+ };
+ assert.equal(canTransitionUpperBody(actor,700),false);
+ assert.equal(actor.upperState,'Chop2');
+ transitionLayer(null,actor,'upper','WalkBackward',2);
+ assert.equal(actor.upper.WalkBackward.time,.79);
+ assert.equal(actor.upper.WalkBackward.scale,2);
+});
+
+test('normalized phase sync handles different clip durations and looped lower time',()=>{
+ const lower=action(1.5,1),upper=action(0,2.5);
+ assert.ok(Math.abs(matchingLocomotionPhase(lower,upper)-1.25)<1e-12);
+ lower.time=.9;
+ assert.ok(Math.abs(matchingLocomotionPhase(lower,upper)-2.25)<1e-12);
+ lower.time=-.2;
+ assert.ok(Math.abs(matchingLocomotionPhase(lower,upper)-2)<1e-12);
+ lower.time=NaN;
+ assert.equal(matchingLocomotionPhase(lower,upper),null);
+ lower.time=0.25;
+ lower.duration=0;
+ assert.equal(matchingLocomotionPhase(lower,upper),null);
+ assert.equal(matchingLocomotionPhase(null,upper),null);
+});
+
+test('upper-body walk entering on an already-moving actor uses legs as phase authority',()=>{
+ const actor=humanoid();
+ actor.lower.Walk.time=.48;
+ actor.upperState='Idle';
+ actor.upper.Idle.time=.9;
+ actor.upper.Walk.time=0;
+ transitionLayer(null,actor,'upper','Walk',1.5);
+ assert.equal(actor.upper.Walk.time,.48);
+ assert.equal(actor.upper.Walk.scale,1.5);
+ assert.equal(actor.upper.Idle.fadeOutMs,.12);
 });
