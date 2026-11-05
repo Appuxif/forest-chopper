@@ -1,4 +1,4 @@
-import {renderItemIcons,itemIconKey} from './item-icons.js?v=20261031-icon-zoom1';
+import {renderItemIcons,itemIconKey} from './item-icons.js?v=20261105-crescent-axe-test1';
 import {itemDisplayName,itemDisplayIcon} from './item-display.js';
 import {isFood} from './vitals.js';
 import {createRecipeBook} from './recipe-book-ui.js';
@@ -67,7 +67,7 @@ export function createInventory(ctx,doc=document){
    }
    if(speciesTag[item?.id]){const tag=doc.createElement('span');tag.className='fc-item-tag';tag.textContent=speciesTag[item.id];b.append(tag);}
    if(hot){const key=doc.createElement('span');key.className='fc-key';key.textContent=i+1;b.append(key);}
-   if(item&&item.id!=='axe'){const count=doc.createElement('small');count.textContent=hot?state.count(item.id):item.count;b.append(count);}
+   if(item&&item.id!=='axe'&&item.id!=='axe_crescent'){const count=doc.createElement('small');count.textContent=hot?state.count(item.id):item.count;b.append(count);}
    b.onclick=()=>{
      if(performance.now()<suppressClickUntil)return;
      if(hot){select(i);return;}
@@ -107,9 +107,9 @@ export function createInventory(ctx,doc=document){
    bag.querySelector('[data-action="drop"]').disabled=!state.slots[moving<0?state.selectedSlot():moving];
    bag.querySelector('[data-action="trash"]').disabled=!state.slots[moving<0?state.selectedSlot():moving];
    const splitting=state.slots[usedSlot()];
-   bag.querySelector('[data-action="split"]').disabled=!splitting||splitting.id==='axe'||splitting.count<2||!state.hasSpace();
+   bag.querySelector('[data-action="split"]').disabled=!splitting||(splitting.id==='axe'||splitting.id==='axe_crescent')||splitting.count<2||!state.hasSpace();
    ctx.axe.visible=!ctx.thirdPerson&&state.equipped();
-   ctx.ownAvatar?.setAxeEquipped?.(state.equipped());
+   ctx.ownAvatar?.setEquippedWeapon?.(state.equipped()?state.selected():null);
    if(ctx.$('wood'))ctx.$('wood').textContent=state.wood();
  }
  function changed({equip=true}={}){

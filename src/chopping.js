@@ -1,12 +1,17 @@
 import {chopContactReached} from './chop-timing.js';
+import {
+ DEFAULT_WEAPON_ID,weaponProfile,weaponPlaybackSpeed,
+ weaponCooldownMs,weaponDamage,
+} from './weapon-profiles.js';
 import {TREE_LOG_COUNT} from './ground-boxes.js';
 import {isStructureItem} from './structure-items.js';
 import {isFood} from './vitals.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 export function createChopping(ctx) {
+const axeProfile=weaponProfile(DEFAULT_WEAPON_ID);
 const ray=new ctx.THREE.Raycaster(),viewRay=new ctx.THREE.Raycaster();
 const center=new ctx.THREE.Vector2(0,0),target=new ctx.THREE.Vector3(),origin=new ctx.THREE.Vector3();
-ray.far=5.2;
+ray.far=axeProfile.range;
 let pendingSwing=null;
 // Client-side chips at the contact frame; the server still owns actual HP.
 const predictedChips=new Map();
@@ -19,7 +24,8 @@ function acknowledgeLocalChop(id,by){
  return performance.now()-at<5000;
 }
 function resetChop(){pendingSwing=null;predictedChips.clear();}
-function aimed(){
+function aimed(profile=axeProfile){
+ ray.far=profile.range;
  if(ctx.thirdPerson){
   // Trace from the character toward the camera crosshair, so the right-shoulder
   // camera does not let the player chop a tree behind their back.
@@ -28,7 +34,7 @@ function aimed(){
   target.copy(viewRay.ray.direction).multiplyScalar(8).add(viewRay.ray.origin);
   ray.set(origin,target.sub(origin).normalize());
  }else ray.setFromCamera(center,ctx.camera);
- let best=null,dist=5.2;for(const t of ctx.trees.values()){if(Math.hypot(t.position.x-ctx.px,t.position.z-ctx.pz)>6)continue;const hits=ray.intersectObjects(t.userData.hitMeshes??t.children,false);if(hits.length&&hits[0].distance<dist){best=t;dist=hits[0].distance}}return best}
+ let best=null,dist=profile.range;for(const t of ctx.trees.values()){if(Math.hypot(t.position.x-ctx.px,t.position.z-ctx.pz)>profile.treeSearchRange)continue;const hits=ray.intersectObjects(t.userData.hitMeshes??t.children,false);if(hits.length&&hits[0].distance<dist){best=t;dist=hits[0].distance}}return best}
 const chipGeo=new ctx.THREE.BoxGeometry(.1,.1,.1),chipMat=new ctx.THREE.MeshLambertMaterial({color:0xc59560});function spawnChips(t){for(let i=0;i<Math.min(7,Math.max(0,96-ctx.particles.length));i++){const mesh=new ctx.THREE.Mesh(chipGeo,chipMat);mesh.position.set(t.position.x+(Math.random()-.5)*.7,1.15+Math.random()*.5,t.position.z+(Math.random()-.5)*.7);ctx.scene.add(mesh);ctx.particles.push({mesh,vx:(Math.random()-.5)*3,vy:1+Math.random()*3,vz:(Math.random()-.5)*3,life:.7})}}
 function chop(){
  if(((ctx.mobs??ctx.hens)?.opened!=null))return;
@@ -56,18 +62,22 @@ if(ctx.vitals&&!ctx.vitals.canChop&&aimed()){
  ctx.notify?.(ctx.vitals.chopWarning(),'warning','vitals-chop');return;
 }
 const now=performance.now();
-const axeSpeed=Math.max(.1,ctx.inventory?.axe?.speed??1);
-const playbackSpeed=(ctx.CHOP_SPEED??1.6)*axeSpeed;
-const chopCooldown=(ctx.ownAvatar?.actions?.Chop2?.getClip().duration??46/30)/playbackSpeed*1000+35;
+const profile=weaponProfile(ctx.inventory?.selected)??axeProfile;
+const axeSpeed=ctx.inventory?.axe?.speed??1;
+// ctx.CHOP_SPEED remains a backwards-compatible injection point; the live
+// game supplies the value directly from the same weapon profile.
+const playbackSpeed=weaponPlaybackSpeed(profile,axeSpeed,ctx.CHOP_SPEED);
+const clipDuration=ctx.ownAvatar?.actions?.[profile.animation]?.getClip().duration;
+const chopCooldown=weaponCooldownMs(profile,clipDuration,axeSpeed,ctx.CHOP_SPEED);
 if(pendingSwing||now-ctx.lastHit<chopCooldown)return;
 ctx.lastHit=now;
 ctx.swing=1;
-ctx.actorChop(ctx.ownAvatar,axeSpeed);
-const t=aimed();
+ctx.actorChop(ctx.ownAvatar,axeSpeed,profile.id);
+const t=aimed(profile);
  if(!t && ctx.inventory?.equipped){
    const fx=-Math.sin(ctx.yaw),fz=-Math.cos(ctx.yaw);
    const hit=(x,z)=>{const dx=x-ctx.px,dz=z-ctx.pz,dist=dx*fx+dz*fz;
-     return dist>0&&dist<5.5&&Math.abs(dx*fz-dz*fx)<1.25?dist:Infinity;};
+     return dist>0&&dist<profile.structureRange&&Math.abs(dx*fz-dz*fx)<profile.structureHalfWidth?dist:Infinity;};
    let best=null;
    for(const entry of ctx.crafting?.items?.values()??[]){
      const d=hit(entry.x,entry.z);if(d<(best?.d??Infinity))best={kind:'bench',id:entry.id,d};
@@ -104,7 +114,7 @@ const t=aimed();
  // Aim is evaluated on the same frame-25 contact for every rig,
  // not at click time. An empty-space swing can hit a tree acquired mid-swing,
  // or switch from tree A to B before the axe makes contact.
- pendingSwing={startedAt:now,playbackSpeed};
+ pendingSwing={startedAt:now,playbackSpeed,profile};
 }
 function tickImpact(now=performance.now(),currentMobTarget=undefined){
  if(!pendingSwing)return false;
@@ -112,8 +122,10 @@ function tickImpact(now=performance.now(),currentMobTarget=undefined){
     (ctx.ragdollControls?.mode&&ctx.ragdollControls.mode!=='none')){
    pendingSwing=null;return false;
  }
- const action=ctx.ownAvatar?.upper?.Chop2??ctx.ownAvatar?.actions?.Chop2;
- if(!chopContactReached(action,pendingSwing.startedAt,now,pendingSwing.playbackSpeed))return false;
+ const swing=pendingSwing;
+ const action=ctx.ownAvatar?.upper?.[swing.profile.animation]??
+   ctx.ownAvatar?.actions?.[swing.profile.animation];
+ if(!chopContactReached(action,swing.startedAt,now,swing.playbackSpeed,swing.profile))return false;
  pendingSwing=null; // Exactly once, even if the animation remains on its contact frame.
  // Whichever tree the crosshair points at now receives the hit.
  // No tree under the crosshair = a clean miss.
@@ -125,7 +137,7 @@ function tickImpact(now=performance.now(),currentMobTarget=undefined){
    if(hit)ctx.audio?.effect('fleshHit');
    return hit;
  }
- const t=aimed();
+ const t=aimed(swing.profile);
  if(!t)return false;
  if(ctx.vitals&&!ctx.vitals.canChop){
    ctx.notify?.(ctx.vitals.chopWarning(),'warning','vitals-chop');return false;
@@ -143,7 +155,7 @@ function tickImpact(now=performance.now(),currentMobTarget=undefined){
  }
  if(ctx.vitals&&!ctx.vitals.hit())return;
  ctx.audio?.effect('axe');
- u.hp-=(ctx.inventory?.axe?.damage??1)*(ctx.vitals?.damageMultiplier??1);ctx.treeDamage.set(u.id,u.hp);ctx.offlineSave.markDirty();spawnChips(t);
+ u.hp-=weaponDamage(swing.profile,ctx.inventory?.axe?.damage,ctx.vitals?.damageMultiplier);ctx.treeDamage.set(u.id,u.hp);ctx.offlineSave.markDirty();spawnChips(t);
 if(u.hp<=0){
   // Cutting never adds to the inventory. All three logs remain on the ground even
   // if the backpack has no room; each E/touch pickup is checked separately.

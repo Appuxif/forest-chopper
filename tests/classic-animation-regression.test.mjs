@@ -97,7 +97,7 @@ test('movement, animation, and ragdoll source no longer branch on the legacy mod
  }
  const animation=readFileSync(new URL('../src/animations.js',import.meta.url),'utf8');
  assert.doesNotMatch(animation,/lumberjack\/lumberjack\.glb/);
- assert.match(animation,/human\.attach\('handRight',grip\.clone\(true\),/);
+ assert.match(animation,/human\.attach\(profile\.socket,grip\.clone\(true\),/);
 });
 
 
@@ -108,12 +108,13 @@ test('every character attaches the same cached axe GLB through handRight',()=>{
  const multiplayer=readFileSync(new URL('../src/multiplayer.js',import.meta.url),'utf8');
  assert.match(selection,/export const SHARED_AXE_ASSET='characters\/humanoid\/game\/axe_shared\.glb/);
  assert.doesNotMatch(selection,/axe:'lumberjack\/|axe:'characters\/humanoid\/lite/);
- assert.match(animation,/let axeAssetPromise=null/);
- assert.match(animation,/loader\.loadAsync\('\.\/'\+SHARED_AXE_ASSET\)/);
- assert.match(animation,/const axeGrip=human\.attach\('handRight',grip\.clone\(true\),/);
- assert.match(animation,/CHARACTER_BODY_ASSETS\[model\]\.handRight/);
- assert.match(animation,/setAxeEquipped\(equipped\)\{axeGrip\.visible=!!equipped;\}/);
- assert.match(inventory,/ctx\.ownAvatar\?\.setAxeEquipped\?\.\(state\.equipped\(\)\)/);
+ assert.match(animation,/const weaponAssetPromises=new Map\(\)/);
+ assert.match(animation,/loader\.loadAsync\('\.\/'\+profile\.asset\)/);
+ assert.match(animation,/const handle=human\.attach\(profile\.socket,grip\.clone\(true\),/);
+ assert.match(animation,/CHARACTER_BODY_ASSETS\[model\]\[profile\.socket\]/);
+ assert.match(animation,/setAxeEquipped\(equipped\)/);
+ assert.match(animation,/return this\.setEquippedWeapon\(equipped\?DEFAULT_WEAPON_ID:null\)/);
+ assert.match(inventory,/ctx\.ownAvatar\?\.setEquippedWeapon\?\.\(state\.equipped\(\)\?state\.selected\(\):null\)/);
  assert.match(multiplayer,/actor\.setAxeEquipped\(avatar\.axeEquipped\)/);
  assert.match(multiplayer,/avatar\.axeEquipped=d\.axe_equipped===true/);
  assert.match(multiplayer,/avatar\.actor\?\.setAxeEquipped\(avatar\.axeEquipped\)/);

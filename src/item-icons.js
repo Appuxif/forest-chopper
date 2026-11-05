@@ -57,6 +57,29 @@ function axeIcon(ctx,tier){
   return group;
 }
 
+function equippedWeaponIcon(ctx,id){
+  const {THREE}=ctx;
+  const grip=ctx.ownAvatar?.weaponGrips?.get(id);
+  if(!grip)return null;
+  grip.updateWorldMatrix(true,true);
+  const inverse=grip.matrixWorld.clone().invert();
+  const group=new THREE.Group(),materials=[];
+  grip.traverse(node=>{
+    if(!node.isMesh)return;
+    const original=Array.isArray(node.material)?node.material:[node.material];
+    const copies=original.map(mat=>mat.clone());
+    materials.push(...copies);
+    const mesh=new THREE.Mesh(node.geometry,Array.isArray(node.material)?copies:copies[0]);
+    const local=inverse.clone().multiply(node.matrixWorld);
+    local.decompose(mesh.position,mesh.quaternion,mesh.scale);
+    mesh.visible=true;
+    mesh.layers.set(0);
+    group.add(mesh);
+  });
+  group.userData.iconMaterials=materials;
+  return group;
+}
+
 function logIcon(ctx){
   const {THREE,logGeo,logMat,endMat,logLength}=ctx;
   const group=new THREE.Group();
@@ -149,6 +172,7 @@ function collectModels(ctx){
   for(const kind of ['potion:health','potion:stamina','potion:lumberjack','potion:light_feet','potion:night_vision'])
     add(kind,()=>potionIcon(ctx,kind));
   for(let tier=0;tier<4;tier++)add('axe:'+tier,()=>axeIcon(ctx,tier));
+  add('axe_crescent',()=>equippedWeaponIcon(ctx,'axe_crescent'));
   return models;
 }
 
@@ -205,6 +229,7 @@ export function renderItemIcons(ctx,doc=document){
         if(object){
           scene.remove(object);
           for(const geometry of object.userData.iconGeometries??[])geometry.dispose();
+          for(const material of object.userData.iconMaterials??[])material.dispose();
           if(id.startsWith('axe:'))object.traverse(node=>{
             if(node.isMesh)for(const material of (Array.isArray(node.material)?node.material:[node.material])){
               material.dispose();

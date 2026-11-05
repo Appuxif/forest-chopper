@@ -1,6 +1,9 @@
 import {rootMotionSpeed,mirroredWalkPhaseTime,rootMotionSampleDelta,weightedHorizontalRootTravel} from './root-motion-speed.js?v=20261104-ori03';
 import {createProceduralLook} from './procedural-look.js';
-import {SHARED_AXE_ASSET} from './character-model-selection.js?v=20261105-lumberjack-chop-1812';
+import {
+ DEFAULT_WEAPON_ID,WEAPON_PROFILES,weaponProfile,weaponProfileForAnimation,
+ weaponPlaybackSpeed,equipWeaponGrips,
+} from './weapon-profiles.js';
 
 // Each actor owns exactly one visible skeleton, mixer and animation bank.
 // Each of the three 53-bone game GLBs contains its OWN authored animations.
@@ -21,7 +24,8 @@ export function runtimeClipName(model,name){
  return HUMANOID_CLIP_NAMES[name]??name;
 }
 const normalizeBone=name=>name.replace(/[._\s-]/g,'').toLowerCase();
-export const CHOP_SPEED=1.6;
+const AXE_PROFILE=weaponProfile(DEFAULT_WEAPON_ID);
+export const CHOP_SPEED=AXE_PROFILE.basePlaybackRate;
 
 function maskedClip(THREE,clip,upper){
  const tracks=clip.tracks.filter(track=>{
@@ -55,17 +59,18 @@ function extractRootMotion(THREE,clips){
 export function transitionLayer(THREE,actor,layer,name,rate=1){
  const bank=actor[layer],field=layer+'State';
  const next=bank[name];if(!next)return;
- const speed=name==='Chop2'?CHOP_SPEED*Math.max(.1,rate):rate;
+ const attack=weaponProfileForAnimation(name);
+ const speed=attack?weaponPlaybackSpeed(attack,rate):rate;
  if(actor[field]===name){
   if(layer==='lower'&&Math.sign(next.getEffectiveTimeScale())!==Math.sign(speed)){
    next.time=speed<0?Math.max(0,next.getClip().duration-1e-5):0;
    actor.rmTimes[name]=next.time;
   }
-  if(name!=='Chop2')next.setEffectiveTimeScale(speed);
+  if(!attack)next.setEffectiveTimeScale(speed);
   return;
  }
  const previous=bank[actor[field]];
- const fade=name==='Chop2'?.045:(layer==='upper'&&previous===bank.Chop2?.18:.12);
+ const fade=attack?.045:(layer==='upper'&&weaponProfileForAnimation(actor[field])?.18:.12);
  // Forward/backward Walk and Run are reverse-phase variants. Invert
  // both body layers' time to keep planted feet and arm cadence aligned.
  const reversedDirection=previous&&(
@@ -89,7 +94,7 @@ export function transitionLayer(THREE,actor,layer,name,rate=1){
 // Identical chop lifecycle on every skeleton. Mixer time is authoritative
 // for the actual contact frame; elapsed time blocks upper-body transitions.
 export function canTransitionUpperBody(actor,now){
- if(actor.upperState!=='Chop2')return true;
+ if(!weaponProfileForAnimation(actor.upperState))return true;
  return now>=actor.chopEnd;
 }
 
@@ -100,9 +105,20 @@ function rootStep(THREE,info,from,to,backward){
 export async function createAnimations(THREE){
  const modelActors=new Set();
  const {createLiteHumanoid,CHARACTER_BODY_ASSETS}=await import('../characters/humanoid/humanoid-lite.js?v=20261105-lumberjack-chop-1812');
- let axeAssetPromise=null;
+ const weaponAssetPromises=new Map();
  const {GLTFLoader}=await import('https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js');
  const loader=new GLTFLoader();
+
+ function loadWeaponAsset(profile){
+  if(!weaponAssetPromises.has(profile.asset)){
+   const pending=loader.loadAsync('./'+profile.asset).catch(error=>{
+    weaponAssetPromises.delete(profile.asset);
+    throw error;
+   });
+   weaponAssetPromises.set(profile.asset,pending);
+  }
+  return weaponAssetPromises.get(profile.asset);
+ }
 
  async function createAvatar(model='male',layer=3){
   if(!Object.hasOwn(CHARACTER_BODY_ASSETS,model))
@@ -115,23 +131,22 @@ export async function createAnimations(THREE){
   human.mixer.stopAllAction();
   human.action=null;
   const visual=human.root,mixer=human.mixer,rawClips=human.clips;
-  // One GLB and one in-flight load for every body. Clones share GPU
-  // geometry/material resources while keeping independent object transforms.
-  if(!axeAssetPromise){
-   axeAssetPromise=loader.loadAsync('./'+SHARED_AXE_ASSET).catch(error=>{
-    axeAssetPromise=null;
-    throw error;
+  // Assets are cached per URL, while every avatar owns its own grip node.
+  // Adding weapon types is a profile/asset change, not another actor loader.
+  const weaponGrips=new Map();
+  for(const profile of Object.values(WEAPON_PROFILES)){
+   const gltf=await loadWeaponAsset(profile);
+   let grip=null;
+   gltf.scene.traverse(node=>{
+    if(node.name.startsWith(profile.gripNodePrefix))grip=node;
    });
+   if(!grip)throw Error('Missing '+profile.gripNodePrefix+' in '+profile.asset);
+   const handle=human.attach(profile.socket,grip.clone(true),
+     CHARACTER_BODY_ASSETS[model][profile.socket]);
+   handle.visible=profile.id===DEFAULT_WEAPON_ID;
+   weaponGrips.set(profile.id,handle);
   }
-  const axeGLTF=await axeAssetPromise;
-  let grip=null;
-  axeGLTF.scene.traverse(node=>{if(node.name.startsWith('AXE_GRIP'))grip=node;});
-  if(!grip)throw Error('Missing axe grip for '+model);
-  // The same AXE_GRIP geometry attaches through one socket API on every
-  // rig. Each body can author a grip correction as data without branching
-  // on model or modifying weapon geometry or bone animations.
-  const axeGrip=human.attach('handRight',grip.clone(true),
-    CHARACTER_BODY_ASSETS[model].handRight);
+  const axeGrip=weaponGrips.get(DEFAULT_WEAPON_ID);
   visual.rotation.y=Math.PI;
   visual.traverse(node=>{if(node.isMesh){node.castShadow=true;node.layers.set(layer);}});
   group.add(visual);
@@ -156,14 +171,30 @@ export async function createAnimations(THREE){
    lower[name]?.setLoop(THREE.LoopRepeat,Infinity);
    upper[name]?.setLoop(THREE.LoopRepeat,Infinity);
   }
-  if(upper.Chop2){upper.Chop2.setLoop(THREE.LoopOnce,1);upper.Chop2.clampWhenFinished=true;}
+  const attackActions={};
+  for(const profile of Object.values(WEAPON_PROFILES)){
+   const action=upper[profile.animation];
+   if(!action)continue;
+   action.setLoop(THREE.LoopOnce,1);
+   action.clampWhenFinished=true;
+   attackActions[profile.animation]=action;
+  }
   const shadowMeshes=[];
   visual.traverse(node=>{if(node.isMesh)shadowMeshes.push(node);});
   const actor={group,visual,mixer,lower,upper,rootMotion,shadowMeshes,human,axeGrip,
-   setAxeEquipped(equipped){axeGrip.visible=!!equipped;},
+   weaponGrips,equippedWeaponId:DEFAULT_WEAPON_ID,
+   setEquippedWeapon(id){
+    if(!equipWeaponGrips(weaponGrips,id))return false;
+    this.equippedWeaponId=id;
+    return true;
+   },
+   // Keep the inventory/network's current axe-specific API stable.
+   setAxeEquipped(equipped){
+    return this.setEquippedWeapon(equipped?DEFAULT_WEAPON_ID:null);
+   },
    proceduralLook:createProceduralLook(THREE,human.bones),
    lowerState:'',upperState:'',chopEnd:0,rmTimes:{},model};
-  actor.actions={...lower,Chop2:upper.Chop2};
+  actor.actions={...lower,...attackActions};
   modelActors.add(actor);
   transitionLayer(THREE,actor,'lower','Idle');
   transitionLayer(THREE,actor,'upper','Idle');
@@ -177,15 +208,17 @@ export async function createAnimations(THREE){
   return actor;
  }
 
- function actorChop(actor,axeSpeed=1){
-  const action=actor?.upper?.Chop2;
+ function actorChop(actor,axeSpeed=1,weaponId=DEFAULT_WEAPON_ID){
+  const profile=weaponProfile(weaponId);
+  if(!profile)return;
+  const action=actor?.upper?.[profile.animation];
   if(!action)return;
-  if(actor.upperState==='Chop2'){action.stop();actor.upperState='';}
-  const playbackSpeed=CHOP_SPEED*Math.max(.1,axeSpeed);
-  actor.chopEnd=performance.now()+action.getClip().duration/playbackSpeed*1000+30;
-  // Contact is frame 25/30 for each independently authored 53-bone Chop.
-  // The visible swing uses the equipped axe's playback rate.
-  transitionLayer(THREE,actor,'upper','Chop2',axeSpeed);
+  if(actor.upperState===profile.animation){action.stop();actor.upperState='';}
+  const playbackSpeed=weaponPlaybackSpeed(profile,axeSpeed);
+  actor.chopEnd=performance.now()+action.getClip().duration/playbackSpeed*1000+profile.swingEndPaddingMs;
+  // Contact frame and clip selection are part of the weapon profile;
+  // each of the three rigs retains its own authored animation.
+  transitionLayer(THREE,actor,'upper',profile.animation,axeSpeed);
  }
 
  function tickActor(actor,dt,motion='Idle',jumping=false,rate=1){

@@ -1,19 +1,28 @@
-// One 30 FPS contact contract for all three independently authored
-// 53-bone models. Blender key 25 exports at 25/30 seconds in the GLB.
-export const CHOP_CONTACT_FRAME=25;
-export const CHOP_SOURCE_FPS=30;
+import {DEFAULT_WEAPON_ID,weaponProfile} from './weapon-profiles.js';
+
+// Compatibility exports for callers that still refer to the sole axe.
+// The contact point now comes from its weapon profile, not a second table.
+const AXE_PROFILE=weaponProfile(DEFAULT_WEAPON_ID);
+export const CHOP_CONTACT_FRAME=AXE_PROFILE.contact.frame;
+export const CHOP_SOURCE_FPS=AXE_PROFILE.contact.fps;
 export const CHOP_CONTACT_CLIP_TIME=CHOP_CONTACT_FRAME/CHOP_SOURCE_FPS;
 
-export function chopContactClipTime(){
- return CHOP_CONTACT_CLIP_TIME;
+function resolveProfile(profile){
+ if(typeof profile==='string')return weaponProfile(profile)??AXE_PROFILE;
+ return profile??AXE_PROFILE;
 }
 
-export function chopContactReached(action,startedAt,now,playbackSpeed){
- // Contact is evaluated against the actual animation mixer time. Using a
- // fixed timeout alone would miss delayed frames or incorrectly hit early.
+export function chopContactClipTime(profile=AXE_PROFILE){
+ const {frame,fps}=resolveProfile(profile).contact;
+ return frame/fps;
+}
+
+export function chopContactReached(action,startedAt,now,playbackSpeed,profile=AXE_PROFILE){
+ const threshold=chopContactClipTime(profile);
+ // The actual animation mixer controls frame-accurate contact.
  if(Number.isFinite(action?.time))
-  return action.time+1e-5>=CHOP_CONTACT_CLIP_TIME;
- // If the animation asset is unavailable, allow normal gameplay to continue.
+  return action.time+1e-5>=threshold;
+ // If the action is unavailable, use the historical wall-clock fallback.
  return Number.isFinite(now)&&Number.isFinite(startedAt)&&
-   (now-startedAt)*Math.max(.01,playbackSpeed)>=CHOP_CONTACT_CLIP_TIME*1000;
+   (now-startedAt)*Math.max(.01,playbackSpeed)>=threshold*1000;
 }

@@ -5,7 +5,7 @@ import {createHitEffects} from '../src/hit-effects.js';
 
 function setup(online=false) {
   const sent=[], damage=new Map(), sceneObjects=[], events=[];
-  let canAim=true,aimTarget=null;
+  let canAim=true,aimTarget=null,hitDistance=1.5;
   class Mesh {
     constructor(geometry,material) {
       this.geometry=geometry;this.material=material;
@@ -27,7 +27,7 @@ function setup(online=false) {
     constructor(){this.ray={origin:new Vector3(),direction:new Vector3(0,0,-1)};}
     set() {}
     setFromCamera() {}
-    intersectObjects(objects) {return canAim&&objects.length&&(!aimTarget||objects.includes(aimTarget)) ? [{distance:2}] : [];}
+    intersectObjects(objects) {return canAim&&objects.length&&(!aimTarget||objects.includes(aimTarget))&&hitDistance<=this.far ? [{distance:hitDistance}] : [];}
   }
   const material={name:'shared trunk material'};
   const trunk=new Mesh({},material);
@@ -44,8 +44,23 @@ function setup(online=false) {
     offlineSave:{markDirty(){}},
   };
   return {ctx,tree,trunk,material,sent,damage,sceneObjects,events,
-    setAim(value){canAim=value;},setAimTarget(mesh){aimTarget=mesh;},chopping:createChopping(ctx)};
+    setAim(value){canAim=value;},setAimTarget(mesh){aimTarget=mesh;},setHitDistance(distance){hitDistance=distance;},chopping:createChopping(ctx)};
 }
+
+test('axe reach is limited to 2m at the contact frame',()=>{
+ const near=setup();
+ near.setHitDistance(1.99);
+ near.chopping.chop();
+ assert.equal(near.chopping.tickImpact(near.ctx.lastHit+835),true);
+ assert.equal(near.tree.userData.hp,4);
+
+ const far=setup();
+ far.setHitDistance(2.01);
+ far.chopping.chop();
+ assert.equal(far.chopping.tickImpact(far.ctx.lastHit+835),false);
+ assert.equal(far.tree.userData.hp,5,'out-of-range trees take no damage');
+ assert.equal(far.ctx.particles.length,0);
+});
 
 test('empty-space swing can land if player aims at a tree exactly on frame 25 (offline)',()=>{
  const f=setup();
@@ -246,7 +261,6 @@ test('a temporary aim deviation recovers if crosshair returns by the contact fra
  assert.deepEqual(f.events,['swing','axe']);
 });
 
-<<<<<<< HEAD
 test('hen target is acquired only at the Chop2 contact frame and cannot receive the same swing twice',()=>{
  const f=setup(false);const hits=[];let hen=null;
  f.ctx.hens={aimed:()=>hen?{record:hen}:null,hit:r=>{hits.push(r.id);return true;}};
@@ -283,12 +297,10 @@ test('an open corpse UI prevents a new swing and cancels an already pending impa
  f.ctx.mobs.opened='corpse';assert.equal(f.chopping.tickImpact(f.ctx.lastHit+715),false);
  f.ctx.mobs.opened=null;assert.equal(f.chopping.tickImpact(f.ctx.lastHit+1000),false);
  assert.equal(f.tree.userData.hp,5);
-test('male and female wait for frame 25 before aim, stamina, HP, chips and sound',()=>{
- for(const model of ['male','female']){
-=======
+});
+
 test('all three models wait for frame 25 before aim, stamina, HP, chips and sound',()=>{
  for(const model of ['legacy','male','female']){
->>>>>>> 2112c0c (Unify humanoid animation runtime and shared axe across three characters)
   const f=setup();
   const action={time:0,getClip(){return {duration:47/30}}};
   f.ctx.ownAvatar={model,upper:{Chop2:action},actions:{Chop2:action}};

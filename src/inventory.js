@@ -2,12 +2,12 @@ import {STRUCTURE_KINDS,STRUCTURE_RECIPES,STRUCTURE_WEIGHT,isStructureItem} from
 import {DECOR_ITEM_IDS} from './collectible-decor.js';
 // Server and offline inventory share the same item limits and recipes.
 export const LOG_STACK=5, QUICK_SLOTS=4, BASE_BAG_SLOTS=12, SLOTS_PER_UPGRADE=4;
-export const ITEM_STACK={...Object.fromEntries(STRUCTURE_KINDS.map(id=>[id,1])),log:5,branch:10,stone:10,bench:1,axe:1,chicken_meat:10,feather:10,'potion:health':10,'potion:stamina':10,'potion:lumberjack':10,'potion:light_feet':10,'potion:night_vision':10,'food:mushroom_stew':10,'food:herbal_mushroom_stew':10,'food:roast_chicken':10,'food:chicken_mushrooms':10,'food:herbal_chicken':10,...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,10]))};
+export const ITEM_STACK={...Object.fromEntries(STRUCTURE_KINDS.map(id=>[id,1])),log:5,branch:10,stone:10,bench:1,axe:1,axe_crescent:1,chicken_meat:10,feather:10,'potion:health':10,'potion:stamina':10,'potion:lumberjack':10,'potion:light_feet':10,'potion:night_vision':10,'food:mushroom_stew':10,'food:herbal_mushroom_stew':10,'food:roast_chicken':10,'food:chicken_mushrooms':10,'food:herbal_chicken':10,...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,10]))};
 export const MAX_CARRY_WEIGHT=100;
 // kg per item. Counts, not stacks, determine weight; axe has no count field.
-export const ITEM_WEIGHT={...STRUCTURE_WEIGHT,log:10,branch:0.5,stone:2,bench:15,axe:3,chicken_meat:0.5,feather:0.01,'potion:health':0.5,'potion:stamina':0.5,'potion:lumberjack':0.5,'potion:light_feet':0.5,'potion:night_vision':0.5,'food:mushroom_stew':0.6,'food:herbal_mushroom_stew':0.7,'food:roast_chicken':0.5,'food:chicken_mushrooms':0.6,'food:herbal_chicken':0.6,
+export const ITEM_WEIGHT={...STRUCTURE_WEIGHT,log:10,branch:0.5,stone:2,bench:15,axe:3,axe_crescent:3,chicken_meat:0.5,feather:0.01,'potion:health':0.5,'potion:stamina':0.5,'potion:lumberjack':0.5,'potion:light_feet':0.5,'potion:night_vision':0.5,'food:mushroom_stew':0.6,'food:herbal_mushroom_stew':0.7,'food:roast_chicken':0.5,'food:chicken_mushrooms':0.6,'food:herbal_chicken':0.6,
  ...Object.fromEntries(DECOR_ITEM_IDS.map(id=>[id,0.1]))};
-export const itemWeight=item=>item?(ITEM_WEIGHT[item.id]??0)*(item.id==='axe'?1:item.count):0;
+export const itemWeight=item=>item?(ITEM_WEIGHT[item.id]??0)*((item.id==='axe'||item.id==='axe_crescent')?1:item.count):0;
 export const RECIPES={bench:{log:3},axe:{branch:3,stone:2}};
 export const AXE_STATS=[
   {name:'Обычный топор',damage:1,speed:1},
@@ -15,6 +15,9 @@ export const AXE_STATS=[
   {name:'Усиленный топор',damage:3,speed:1.45},
   {name:'Мастерский топор',damage:4,speed:1.7},
 ];
+export const CRESCENT_AXE_STATS=Object.freeze({
+ name:'Серповидный топор',damage:3,speed:1,
+});
 const copy=x=>x?{...x}:null;
 export function validItem(x){
  if(!x||typeof x!=='object'||!Object.hasOwn(ITEM_STACK,x.id))return false;
@@ -42,8 +45,8 @@ export function createInventoryModel(){
  const selectedSlot=()=>quickSlot(quick);
  const quickItem=i=>slots[quickSlot(i)]??null;
  const selected=()=>quickItem(quick)?.id??null;
- const equipped=()=>selected()==='axe';
- const axe=()=>equipped()?AXE_STATS[quickItem(quick).tier]:null;
+ const equipped=()=>selected()==='axe'||selected()==='axe_crescent';
+ const axe=()=>selected()==='axe'?AXE_STATS[quickItem(quick).tier]:selected()==='axe_crescent'?CRESCENT_AXE_STATS:null;
  const hasSpace=()=>slots.some(x=>x===null);
  function upgradeBag(next){
   if(!Number.isInteger(next)||next<tier||next>100)return false;
@@ -54,13 +57,14 @@ export function createInventoryModel(){
   if(!item||!Object.hasOwn(ITEM_STACK,item.id))return false;
   if(item.id==='axe')return Number.isInteger(item.tier)&&item.tier>=0&&item.tier<AXE_STATS.length&&hasSpace()&&(ignoreWeight||weight()+itemWeight(item)<=MAX_CARRY_WEIGHT+1e-8);
   if(!Number.isSafeInteger(item.count)||item.count<1||item.count>50000)return false;
+  if(item.id==='axe_crescent'&&item.count!==1)return false;
   if(!ignoreWeight&&weight()+itemWeight(item)>MAX_CARRY_WEIGHT+1e-8)return false;
   if(item.id==='bench'||isStructureItem(item.id))return item.count===1&&hasSpace();
   return freeStack(item.id)>=item.count;
  }
  function addItem(item,options){
   if(!canAdd(item,options))return false;
-  let remaining=item.id==='axe'?1:item.count;
+  let remaining=(item.id==='axe'||item.id==='axe_crescent')?1:item.count;
   if(item.id!=='axe'&&item.id!=='bench'&&!isStructureItem(item.id)){
    for(const x of slots)if(x?.id===item.id&&remaining){
     const n=Math.min(remaining,ITEM_STACK[item.id]-x.count);
@@ -124,7 +128,7 @@ export function createInventoryModel(){
  function transfer(a,b,{half=false}={}){
   if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<0||a>=slots.length||b>=slots.length||a===b||!slots[a])return false;
   const source=slots[a],dest=slots[b];
-  if(half&&source.id!=='axe'&&source.count>1){
+  if(half&&source.id!=='axe'&&source.id!=='axe_crescent'&&source.count>1){
     const amount=Math.floor(source.count/2);
     if(dest&&dest.id!==source.id)return false;
     if(dest&&dest.count+amount>ITEM_STACK[source.id])return false;
@@ -132,7 +136,7 @@ export function createInventoryModel(){
     if(dest)dest.count+=amount;else slots[b]={id:source.id,count:amount};
     return true;
   }
-  if(dest?.id===source.id&&source.id!=='axe'){
+  if(dest?.id===source.id&&source.id!=='axe'&&source.id!=='axe_crescent'){
     const space=ITEM_STACK[source.id]-dest.count;
     if(space<=0)return false;
     const amount=Math.min(space,source.count);

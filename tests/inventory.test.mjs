@@ -296,3 +296,35 @@ test('failed campfire craft is transactional when bag is full',()=>{
  assert.equal(inv.craftStructure('campfire'),false);
  assert.deepEqual(inv.serialize(),before,'ingredients must not disappear on failed craft');
 });
+
+
+test('debug-granted crescent axe lives in the bag and equips through 1–4 quick slots',()=>{
+ const x=createInventoryModel();
+ assert.equal(x.addItem({id:'axe_crescent',count:1}),true);
+ assert.equal(x.count('axe_crescent'),1);
+ assert.equal(x.slots[1].id,'axe_crescent');
+ assert.equal(x.assignQuick(1,1),true);
+ assert.equal(x.select(1),true);
+ assert.equal(x.selected(),'axe_crescent');
+ assert.equal(x.equipped(),true);
+ assert.equal(x.axe().damage,3);
+ assert.equal(x.axe().speed,1);
+ assert.equal(x.select(0),true);
+ assert.equal(x.axe().damage,1,'existing axe remains independent');
+ assert.equal(x.select(1),true);
+ const snapshot=x.serialize();
+ const restored=createInventoryModel();
+ assert.equal(restored.restore(snapshot,0),true);
+ assert.equal(restored.selected(),'axe_crescent');
+ assert.equal(restored.axe().damage,3);
+ assert.equal(restored.weight(),6,'two axes weigh three kilos each');
+});
+
+test('crescent axe is individually stack-limited and never craftable',()=>{
+ const inv=createInventoryModel();
+ assert.equal(inv.addItem({id:'axe_crescent',count:1}),true);
+ assert.equal(inv.addItem({id:'axe_crescent',count:2}),false);
+ assert.equal(inv.free('axe_crescent')>=1,true,'additional distinct items may use free slots');
+ assert.equal(inv.craft('axe_crescent'),false);
+ assert.equal(inv.canAdd({id:'axe_crescent',count:1}),true);
+});

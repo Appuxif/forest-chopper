@@ -45,7 +45,7 @@ function fixture(){
   class Raycaster{
     constructor(){this.ray={origin:new Vector3(),direction:new Vector3()}}
     setFromCamera(){}
-    intersectObjects(){return [{distance:2}]}
+    intersectObjects(){return [{distance:1.5}]}
   }
   const scene=new Set(),state=createInventoryModel(),messages=[],dom={};
   const ctx={
