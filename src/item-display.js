@@ -11,6 +11,10 @@ export const ITEM_DISPLAY_NAMES=Object.freeze({
   'potion:night_vision':'Сумеречное зрение',
   'food:mushroom_stew':'Грибное рагу',
   'food:herbal_mushroom_stew':'Грибное рагу с травами',
+  chicken_meat:'Куриное мясо',feather:'Перо',
+  'food:roast_chicken':'Жареная курица',
+  'food:chicken_mushrooms':'Курица с грибами',
+  'food:herbal_chicken':'Курица с травами',
   ...DECOR_ITEM_NAMES,
 });
 export const ITEM_DISPLAY_ICONS=Object.freeze({
@@ -19,6 +23,8 @@ export const ITEM_DISPLAY_ICONS=Object.freeze({
   'potion:health':'❤️','potion:stamina':'🧪',
   'potion:lumberjack':'🪓','potion:light_feet':'🪽','potion:night_vision':'🌙',
   'food:mushroom_stew':'🍲','food:herbal_mushroom_stew':'🍲','alchemy_table':'⚗️','bed':'🛏️',
+  chicken_meat:'🍗',feather:'🪶','food:roast_chicken':'🍗',
+  'food:chicken_mushrooms':'🍄','food:herbal_chicken':'🍗',
   'mushroom:fly_agaric':'🍄','mushroom:boletus':'🍄',
   'mushroom:death_cap':'🍄','mushroom:milkcap':'🍄',
   'flower:daisy':'🌼','flower:buttercup':'🌻',

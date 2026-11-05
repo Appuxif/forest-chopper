@@ -10,8 +10,38 @@ from forest_server import (World,inv_add,inv_count,inv_give_logs,
                            valid_camp_structure,CAMP_RECIPES,MAX_CAMP_STRUCTURES,
                            advance_stamina,apply_food,vitals_view,STATUS_DURATION,POTION_RECIPES,FOOD_RECIPES,STATUS_REGEN_MULTIPLIER,has_crafting_station,CRAFT_STATION_RADIUS,
                            active_status_ids,chop_damage_multiplier,sprint_drain_multiplier,STATUS_EFFECT_DURATIONS)
+from forest_server import ITEM_LIMITS,ITEM_WEIGHT,FOOD_EFFECTS,valid_item,item_weight
 
 class CampRulesTests(unittest.TestCase):
+    def test_chicken_food_catalog_and_item_validation(self):
+        expected_recipes={
+            'food:roast_chicken':{'chicken_meat':1},
+            'food:chicken_mushrooms':{'chicken_meat':1,'mushroom:boletus':1},
+            'food:herbal_chicken':{'chicken_meat':1,'flower:blue_wildflower':1},
+        }
+        expected_effects={
+            'chicken_meat':(0,1),
+            'food:roast_chicken':(0,2),
+            'food:chicken_mushrooms':(0,3),
+            'food:herbal_chicken':(2,2),
+        }
+        self.assertEqual({key:FOOD_RECIPES[key] for key in expected_recipes},expected_recipes)
+        self.assertEqual({key:FOOD_EFFECTS[key] for key in expected_effects},expected_effects)
+        self.assertEqual((ITEM_LIMITS['chicken_meat'],ITEM_LIMITS['feather']), (10,10))
+        self.assertEqual((ITEM_WEIGHT['chicken_meat'],ITEM_WEIGHT['feather']),(.5,.01))
+        self.assertEqual((ITEM_WEIGHT['food:roast_chicken'],ITEM_WEIGHT['food:chicken_mushrooms'],
+                          ITEM_WEIGHT['food:herbal_chicken']),(.5,.6,.6))
+        self.assertTrue(valid_item({'id':'chicken_meat','count':10}))
+        self.assertTrue(valid_item({'id':'feather','count':10}))
+        self.assertFalse(valid_item({'id':'chicken_meat','count':11}))
+        self.assertFalse(valid_item({'id':'feather','count':0}))
+        self.assertEqual(item_weight({'id':'feather','count':10}),.1)
+        for item,effect in expected_effects.items():
+            player={'health':1,'hunger':1}
+            self.assertTrue(apply_food(player,item),item)
+            self.assertEqual((player['health'],player['hunger']),
+                             (min(5,1+effect[0]),min(5,1+effect[1])),item)
+
     def test_validation_and_world_save_roundtrip(self):
         item={'kind':'campfire','id':1,'x':3.5,'z':-2,'orientation':2,'lit':True}
         self.assertTrue(valid_camp_structure(item))
@@ -42,6 +72,9 @@ class CampRulesTests(unittest.TestCase):
             'food:mushroom_stew':{'mushroom:boletus':1,'mushroom:milkcap':1},
             'food:herbal_mushroom_stew':{
                 'mushroom:boletus':1,'mushroom:milkcap':1,'flower:blue_wildflower':1},
+            'food:roast_chicken':{'chicken_meat':1},
+            'food:chicken_mushrooms':{'chicken_meat':1,'mushroom:boletus':1},
+            'food:herbal_chicken':{'chicken_meat':1,'flower:blue_wildflower':1},
         })
         player={'health':2,'hunger':0}
         self.assertTrue(apply_food(player,'food:mushroom_stew'))

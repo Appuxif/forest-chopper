@@ -1,9 +1,9 @@
+import {loadRagdollPhysics} from './rapier-loader.js';
 import {createRagdollEnvironment} from './ragdoll-colliders.js';
 import {ragdollActivationMotion,applyRagdollMomentum} from './ragdoll-motion.js?v=20261102-bounce-fix1';
 export {makeGroundMesh} from './ragdoll-colliders.js';
 // Shared local-player ragdoll. Uses the same GLB SkinnedMesh/bones as the
-// animated character. Rapier is loaded only when a death or DEBUG trigger occurs.
-const RAPIER_URL='https://esm.sh/@dimforge/rapier3d-compat@0.20.0?bundle';
+// animated character. Rapier is preloaded during world startup.
 const SEGMENTS=[
   ['Hips','Spine',.20],['Spine','Head',.21],['Head',null,.15],
   ['UpperArm.L','Forearm.L',.105],['Forearm.L',null,.09],
@@ -50,11 +50,7 @@ export function findRagdollBones(visual){
 }
 function vec(v){return {x:v.x,y:v.y,z:v.z};}
 function quat(q){return {x:q.x,y:q.y,z:q.z,w:q.w};}
-export function createRagdoll(ctx,{loadPhysics=async()=>{
- const module=await import(RAPIER_URL),rapier=module.default??module;
- if(typeof rapier.init==='function')await rapier.init();
- return rapier;
-}}={}){
+export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
  const THREE=ctx.THREE;
  let physics=null,instance=null,loading=null;
  const state=()=>({

@@ -621,7 +621,7 @@ class WorldTests(unittest.IsolatedAsyncioTestCase):
     async def test_vitals_are_bounded_and_server_hunger_is_time_based(self):
         self.assertEqual(HUNGER_INTERVAL_SECONDS,192)
         self.assertEqual(LOW_VITALS_THRESHOLD,1)
-        self.assertEqual(len(FOOD_EFFECTS),15)
+        self.assertEqual(len(FOOD_EFFECTS),19)
         player={'health':5,'hunger':5,'hunger_progress':0,
                 'last_hunger_at':100.0}
         self.assertFalse(advance_hunger(player,291))

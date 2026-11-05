@@ -1,4 +1,4 @@
-import {installDebugCheats} from './debug-cheats.js?v=20261103-debug-player1';
+import {installDebugCheats} from './debug-cheats.js?v=20261104-cheats-close2';
 import {createDebugFps} from './debug-fps.js';
 import {createRenderProfiler} from './render-profiler.js?v=20261103-grass-culling1';
 import {installProfilerPanel} from './debug-profiler-ui.js?v=20261103-region-default-3';
@@ -505,7 +505,11 @@ export function installDebug(ctx) {
     get atmosphere() { return ctx.atmosphere; },
     get player() { return ctx.ownAvatar; },
     get rootMotion() { return ctx.rootMotion; },
-    help: 'die(), ragdoll(), resetRagdoll(), ragdollState(), loadBenchmarkSave(), benchmarkBoxes(enabled), startBoxBenchmark(options), benchmarkStatus(), exitBenchmark(), setPreset(name), getPreset(), fpsStart({clear,phase}), fpsStats(phase), fpsSamples(), fpsPhase(name), fpsStop(), profileStart(), profileStop(), profileSnapshot(), grantLog(), dropLog(), bulkLogs(count,{intervalMs,phase}), startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
+    spawnMob(type='chicken',options={}) { return ctx.debugCheatsController.spawnMob(type,options); },
+    clearDebugMobs() { return ctx.debugCheatsController.clearMobs(); },
+    get mobs() { return ctx.mobs; },
+    get hens() { return ctx.mobs??ctx.hens; },
+    help: 'spawnMob(type,{count,subcategory}), clearDebugMobs(), die(), ragdoll(), resetRagdoll(), ragdollState(), loadBenchmarkSave(), benchmarkBoxes(enabled), startBoxBenchmark(options), benchmarkStatus(), exitBenchmark(), setPreset(name), getPreset(), fpsStart({clear,phase}), fpsStats(phase), fpsSamples(), fpsPhase(name), fpsStop(), profileStart(), profileStop(), profileSnapshot(), grantLog(), dropLog(), bulkLogs(count,{intervalMs,phase}), startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
   };
   window.__gameDebug = api;
   window.addEventListener('blur', releaseAll);

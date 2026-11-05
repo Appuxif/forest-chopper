@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {CRAFT_STATION_RADIUS,recipeStationKind,nearbyCraftStation,canCraftAtStation} from '../src/crafting-stations.js';
 import {recipeById,RECIPE_PAGES,RECIPE_TABS,recipeAvailable} from '../src/recipe-book.js';
 import {FOOD_EFFECTS,eatEffect} from '../src/vitals.js';
-import {createInventoryModel} from '../src/inventory.js';
+import {createInventoryModel,ITEM_STACK,ITEM_WEIGHT,itemWeight,validItem} from '../src/inventory.js';
 import {CAMP_RECIPES,validCampStructure} from '../src/camp-rules.js';
 
 test('all food/alchemy recipes inherit the appropriate 10m workbench requirement',()=>{
@@ -89,4 +89,43 @@ test('herbal mushroom stew uses one blue wildflower and restores +1 health and +
  assert.equal(canCraftAtStation(ctx,herbal),true);
  ctx.px=-.01;
  assert.equal(canCraftAtStation(ctx,herbal),false);
+});
+
+test('chicken foods have matching recipes, food effects, limits and carry weights',()=>{
+ const specs=[
+  ['food:roast_chicken',{chicken_meat:1},{health:0,hunger:2},.5],
+  ['food:chicken_mushrooms',{chicken_meat:1,'mushroom:boletus':1},{health:0,hunger:3},.6],
+  ['food:herbal_chicken',{chicken_meat:1,'flower:blue_wildflower':1},{health:2,hunger:2},.6],
+ ];
+ const bag=createInventoryModel();
+ assert.equal(ITEM_STACK.chicken_meat,10);
+ assert.equal(ITEM_STACK.feather,10);
+ assert.equal(validItem({id:'chicken_meat',count:10}),true);
+ assert.equal(validItem({id:'feather',count:10}),true);
+ assert.equal(validItem({id:'chicken_meat',count:11}),false);
+ assert.equal(bag.addItem({id:'chicken_meat',count:10}),true);
+ assert.equal(bag.addItem({id:'feather',count:10}),true);
+ for(const [id,ingredients,effect,weight] of specs){
+  const recipe=recipeById(id);
+  assert.equal(recipe.tab,'food');
+  assert.equal(recipeStationKind(recipe),'campfire');
+  assert.deepEqual(recipe.ingredients,ingredients);
+  assert.deepEqual(FOOD_EFFECTS[id],effect);
+  assert.equal(eatEffect(1,1,id).health,Math.min(5,1+effect.health));
+  const ingredientsBag=createInventoryModel();
+  assert.equal(recipeAvailable(recipe,ingredientsBag),false);
+  for(const [ingredient,count] of Object.entries(ingredients))
+   assert.equal(ingredientsBag.addItem({id:ingredient,count}),true);
+  assert.equal(recipeAvailable(recipe,ingredientsBag),true);
+  assert.equal(ITEM_WEIGHT[id],weight);
+  assert.equal(itemWeight({id,count:1}),weight);
+ }
+ assert.equal(ITEM_WEIGHT.chicken_meat,.5);
+ assert.equal(ITEM_WEIGHT.feather,.01);
+ assert.equal(itemWeight({id:'chicken_meat',count:1}),.5);
+ assert.equal(itemWeight({id:'feather',count:1}),.01);
+ assert.equal(ITEM_WEIGHT['food:roast_chicken'],.5);
+ assert.equal(ITEM_WEIGHT['food:chicken_mushrooms'],.6);
+ assert.equal(ITEM_WEIGHT['food:herbal_chicken'],.6);
+ assert.deepEqual(FOOD_EFFECTS.chicken_meat,{health:0,hunger:1});
 });

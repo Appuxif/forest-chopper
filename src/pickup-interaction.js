@@ -95,13 +95,14 @@ export function createPickupInteraction(ctx){
     const {storages,fires}=worldInteractionCandidates(ctx);
     // Preserve the priority given to deliberately dropped boxes. Otherwise
     // select by on-screen crosshair proximity, not structure proximity alone.
-    const centered=selectPickupTarget(boxes,project)
+    const corpse=(ctx.mobs??ctx.hens)?.candidate?.();
+    const centered=(corpse?selectPickupTarget([corpse],project):null)??selectPickupTarget(boxes,project)
       ??selectPickupTarget([...storages,...fires,...resources],project);
     // When nothing is aimed at, keep E usable for the nearest world object.
     // The same fallback is also shown by the reticle; no phantom E prompts.
     const nearestWorld=nearestPickupTarget(fires,storages);
     const nearestPickup=nearestPickupTarget([],boxes)??nearestPickupTarget(resources,[]);
-    return {focused:centered,selected:centered??nearestWorld??nearestPickup};
+    return {focused:centered,selected:centered??corpse??nearestWorld??nearestPickup};
   }
   function update(){
     const result=calculate();
@@ -110,8 +111,8 @@ export function createPickupInteraction(ctx){
     if(button){
       const available=!ctx.buildMode&&!!target;
       button.hidden=!coarse()||!available;
-      button.disabled=!available;
-      const label=target?.label;
+      button.disabled=!available||target?.empty===true;
+      const label=target?.empty?target.label+' · Пусто':target?.label;
       button.setAttribute('aria-label',label?'Взаимодействовать: '+label:'Взаимодействовать');
       button.title=label?'Взаимодействовать: '+label:'Взаимодействовать';
     }
@@ -132,9 +133,12 @@ export function createPickupInteraction(ctx){
     return pickItem(item);
   }
   function interact(){
+    const mobs=ctx.mobs??ctx.hens;
+    if(mobs?.opened!=null){mobs.takeSelected();return true;}
     if(ctx.buildMode||ctx.storages?.opened!=null)return false;
     const {selected}=calculate();
     if(!selected)return false;
+    if(selected.type==='corpse'||selected.type==='hen'){if(!selected.empty)mobs?.open(selected.id);return true;}
     if(selected.type==='storage')return ctx.storages?.open?.(selected.id)??false;
     if(selected.type==='camp')return ctx.campStructures?.activate?.(selected.id)??ctx.campStructures?.toggle?.(selected.id)??false;
     return pickItem(selected);

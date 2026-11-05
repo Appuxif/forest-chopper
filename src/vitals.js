@@ -15,6 +15,7 @@ export const FOOD_EFFECTS=Object.freeze({
   'mushroom:death_cap': {health:-1,hunger:0},
   'mushroom:milkcap': {health:0,hunger:1},
   'mushroom:boletus': {health:0,hunger:1},
+  chicken_meat: {health:0,hunger:1},
   'flower:daisy': {health:1,hunger:0},
   'flower:buttercup': {health:0,hunger:0},
   'flower:pink_wildflower': {health:0,hunger:0},
@@ -26,6 +27,9 @@ export const FOOD_EFFECTS=Object.freeze({
   'potion:night_vision':{health:-1,hunger:0},
   'food:mushroom_stew':{health:0,hunger:3},
   'food:herbal_mushroom_stew':{health:1,hunger:3},
+  'food:roast_chicken':{health:0,hunger:2},
+  'food:chicken_mushrooms':{health:0,hunger:3},
+  'food:herbal_chicken':{health:2,hunger:2},
 });
 const clamp=n=>Math.max(0,Math.min(MAX_VITALS,n));
 export const isFood=id=>Object.hasOwn(FOOD_EFFECTS,id);

@@ -1,3 +1,7 @@
+import {validateMobSnapshot} from './mob-world.js';
+import {validMobPoses} from './mob-pose.js';
+import {validHenPoses} from './hen-pose.js';
+import {createHenWorld} from './hen-rules.js';
 import {logCenterY,applyLogRotation,validBuildLog} from './log-grid.js';
 import {isDecorResourceId} from './collectible-decor.js';
 import {baseTerrainHeight} from './terrain-noise.js';
@@ -25,7 +29,7 @@ const validId = id => typeof id === 'string' && /^-?\d+,-?\d+:[0-7]$/.test(id) &
 const coordinate = n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 240000;
 const nonnegative = n => Number.isSafeInteger(n) && n >= 0 && n <= 10_000_000;
 
-export function parseOfflineSave(raw) {
+export function parseOfflineSave(raw,{mobRegistry}={}) {
   if (typeof raw !== 'string' || raw.length > MAX_BYTES) return null;
   try {
     const data = JSON.parse(raw);
@@ -116,6 +120,9 @@ export function parseOfflineSave(raw) {
         ||Math.abs(death.marker.x)>240000||Math.abs(death.marker.z)>240000
         ||!Number.isFinite(death.marker.expires_at)
         ||death.marker.expires_at>Date.now()/1000+BOX_LIFETIME_SECONDS+2))))return null;
+    if(data.mobs!==undefined&&(!validateMobSnapshot(data.mobs,data.seed,mobRegistry)||(data.mobs.poses!==undefined&&!validMobPoses(data.mobs.poses))))return null;
+    if(data.hens?.poses!==undefined&&!validHenPoses(data.hens.poses))return null;
+    if(data.hens!==undefined&&!createHenWorld({seed:data.seed}).restore(data.hens))return null;
     const furniture=[];
     for(const item of data.furniture ?? []){if(!validBench(item))return null;furniture.push({kind:'bench',x:item.x,z:item.z,orientation:item.orientation});}
     const storages=data.storages??[];
@@ -124,7 +131,7 @@ export function parseOfflineSave(raw) {
     if(campStructures.some(item=>!validCampStructure(item)))return null;
     return {
       camp_structures:campStructures,storages,terrainVersion:[1,2,3].includes(data.terrainVersion)?data.terrainVersion:0,
-      dayPhase:data.dayPhase??0,
+      dayPhase:data.dayPhase??0,hens:data.hens??null,mobs:data.mobs??null,
       logsCollected:data.logsCollected??0, furniture,boxes,migrateLegacyFallenLogs,resource_cooldowns:cooldowns,vitals,death,inventory:data.inventory??null,seed: data.seed, wood: data.wood, cuts: data.cuts,
       felled: data.felled, damage, logs, position: {...data.position, y: data.position.y ?? 0},
     };
@@ -151,6 +158,8 @@ export function createOfflineSave(ctx, {
     return {
       version: 1, createdAt, savedAt: Date.now(), terrainVersion: 3, seed: ctx.seed, wood: ctx.wood, cuts: ctx.cuts, logsCollected:ctx.logsCollected??0,
       dayPhase:ctx.dayCycle?.offlinePhase??0,
+      mobs:ctx.mobs?.snapshot?.(),
+      hens:ctx.mobs?undefined:ctx.hens?.snapshot?.(),
       position: {x: ctx.px, y: ctx.feetY, z: ctx.pz, yaw: ctx.yaw, pitch: ctx.pitch},
       felled: [...ctx.felled], damage: Object.fromEntries(ctx.treeDamage),
       logs: ctx.placed.map(({x,z,height,orientation}) => ({x,z,height,orientation})),
@@ -185,13 +194,15 @@ export function createOfflineSave(ctx, {
     }
   }
   function restoreSnapshot(raw,{replace=false}={}) {
-    const state = parseOfflineSave(raw);
+    const state = parseOfflineSave(raw,{mobRegistry:ctx.mobs?.registry});
     if (!state || (replace && ctx.isOnline?.())) return false;
     if(replace)ctx.clearWorld?.();
     if(ctx.vitals&&!ctx.vitals.restore(state.vitals))return false;
     if(ctx.inventory&&!ctx.inventory.restore(state.inventory,state.wood))return false;
     if(ctx.forestResources&&!ctx.forestResources.restoreCooldowns(state.resource_cooldowns))return false;
     ctx.seed = state.seed;
+    if(ctx.mobs){if(!ctx.mobs.restore(state.mobs??state.hens))return false;}
+    else if(ctx.hens&&!ctx.hens.restore(state.hens))return false;
     ctx.dayCycle?.setOfflinePhase?.(state.dayPhase);
     ctx.wood = state.wood;ctx.cuts = state.cuts;ctx.logsCollected = state.logsCollected;
     ctx.px = state.position.x;ctx.pz = state.position.z;
