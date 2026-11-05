@@ -16,7 +16,9 @@ test('the requested game clustering defaults are real persisted settings',()=>{
   const s=sanitizeSettings({});
   for(const [key,value] of Object.entries(GRASS_CLUSTER_DEFAULTS))
     assert.equal(s[key],value,key);
-  assert.equal(s.grassClusterEnabled,true);
+  assert.equal(s.grassClusterEnabled,false);
+  assert.equal(sanitizeSettings({grassClusterEnabled:true}).grassClusterEnabled,true,
+    'explicit opt-in to experimental clumps must continue working');
   assert.ok(GRASS_CLUSTER_FIELDS.length>=28);
   const altered=sanitizeSettings({
     grassClusterEnabled:false,grassClusterDensity:199,grassClusterCells:120,
@@ -74,7 +76,9 @@ test('one instanced pouch has exactly blades*triangles and normalized vertex hei
     assert.ok(ao.every(v=>Number.isFinite(v)&&v>=0&&v<=1));
     assert.ok(ao[0]<ao[triangles+1],'crowded roots shade more than leaf tips');
     const side=geometry.attrs.fcGrassRibbonSide.array;
-    assert.ok(side.every(v=>v===1||v===-1));
+    assert.ok(side.every(v=>v===1||v===-1||v===0));
+    assert.equal(side.filter(v=>v===0).length,triangles%2?blades:0,
+      'odd strips have one centre-root vertex instead of a needle tip');
     const heights=geometry.attrs.position.array.filter((_,i)=>i%3===1);
     assert.ok(heights.every(v=>v>=0&&v<=1));
   }
@@ -188,16 +192,63 @@ test('the uploaded JSON is exactly the runtime preset, including game controls',
   for(const [key,field] of GRASS_CLUSTER_FLAGS){
     assert.equal(settings[key],FOREST_GRASS_PRESET[field],key);
   }
-  assert.equal(settings.grassClusterEnabled,true);
-  assert.equal(settings.grassClusterDensityCurve,.17);
+  assert.equal(settings.grassClusterEnabled,false);
   assert.equal(settings.grassClusterWidthIncrease,455);
   assert.equal(settings.grassClusterGroundType,'forest');
 });
 
-test('preserved rational LOD can be shaped with editor curve on CPU',()=>{
-  const c={nearEnd:10,minDensity:0,sharpness:.000001,coefficient:0,offset:30};
-  assert.equal(grassDistanceDensity(5,100,{...c,curve:.17}),1);
-  assert.equal(grassDistanceDensity(95,100,{...c,curve:0}),1);
-  assert.ok(grassDistanceDensity(35,100,{...c,curve:.17})<
-    grassDistanceDensity(35,100,{...c,curve:1}));
+test('only the original rational LOD is applied to CPU density',()=>{
+  const opts={nearEnd:10,minDensity:0,sharpness:.005,coefficient:.25,offset:1};
+  const f=distance=>grassDistanceDensity(distance,100,opts);
+  assert.equal(f(5),1);
+  assert.equal(f(10),1);
+  assert.ok(f(40)<f(20));
+  assert.ok(f(80)<f(40));
+  assert.equal(f(100),0);
+});
+
+test('tip-width slider keeps tips broad for odd/even triangle counts without extra geometry',()=>{
+  class Attribute {
+    constructor(array,itemSize){this.array=array;this.itemSize=itemSize;this.count=array.length/itemSize;}
+  }
+  class Geometry{
+    constructor(){this.attrs={};}
+    setAttribute(name,attr){this.attrs[name]=attr;}
+    setIndex(indices){this.indices=indices;}
+    computeVertexNormals(){}
+  }
+  const THREE={BufferGeometry:Geometry,Float32BufferAttribute:Attribute};
+  for(let triangles=1;triangles<=10;triangles++){
+    const make=tip=>createGrassClusterGeometry(THREE,{
+      ...GRASS_CLUSTER_DEFAULTS,grassClusterBlades:1,
+      grassClusterTriangles:triangles,grassClusterTipWidth:tip,
+    });
+    const thin=make(0);
+    const thick=make(.3);
+    const wide=make(1);
+    assert.equal(thick.indices.length,triangles*3,'no extra triangles');
+    assert.equal(thick.attrs.position.count,triangles+2,'no extra vertices');
+    const endSpan=geometry=>{
+      const a=geometry.attrs.position.array;
+      const i=(triangles)*3,j=(triangles+1)*3;
+      assert.ok(Math.abs(a[i+1]-a[j+1])<1e-6,'tip vertices share the same height');
+      return Math.hypot(a[i]-a[j],a[i+1]-a[j+1],a[i+2]-a[j+2]);
+    };
+    assert.ok(endSpan(thin)<1e-7,triangles);
+    assert.ok(endSpan(thick)>.003,triangles);
+    assert.ok(Math.abs(endSpan(thick)/endSpan(wide)-.3)<1e-4,triangles);
+    // Indexed-strip triangles must never collapse with the widened tip.
+    const pos=thick.attrs.position.array;
+    for(let i=0;i<thick.indices.length;i+=3){
+      const [a,b,c]=thick.indices.slice(i,i+3);
+      const ab=[0,1,2].map(k=>pos[b*3+k]-pos[a*3+k]);
+      const ac=[0,1,2].map(k=>pos[c*3+k]-pos[a*3+k]);
+      const cross=[
+        ab[1]*ac[2]-ab[2]*ac[1],
+        ab[2]*ac[0]-ab[0]*ac[2],
+        ab[0]*ac[1]-ab[1]*ac[0],
+      ];
+      assert.ok(Math.hypot(...cross)>1e-7,'non-degenerate triangle '+triangles+' / '+i);
+    }
+  }
 });

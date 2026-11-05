@@ -1,4 +1,5 @@
 import {FOREST_GRASS_PRESET} from './grass-generator-defaults.js';
+import {grassDistanceFalloff} from './grass-density-lod.js';
 // Standalone, deterministic grass layout/LOD. No Three.js dependency.
 export const MAX_CLUMPS = 130000;
 export const DEFAULT_GRASS_CONFIG = Object.freeze({
@@ -16,6 +17,7 @@ export const DEFAULT_GRASS_CONFIG = Object.freeze({
   maxHeight: 0.60,
   spread: 0.24,
   bladeWidth: 0.020,
+  tipWidth: 0.30,       // fraction of blade width retained at the very tip
   bladeAngleSpread: 360, // 0 = parallel, 360 = radial as before
   windDirection: 0,    // global azimuth in degrees
   windAlignment: 0,    // 0 = random/Voronoi orientation, 1 = global direction
@@ -32,7 +34,9 @@ export const DEFAULT_GRASS_CONFIG = Object.freeze({
   lodDistance: 65,      // hide clumps after this distance in metres
   densityStart: 20,     // full density up to this distance
   densityReduction: 70, // percentage culled at lodDistance
-  densityCurve: 2,     // late-falling density curve: pow(t, exponent)
+  densitySharpness: .005,  // dev rational LOD parameter k
+  densityCoefficient: .25, // dev rational LOD parameter c
+  densityOffset: 1,        // dev rational LOD parameter a
   widthIncrease: 60,   // percentage extra blade width at lodDistance
   voronoiCells: 90,    // distributed Voronoi patch centres
   voronoiStrength: 0.8, // patch cohesion: density, height, direction and tint
@@ -42,7 +46,7 @@ export const DEFAULT_GRASS_CONFIG = Object.freeze({
   microGroupGapMax: 1.6,
   microGroupRadius: 0.48,   // spread of clump roots within each microgroup, m
   groundTextureEnabled: true, // painted micrograss on the ground plane
-  groundTextureType: 'micrograss', // micrograss | forest
+  groundTextureType: 'micrograss', // micrograss | forest | blacksoil
   groundTextureScale: 4, // metres per repeated canvas tile
   ...FOREST_GRASS_PRESET, // user-selected defaults shared with the game
 });
@@ -65,13 +69,13 @@ export function validateGrassConfig(input = {}) {
     ['clumpGapMin', 0, 1.5], ['clumpGapMax', .15, 1.5],
     ['bladeGapMin', 0, .2], ['bladeGapMax', .005, .2],
     ['minHeight', .05, 2], ['maxHeight', .05, 2],
-    ['spread', .03, .65], ['bladeWidth', .004, .06], ['wind', 0, 1],
+    ['spread', .03, .65], ['bladeWidth', .004, .06], ['tipWidth', 0, 1], ['wind', 0, 1],
     ['bladeAngleSpread', 0, 360], ['windDirection', 0, 360], ['windAlignment', 0, 1],
     ['leanAngle', 0, 80], ['bendAmount', 0, 1],
     ['waveAmount', 0, 1], ['rootUpright', 0, 1],
     ['translucencyIntensity', 0, 1.5], ['aoIntensity', 0, 1],
     ['lodDistance', 30, 100], ['densityStart', 10, 30],
-    ['densityReduction', 30, 100], ['densityCurve', 0, 2], ['widthIncrease', 30, 500],
+    ['densityReduction', 30, 100], ['widthIncrease', 30, 500],
     ['voronoiCells', 10, 300], ['voronoiStrength', 0, 1],
     ['voronoiEdgeSoftness', .2, 4],
     ['microGroupStrength', 0, 1],
@@ -84,8 +88,12 @@ export function validateGrassConfig(input = {}) {
   for (const key of ['proceduralNormals', 'translucency', 'ambientOcclusion', 'groundTextureEnabled']) {
     if (typeof c[key] !== 'boolean') throw new TypeError(key + ' must be boolean');
   }
-  if (!['micrograss', 'forest'].includes(c.groundTextureType))
-    throw new RangeError('groundTextureType must be micrograss or forest');
+  for (const key of ['densitySharpness', 'densityCoefficient', 'densityOffset']) {
+    if (typeof c[key] !== 'number' || !Number.isFinite(c[key]))
+      throw new RangeError(key + ' must be finite');
+  }
+  if (!['micrograss', 'forest', 'blacksoil'].includes(c.groundTextureType))
+    throw new RangeError('groundTextureType must be micrograss, forest or blacksoil');
   if (c.fieldSize > c.mapSize) throw new RangeError('grass field cannot exceed map');
   if (!Number.isInteger(c.bladesPerClump) || !within(c.bladesPerClump, 1, 10))
     throw new RangeError('bladesPerClump must be 1..10');
@@ -110,9 +118,12 @@ export function alignClumpYaw(yaw, windDirection, alignment) {
 
 
 export function grassLodFactor(distance, config) {
-  const c = config;
-  return c.densityCurve === 0 ? 0 : Math.pow(clamp01((distance - c.densityStart) /
-    Math.max(.001, c.lodDistance - c.densityStart)), c.densityCurve);
+  return grassDistanceFalloff(distance, config.lodDistance, {
+    nearEnd: config.densityStart,
+    sharpness: config.densitySharpness,
+    coefficient: config.densityCoefficient,
+    offset: config.densityOffset,
+  });
 }
 
 // CPU LOD: actually remove instances (and triangles), not just hide in the vertex shader.

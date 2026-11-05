@@ -140,6 +140,20 @@ test('target density is a cap; low gaps enable target density, sparse gaps limit
   assert.ok(sparse.bladeCount < one.bladeCount);
 });
 
+test('editor LOD uses exactly the game dev rational equation', () => {
+  const config=validateGrassConfig({densityStart:10,lodDistance:100,
+    densityReduction:100,densitySharpness:.005,densityCoefficient:.25,
+    densityOffset:1});
+  for(const d of [0,10,11,25,45,60,75,98,100]){
+    const t=Math.max(0,Math.min(1,(d-10)/(98-10)));
+    const expected=d<=10 ? 0 : t**3/(t**3+.255*(1-t)**2);
+    assert.ok(Math.abs(grassLodFactor(d,config)-expected)<1e-10,d);
+    assert.equal(keepGrassClump(d,0.5,config),d<=100&&0.5>=expected);
+    assert.ok(Math.abs(grassWidthMultiplier(d,config)-
+      (1+4.55*expected))<1e-9);
+  }
+});
+
 test('LOD keeps near grass; farther instances are culled with deterministic probability', () => {
   const cfg = validateGrassConfig({ densityStart: 15, lodDistance: 65,
     densityReduction: 80, widthIncrease: 60 });
@@ -182,6 +196,7 @@ test('dense 100m field is bounded by CPU instance budget', () => {
 test('ground cover choices validate while preserving the existing default', () => {
   assert.equal(validateGrassConfig({}).groundTextureType, 'forest');
   assert.equal(validateGrassConfig({ groundTextureType: 'forest' }).groundTextureType, 'forest');
+  assert.equal(validateGrassConfig({ groundTextureType: 'blacksoil' }).groundTextureType, 'blacksoil');
   for (const invalid of ['mud', '', null, 42]) {
     assert.throws(() => validateGrassConfig({ groundTextureType: invalid }), RangeError);
   }

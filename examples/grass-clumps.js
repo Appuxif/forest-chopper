@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import {makeGrassClumpGeometry} from '../src/grass-clump-geometry.js';
+import {makeGrassClumpGeometry} from '../src/grass-clump-geometry.js?v=20261105-grass-tip1';
 import {createGroundMicrograssTexture,createForestGroundTexture} from '../src/grass-ground-textures.js';
+import {createBlackSoilGroundTextures} from '../src/black-soil-texture.js';
 import {
   DEFAULT_GRASS_CONFIG, generateGrassClumps, generateBladeRoots,
   keepGrassClump, hashGrass, MAX_CLUMPS,
@@ -16,6 +17,7 @@ const SLIDER_GROUPS = [
     ['maxHeight', 'Максимальная высота пучка', .05, 2, .05, 'м'],
     ['spread', 'Радиус раскрытия пучка', .03, .65, .01, 'м'],
     ['bladeWidth', 'Полуширина травинки', .004, .06, .002, 'м'],
+    ['tipWidth', 'Толщина кончика', 0, 1, .05, '%'],
     ['leanAngle', 'Наклон травинок', 0, 80, 1, '°'],
     ['bendAmount', 'Изгиб дугой / поникание', 0, 1, .01, '×'],
     ['waveAmount', 'Извилистость травинки', 0, 1, .01, '×'],
@@ -49,12 +51,16 @@ const SLIDER_GROUPS = [
     ['lodDistance', 'Дальность травы (LOD)', 30, 100, 5, 'м'],
     ['densityStart', 'Начало снижения плотности', 10, 30, 1, 'м'],
     ['densityReduction', 'Снижение плотности у края', 30, 100, 5, '%'],
-    ['densityCurve', 'Резкость затухания плотности', 0, 2, .01, '×'],
     ['widthIncrease', 'Добавка ширины у края', 30, 500, 5, '%'],
     ['wind', 'Ветер', 0, 1, .05, '%'],
   ]],
 ];
 
+const densityFormulaInputs = [
+  ['densitySharpness', 'k — добавка к коэффициенту'],
+  ['densityCoefficient', 'c — коэффициент'],
+  ['densityOffset', 'a — смещение (a − t)'],
+];
 const visualCheckboxes = ['proceduralNormals', 'translucency', 'ambientOcclusion', 'groundTextureEnabled'];
 const sliders = new Map(), sliderUnit = new Map();
 for (const [heading, descriptors] of SLIDER_GROUPS) {
@@ -81,8 +87,28 @@ for (const [heading, descriptors] of SLIDER_GROUPS) {
   }
 }
 
+// These controls are intentionally added to the same panel as the LOD sliders.
+const formulaHeader = document.createElement('h2');
+formulaHeader.textContent = 'Формула плотности из игры';
+$('sliders').append(formulaHeader);
+const formulaHelp = document.createElement('p');
+formulaHelp.textContent = 'f(t) = t³ / (t³ + (c + k) × (a − t)²). ' +
+  't — относительная дальность после зоны полной плотности. ' +
+  'Коэффициенты допускают любые конечные числа.';
+$('sliders').append(formulaHelp);
+for (const [id, title] of densityFormulaInputs) {
+  const label = document.createElement('label');
+  label.className = 'setting';
+  label.textContent = title + ': ';
+  const input = document.createElement('input');
+  Object.assign(input, { id, type: 'number', step: 'any' });
+  input.value = String(DEFAULT_GRASS_CONFIG[id]);
+  label.append(input);
+  $('sliders').append(label);
+}
+
 const geometryKeys = new Set([
-  'bladesPerClump','trianglesPerBlade','minHeight','maxHeight','spread','bladeWidth',
+  'bladesPerClump','trianglesPerBlade','minHeight','maxHeight','spread','bladeWidth','tipWidth',
   'clumpGapMin','clumpGapMax','bladeGapMin','bladeGapMax','bladeDensity','fieldSize',
   'voronoiCells','voronoiStrength','voronoiEdgeSoftness',
   'microGroupGapMin','microGroupGapMax','microGroupRadius','microGroupStrength',
@@ -134,7 +160,7 @@ function renderValues() {
   for (const [id, slider] of sliders) {
     const v = Number(slider.value);
     const unit = sliderUnit.get(id);
-    const label = (unit === '%' ? (id === 'wind' ? v * 100 : v).toFixed(0) : (
+    const label = (unit === '%' ? (id === 'wind' || id === 'tipWidth' ? v * 100 : v).toFixed(0) : (
       unit === 'м' ? v.toFixed(v < .1 ? 3 : 2) : String(v)
     )) + ' ' + unit;
     $('v-' + id).textContent = label;
@@ -143,6 +169,11 @@ function renderValues() {
 function getConfig() {
   const values = { seed: Number($('seed').value) || 0 };
   for (const [id, input] of sliders) values[id] = Number(input.value);
+  for (const [id] of densityFormulaInputs) {
+    const value = Number($(id).value);
+    values[id] = Number.isFinite(value) && $(id).value.trim() !== ''
+      ? value : currentConfig[id];
+  }
   for (const id of visualCheckboxes) values[id] = $(id).checked;
   values.groundTextureType = $('groundTextureType').value;
   return values;
@@ -168,12 +199,16 @@ function restoreSettings() {
       const value = saved[id];
       if (value >= +input.min && value <= +input.max) input.value = String(value);
     }
+    for (const [id] of densityFormulaInputs) {
+      if (typeof saved[id] === 'number' && Number.isFinite(saved[id]))
+        $(id).value = String(saved[id]);
+    }
     if (Number.isSafeInteger(saved.seed)) $('seed').value = saved.seed;
     if (typeof saved.grid === 'boolean') $('grid').checked = saved.grid;
     if (typeof saved.limitDpr === 'boolean') $('limitDpr').checked = saved.limitDpr;
-    if (['micrograss', 'forest'].includes(saved.groundTextureType))
+    if (['micrograss', 'forest', 'blacksoil'].includes(saved.groundTextureType))
       $('groundTextureType').value = saved.groundTextureType;
-    for (const id of visualCheckboxes) {
+for (const id of visualCheckboxes) {
       if (typeof saved[id] === 'boolean') $(id).checked = saved[id];
     }
     // Validate dependent ranges without dispatching events before first render.
@@ -209,7 +244,8 @@ function updateGrassShader(config = currentConfig) {
   grassUniforms.start.value = config.densityStart;
   grassUniforms.end.value = config.lodDistance;
   grassUniforms.width.value = config.widthIncrease / 100;
-  grassUniforms.curve.value = config.densityCurve;
+  grassUniforms.shape.value.set(config.densityCoefficient + config.densitySharpness,
+    config.densityOffset);
   grassUniforms.proceduralNormals.value = config.proceduralNormals ? 1 : 0;
   grassUniforms.translucency.value = config.translucency ? 1 : 0;
   grassUniforms.ambientOcclusion.value = config.ambientOcclusion ? 1 : 0;
@@ -227,7 +263,10 @@ grassMaterial.onBeforeCompile = shader => {
     start: { value: currentConfig.densityStart },
     end: { value: currentConfig.lodDistance },
     width: { value: currentConfig.widthIncrease / 100 },
-    curve: { value: currentConfig.densityCurve },
+    shape: { value: new THREE.Vector2(
+      currentConfig.densityCoefficient + currentConfig.densitySharpness,
+      currentConfig.densityOffset,
+    ) },
     proceduralNormals: { value: currentConfig.proceduralNormals ? 1 : 0 },
     translucency: { value: currentConfig.translucency ? 1 : 0 },
     ambientOcclusion: { value: currentConfig.ambientOcclusion ? 1 : 0 },
@@ -243,7 +282,7 @@ grassMaterial.onBeforeCompile = shader => {
     fcGrassStart: grassUniforms.start,
     fcGrassEnd: grassUniforms.end,
     fcGrassWidthMax: grassUniforms.width,
-    fcGrassCurve: grassUniforms.curve,
+    fcGrassShape: grassUniforms.shape,
     fcProceduralNormals: grassUniforms.proceduralNormals,
     fcTranslucency: grassUniforms.translucency,
     fcAO: grassUniforms.ambientOcclusion,
@@ -262,7 +301,7 @@ grassMaterial.onBeforeCompile = shader => {
       'uniform float fcGrassStart;',
       'uniform float fcGrassEnd;',
       'uniform float fcGrassWidthMax;',
-      'uniform float fcGrassCurve;',
+      'uniform vec2 fcGrassShape;',
       'attribute vec2 fcBladeCentre;',
       'attribute float fcBladeProgress;',
       'attribute vec3 fcBladeTangent;',
@@ -277,9 +316,13 @@ grassMaterial.onBeforeCompile = shader => {
       'vFcBladeProgress = fcBladeProgress;',
       '#ifdef USE_INSTANCING',
       '  float fcDist = length(instanceMatrix[3].xz - fcGrassCamera);',
-      '  float fcT = clamp((fcDist-fcGrassStart) / max(.001,fcGrassEnd-fcGrassStart),0.0,1.0);',
-      '  fcT = fcGrassCurve < 0.005 ? 0.0 : pow(fcT, fcGrassCurve);',
-      '  float fcWidth = 1.0 + fcT * fcGrassWidthMax;',
+      '  float fcEnd = max(fcGrassStart+1.0,fcGrassEnd-2.0);',
+      '  float fcT = clamp((fcDist-fcGrassStart)/max(.001,fcEnd-fcGrassStart),0.0,1.0);',
+      '  float fcNear = fcT*fcT*fcT;',
+      '  float fcFar = (fcGrassShape.y-fcT)*(fcGrassShape.y-fcT);',
+      '  float fcDenominator = fcNear + fcGrassShape.x*fcFar;',
+      '  float fcFalloff = fcDenominator>0.0 ? clamp(fcNear/fcDenominator,0.0,1.0) : 0.0;',
+      '  float fcWidth = 1.0 + fcFalloff * fcGrassWidthMax;',
       '  transformed.xz = fcBladeCentre + (transformed.xz - fcBladeCentre) * fcWidth;',
       '  float fcWave = sin(fcGrassTime * 1.35 + instanceMatrix[3].x * 0.31 + instanceMatrix[3].z * 0.21);',
       '  float fcWave2 = sin(fcGrassTime * 0.79 + instanceMatrix[3].z * 0.37);',
@@ -347,22 +390,31 @@ grassMaterial.customProgramCacheKey = () => 'fc-grass-clumps-symmetric-leaf-ligh
 // no download, external images, extra mesh or per-frame work.
 let micrograssTexture = null;
 let forestGroundTexture = null;
-function getGroundTexture(type) {
+let blackSoilTextures = null;
+function getGroundCover(type) {
   if (type === 'forest') {
     if (!forestGroundTexture) forestGroundTexture = createForestGroundTexture(THREE,renderer);
-    return forestGroundTexture;
+    return {map:forestGroundTexture};
+  }
+  if (type === 'blacksoil') {
+    if (!blackSoilTextures) blackSoilTextures = createBlackSoilGroundTextures(THREE,renderer);
+    return blackSoilTextures;
   }
   if (!micrograssTexture) micrograssTexture = createGroundMicrograssTexture(THREE,renderer);
-  return micrograssTexture;
+  return {map:micrograssTexture};
 }
 function groundAppearance(config, isField) {
   if (!config.groundTextureEnabled) {
-    return { map: null, color: isField ? 0x597844 : 0x526747 };
+    return {map:null, bumpMap:null, bumpScale:0, color:isField ? 0x597844 : 0x526747};
   }
   const forest = config.groundTextureType === 'forest';
+  const cover=getGroundCover(config.groundTextureType);
   return {
-    map: getGroundTexture(config.groundTextureType),
-    color: forest ? (isField ? 0xe7d9c8 : 0xc7b8a5) :
+    ...cover,
+    bumpMap:cover.bumpMap??null,
+    bumpScale:cover.bumpScale??0,
+    color:forest ? (isField ? 0xe7d9c8 : 0xc7b8a5) :
+      config.groundTextureType==='blacksoil' ? 0xffffff :
       (isField ? 0xf6ffe8 : 0xe0eccf),
   };
 }
@@ -379,6 +431,8 @@ function makeGroundPlane(size, y, config, isField) {
   const appearance = groundAppearance(config, isField);
   const material = new THREE.MeshLambertMaterial({
     map: appearance.map,
+    bumpMap: appearance.bumpMap,
+    bumpScale: appearance.bumpScale,
     color: appearance.color,
     side: THREE.DoubleSide,
   });
@@ -393,6 +447,8 @@ function updateGroundAppearance(config) {
     if (!plane) continue;
     const appearance = groundAppearance(config, isField);
     plane.material.map = appearance.map;
+    plane.material.bumpMap = appearance.bumpMap;
+    plane.material.bumpScale = appearance.bumpScale;
     plane.material.color.setHex(appearance.color);
     plane.material.needsUpdate = true;
   }
@@ -573,6 +629,20 @@ for (const [id, slider] of sliders) {
     }
   });
 }
+for (const [id] of densityFormulaInputs) {
+  $(id).addEventListener('change', () => {
+    const raw = $(id).value.trim();
+    const value = raw !== '' ? Number(raw) : NaN;
+    if (!Number.isFinite(value)) {
+      $(id).value = String(currentConfig[id]);
+      return;
+    }
+    currentConfig[id] = value;
+    updateGrassShader();
+    lodDirty = true;
+    saveSettings();
+  });
+}
 for (const id of visualCheckboxes) {
   $(id).addEventListener('change', () => {
     currentConfig[id] = $(id).checked;
@@ -620,6 +690,7 @@ $('panel-toggle').addEventListener('click', () => {
 });
 $('reset').addEventListener('click', () => {
   for (const [id, input] of sliders) input.value = DEFAULT_GRASS_CONFIG[id];
+  for (const [id] of densityFormulaInputs) $(id).value = String(DEFAULT_GRASS_CONFIG[id]);
   $('seed').value = DEFAULT_GRASS_CONFIG.seed;
   $('grid').checked = false;
   $('limitDpr').checked = true;

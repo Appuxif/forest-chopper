@@ -14,10 +14,11 @@ import {createSpruceDiagnostics} from './spruce-diagnostics.js?v=20261031-spruce
 import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js';
 import {createFlowers} from './flowers.js';
-import {createGrass} from './grass.js';
-import {createMicroGrass} from './micro-grass.js?v=20261104-grass-editor-in-game1';
+import {createGrass} from './grass.js?v=20261105-grass-fx-defaults1';
+import {createMicroGrass} from './micro-grass.js?v=20261105-grass-fx-defaults1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
 import {createGroundMicrograssTexture,createForestGroundTexture} from './grass-ground-textures.js';
+import {createBlackSoilGroundTextures} from './black-soil-texture.js';
 import {TerrainSystem} from './terrain.js?v=20261102-night-grass30';
 import {createPhysics} from './physics.js?v=20261103-debug-player1';
 import {createFallTracker,applyFallImpact} from './fall-damage.js?v=20261102-bounce-fix1';
@@ -191,14 +192,23 @@ function updateGrassGroundCover(){
   currentGroundCoverKey=key;
   let texture=clustered&&!enabled?null:groundTexture;
   if(enabled){
-    texture=grassGroundTextures.get(type);
-    if(!texture){
-      texture=type==='forest'
-        ?createForestGroundTexture(THREE,renderer,document)
-        :createGroundMicrograssTexture(THREE,renderer,document);
-      grassGroundTextures.set(type,texture);
+    let cover=grassGroundTextures.get(type);
+    if(!cover){
+      cover=type==='forest'
+        ?{map:createForestGroundTexture(THREE,renderer,document)}
+        :type==='blacksoil'
+          ?createBlackSoilGroundTextures(THREE,renderer,document)
+          :{map:createGroundMicrograssTexture(THREE,renderer,document)};
+      grassGroundTextures.set(type,cover);
     }
-    texture.repeat.set(2000/scale,2000/scale);
+    texture=cover.map;
+    cover.map.repeat.set(2000/scale,2000/scale);
+    if(cover.bumpMap)cover.bumpMap.repeat.set(2000/scale,2000/scale);
+    groundMaterial.bumpMap=cover.bumpMap??null;
+    groundMaterial.bumpScale=cover.bumpScale??0;
+  }else{
+    groundMaterial.bumpMap=null;
+    groundMaterial.bumpScale=0;
   }
   groundMaterial.map=texture;
   groundMaterial.color.setHex(clustered&&!enabled?0x597844:

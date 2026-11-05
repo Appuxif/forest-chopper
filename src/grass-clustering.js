@@ -1,6 +1,6 @@
 // Shared game-editor configuration and world-space Voronoi grass.
 import {FOREST_GRASS_PRESET} from './grass-generator-defaults.js';
-import {makeGrassClumpGeometry} from './grass-clump-geometry.js';
+import {makeGrassClumpGeometry} from './grass-clump-geometry.js?v=20261105-grass-tip1';
 
 export const GRASS_EDITOR_FIELDS=Object.freeze([
   ['grassClusterBlades','bladesPerClump',1,10,1,'Травинок в пучке','шт'],
@@ -9,6 +9,7 @@ export const GRASS_EDITOR_FIELDS=Object.freeze([
   ['grassClusterMaxHeight','maxHeight',0.05,2,0.05,'Максимальная высота пучка','м'],
   ['grassClusterSpread','spread',0.03,0.65,0.01,'Радиус раскрытия пучка','м'],
   ['grassClusterBladeWidth','bladeWidth',0.004,0.06,0.002,'Полуширина травинки','м'],
+  ['grassClusterTipWidth','tipWidth',0,1,0.05,'Толщина кончика','%'],
   ['grassClusterTilt','leanAngle',0,80,1,'Наклон травинки','°'],
   ['grassClusterBend','bendAmount',0,1,0.01,'Изгиб дугой','×'],
   ['grassClusterWave','waveAmount',0,1,0.01,'Извилистость','×'],
@@ -29,10 +30,9 @@ export const GRASS_EDITOR_FIELDS=Object.freeze([
   ['grassClusterStrength','voronoiStrength',0,1,0.01,'Сила Voronoi','×'],
   ['grassClusterSoftness','voronoiEdgeSoftness',0.2,4,0.05,'Мягкость границ','×'],
   ['grassClusterWindSpeed','wind',0,1,0.05,'Ветер','×'],
-  ['grassClusterTranslucencyIntensity','translucencyIntensity',0,1.5,0.05,'Просвечивание','×'],
-  ['grassClusterAOIntensity','aoIntensity',0,1,0.05,'Сила AO у корней','×'],
+  ['grassClusterTranslucencyIntensity','translucencyIntensity',0,1.5,0.005,'Просвечивание','×'],
+  ['grassClusterAOIntensity','aoIntensity',0,1,0.01,'Сила AO у корней','×'],
   ['grassClusterTextureScale','groundTextureScale',2,12,0.5,'Масштаб покрытия земли','м'],
-  ['grassClusterDensityCurve','densityCurve',0,2,0.01,'Резкость LOD (степень)','×'],
   ['grassClusterDensityStart','densityStart',0,30,1,'Полная плотность до','м'],
   ['grassClusterDensityReduction','densityReduction',0,100,1,'Разреживание вдали','%'],
   ['grassClusterWidthIncrease','widthIncrease',0,500,1,'Увеличение ширины вдали','%'],

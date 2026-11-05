@@ -54,9 +54,17 @@ export function makeGrassClumpGeometry(THREE, config) {
     const base = positions.length / 3;
     const steps = Math.ceil(config.trianglesPerBlade / 2);
     // Preserve exactly 1..10 triangles per blade by using an indexed strip.
+    // Odd triangle counts previously ended with a *single* zero-width tip
+    // vertex, which shimmered without MSAA. Start those strips with one
+    // centred root instead: the final vertices then form a full tip pair,
+    // with exactly the same number of vertices and triangles.
+    const oddStrip = config.trianglesPerBlade % 2 !== 0;
     for (let k = 0; k < config.trianglesPerBlade + 2; k++) {
-      const t = Math.min(1, Math.floor(k / 2) / steps);
-      const side = (k % 2 === 0) ? -1 : 1;
+      const t = oddStrip ? (k === 0 ? 0 : Math.ceil(k / 2) / steps) :
+        Math.floor(k / 2) / steps;
+      const side = oddStrip
+        ? (k === 0 ? 0 : (k % 2 === 0 ? 1 : -1))
+        : (k % 2 === 0 ? -1 : 1);
       const c = spine(t);
       const near = spine(Math.max(0, t - .015));
       const far = spine(Math.min(1, t + .015));
@@ -64,9 +72,13 @@ export function makeGrassClumpGeometry(THREE, config) {
       const inv = 1 / Math.max(1e-6, Math.hypot(gx, gy, gz));
       gx *= inv; gy *= inv; gz *= inv;
 
-      // Narrow attachment at the ground, fuller middle, tapered tip.
+      // Keep a controllable amount of width at the very tip to avoid
+      // sub-pixel slivers that shimmer on mobile devices without antialiasing.
+      // 0 = former needle profile (but odd strips keep their paired tip).
+      // 1 = constant width at the top; no extra triangles or alpha overdraw.
       const rootTaper = .20 + .80 * Math.min(1, t / .15);
-      const tipTaper = Math.pow(Math.max(0, 1 - t), .70);
+      const tipTaper = config.tipWidth + (1 - config.tipWidth) *
+        Math.pow(Math.max(0, 1 - t), .70);
       const w = width * rootTaper * tipTaper;
       positions.push(c.x + tx * w * side, c.y, c.z + tz * w * side);
       centres.push(c.x, c.z);

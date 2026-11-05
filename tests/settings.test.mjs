@@ -8,7 +8,8 @@ import {CHARACTER_LOOK_FIELDS} from '../src/character-orientation.js';
 import {GRASS_CLUSTER_DEFAULTS} from '../src/grass-clustering.js';
 
 const defaults={...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,
-  grassClusterEnabled:true,performancePreset:'high',
+  grassClusterNormalsIntensity:1,
+  grassClusterEnabled:false,grassRandomColors:false,grassYellowPercent:5,performancePreset:'high',
   mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,
  fov:75,cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
  ...Object.fromEntries(Object.entries(CHARACTER_LOOK_FIELDS).map(([key,val])=>[key,val[3]])),
@@ -1239,4 +1240,159 @@ test('pose slider inputs apply live, persist across sessions, and reset without 
  element('#fc-reset-settings').onclick();
  assert.equal(reloaded.lookSettings.lookFreeYaw,120);
  assert.equal(reloaded.cameraPitchLimit,80,'full reset still resets everything');
+});
+
+test('grass random palette toggle persists and does not switch to clump geometry',()=>{
+  assert.equal(sanitizeSettings({}).grassYellowPercent,5);
+  for(const percentage of [0,1,30,50,99,100])
+    assert.equal(sanitizeSettings({grassYellowPercent:percentage}).grassYellowPercent,percentage);
+  for(const invalid of [-1,101,50.5,NaN,Infinity,'20',null])
+    assert.equal(sanitizeSettings({grassYellowPercent:invalid}).grassYellowPercent,5);
+  assert.equal(sanitizeSettings({}).grassRandomColors,false);
+  assert.equal(sanitizeSettings({grassRandomColors:true}).grassRandomColors,true);
+  assert.equal(sanitizeSettings({grassRandomColors:'true'}).grassRandomColors,false);
+
+  const nodes=new Map();
+  const element=id=>{
+    if(!nodes.has(id))nodes.set(id,{value:'',checked:false,textContent:'',
+      style:{},setAttribute(){},querySelector:element});
+    return nodes.get(id);
+  };
+  const doc={createElement:()=>({hidden:false,style:{},setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}}};
+  const storageValues=new Map();
+  const storage={
+    getItem:key=>storageValues.get(key)??null,
+    setItem:(key,val)=>storageValues.set(key,val),
+  };
+  const settings=createSettings(doc,storage);
+  assert.equal(settings.grassRandomColors,false);
+  assert.equal(element('#fc-grass-random-colors').checked,false);
+  const slider=element('#fc-grass-yellow-percent');
+  assert.equal(slider.disabled,true);
+  assert.equal(slider.value,'5');
+  assert.equal(element('#fc-grass-yellow-percent-value').textContent,'5');
+  const checkbox=element('#fc-grass-random-colors');
+  checkbox.checked=true;
+  checkbox.onchange();
+  assert.equal(settings.grassRandomColors,true);
+  assert.equal(settings.grassClusterEnabled,false);
+  assert.equal(slider.disabled,false);
+  slider.value='72';
+  slider.oninput();
+  assert.equal(settings.grassYellowPercent,72);
+  assert.equal(element('#fc-grass-yellow-percent-value').textContent,'72');
+  const stored=JSON.parse(storageValues.get('forest-chopper:settings:v1'));
+  assert.equal(stored.grassRandomColors,true);
+  assert.equal(stored.grassYellowPercent,72);
+  const reloaded=createSettings(doc,storage);
+  assert.equal(reloaded.grassRandomColors,true);
+  assert.equal(reloaded.grassYellowPercent,72);
+  assert.equal(element('#fc-grass-random-colors').checked,true);
+  assert.equal(slider.value,'72');
+  checkbox.checked=false;
+  checkbox.onchange();
+  assert.equal(reloaded.grassRandomColors,false);
+  assert.equal(slider.disabled,true);
+  assert.equal(reloaded.grassYellowPercent,72,'remember percent when disabled');
+});
+
+test('grass lighting defaults are 100% normals, 5% translucency, 100% AO',()=>{
+  const values=sanitizeSettings({});
+  assert.equal(values.grassClusterProceduralNormals,true);
+  assert.equal(values.grassClusterNormalsIntensity,1);
+  assert.equal(values.grassClusterTranslucency,true);
+  assert.equal(values.grassClusterTranslucencyIntensity,.075);
+  assert.equal(values.grassClusterAO,true);
+  assert.equal(values.grassClusterAOIntensity,1);
+  // Previously chosen values must survive the new baseline unchanged.
+  const previous=sanitizeSettings({grassClusterTranslucencyIntensity:.6,
+    grassClusterAOIntensity:.6,grassClusterNormalsIntensity:.35});
+  assert.equal(previous.grassClusterTranslucencyIntensity,.6);
+  assert.equal(previous.grassClusterAOIntensity,.6);
+  assert.equal(previous.grassClusterNormalsIntensity,.35);
+});
+
+test('foliage sliders migrate old flags and save independent strengths, 0 = off',()=>{
+  const elements=new Map(),storageValues=new Map();
+  const element=id=>{
+    if(!elements.has(id))elements.set(id,{
+      value:'',checked:false,textContent:'',style:{},
+      setAttribute(){},querySelector:element,
+      closest(){return {classList:{toggle(){}}};},
+    });
+    return elements.get(id);
+  };
+  const doc={
+    createElement:()=>({hidden:false,style:{},setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}},
+  };
+  const storage={
+    getItem:key=>storageValues.get(key)??null,
+    setItem:(key,value)=>storageValues.set(key,value),
+  };
+  const prefs=createSettings(doc,storage);
+  const entries=[
+    {id:'normals',flag:'grassClusterProceduralNormals',intensity:'grassClusterNormalsIntensity',
+      initial:100,percent:37,expected:.37},
+    {id:'translucency',flag:'grassClusterTranslucency',intensity:'grassClusterTranslucencyIntensity',
+      initial:5,percent:73,expected:1.095},
+    {id:'ao',flag:'grassClusterAO',intensity:'grassClusterAOIntensity',
+      initial:100,percent:82,expected:.82},
+  ];
+  for(const {id,flag,intensity,initial,percent,expected} of entries){
+    const input=element('#fc-grass-fx-'+id);
+    const output=element('#fc-grass-fx-'+id+'-value');
+    assert.equal(input.value,String(initial),'migrated preset intensity '+id);
+    assert.equal(output.textContent,String(initial));
+    input.value='0';
+    input.oninput();
+    assert.equal(prefs[flag],false,'zero turns '+id+' completely off');
+    assert.equal(prefs[intensity],0);
+    assert.equal(output.textContent,'0');
+    input.value=String(percent);
+    input.oninput();
+    assert.equal(prefs[flag],true,'above zero enables '+id);
+    assert.equal(prefs[intensity],expected);
+    assert.equal(output.textContent,String(percent));
+  }
+  const restored=createSettings(doc,storage);
+  for(const {id,flag,intensity,percent,expected} of entries){
+    assert.equal(restored[flag],true);
+    assert.equal(restored[intensity],expected);
+    assert.equal(element('#fc-grass-fx-'+id).value,String(percent));
+  }
+  assert.equal(sanitizeSettings({grassClusterNormalsIntensity:.36}).grassClusterNormalsIntensity,.36);
+  for(const invalid of [-1,1.1,NaN,'0.4',null])
+    assert.equal(sanitizeSettings({grassClusterNormalsIntensity:invalid}).grassClusterNormalsIntensity,1);
+});
+
+test('old foliage checkbox settings are shown as zero without overwriting old strength',()=>{
+  const elements=new Map();
+  const element=id=>{
+    if(!elements.has(id))elements.set(id,{
+      checked:false,value:'',textContent:'',style:{},
+      setAttribute(){},querySelector:element,
+      closest(){return {classList:{toggle(){}}};},
+    });
+    return elements.get(id);
+  };
+  const storage={
+    getItem:key=>key==='forest-chopper:settings:v1'
+      ?JSON.stringify({
+        grassClusterProceduralNormals:false,grassClusterTranslucency:false,
+        grassClusterAO:false,grassClusterTranslucencyIntensity:.85,
+        grassClusterAOIntensity:.45,
+      }):null,
+    setItem(){},
+  };
+  const settings=createSettings({
+    createElement:()=>({hidden:false,style:{},setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}},
+  },storage);
+  for(const id of ['normals','translucency','ao']){
+    assert.equal(element('#fc-grass-fx-'+id).value,'0');
+  }
+  assert.equal(settings.grassClusterTranslucencyIntensity,.85);
+  assert.equal(settings.grassClusterAOIntensity,.45);
 });

@@ -37,15 +37,23 @@ src/micro-grass.js, src/world.js, src/world-startup.js.
   decides individual visibility, avoiding whole-page density jumps. Far blades
   can widen with distance. Presets in `performance-presets.js` configure these
   values; regression coverage is in `tests/micro-grass.test.mjs`.
-- Новая пучковая трава использует тот же streaming-контракт: 9 float на
-  инстанс (x,y,z,yaw,height,tint,biome,patch,weight). В worker
-  вычисляются world-space Voronoi и микрогруппы; GPU получает ту же
-  геометрию травинок, что и HTML-генератор. Старая рациональная формула
-  `grassDistanceDensity` осталась; степень `t`curve` задаётся параметром
-  поверх неё, и CPU продолжает передавать только безопасный префикс
-  инстансов. Far LOD использует `ceil(trianglesPerBlade/3)` треугольника
-  вместо near-профиля. Переход ночного радиуса, кешированные страницы,
-  dynamic clearings и actor bending не меняются.
+- Классическая трава в пучках сохраняет потоковый формат записей
+  (9 float/инстанс: x, y, z, yaw, scale, tint, biome, patchKind, patchWeight).
+  Worker создаёт world-space Voronoi и микрогруппы корней, но **не** новую
+  форму травинок. `classic-grass-clump-geometry.js` объединяет `N` экземпляров
+  оригинальной `makeTuftGeometry` в одну геометрию пучка: 6 треугольников
+  на травинку near, 4 far. Сам материал остался прежним `MeshLambertMaterial`
+  с обычными направлением, цветом, приоритетами и near/far dithering.
+  Все старые CPU/GPU коэффициенты прореживания и кеши используются без
+  дополнительной степенной/геометрической формулы; пучковая плотность
+  означает количество **травинок**, а не количество инстансов.
+  Ползунки экспериментального наклона/пригибания не влияют на этот профиль.
+- Чёрное рельефное покрытие — третий выбор наряду с micrograss/forest.
+  `black-soil-texture.js` один раз генерирует периодическую цветовую карту
+  и grayscale bump map (512px) с mipmaps, без новых mesh/draw calls.
+  Материал остаётся `MeshLambertMaterial`, карта высоты активируется только
+  на этом покрытии. Общие UV-координаты, tiling, sand/shore masks и
+  декоративное затемнение грунта сохранены.
 - LRU budgets: terrain grids 32MiB, far-forest records 24MiB, grass records
   20MiB, plus up to one inactive tree-model preset capped at 96MiB. Grass
   keeps its existing limited GPU-mesh pool.

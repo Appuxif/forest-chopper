@@ -222,6 +222,10 @@ function animate(now){
  ctx.waterSplashes?.tick(dt);
  ctx.audio?.tick(now);
  ctx.microGrass?.tick();
+ // Collectible grass tufts share the GPU-blade palette and live percentage.
+ ctx.grasses?.setPalette?.(ctx.settings?.grassRandomColors,
+   ctx.settings?.grassYellowPercent??5);
+ ctx.grasses?.setEffects?.(ctx.settings,ctx.sun);
  ctx.worldStreamer?.tick();
  ctx.groundBoxes?.tick(now);ctx.storages?.tick();ctx.campStructures?.tick(now);
  ctx.plantInteraction?.tick(dt);

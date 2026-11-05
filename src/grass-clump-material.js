@@ -4,6 +4,9 @@ export function makeGameGrassClumpMaterial(THREE,player,near,interaction=true){
   const u={
     fcGrassPlayer:{value:player},
     fcGrassFade:{value:new THREE.Vector4(-2,-1,19,26)},
+    fcGrassTierFade:{value:new THREE.Vector2(19,26)},
+    fcGrassRadius:{value:100},
+    fcGrassNearTier:{value:near?1:0},
     fcGrassSizeRange:{value:new THREE.Vector2(1,1)},
     fcGrassWidth:{value:1},
     fcGrassWindTime:{value:0},fcGrassWindSpeed:{value:0},
@@ -14,7 +17,6 @@ export function makeGameGrassClumpMaterial(THREE,player,near,interaction=true){
     fcGrassDensityLod:{value:new THREE.Vector4(10,98,4.55,.005)},
     fcGrassDensityShape:{value:new THREE.Vector2(.25,1)},
     fcGrassMinDensity:{value:0},
-    fcGrassDensityCurve:{value:.17},
     fcGrassTurnRange:{value:new THREE.Vector2(0,0)},
     fcGrassProceduralNormals:{value:1},
     fcGrassTranslucency:{value:1},fcGrassAO:{value:1},
@@ -27,7 +29,7 @@ export function makeGameGrassClumpMaterial(THREE,player,near,interaction=true){
     side:THREE.DoubleSide,depthWrite:true,toneMapped:false});
   material.userData.grassUniforms=u;
   material.customProgramCacheKey=()=> 'fc-game-curved-'+(near?'near':'far')+
-    (interaction?'-push-v4':'-basic-v4');
+    (interaction?'-push-v5':'-basic-v5');
   material.onBeforeCompile=shader=>{
     Object.assign(shader.uniforms,u);
     const vCommon=[
@@ -39,8 +41,10 @@ export function makeGameGrassClumpMaterial(THREE,player,near,interaction=true){
       'uniform float fcGrassWindSpeed;',
       'uniform vec4 fcGrassDensityLod;',
       'uniform vec2 fcGrassDensityShape;',
-      'uniform float fcGrassDensityCurve;',
       'uniform float fcGrassMinDensity;',
+      'uniform vec2 fcGrassTierFade;',
+      'uniform float fcGrassRadius;',
+      'uniform float fcGrassNearTier;',
       'uniform vec4 fcGrassClearings[24];',
       'uniform vec3 fcGrassSunDirection;',
       'uniform float fcGrassSunPower;',
@@ -62,11 +66,10 @@ export function makeGameGrassClumpMaterial(THREE,player,near,interaction=true){
       'float fcDist=length(instanceMatrix[3].xz-fcGrassPlayer);',
       'float fcT=clamp((fcDist-fcGrassDensityLod.x)/max(.001,',
       '  fcGrassDensityLod.y-fcGrassDensityLod.x),0.,1.);',
-      // Exact dev rational LOD + an optional editor-derived pre-exponent.
-      'float fcShapeT=fcGrassDensityCurve<.0001?0.:pow(fcT,fcGrassDensityCurve);',
-      'float fcNear=fcShapeT*fcShapeT*fcShapeT;',
-      'float fcFar=(fcGrassDensityShape.y-fcShapeT)*',
-      '  (fcGrassDensityShape.y-fcShapeT);',
+      // Exactly the same rational f(t) used by the CPU page culling.
+      'float fcNear=fcT*fcT*fcT;',
+      'float fcFar=(fcGrassDensityShape.y-fcT)*',
+      '  (fcGrassDensityShape.y-fcT);',
       'float fcDenom=fcNear+(fcGrassDensityShape.x+fcGrassDensityLod.w)*fcFar;',
       'float fcFalloff=fcDenom>0.?clamp(fcNear/fcDenom,0.,1.):0.;',
       'float fcCoverage=mix(1.,fcGrassMinDensity,fcFalloff);',
@@ -93,14 +96,21 @@ export function makeGameGrassClumpMaterial(THREE,player,near,interaction=true){
         'transformed.z+=dot(fcPush,instanceMatrix[2].xz)*fcTip;',
         'transformed.y-=0.075*fcStrongest*fcTip/max(instanceMatrix[1].y,.01);',
       ]:[]),
-      'float fcFadeIn=smoothstep(fcGrassFade.x,fcGrassFade.y,fcDist);',
-      'float fcFadeOut=1.-smoothstep(fcGrassFade.z,fcGrassFade.w,fcDist);',
-      'float fcVisible=fcFadeIn*fcFadeOut;',
+      // Near and far LOD share ONE density budget in their transition.
+      // The old fade multiplied vertices to zero and both tiers overlapped.
+      // Here nearWeight + farWeight == 1 at every distance; each tier
+      // gets an exclusive probabilistic share, without changing blade size.
+      'float fcFarWeight=smoothstep(fcGrassTierFade.x,',
+      '  fcGrassTierFade.y,fcDist);',
+      'float fcTierWeight=mix(fcFarWeight,1.-fcFarWeight,fcGrassNearTier);',
+      'float fcVisible=1.-step(fcGrassRadius,fcDist);',
       'for(int i=0;i<24;i++){vec4 area=fcGrassClearings[i];',
       'if(area.w>.5&&distance(instanceMatrix[3].xz,area.xy)<area.z)',
       '  fcVisible=0.;}',
-      // Same instance priority and curve as conservative CPU prefix LOD.
-      'fcVisible*=step(fcGrassPriority,clamp(fcCoverage,0.,1.));',
+      // Same dev rational equation and priority as conservative CPU prefix LOD.
+      // A single final draw decision: not a second density formula.
+      // CPU submits a conservative prefix of this exact same priority.
+      'fcVisible*=step(fcGrassPriority,clamp(fcCoverage*fcTierWeight,0.,1.));',
       'transformed*=fcVisible;',
       '#endif',
       'vec3 smoothN=normalize(cross(fcBladeAcross,fcBladeTangent));',

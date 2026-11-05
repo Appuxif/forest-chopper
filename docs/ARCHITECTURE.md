@@ -159,18 +159,29 @@ mask projections удалены. В текущих файлах проекта f
 - Дальний лес объединяется в независимые 96-метровые сектора GPU Instancing;
   frustum culling выполняет Three.js.
 - Трава использует отдельные near/far LOD и пул InstancedMesh.
-  Геометрия изогнутых пучков едина у игрового кода и HTML-генератора
-  (`src/grass-clump-geometry.js`, `src/grass-clumps-core.mjs`), а
-  `grass-clustering.js` строит Voronoi-области и микрогруппы в мировых
-  координатах. `micro-grass.js` сохраняет worker/LRU, два LOD, frustum
-  culling, clearings, actor bending и рациональную формулу dev с
-  настраиваемой степенью. `grass-clump-material.js` даёт двусторонний
-  шейдер без alpha/overdraw. `grass-ground-textures.js` создаёт в игре
-  те же CanvasTexture-покрытия, что и в лаборатории, без новых мешей.
-  Пресет — `assets/presets/grass-generator-default.json`,
-  отображение настроек — `grass-generator-defaults.js`/`settings.js`.
-  `mapSize` и `fieldSize` применимы только в прототипе, поскольку
-  игровой мир стримится по чанкам.
+  В пучковом режиме игра использует **старый** профиль и Lambert-материал
+  (`src/classic-grass-clump-geometry.js`, `micro-grass.js`) и собирает
+  несколько старых травинок в один инстанс. `grass-clustering.js` строит
+  Voronoi-области и микрогруппы в мировых координатах. Модель в
+  `grass-clump-geometry.js` и шейдер `grass-clump-material.js` остаются
+  экспериментальными компонентами HTML-редактора и не используются
+  в игровом пучковом рендере. Три управляемых shader-uniform эффекта
+  `Procedural Normals`, `Translucency`, `AO` реализованы отдельно в
+  `grass-palette.js` для старого `MeshLambertMaterial` мелкой травы и
+  собираемых кустиков `grass.js`. Двустороннее освещение сохраняет одну
+  нормаль на обеих сторонах ленты, контровое просвечивание учитывает
+  положение солнца и его интенсивность, AO усиливает затенение у корней.
+  Три ползунка 0–100% заменяют отдельные флаги в игровых настройках;
+  0% отключает эффект. Для нормалей регулируется доля смешивания между
+  вертикальной нормалью старой травы и процедурной сглаженной нормалью.
+  Старые флаги и численные интенсивности Translucency/AO остаются в
+  сохранениях и HTML-генераторе; игровой UI показывает нормализованные
+  проценты без отдельной галочки. Uniforms обновляются без изменения
+  буферов и shader program.
+  Сохраняются worker/LRU, оба LOD, frustum culling, clearings,
+  actor bending и рациональная формула `dev` с исходными коэффициентами
+  и размерами. `grass-ground-textures.js` создаёт игровые покрытия.
+  `mapSize` и `fieldSize` применимы только в HTML-прототипе.
 - Пресеты графики объявлены в `src/performance-presets.js`: Ultra/High
   используют MSAA, Medium/Low — без MSAA. Изменение антиалиасинга требует
   нового WebGL-контекста; остальные поддерживаемые параметры применяются

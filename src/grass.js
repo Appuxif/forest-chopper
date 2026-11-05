@@ -1,3 +1,4 @@
+import {applyClassicGrassTwoSidedLighting,applyGrassRandomPalette,makeGrassFoliageUniforms,updateGrassFoliageUniforms,applyGrassFoliageEffects} from './grass-palette.js?v=20261105-grass-fx-sliders1';
 // Forest grass assembled from gently curved, tapered blades, not cone pyramids.
 // Four silhouettes × three regional colors. All 12 geometries and one vertex-
 // colored material are shared by every chunk; one tuft is always ONE draw call.
@@ -38,16 +39,33 @@ export function createGrass(THREE) {
   const material=new THREE.MeshLambertMaterial({
     side:THREE.DoubleSide,vertexColors:true,
   });
+  // One shared shader and two uniforms for every collectible tuft, even when
+  // region batched via InstancedMesh. Changing options does not rebuild decor.
+  const paletteUniforms={
+    fcGrassRandomColors:{value:0},
+    fcGrassYellowShare:{value:.05},
+    ...makeGrassFoliageUniforms(),
+  };
+  material.userData??={};
+  material.userData.grassPaletteUniforms=paletteUniforms;
+  material.customProgramCacheKey=()=> 'collectible-grass-shared-fx-v2';
+  material.onBeforeCompile=shader=>{
+    applyGrassRandomPalette(shader,paletteUniforms);
+    applyClassicGrassTwoSidedLighting(shader);
+    applyGrassFoliageEffects(shader,paletteUniforms);
+  };
 
   function geometryFor(shapeIndex,paletteIndex) {
     const style=SHAPES[shapeIndex],palette=PALETTES[paletteIndex];
-    const position=[],colors=[];
-    function vertex(point,color) {
+    const position=[],colors=[],bladeIndices=[];
+    function vertex(point,color,bladeIndex) {
       position.push(...point);
       colors.push(...color);
+      bladeIndices.push(bladeIndex);
     }
-    function triangle(a,b,c,ca,cb,cc){
-      vertex(a,ca);vertex(b,cb);vertex(c,cc);
+    function triangle(a,b,c,ca,cb,cc,bladeIndex){
+      vertex(a,ca,bladeIndex);vertex(b,cb,bladeIndex);
+      vertex(c,cc,bladeIndex);
     }
 
     for(let blade=0;blade<style.blades;blade++) {
@@ -90,9 +108,9 @@ export function createGrass(THREE) {
       for(let i=1;i<steps.length;i++){
         const next=ring(steps[i]);
         triangle(prev.left,next.left,prev.right,
-          prev.color,next.color,prev.color);
+          prev.color,next.color,prev.color,blade);
         triangle(prev.right,next.left,next.right,
-          prev.color,next.color,next.color);
+          prev.color,next.color,next.color,blade);
         prev=next;
       }
     }
@@ -100,6 +118,7 @@ export function createGrass(THREE) {
     const geometry=new THREE.BufferGeometry();
     geometry.setAttribute('position',new THREE.Float32BufferAttribute(position,3));
     geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+    geometry.setAttribute('fcGrassBladeIndex',new THREE.Float32BufferAttribute(bladeIndices,1));
     geometry.computeVertexNormals();
     return geometry;
   }
@@ -119,5 +138,11 @@ export function createGrass(THREE) {
     return tuft;
   }
 
-  return {create,geometries,materials:[material]};
+  function setPalette(enabled,yellowPercent=5){
+    paletteUniforms.fcGrassRandomColors.value=enabled?1:0;
+    paletteUniforms.fcGrassYellowShare.value=Math.max(0,Math.min(100,yellowPercent))/100;
+  }
+  return {create,geometries,materials:[material],setPalette,
+    setEffects(settings,sun){updateGrassFoliageUniforms(paletteUniforms,settings,sun);},
+  };
 }
