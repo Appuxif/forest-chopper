@@ -193,6 +193,11 @@ git diff --check
 `window.__gameDebug` появляется после входа в мир. Обычный `index.html`
 его не экспортирует. Подробности — [AI_PLAYER_DEBUG.md](docs/AI_PLAYER_DEBUG.md).
 
+**Альтернатива Chrome DevTools MCP:** [tools/browser-qa](tools/browser-qa/README.md)
+— изолированный headless Chrome через Python/CDP, команды Terminal MCP для
+JS/скриншотов/клавиатуры/touch/консоли и автономный `smoke` с отчётом.
+Пример: `python3 tools/browser-qa/browser_qa.py smoke --model male --no-sandbox --software-gl`.
+
 Оба entrypoint поддерживают URL-параметры:
 
 ```text

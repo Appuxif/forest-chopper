@@ -7,6 +7,7 @@ forest_world.json
 .idea/
 tools/*
 !tools/audio-cutter/
+!tools/browser-qa/
 characters/lumberjack/lumberjack.blend1
 
 .codex/
