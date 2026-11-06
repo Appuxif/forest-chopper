@@ -3,11 +3,17 @@
 export const GROUND_TEXTURE_SIZE = 256;
 export const GROUND_TILE_METERS = 28;
 
-// Ground-only, procedural density shadows: no extra shadow render pass or
-// per-blade shadow map. Shared clearings match the instanced grass shader.
+// Worker-baked grass contact AO, sampled from a moving atlas of already baked
+// geometry tiles. No CPU root-stamping or sun-shadow passes on game frames.
 export function enableGrassDensityShadows(THREE, material) {
   const uniforms={
     fcGroundGrassDensity:{value:25},
+    fcGroundGrassShadowMap:{value:null},
+    fcGroundGrassShadowIntensity:{value:.8},
+    fcGroundGrassShadowRadius:{value:.5},
+    fcGroundGrassShadowSoftness:{value:50},
+    fcGroundGrassShadowEdgeFade:{value:1},
+    fcGroundGrassShadowPatch:{value:new THREE.Vector3(0,0,0)},
     fcGroundGrassClearings:{value:Array.from({length:24},()=>new THREE.Vector4())},
   };
   material.onBeforeCompile=shader=>{
@@ -21,6 +27,12 @@ export function enableGrassDensityShadows(THREE, material) {
       varying vec2 fcGroundPosition;
       varying vec2 fcShoreMask;
       uniform float fcGroundGrassDensity;
+      uniform sampler2D fcGroundGrassShadowMap;
+      uniform float fcGroundGrassShadowIntensity;
+      uniform float fcGroundGrassShadowRadius;
+      uniform float fcGroundGrassShadowSoftness;
+      uniform float fcGroundGrassShadowEdgeFade;
+      uniform vec3 fcGroundGrassShadowPatch;
       uniform vec4 fcGroundGrassClearings[24];
       float fcGrassHash(vec2 p) {
         return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);
@@ -48,21 +60,31 @@ export function enableGrassDensityShadows(THREE, material) {
           fcBeach*=1.0-.24*fcWet;
           diffuseColor.rgb=mix(diffuseColor.rgb,fcBeach,fcSand);
         }
-        // Small-scale overlapping blades create an uneven soft ground shadow.
-        float fcCoverage=0.48*fcGrassNoise(fcGroundPosition*1.9)
-          +0.52*fcGrassNoise(fcGroundPosition*4.3);
-        float fcShadow=clamp((fcCoverage-0.28)*0.36,0.,0.22)
-          *clamp(fcGroundGrassDensity/25.,0.,1.5);
-        fcShadow*=smoothstep(1.68,2.1,abs(fcGroundPosition.y));
-        fcShadow*=1.0-clamp(fcShoreMask.x,0.0,1.0)*.94;
-        for(int i=0;i<24;++i){
-          vec4 area=fcGroundGrassClearings[i];
-          if(area.w>0.5){
-            fcShadow*=smoothstep(area.z-0.16,area.z+0.16,
-              distance(fcGroundPosition,area.xy));
+        // Distance field baked once per generated grass geometry tile in a
+        // Worker. Radius/intensity/softness are cheap real-time uniforms.
+        if(fcGroundGrassShadowPatch.z>0.0&&fcGroundGrassShadowIntensity>0.0&&
+            fcGroundGrassShadowRadius>0.001){
+          vec2 fcUV=(fcGroundPosition-fcGroundGrassShadowPatch.xy)/
+            fcGroundGrassShadowPatch.z;
+          if(all(greaterThanEqual(fcUV,vec2(0.0)))&&
+             all(lessThanEqual(fcUV,vec2(1.0)))){
+            // Encoded distance is in metres / 1.0; 255 means no nearby root.
+            float fcDistance=texture2D(fcGroundGrassShadowMap,fcUV).r;
+            float fcT=clamp(fcDistance/max(0.001,fcGroundGrassShadowRadius),0.0,1.0);
+            float fcPower=mix(.55,4.0,clamp(fcGroundGrassShadowSoftness/100.0,0.0,1.0));
+            float fcShadow=pow(max(0.0,1.0-fcT*fcT),fcPower);
+            vec2 fcEdge=min(fcUV,vec2(1.0)-fcUV);
+            float fcFade=smoothstep(0.0,0.045,min(fcEdge.x,fcEdge.y));
+            fcShadow*=mix(1.0,fcFade,fcGroundGrassShadowEdgeFade);
+            fcShadow*=1.0-clamp(fcShoreMask.x,0.0,1.0)*.98;
+            for(int i=0;i<24;++i){
+              vec4 area=fcGroundGrassClearings[i];
+              if(area.w>0.5)fcShadow*=smoothstep(area.z-.16,area.z+.16,
+                distance(fcGroundPosition,area.xy));
+            }
+            diffuseColor.rgb*=1.0-fcGroundGrassShadowIntensity*fcShadow;
           }
-        }
-        diffuseColor.rgb*=1.0-fcShadow;`);
+        }`);
   };
   material.userData.grassDensityUniforms=uniforms;
   return uniforms;

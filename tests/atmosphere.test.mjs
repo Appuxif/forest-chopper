@@ -108,7 +108,8 @@ function fixture(){
   const hemisphere={layers:new Layers(),intensity:2.1};
   const renders=[];
   const renderer={shadowMap:{render(lights,shadowScene,viewCamera){
-    renders.push({light:lights[0],count:shadowScene.children.length,mask:viewCamera.layers.mask});
+    renders.push({light:lights[0],count:shadowScene.children.length,
+      objects:[...shadowScene.children],mask:viewCamera.layers.mask});
     lights[0].shadow.needsUpdate=false;
   }}};
   const ground={receiveShadow:false};

@@ -6,6 +6,15 @@ import {GRASS_CLUSTER_FIELDS,GRASS_CLUSTER_DEFAULTS,GRASS_CLUSTER_FLAGS} from '.
 import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js?v=20261103-shared-birch-all1';
 import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS,PERFORMANCE_LIGHTING_PRESETS} from './performance-presets.js?v=20261103-grass-presets-tuned1';
 import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261105-mob-hit-audio1';
+export const GRASS_AO_FIELDS=Object.freeze({
+  grassAOIntensity:[0,100,1,80,'Интенсивность AO','%'],
+  grassAOShadowRadius:[0,50,1,50,'Радиус затенения','см'],
+  grassAOSoftness:[0,100,5,50,'Мягкость границ','%'],
+  grassAORootSampling:[5,100,5,100,'Доля корней при запекании','%'],
+  grassAOTilesPerFrame:[1,4,1,2,'Загружать новых тайлов за кадр','шт'],
+  grassAOUploadsPerSecond:[1,20,1,8,'Максимум загрузок атласа в секунду','/с'],
+  grassAOCacheTiles:[16,128,16,64,'Кеш карт AO','тайлов'],
+});
 const KEY = 'forest-chopper:settings:v1';
 export const LIGHTING_FIELDS=Object.freeze({
  dayAmbient:[0,3,.05,1.2,'☀️ Рассеянный свет дня'],
@@ -59,6 +68,8 @@ const DEFAULT=Object.freeze({
  grassClusterNormalsIntensity:1,
  ...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,grassClusterEnabled:false,
  grassRandomColors:false,grassYellowPercent:5,
+ grassAOEnabled:true,grassAOResolution:128,grassAOAtlasTiles:5,grassAOEdgeFade:true,
+ ...Object.fromEntries(Object.entries(GRASS_AO_FIELDS).map(([key,field])=>[key,field[3]])),
   performancePreset:'high',
   mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,fov:75,
  cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
@@ -137,6 +148,18 @@ export function sanitizeSettings(value) {
       && source.shadowContrast <= 100 ? source.shadowContrast : DEFAULT.shadowContrast,
     grassClusterEnabled: source.grassClusterEnabled===true,
     grassRandomColors: source.grassRandomColors===true,
+    grassAOEnabled:source.grassAOEnabled!==false,
+    grassAOEdgeFade:source.grassAOEdgeFade!==false,
+    grassAOResolution:[64,128,256].includes(source.grassAOResolution)
+      ?source.grassAOResolution:DEFAULT.grassAOResolution,
+    grassAOAtlasTiles:[3,5].includes(source.grassAOAtlasTiles)
+      ?source.grassAOAtlasTiles:DEFAULT.grassAOAtlasTiles,
+    ...Object.fromEntries(Object.entries(GRASS_AO_FIELDS).map(([key,field])=>{
+      let value=source[key];
+      const [min,max,step,fallback]=field;
+      return [key,Number.isFinite(value)&&value>=min&&value<=max
+        ?Math.round(value/step)*step:fallback];
+    })),
     grassYellowPercent: Number.isInteger(source.grassYellowPercent)
       && source.grassYellowPercent>=0 && source.grassYellowPercent<=100
       ? source.grassYellowPercent:DEFAULT.grassYellowPercent,
@@ -705,6 +728,32 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <small>Уменьшает фоновый свет внутри теней: 0% — мягкие, 100% — максимально контрастные. Применяется и днём, и ночью.</small>
     <small>В обе карты CSM входят деревья и персонажи; ближняя обновляется каждый кадр, дальняя — по таймеру.</small>
       </div>
+    <div class="fc-light-group">
+      <h3>🌿 Baked Ground AO · тени под травой</h3>
+      <label><input id="fc-grass-ao-enabled" type="checkbox"> Включить Baked Ground AO</label>
+      <small>Карты расстояний до настоящих корней запекаются в воркере вместе с геометрией травы.
+        Радиус, интенсивность и мягкость работают без повторного запекания.
+        Без дополнительных проходов теней.</small>
+      ${Object.entries(GRASS_AO_FIELDS).map(([key,[min,max,step,,label,unit]])=>
+        `<label>${label}: <output id="fc-${key}-value"></output> ${unit}
+        <input id="fc-${key}" type="range" min="${min}" max="${max}" step="${step}"></label>`).join('')}
+      <label>Разрешение одной карты AO
+        <select id="fc-grass-ao-resolution">
+          <option value="64">64×64 · экономно</option>
+          <option value="128">128×128 · баланс</option>
+          <option value="256">256×256 · детально</option>
+        </select></label>
+      <label>Область атласа вокруг игрока
+        <select id="fc-grass-ao-atlas-tiles">
+          <option value="3">3×3 тайла · 36×36 м</option>
+          <option value="5">5×5 тайлов · 60×60 м</option>
+        </select></label>
+      <label><input id="fc-grass-ao-edge-fade" type="checkbox">
+        Плавное затухание AO на границе атласа</label>
+      <small>Разрешение и доля корней требуют перезапекания в воркерах.
+        Для телефонов: 64×64, 3×3, 5–10 обновлений/с.</small>
+    </div>
+
       ${[
         ['sun-cascades','☀️ Ближние солнечные тени · каждый кадр',
           ['sunNearShadowDistance','sunNearShadowMapSize','sunCascadeBlendDistance','sunCascadeCasterOverlap','sunNearShadowSoftness']]
@@ -785,6 +834,14 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const grassMinSizeInput = panel.querySelector('#fc-grass-min-size');
   const grassMaxSizeInput = panel.querySelector('#fc-grass-max-size');
   const grassWidthInput = panel.querySelector('#fc-grass-width');
+  const grassAOEnabled=panel.querySelector('#fc-grass-ao-enabled');
+  const grassAOEdgeFade=panel.querySelector('#fc-grass-ao-edge-fade');
+  const grassAOResolution=panel.querySelector('#fc-grass-ao-resolution');
+  const grassAOAtlasTiles=panel.querySelector('#fc-grass-ao-atlas-tiles');
+  const grassAOInputs=Object.entries(GRASS_AO_FIELDS).map(([key])=>({
+    key,input:panel.querySelector('#fc-'+key),
+    output:panel.querySelector('#fc-'+key+'-value'),
+  }));
   const grassClusterEnabled=panel.querySelector('#fc-grass-cluster-enabled');
   const grassRandomColorsInput=panel.querySelector('#fc-grass-random-colors');
   const grassYellowPercentInput=panel.querySelector('#fc-grass-yellow-percent');
@@ -890,6 +947,14 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     shadowRefreshValue.textContent = state.shadowRefreshSeconds===0?'каждый кадр':String(state.shadowRefreshSeconds)+' с';
     grassClusterEnabled.checked=state.grassClusterEnabled;
     grassRandomColorsInput.checked=state.grassRandomColors;
+    grassAOEnabled.checked=state.grassAOEnabled;
+    grassAOEdgeFade.checked=state.grassAOEdgeFade;
+    grassAOResolution.value=String(state.grassAOResolution);
+    grassAOAtlasTiles.value=String(state.grassAOAtlasTiles);
+    for(const {key,input,output} of grassAOInputs){
+      input.value=String(state[key]);
+      output.textContent=String(state[key]);
+    }
     grassYellowPercentInput.value=String(state.grassYellowPercent);
     grassYellowPercentValue.textContent=String(state.grassYellowPercent);
     grassYellowPercentInput.disabled=!state.grassRandomColors;
@@ -1170,6 +1235,23 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     state.grassClusterEnabled=grassClusterEnabled.checked;
     reflect();save();
   };
+  grassAOEnabled.onchange=()=>{
+    state.grassAOEnabled=grassAOEnabled.checked;reflect();save();
+  };
+  grassAOEdgeFade.onchange=()=>{
+    state.grassAOEdgeFade=grassAOEdgeFade.checked;reflect();save();
+  };
+  grassAOResolution.onchange=()=>{
+    state.grassAOResolution=Number(grassAOResolution.value);reflect();save();
+  };
+  grassAOAtlasTiles.onchange=()=>{
+    state.grassAOAtlasTiles=Number(grassAOAtlasTiles.value);reflect();save();
+  };
+  for(const {key,input} of grassAOInputs){
+    input.oninput=()=>{
+      state[key]=Number(input.value);reflect();save();
+    };
+  }
   grassRandomColorsInput.onchange=()=>{
     state.grassRandomColors=grassRandomColorsInput.checked;
     reflect();save();
@@ -1472,6 +1554,17 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get characterShadowDistance(){return state.characterShadowDistance;},
     get shadowContrast(){return state.shadowContrast;},
     get grassClusterEnabled(){return state.grassClusterEnabled;},
+    get grassAOEnabled(){return state.grassAOEnabled;},
+    get grassAOEdgeFade(){return state.grassAOEdgeFade;},
+    get grassAOResolution(){return state.grassAOResolution;},
+    get grassAOAtlasTiles(){return state.grassAOAtlasTiles;},
+    get grassAOIntensity(){return state.grassAOIntensity;},
+    get grassAOShadowRadius(){return state.grassAOShadowRadius;},
+    get grassAOSoftness(){return state.grassAOSoftness;},
+    get grassAORootSampling(){return state.grassAORootSampling;},
+    get grassAOTilesPerFrame(){return state.grassAOTilesPerFrame;},
+    get grassAOUploadsPerSecond(){return state.grassAOUploadsPerSecond;},
+    get grassAOCacheTiles(){return state.grassAOCacheTiles;},
     get grassRandomColors(){return state.grassRandomColors;},
     get grassYellowPercent(){return state.grassYellowPercent;},
     get grassClusterBlades(){return state.grassClusterBlades;},

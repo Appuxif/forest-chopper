@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {sanitizeSettings,createSettings,lightingFieldMarkup,lookRangeMarkup,settingsExportJSON,LIGHTING_FIELDS,LIGHTING_FLAGS} from '../src/settings.js';
+import {sanitizeSettings,createSettings,lightingFieldMarkup,lookRangeMarkup,settingsExportJSON,LIGHTING_FIELDS,LIGHTING_FLAGS,GRASS_AO_FIELDS} from '../src/settings.js';
 import {PERFORMANCE_DEFAULTS,PERFORMANCE_PRESETS,PERFORMANCE_LIGHTING_PRESETS} from '../src/performance-presets.js';
 import {DEFAULT_AUDIO,SOUND_CONTROLS} from '../src/sound-rules.js';
 import {CHARACTER_LOOK_FIELDS} from '../src/character-orientation.js';
@@ -9,7 +9,10 @@ import {GRASS_CLUSTER_DEFAULTS} from '../src/grass-clustering.js';
 
 const defaults={...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,
   grassClusterNormalsIntensity:1,
-  grassClusterEnabled:false,grassRandomColors:false,grassYellowPercent:5,performancePreset:'high',
+  grassClusterEnabled:false,grassRandomColors:false,grassYellowPercent:5,
+  grassAOEnabled:true,grassAOResolution:128,grassAOAtlasTiles:5,grassAOEdgeFade:true,
+  ...Object.fromEntries(Object.entries(GRASS_AO_FIELDS).map(([key,field])=>[key,field[3]])),
+  performancePreset:'high',
   mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,
  fov:75,cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
  ...Object.fromEntries(Object.entries(CHARACTER_LOOK_FIELDS).map(([key,val])=>[key,val[3]])),
@@ -1395,4 +1398,20 @@ test('old foliage checkbox settings are shown as zero without overwriting old st
   }
   assert.equal(settings.grassClusterTranslucencyIntensity,.85);
   assert.equal(settings.grassClusterAOIntensity,.45);
+});
+
+
+test('baked ground AO settings: 80%/50 cm defaults and quality controls',()=>{
+  assert.equal(sanitizeSettings({}).grassAOIntensity,80);
+  assert.equal(sanitizeSettings({}).grassAOShadowRadius,50);
+  assert.equal(sanitizeSettings({grassAOEnabled:false}).grassAOEnabled,false);
+  assert.equal(sanitizeSettings({grassAOResolution:64}).grassAOResolution,64);
+  assert.equal(sanitizeSettings({grassAOResolution:256}).grassAOResolution,256);
+  assert.equal(sanitizeSettings({grassAOResolution:192}).grassAOResolution,128);
+  assert.equal(sanitizeSettings({grassAOAtlasTiles:3}).grassAOAtlasTiles,3);
+  assert.equal(sanitizeSettings({grassAORootSampling:50}).grassAORootSampling,50);
+  assert.equal(sanitizeSettings({grassAOUploadsPerSecond:4}).grassAOUploadsPerSecond,4);
+  assert.equal(sanitizeSettings({grassAOIntensity:101}).grassAOIntensity,80);
+  assert.equal(sanitizeSettings({grassFakeShadowIntensity:72}).grassAOIntensity,80);
+  assert.equal(sanitizeSettings({grassFakeShadowRadius:44}).grassAOShadowRadius,50);
 });

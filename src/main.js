@@ -4,7 +4,7 @@ import {createMobileHud} from './mobile-hud.js?v=20261104-fps3';
 import {createRagdoll} from './ragdoll.js?v=20261106-rapier0211';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
 import {createAnimations} from './animations.js?v=20261105-crescent-low-game1';
-import {createWorld} from './world.js?v=20261103-region-default-3';
+import {createWorld} from './world.js?v=20261105-decor-receivers2';
 import {generateSpruceParts} from './spruce-model.js?v=20261103-shared-birch-all1';
 import {generateBirchParts} from './birch-model.js?v=20261103-shared-birch-all1';
 import {normalizeCharacterModel} from './character-model-selection.js?v=20261105-lumberjack-chop-1812';
@@ -12,11 +12,11 @@ import {createTreeWindShader} from './tree-wind-shader.js?v=20261031-gpu-bending
 import {readActiveTreeConfig,limitTreeModelTriangles} from './tree-model-config.js?v=20261103-shared-birch-all1';
 import {createSpruceDiagnostics} from './spruce-diagnostics.js?v=20261031-spruce-bark1';
 import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
-import {createMushrooms} from './mushrooms.js';
-import {createFlowers} from './flowers.js';
-import {createGrass} from './grass.js?v=20261105-grass-fx-defaults1';
-import {createMicroGrass} from './micro-grass.js?v=20261105-grass-fx-defaults1';
-import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261031-sandy-shores1';
+import {createMushrooms} from './mushrooms.js?v=20261105-ground-receive-shadows1';
+import {createFlowers} from './flowers.js?v=20261105-ground-receive-shadows1';
+import {createGrass} from './grass.js?v=20261105-ground-receive-shadows1';
+import {createMicroGrass} from './micro-grass.js?v=20261105-baked-ground-ao2';
+import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261105-baked-ground-ao2';
 import {createGroundMicrograssTexture,createForestGroundTexture} from './grass-ground-textures.js';
 import {createBlackSoilGroundTextures} from './black-soil-texture.js';
 import {TerrainSystem} from './terrain.js?v=20261102-night-grass30';
@@ -31,7 +31,7 @@ import {createCharacterOrientation} from './character-orientation.js?v=20261105-
 import {createMultiplayer} from './multiplayer.js?v=20261105-ori07-network-pose1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261105-run-look-limits1';
+import {createSettings} from './settings.js?v=20261106-rebase-grass-ao1';
 import {createGameAudio} from './game-audio.js?v=20261105-mob-hit-audio1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';
@@ -39,7 +39,7 @@ import {createLandmarks} from './landmarks.js?v=20261103-distant-fire-billboard2
 import {createPlantInteraction} from './plant-interaction.js?v=20261103-decor-region2';
 import {selectDecorShadowCasters} from './decor-shadows.js?v=20261103-decor-region2';
 import {createDayCycle} from './day-cycle.js?v=20261103-night-horizon-black1';
-import {createAtmosphere} from './atmosphere.js?v=20261103-render-profiler1';
+import {createAtmosphere} from './atmosphere.js?v=20261105-ground-receive-shadows1';
 import {selectCharacterShadowCasters} from './character-shadow-lod.js?v=20261030-character-shadow-range1';
 import {createEmotes} from './emotes.js';
 import {createPlayerList} from './player-list.js';
@@ -54,7 +54,7 @@ import {createInventory} from './inventory-ui.js?v=20261105-crescent-axe-test1';
 import {createStorages} from './storages.js?v=20261102-collision-world1';
 import {createCampStructures} from './camp-structures.js?v=20261103-distant-fire-billboard20';
 import {createVitalsUI} from './vitals-ui.js?v=20261102-debug-cheats';
-import {createForestResources} from './forest-resources.js?v=20261103-decor-region2';
+import {createForestResources} from './forest-resources.js?v=20261105-soft-grass-root-discs1';
 import {createGroundBoxes} from './ground-boxes.js?v=20261104-save-slots1';
 import {createWaterSplashes} from './water-splashes.js?v=20261031-droplets-only1';
 import {WorldTaskScheduler} from './world-task-scheduler.js';
@@ -121,7 +121,7 @@ const groundMaterial=new THREE.MeshLambertMaterial({map:groundTexture});
 enableGrassDensityShadows(THREE,groundMaterial);
 const terrain=new TerrainSystem(THREE,{scene,camera,material:groundMaterial});
 const worldStreamer=new WorldTaskScheduler({
-  workerUrl:new URL('./world-stream-worker.js',import.meta.url),
+  workerUrl:new URL('./world-stream-worker.js?v=20261105-baked-ground-ao2',import.meta.url),
   workers:2,applyPerTick:2,applyMs:2,
 });
 terrain.setScheduler(worldStreamer);
@@ -720,7 +720,7 @@ if(menuLaunch.mode==='online'){
 }
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261106-ragdoll-stress1');
+  const { installDebug } = await import('./debug.js?v=20261106-rebase-stress-grass-ao1');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

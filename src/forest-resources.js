@@ -17,6 +17,7 @@ export function createForestResources(ctx){
  for(const [kind,{geo,mat}] of Object.entries(models)){
   const mesh=new THREE.InstancedMesh(geo,mat,RESOURCE_LIMIT);
   mesh.count=0;mesh.frustumCulled=false;mesh.castShadow=false;
+  mesh.receiveShadow=true; // Sun/fire shadows, including on InstancedMesh branch/stone.
   (mesh.userData??={}).profileCategory='resources';
   scene.add(mesh);meshes[kind]=mesh;
  }
@@ -129,6 +130,7 @@ export function createForestResources(ctx){
     const model=models[kind];
     if(!model)return null;
     const mesh=new THREE.Mesh(model.geo,model.mat);
+    mesh.receiveShadow=true;
     if(kind==='branch')mesh.rotation.z=Math.PI/2;
     return mesh;
   },

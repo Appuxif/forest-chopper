@@ -102,6 +102,7 @@ export function createFlowers(THREE) {
     const index=Number.isInteger(speciesIndex)&&speciesIndex>=0&&
       speciesIndex<FLOWER_SPECIES.length?speciesIndex:0;
     const flower=new THREE.Mesh(geometries[index],material);
+    flower.receiveShadow=true;
     flower.userData.flowerSpecies=FLOWER_SPECIES[index];
     return flower;
   }

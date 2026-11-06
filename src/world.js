@@ -2,7 +2,7 @@ import {decorResourceId} from './collectible-decor.js';
 // Extracted from the original single-file game. Shared game state is passed explicitly.
 import {treeCandidate,treeCanSpawn} from './tree-spacing.js?v=20261030-spacing-4m1';
 import {createTreeBatch} from './tree-instancing.js?v=20261103-render-profiler1';
-import {createDecorRegionManager} from './decor-region-batches.js?v=20261103-region-default-3';
+import {createDecorRegionManager} from './decor-region-batches.js?v=20261105-decor-receivers2';
 import {createDistantForest} from './distant-forest.js?v=20261103-unified-sun-cascades1';
 export function createWorld(ctx) {
 let distantForest=createDistantForest(ctx);
@@ -82,8 +82,10 @@ if(!detailedModel)for(let i=0;i<4;i++){
 // Damage stays in HP (and the damage bar). No flat rectangle on the trunk.
 group.position.set(x,ctx.terrain.heightAt(x,z),z);group.userData={id,x,z,h,scale,proceduralModelHeight:detailedModel?(spruceModel?ctx.spruceModelHeight??6:ctx.birchModelHeight??8):null,hp:ctx.treeDamage.get(id)??maxHp,maxHp,alive:true,variant,rare,spruceModel:!!spruceModel,birchModel:!!birchModel,species:birch?'birch':'conifer'};if(spruceHitMeshes)group.userData.hitMeshes=spruceHitMeshes;ctx.scene.add(group);ctx.trees.set(id,group);ctx.spruceDiagnostics?.applyTree(group)}
 function enableDecorShadow(node){
- if(node.isMesh||node.geometry){node.castShadow=true;
-   if(node.userData?.decorType==='rock')node.receiveShadow=true;}
+ if(node.isMesh||node.geometry){
+   node.castShadow=true;
+   node.receiveShadow=true; // Rocks, flowers, mushrooms, collectible grass.
+ }
  for(const child of node.children??[])enableDecorShadow(child);
 }
 function build(cx,cz){const key=cx+','+cz;if(ctx.chunks.has(key))return;const decor=new ctx.THREE.Group();ctx.scene.add(decor);ctx.chunks.set(key,decor);

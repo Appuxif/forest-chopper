@@ -133,6 +133,7 @@ export function createGrass(THREE) {
     const palette=Number.isInteger(paletteIndex)&&paletteIndex>=0&&
       paletteIndex<GRASS_PALETTES.length?paletteIndex:0;
     const tuft=new THREE.Mesh(geometries[shape*GRASS_PALETTES.length+palette],material);
+    tuft.receiveShadow=true;
     tuft.userData.grassShape=GRASS_SHAPES[shape];
     tuft.userData.grassPalette=GRASS_PALETTES[palette];
     return tuft;

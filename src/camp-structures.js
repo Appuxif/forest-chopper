@@ -78,6 +78,7 @@ export function createCampStructures(ctx,doc=document){
       for(let i=0;i<3;i++){
         const angle=i*Math.PI*2/3;
         const rock=new THREE.Mesh(rockGeo,stone);
+        rock.receiveShadow=true;
         rock.position.set(Math.cos(angle)*.255,.14,Math.sin(angle)*.255);
         const scale=.88+(i%2)*.12;
         rock.scale.set(scale,.79+i*.055,scale);

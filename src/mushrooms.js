@@ -87,6 +87,7 @@ export function createMushrooms(THREE) {
 
   function part(group, geometry, mat, x, y, z, sx=1, sy=1, sz=1, role='') {
     const mesh=new THREE.Mesh(geometry,mat);
+    mesh.receiveShadow=true;
     mesh.position.set(x,y,z);
     mesh.scale.set(sx,sy,sz);
     mesh.userData.mushroomPart=role;

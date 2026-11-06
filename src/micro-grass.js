@@ -6,6 +6,7 @@ import {generateClusteredGrassTile,GRASS_CLUSTER_DEFAULTS as CLUSTER_DEFAULT_KEY
 import {makeTuftGeometry,makeClassicGrassClumpGeometry} from './classic-grass-clump-geometry.js';
 import {applyClassicGrassTwoSidedLighting,applyGrassRandomPalette,makeGrassFoliageUniforms,updateGrassFoliageUniforms,applyGrassFoliageEffects} from './grass-palette.js?v=20261105-grass-fx-sliders1';
 import {grassDistanceDensity} from './grass-density-lod.js';
+import {createGrassBakedAOAtlas} from './grass-baked-ao.js?v=20261105-baked-ground-ao2';
 export {grassDistanceDensity} from './grass-density-lod.js';
 // One shared geometry/material per LOD, no individual scene objects per tuft,
 // and no full-ring matrix uploads whenever the player walks a meter.
@@ -441,6 +442,19 @@ export function createMicroGrass(ctx) {
   const clipMatrix=cameraFrustum?new THREE.Matrix4():null;
   const dummy=new THREE.Object3D(),tint=new THREE.Color();
 
+  const aoAtlas=createGrassBakedAOAtlas(THREE,
+    ctx.ground?.material?.userData?.grassDensityUniforms);
+  let aoConfigSignature='',aoRevision=0;
+  const aoConfig=()=>({
+    enabled:ctx.settings?.grassAOEnabled!==false,
+    resolution:ctx.settings?.grassAOResolution??128,
+    sampling:ctx.settings?.grassAORootSampling??100,
+  });
+  const aoSignature=()=>JSON.stringify([
+    ctx.seed,aoConfig().enabled,aoConfig().resolution,aoConfig().sampling,
+    clusterSignature,currentGeometrySignature,lastDensity,
+  ]);
+
   const near={
     tier:'near',size:NEAR_TILE,geometry:clusterConfig?makeClassicGrassClumpGeometry(THREE,clusterConfig,'near'):makeTuftGeometry(THREE,'near'),
     material:makeMaterial(THREE,playerUniform,true,false,false),
@@ -545,6 +559,8 @@ export function createMicroGrass(ctx) {
   }
   function release(layer,record) {
     ctx.scene.remove(record.mesh);
+    if(layer===near)ctx.worldStreamer?.cancel(
+      'grassAO:'+record.tileX+','+record.tileZ);
     if(layer.unused.length<MAX_UNUSED_TILES){
       layer.unused.push(record.mesh);
     }else{
@@ -553,6 +569,8 @@ export function createMicroGrass(ctx) {
   }
   function createPage(layer,x,z,seed,density,samples=null){
     samples??=generateGrassTile(seed,x,z,layer.size,density,layer.tier,clusterConfig);
+    const baked=samples?.samples?samples.ao:null;
+    if(samples?.samples)samples=samples.samples;
     const packed=samples instanceof Float32Array;
     const count=packed?samples.length/9:samples.length;
     if(!count)return null;
@@ -572,6 +590,7 @@ export function createMicroGrass(ctx) {
       mesh=new THREE.InstancedMesh(geometry,layer.material,capacity);
     }
     mesh.count=count;
+    mesh.receiveShadow=true; // Trees, characters, and fire shade visible grass.
     mesh.visible=true; // A pooled page may have been culled last frame.
     const profile=mesh.geometry.getAttribute('fcGrassProfile');
     const priorities=mesh.geometry.getAttribute('fcGrassPriority');
@@ -638,8 +657,11 @@ export function createMicroGrass(ctx) {
           maxY+3.5,(z+1)*layer.size+GRASS_CULL_MARGIN)):null;
     ctx.scene.add(mesh);
     generatedTiles++;
-    return {mesh,bounds,tileX:x,tileZ:z,
-      fullCount:count};
+    const validBake=layer===near&&baked?.configKey===aoConfigSignature;
+    if(validBake)aoAtlas?.ready(baked);
+    return {mesh,bounds,tileX:x,tileZ:z,tileSize:layer.size,
+      fullCount:count,samples:layer===near?samples:null,
+      aoSignature:validBake?aoConfigSignature:null};
   }
   function intersects(tileX,tileZ,size,x,z,radius) {
     const a=tileX*size,b=tileZ*size;
@@ -693,7 +715,8 @@ export function createMicroGrass(ctx) {
       }
       layer.pending.add(key);
       const epoch=streamingEpoch;
-      const payload={seed,tx,tz,size:layer.size,density,tier:layer.tier,clusterConfig};
+      const payload={seed,tx,tz,size:layer.size,density,tier:layer.tier,clusterConfig,
+        ao:layer===near?{...aoConfig(),configKey:aoSignature()}:null};
       ctx.worldStreamer.schedule({
         key:'grass:'+layer.tier+':'+key,kind:'grass',payload,
         priority:d<20?WORLD_PRIORITY.near:d<55?WORLD_PRIORITY.visible:WORLD_PRIORITY.background,
@@ -702,8 +725,9 @@ export function createMicroGrass(ctx) {
           layer.pending.delete(key);
           if(epoch!==streamingEpoch||!layer.desired.has(key)||
              layer.active.has(key))return;
-          if(samples instanceof Float32Array)
-            sampleCache.put(cacheKey,samples,samples.byteLength);
+          const packedSamples=samples?.samples??samples;
+          if(packedSamples instanceof Float32Array)
+            sampleCache.put(cacheKey,packedSamples,packedSamples.byteLength);
           const page=createPage(layer,tx,tz,seed,density,samples);
           if(page)layer.active.set(key,page);
         },
@@ -755,6 +779,61 @@ export function createMicroGrass(ctx) {
         mesh.userData.microGrassFrustumHidden=!mesh.visible;
       }
     }
+  }
+  function refreshAO(x,z){
+    const config=aoConfig();
+    const signature=aoSignature();
+    if(signature!==aoConfigSignature){
+      aoConfigSignature=signature;
+      aoRevision++;
+      aoAtlas?.invalidate();
+      for(const record of near.active.values()){
+        record.aoSignature=null;
+        ctx.worldStreamer?.cancel('grassAO:'+record.tileX+','+record.tileZ);
+      }
+    }
+    if(config.enabled&&aoAtlas&&ctx.worldStreamer?.enabled){
+      for(const record of near.active.values()){
+        if(record.aoSignature===signature)continue;
+        const {tileX:tx,tileZ:tz,samples}=record;
+        // Revisiting previously streamed areas reuses an already baked tile;
+        // never bake the same AO map again while it is still in the LRU.
+        if(aoAtlas.has(tx,tz)){
+          record.aoSignature=signature;
+          continue;
+        }
+        record.aoSignature=signature;
+        const ticket=aoRevision;
+        ctx.worldStreamer.schedule({
+          key:'grassAO:'+tx+','+tz,kind:'grassAO',
+          priority:WORLD_PRIORITY.prefetch,
+          payload:{samples,tx,tz,size:NEAR_TILE,
+            clusterConfig,ao:{...config,configKey:signature}},
+          // If Worker is unavailable we skip optional AO, rather than
+          // freezing the game thread to synchronously bake thousands of roots.
+          fallback:()=>null,
+          apply:baked=>{
+            if(ticket!==aoRevision||!near.active.has(tx+','+tz))return;
+            if(baked){
+              aoAtlas.ready(baked);
+            }else record.aoSignature=null;
+          },
+        });
+      }
+    }
+    aoAtlas?.tick(x,z,{
+      enabled:config.enabled,
+      radius:(ctx.settings?.grassAOShadowRadius??50)/100,
+      intensity:(ctx.settings?.grassAOIntensity??80)/100,
+      softness:ctx.settings?.grassAOSoftness??50,
+      resolution:config.resolution,
+      windowTiles:ctx.settings?.grassAOAtlasTiles??5,
+      sampling:config.sampling,
+      cacheTiles:ctx.settings?.grassAOCacheTiles??64,
+      tilesPerFrame:ctx.settings?.grassAOTilesPerFrame??2,
+      uploadsPerSecond:ctx.settings?.grassAOUploadsPerSecond??8,
+      edgeFade:ctx.settings?.grassAOEdgeFade!==false,
+    });
   }
   function tick() {
     ctx.updateGrassGroundCover?.();
@@ -841,13 +920,17 @@ export function createMicroGrass(ctx) {
     const radiusChanged=lastRadius!==radius;
     if(refreshData)streamingEpoch++;
     if(!refreshData&&!radiusChanged&&Math.abs(x-lastX)<REBUILD_DISTANCE&&
-      Math.abs(z-lastZ)<REBUILD_DISTANCE)return false;
+      Math.abs(z-lastZ)<REBUILD_DISTANCE){
+      refreshAO(x,z);
+      return false;
+    }
     lastX=x;lastZ=z;lastSeed=ctx.seed;lastDensity=density;lastRadius=radius;
     // Radius-only changes reuse existing InstancedMeshes and cached tiles.
     // Rebuild their instance matrices only if seed/density/geometry changes.
     syncLayer(near,x,z,cutoff+REBUILD_DISTANCE,ctx.seed,density,refreshData);
     syncLayer(far,x,z,radius>NEAR_END?radius+REBUILD_DISTANCE:0,
       ctx.seed,density,refreshData);
+    refreshAO(x,z);
     return true;
   }
   tick();
@@ -863,7 +946,9 @@ export function createMicroGrass(ctx) {
     get generatedTiles(){return generatedTiles;},
     get cacheHits(){return cacheHits;},
     get mesh(){return near.active.values().next().value?.mesh??null;},
+    get bakedAO(){return aoAtlas?.metrics??null;},
     dispose(){
+      aoAtlas?.dispose();
       streamingEpoch++;
       for(const layer of [near,far]){
         for(const key of layer.pending)
