@@ -3,7 +3,8 @@ import {treeCanSpawn,treeCandidate,TREES_PER_CHUNK} from './tree-spacing.js';
 import {terrainHeight} from './terrain.js';
 import {pondDepthAt} from './ponds.js';
 import {generateGrassTile} from './micro-grass.js';
-import {bakeGrassAO} from './grass-baked-ao.js?v=20261105-baked-ground-ao2';
+import {bakeGrassAO} from './grass-baked-ao.js?v=20261106-classic-grass-only1';
+import {GRASS_CLUSTER_DEFAULTS} from './grass-clustering.js';
 
 export function forestChunkData({seed,cx,cz,size=24,density=100}){
   const rand=(x,z,n=0)=>{const v=Math.sin(x*127.1+z*311.7+n*78.233+seed)*43758.5453;return v-Math.floor(v);};
@@ -37,6 +38,7 @@ export function terrainGridData({seed,cx,cz,size=96,segments=48}){
   return heights;
 }
 export function grassTileData({seed,tx,tz,size,density,tier,clusterConfig=null,ao=null}){
+  clusterConfig??=GRASS_CLUSTER_DEFAULTS;
   const records=generateGrassTile(seed,tx,tz,size,density,tier,clusterConfig);
   // x,y,z,angle,scale,tint,biome,patchKind,patchWeight
   const floats=new Float32Array(records.length*9);
@@ -58,5 +60,5 @@ export function grassTileData({seed,tx,tz,size,density,tier,clusterConfig=null,a
 }
 export function grassAOData({samples,tx,tz,size,clusterConfig=null,ao={}}){
   return bakeGrassAO({samples,tx,tz,size,resolution:ao.resolution,
-    clusterConfig,sampling:ao.sampling});
+    clusterConfig:clusterConfig??GRASS_CLUSTER_DEFAULTS,sampling:ao.sampling});
 }

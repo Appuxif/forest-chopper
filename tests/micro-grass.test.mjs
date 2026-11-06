@@ -590,7 +590,7 @@ test('for nonmonotonic offset below 1 CPU renders full tiles for safe shader LOD
 });
 
 
-test('group mode instances exactly the old blade geometry, four per pouch',()=>{
+test('classic clumps always instance the original blade mesh with shared roots',()=>{
   const {ctx,sceneItems,THREE}=fixture({radius:12,density:2});
   Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{grassClusterEnabled:true,
     grassClusterDensity:30});
@@ -619,7 +619,7 @@ test('group mode instances exactly the old blade geometry, four per pouch',()=>{
   grass.tick();
   assert.equal(grass.generatedTiles,originalCount,
     'tilt and ground-bending controls must not rebuild classic grass');
-  assert.equal(mesh.material.userData.grassUniforms.fcGrassTilt.value,0);
+  assert.ok(mesh.material.userData.grassUniforms.fcGrassWindSpeed);
   const shader={uniforms:{},
     vertexShader:'#include <common>\n#include <color_vertex>\n#include <begin_vertex>',
     fragmentShader:'#include <common>\n#include <color_fragment>'};
@@ -655,7 +655,7 @@ test('classic pouches retain original Lambert lighting, without curved extras',(
     assert.doesNotMatch(shader.vertexShader,/fcGrassTranslucencyIntensity|fcGrassTilt/);
     assert.doesNotMatch(shader.fragmentShader,/fcGrassTransmission|fcGrassAOIntensity/);
     assert.ok(mesh.material.userData.grassUniforms.fcGrassFade);
-    assert.equal(mesh.material.userData.grassUniforms.fcGrassTilt.value,0);
+    assert.ok(mesh.material.userData.grassUniforms.fcGrassWindSpeed);
     const generated=grass.generatedTiles;
     ctx.settings.grassClusterBend=.9;
     grass.tick();
@@ -759,7 +759,7 @@ test('classic clump startup initializes original grass uniforms',()=>{
   assert.equal(uniforms.fcGrassSizeRange.value.x,ctx.settings.grassMinSize);
   assert.equal(uniforms.fcGrassSizeRange.value.y,ctx.settings.grassMaxSize);
   assert.equal(uniforms.fcGrassFade.value.w,12);
-  assert.equal(uniforms.fcGrassTilt.value,0);
+  assert.ok(uniforms.fcGrassWindSpeed);
   assert.ok(uniforms.fcGrassActors);
 });
 
@@ -801,7 +801,7 @@ test('optional randomized palette assigns stable per-blade colors without new pa
     assert.ok(bladeIndices,'all legacy grass geometries have the palette attribute');
     assert.equal(bladeIndices.count,mesh.geometry.getAttribute('position').count);
     const unique=new Set(bladeIndices.array);
-    assert.equal(unique.size,grouped?GRASS_CLUSTER_DEFAULTS.grassClusterBlades:1);
+    assert.equal(unique.size,GRASS_CLUSTER_DEFAULTS.grassClusterBlades);
     const sourceGeometry=mesh.geometry;
     const originalTiles=grass.generatedTiles;
     const uniforms=mesh.material.userData.grassUniforms;
@@ -848,20 +848,23 @@ test('optional randomized palette assigns stable per-blade colors without new pa
   }
 });
 
-test('live toggle keeps original blades and rebuilds only the geometry batching',()=>{
-  const {ctx,sceneItems}=fixture({radius:12,density:2});
+test('classic clumps never fall back to legacy singles; blades and triangles rebuild',()=>{
+  const {ctx,sceneItems}=fixture({radius:12,density:30});
+  Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{grassClusterBlades:2});
   const grass=createMicroGrass(ctx);
   let mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
-  assert.equal(mesh.geometry.getAttribute('position').count/3,6);
+  assert.equal(mesh.geometry.getAttribute('position').count/3,12);
   const initialCount=grass.generatedTiles;
-  Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{
-    grassClusterEnabled:true,grassClusterDensity:20,
-  });
+  ctx.settings.grassClusterEnabled=false; // Obsolete persisted preference is inert.
   grass.tick();
   mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
-  assert.ok(mesh);
-  assert.equal(mesh.geometry.getAttribute('position').count/3,
-    GRASS_CLUSTER_DEFAULTS.grassClusterBlades*6);
+  assert.equal(mesh.geometry.getAttribute('position').count/3,12);
+  assert.equal(grass.generatedTiles,initialCount);
+  ctx.settings.grassClusterBlades=3;
+  ctx.settings.grassTriangles=3;
+  grass.tick();
+  mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+  assert.equal(mesh.geometry.getAttribute('position').count/3,9);
   assert.ok(grass.generatedTiles>initialCount);
   ctx.settings.grassMinSize=3;
   ctx.settings.grassMaxSize=6;
@@ -875,11 +878,42 @@ test('live toggle keeps original blades and rebuilds only the geometry batching'
   assert.equal(u.fcGrassWidth.value,1.5);
   assert.ok(Math.abs(u.fcGrassTurnRange.value.x+12*Math.PI/180)<1e-10);
   assert.ok(Math.abs(u.fcGrassTurnRange.value.y-18*Math.PI/180)<1e-10);
-  ctx.settings.grassClusterEnabled=false;
+  ctx.settings.grassTriangles=1;
   grass.tick();
   mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
-  assert.equal(mesh.geometry.getAttribute('position').count/3,6);
+  assert.equal(mesh.geometry.getAttribute('position').count/3,3);
   grass.dispose();
+});
+
+test('classic grass wind is live on full and lightweight shaders, and zero when disabled',()=>{
+  for(const interaction of [true,false]){
+    const {ctx,sceneItems}=fixture({radius:12,density:30});
+    Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{grassInteraction:interaction,
+      grassClusterWindSpeed:.15,windEnabled:true});
+    const grass=createMicroGrass(ctx);
+    const mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+    const shader={uniforms:{},
+      vertexShader:'#include <common>\n#include <begin_vertex>',
+      fragmentShader:'#include <common>'};
+    mesh.material.onBeforeCompile(shader);
+    assert.match(shader.vertexShader,/fcSwayMask/);
+    assert.match(shader.vertexShader,/fcGrassWindSpeed\*\.035/);
+    assert.match(shader.vertexShader,/fcGrassTurnRange/);
+    assert.match(shader.vertexShader,/fcGrassBladeIndex\*\.61803398875/,
+      'one legacy angular-range control scatters each ribbon inside a clump');
+    const u=mesh.material.userData.grassUniforms;
+    assert.equal(u.fcGrassWindSpeed.value,.15);
+    const oldMesh=mesh;
+    ctx.settings.windEnabled=false;
+    grass.tick();
+    assert.equal(u.fcGrassWindSpeed.value,0);
+    ctx.settings.windEnabled=true;
+    ctx.settings.grassClusterWindSpeed=.5;
+    grass.tick();
+    assert.equal(u.fcGrassWindSpeed.value,.5);
+    assert.strictEqual(mesh.geometry,oldMesh.geometry,'wind cannot rebuild geometry');
+    grass.dispose();
+  }
 });
 
 test('classic grass foliage effects are live uniforms on near/far and simple/full materials',()=>{

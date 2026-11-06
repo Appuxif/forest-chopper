@@ -1,7 +1,7 @@
 // Original dev grass ribbon, unchanged, reused to construct instanced clumps.
 // Each blade retains the legacy mesh and material profile (no procedural
 // lean, ground bend, tip widening or additional shading).
-import {generateBladeRoots,hashGrass} from './grass-clumps-core.mjs';
+import {generateBladeRoots} from './grass-clumps-core.mjs';
 
 export function makeTuftGeometry(THREE, tier, triangles=6) {
   const near = tier === 'near';
@@ -49,15 +49,15 @@ export function makeTuftGeometry(THREE, tier, triangles=6) {
 }
 
 
-export function makeClassicGrassClumpGeometry(THREE, config, tier) {
-  const source=makeTuftGeometry(THREE,tier);
+export function makeClassicGrassClumpGeometry(THREE, config, tier, triangles=6) {
+  const source=makeTuftGeometry(THREE,tier,triangles);
   const sourcePos=source.getAttribute('position').array;
   const sourceColor=source.getAttribute('color').array;
   const centreX=source.getAttribute('fcGrassCenterX').array;
   const centreZ=source.getAttribute('fcGrassCenterZ').array;
   const bladeCount=config.grassClusterBlades;
   const roots=generateBladeRoots({
-    seed:config.grassClusterSeed,bladesPerClump:bladeCount,
+    seed:0,bladesPerClump:bladeCount,
     bladeGapMin:config.grassClusterBladeGapMin,
     bladeGapMax:config.grassClusterBladeGapMax,
   });
@@ -66,13 +66,11 @@ export function makeClassicGrassClumpGeometry(THREE, config, tier) {
   const localCenterX=new Float32Array(centreX.length*bladeCount);
   const localCenterZ=new Float32Array(centreZ.length*bladeCount);
   const bladeIndices=new Float32Array(centreX.length*bladeCount);
-  const sector=config.grassClusterAngleSpread*Math.PI/180;
   for(let blade=0;blade<bladeCount;blade++){
     const root=roots[blade];
-    const t=bladeCount===1?0:blade/(bladeCount-1)-.5;
-    const angle=sector*t+
-      (hashGrass(config.grassClusterSeed,blade,0,11)-.5)*sector*.06;
-    const c=Math.cos(angle),sin=Math.sin(angle);
+    // One angular control remains: the legacy grassTurnMin/Max in the
+    // instance shader. Do not apply another hidden blade-angle spread.
+    const c=1,sin=0;
     const base=blade*sourcePos.length;
     for(let i=0;i<sourcePos.length;i+=3){
       const x=sourcePos[i],z=sourcePos[i+2];

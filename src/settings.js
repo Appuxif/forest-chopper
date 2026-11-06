@@ -16,6 +16,7 @@ export const GRASS_AO_FIELDS=Object.freeze({
   grassAOCacheTiles:[16,128,16,64,'Кеш карт AO','тайлов'],
 });
 const KEY = 'forest-chopper:settings:v1';
+const GRASS_CLASSIC_MIGRATION='forest-chopper:classic-grass-only:v1';
 export const LIGHTING_FIELDS=Object.freeze({
  dayAmbient:[0,3,.05,1.2,'☀️ Рассеянный свет дня'],
  daySun:[0,5,.05,2,'☀️ Солнечный свет'],
@@ -66,7 +67,7 @@ const PREVIOUS_LIGHTING_DEFAULTS=Object.freeze({
 });
 const DEFAULT=Object.freeze({
  grassClusterNormalsIntensity:1,
- ...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,grassClusterEnabled:false,
+ ...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,
  grassRandomColors:false,grassYellowPercent:5,
  grassAOEnabled:true,grassAOResolution:128,grassAOAtlasTiles:5,grassAOEdgeFade:true,
  ...Object.fromEntries(Object.entries(GRASS_AO_FIELDS).map(([key,field])=>[key,field[3]])),
@@ -146,7 +147,6 @@ export function sanitizeSettings(value) {
       ? source.characterShadowDistance : DEFAULT.characterShadowDistance,
     shadowContrast: Number.isInteger(source.shadowContrast) && source.shadowContrast >= 0
       && source.shadowContrast <= 100 ? source.shadowContrast : DEFAULT.shadowContrast,
-    grassClusterEnabled: source.grassClusterEnabled===true,
     grassRandomColors: source.grassRandomColors===true,
     grassAOEnabled:source.grassAOEnabled!==false,
     grassAOEdgeFade:source.grassAOEdgeFade!==false,
@@ -164,7 +164,8 @@ export function sanitizeSettings(value) {
       && source.grassYellowPercent>=0 && source.grassYellowPercent<=100
       ? source.grassYellowPercent:DEFAULT.grassYellowPercent,
     ...Object.fromEntries(GRASS_CLUSTER_FIELDS.map(([key,fallback,min,max,step])=>{
-      const value=source[key];
+      const value=source[key]??(key==='grassClusterBlades'
+        ?PERFORMANCE_PRESETS[performancePreset]?.grassClusterBlades:undefined);
       return [key,typeof value==='number'&&Number.isFinite(value)&&
         value>=min&&value<=max?
         Number((Math.round(value/step)*step).toFixed(4)):fallback];
@@ -298,6 +299,26 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     const local = storage ?? window.localStorage;
     persisted = JSON.parse(local.getItem(KEY) || 'null');
     storage = local;
+    // Migrate from the old single-blade/curved-editor dual mode exactly once.
+    // Only reset values explicitly superseded by the reviewed classic layout.
+    // Keep camera, shadows, performance, animation and other user preferences.
+    if(persisted&&!local.getItem(GRASS_CLASSIC_MIGRATION)){
+      const oldGrassDefaults={
+        grassClusterGapMin:0,grassClusterDensity:50,
+        grassClusterMicroGapMax:2.95,grassClusterMicroRadius:1.1,
+        grassClusterMicroStrength:.58,grassClusterCells:204,
+        grassClusterWindSpeed:.65,grassClusterBlades:4,
+      };
+      for(const [key,previous] of Object.entries(oldGrassDefaults)){
+        if(persisted[key]===previous){
+          persisted[key]=key==='grassClusterBlades'
+            ?(PERFORMANCE_PRESETS[persisted.performancePreset]?.grassClusterBlades??2)
+            :GRASS_CLUSTER_DEFAULTS[key];
+        }
+      }
+      local.setItem(KEY,JSON.stringify(persisted));
+      local.setItem(GRASS_CLASSIC_MIGRATION,'1');
+    }
     // Old untouched defaults should adopt the quieter reviewed recordings.
     // Preserve every custom audio value and run only once per browser profile.
     if(persisted?.audio && !local.getItem(AUDIO_REWORK_MIGRATION)){
@@ -385,7 +406,6 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
 
   const css = doc.createElement('style');
   css.textContent = `
-.fc-grass-legacy-inactive{opacity:.45}
 .fc-settings-toggle{position:fixed;top:55px;right:16px;z-index:12;border-radius:9px;padding:9px 12px;font-size:12px}
 /* In-game graphics changes must remain visible through the backdrop. */
 .fc-settings-backdrop{position:fixed;inset:0;z-index:28;background:transparent;backdrop-filter:none}
@@ -548,26 +568,23 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
         до светло-жёлтого. 0% — вся зелёная, 100% — вся жухлая.
         Пока без полянок, цвета стабильны для каждой травинки.
         При выключении возвращается старая палитра.</small>
-      <label><input type="checkbox" id="fc-grass-cluster-enabled"> Пучки из классических травинок</label>
-      <small>Обычная геометрия старой травы (6 треугольников вблизи,
-        4 вдали) объединяется в пучки. Voronoi и микрогруппы сохраняются.
-        Наклон, изгиб, волна формы и пригибание из нового генератора не применяются.
-        Старая трава без пучков остаётся при выключенном переключателе.</small>
-      <button type="button" id="fc-grass-apply-generator-preset">🌿 Применить параметры из генератора</button>
-
-      <small>Для пучков работают количество травинок, расстояния между корнями,
-        распределение по Voronoi, микрогруппы, диапазон высоты и направление
-        пучка. Ширина, поворот и размеры старой травы работают как прежде.
-        Дальнее прореживание — оригинальная формула dev.</small>
+      <small>Классические геометрические травинки всегда объединены в пучки.
+        Число травинок зависит от пресета качества (Low/Medium — 1,
+        High — 2, Ultra — 3); количество можно менять вручную.
+        Разброс направления — единый контроль ниже, как у старой травы.</small>
+      <button type="button" id="fc-grass-apply-generator-preset">🌿 Восстановить параметры травы</button>
+      <small>Плотность травинок задаёт базовую плотность пучков.
+        Плотность одиночной травы ниже — её общий множитель
+        (30 = 100%); обе настройки влияют на реальное число инстансов.</small>
       ${GRASS_CLUSTER_FIELDS.filter(([key])=>
         key!=='grassClusterTranslucencyIntensity'&&key!=='grassClusterAOIntensity')
         .map(([key,,min,max,step,label,unit])=>`
       <label>${label}: <output id="fc-${key}-value"></output> ${unit}
         <input id="fc-${key}" type="range" min="${min}" max="${max}" step="${step}"></label>`).join('')}
       <h3>Освещение и покрытие земли</h3>
-      <small>0% полностью выключает эффект; все три ползунка действуют на
-        обычную траву, пучки и собираемые кустики. Translucency —
-        просвечивание против солнца, AO — затенение у корней.</small>
+      <small>0% выключает эффект, 100% — максимум.
+        Translucency подсвечивает против солнца, AO затемняет корни.
+        Параметры действуют и на собираемые кустики.</small>
       <label>Procedural Normals: <output id="fc-grass-fx-normals-value"></output>%
         <input id="fc-grass-fx-normals" type="range" min="0" max="100" step="1"></label>
       <label>Translucency: <output id="fc-grass-fx-translucency-value"></output>%
@@ -594,17 +611,12 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     </label>
       <small>Максимальный интервал задаёт разброс размещения; из-за ограничения
         плотности расстояния между соседними пучками могут быть больше.
-        Минимальный интервал соблюдается внутри каждого тайла. При выключении
-        кластеризации возвращается прежняя трава.</small>
+        Минимальный интервал соблюдается внутри каждого тайла.</small>
     </details>
-    <small>Выделенные серым настройки одиночной травы действуют только
-      при отключённой кластеризации. Дальность и коэффициенты рациональной
-      формулы LOD общие; для пучков начало прореживания, процент и ширина
-      задаются отдельными ползунками выше.</small>
-    <label>Треугольники мелкой травы (без кластеризации)
+    <label>Треугольники мелкой травы
       <select id="fc-grass-triangles"><option value="6">6 — плавные</option><option value="3">3 — облегчённые</option><option value="1">1 — минимальные</option></select></label>
     <label><input type="checkbox" id="fc-grass-interaction"> Сгибание травы и взаимодействие с окружением</label>
-    <label>Плотность одиночной травы: <output id="fc-grass-density-value"></output>
+    <label>Плотность одиночной травы (30 = 100%): <output id="fc-grass-density-value"></output>
       <input id="fc-grass-density" type="range" min="1" max="50" step="1"></label>
     <label>Дальность мелкой травы: <output id="fc-grass-distance-value"></output> м
       <input id="fc-grass-distance" type="range" min="12" max="100" step="1"></label>
@@ -842,7 +854,6 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     key,input:panel.querySelector('#fc-'+key),
     output:panel.querySelector('#fc-'+key+'-value'),
   }));
-  const grassClusterEnabled=panel.querySelector('#fc-grass-cluster-enabled');
   const grassRandomColorsInput=panel.querySelector('#fc-grass-random-colors');
   const grassYellowPercentInput=panel.querySelector('#fc-grass-yellow-percent');
   const grassYellowPercentValue=panel.querySelector('#fc-grass-yellow-percent-value');
@@ -945,7 +956,6 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     shadowContrastValue.textContent = String(state.shadowContrast);
     shadowDistanceValue.textContent = String(state.shadowDistance);
     shadowRefreshValue.textContent = state.shadowRefreshSeconds===0?'каждый кадр':String(state.shadowRefreshSeconds)+' с';
-    grassClusterEnabled.checked=state.grassClusterEnabled;
     grassRandomColorsInput.checked=state.grassRandomColors;
     grassAOEnabled.checked=state.grassAOEnabled;
     grassAOEdgeFade.checked=state.grassAOEdgeFade;
@@ -966,34 +976,10 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     }
     for(const [key,input] of grassClusterFlags)input.checked=state[key];
     grassClusterGroundType.value=state.grassClusterGroundType;
-    for(const id of [
-      'grass-triangles','grass-density',
-    ]){
-      const legacy=panel.querySelector('#fc-'+id);
-      if(!legacy)continue;
-      legacy.disabled=state.grassClusterEnabled;
-      legacy.closest?.('label')?.classList?.toggle?.(
-        'fc-grass-legacy-inactive',state.grassClusterEnabled);
-    }
-    // These belong to the newer curved ribbon, not the classic clump mesh.
-    // Keep their saved values for the standalone editor, but never imply
-    // that they change the classic game's geometry.
-    const curvedOnly=new Set([
-      'grassClusterTriangles','grassClusterSpread','grassClusterBladeWidth',
-      'grassClusterTipWidth','grassClusterTilt','grassClusterBend',
-      'grassClusterWave','grassClusterRootUpright',
-      'grassClusterWindSpeed',
-      'grassClusterDensityStart','grassClusterDensityReduction',
-      'grassClusterWidthIncrease',
-    ]);
     for(const [key,input] of grassClusterFields){
-      const inactive=curvedOnly.has(key);
-      input.disabled=inactive;
-      input.closest?.('label')?.classList?.toggle?.('fc-grass-legacy-inactive',inactive);
       input.value=String(state[key]);
       panel.querySelector('#fc-'+key+'-value').textContent=
-        key==='grassClusterTipWidth' ? String(Math.round(state[key]*100)) :
-          /Height|Gap|Spread|Width/.test(key) ? state[key].toFixed(3) : String(state[key]);
+        /Height|Gap/.test(key) ? state[key].toFixed(3) : String(state[key]);
     }
     grassDensityInput.value = String(state.grassDensity);
     grassDistanceInput.value = String(state.grassDistance);
@@ -1225,14 +1211,10 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   panel.querySelector('#fc-grass-apply-generator-preset').onclick=()=>{
     Object.assign(state,GRASS_CLUSTER_DEFAULTS,{
       grassClusterNormalsIntensity:1,
-      grassClusterEnabled:true,grassDistance:100,grassFullDensityDistance:10,
-      grassFarDensityPercent:0,grassFarWidthBonus:455,
-      grassDensitySharpness:.005,grassDensityCoefficient:.25,grassDensityOffset:1,
+      grassClusterBlades:PERFORMANCE_PRESETS[state.performancePreset]?.grassClusterBlades??2,
+      grassDensity:PERFORMANCE_PRESETS[state.performancePreset]?.grassDensity??30,
+      grassTurnMin:-30,grassTurnMax:30,
     });
-    reflect();save();
-  };
-  grassClusterEnabled.onchange=()=>{
-    state.grassClusterEnabled=grassClusterEnabled.checked;
     reflect();save();
   };
   grassAOEnabled.onchange=()=>{
@@ -1553,7 +1535,6 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get characterShadowsEnabled(){return state.characterShadowsEnabled;},
     get characterShadowDistance(){return state.characterShadowDistance;},
     get shadowContrast(){return state.shadowContrast;},
-    get grassClusterEnabled(){return state.grassClusterEnabled;},
     get grassAOEnabled(){return state.grassAOEnabled;},
     get grassAOEdgeFade(){return state.grassAOEdgeFade;},
     get grassAOResolution(){return state.grassAOResolution;},
@@ -1568,13 +1549,8 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get grassRandomColors(){return state.grassRandomColors;},
     get grassYellowPercent(){return state.grassYellowPercent;},
     get grassClusterBlades(){return state.grassClusterBlades;},
-    get grassClusterTriangles(){return state.grassClusterTriangles;},
     get grassClusterMinHeight(){return state.grassClusterMinHeight;},
     get grassClusterMaxHeight(){return state.grassClusterMaxHeight;},
-    get grassClusterSpread(){return state.grassClusterSpread;},
-    get grassClusterTilt(){return state.grassClusterTilt;},
-    get grassClusterBladeWidth(){return state.grassClusterBladeWidth;},
-    get grassClusterTipWidth(){return state.grassClusterTipWidth;},
     get grassClusterGapMin(){return state.grassClusterGapMin;},
     get grassClusterGapMax(){return state.grassClusterGapMax;},
     get grassClusterBladeGapMin(){return state.grassClusterBladeGapMin;},
@@ -1584,10 +1560,6 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get grassClusterStrength(){return state.grassClusterStrength;},
     get grassClusterSoftness(){return state.grassClusterSoftness;},
     get grassClusterWindSpeed(){return state.grassClusterWindSpeed;},
-    get grassClusterBend(){return state.grassClusterBend;},
-    get grassClusterWave(){return state.grassClusterWave;},
-    get grassClusterRootUpright(){return state.grassClusterRootUpright;},
-    get grassClusterAngleSpread(){return state.grassClusterAngleSpread;},
     get grassClusterWindAlignment(){return state.grassClusterWindAlignment;},
     get grassClusterWindDirection(){return state.grassClusterWindDirection;},
     get grassClusterMicroGapMin(){return state.grassClusterMicroGapMin;},
@@ -1598,10 +1570,6 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get grassClusterTranslucencyIntensity(){return state.grassClusterTranslucencyIntensity;},
     get grassClusterAOIntensity(){return state.grassClusterAOIntensity;},
     get grassClusterTextureScale(){return state.grassClusterTextureScale;},
-    get grassClusterDensityStart(){return state.grassClusterDensityStart;},
-    get grassClusterDensityReduction(){return state.grassClusterDensityReduction;},
-    get grassClusterWidthIncrease(){return state.grassClusterWidthIncrease;},
-    get grassClusterSeed(){return state.grassClusterSeed;},
     get grassClusterProceduralNormals(){return state.grassClusterProceduralNormals;},
     get grassClusterTranslucency(){return state.grassClusterTranslucency;},
     get grassClusterAO(){return state.grassClusterAO;},

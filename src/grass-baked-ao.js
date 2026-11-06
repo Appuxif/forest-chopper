@@ -13,7 +13,7 @@ export function grassAORootOffsets(clusterConfig=null){
   if(!clusterConfig)return [[0,0]];
   const n=clusterConfig.grassClusterBlades;
   const roots=generateBladeRoots({
-    seed:clusterConfig.grassClusterSeed,bladesPerClump:n,
+    seed:0,bladesPerClump:n,
     bladeGapMin:clusterConfig.grassClusterBladeGapMin,
     bladeGapMax:clusterConfig.grassClusterBladeGapMax,
   });

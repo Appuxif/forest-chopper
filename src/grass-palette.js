@@ -130,11 +130,14 @@ varying float vFcGrassRootExposure;`
     'normal = normalize(mat3(viewMatrix) * vec3(0.0, 1.0, 0.0));',
     `normal = normalize(mat3(viewMatrix) * vec3(0.0, 1.0, 0.0));
 if(fcGrassFxNormals>0.0){
-  // Curved-leaf approximation with continuous 0..1 strength.
-  // Both visible sides use the same smoothly tilted normal.
+  // The old sign(dot(vNormal, up)) branch was unstable for nearly
+  // vertical ribbons: dot ~= 0, and camera-space rounding could
+  // abruptly flip the lateral normal while rotating the camera.
+  // Keep the lateral component continuous in view space and bias it
+  // towards world-up for the same lighting on front/back faces.
   vec3 fcSmooth=normalize(vNormal);
-  if(dot(fcSmooth,normal)<0.0)fcSmooth=-fcSmooth;
-  vec3 fcProceduralNormal=normalize(normal*.94+fcSmooth*.55);
+  vec3 fcLateral=fcSmooth-normal*dot(fcSmooth,normal);
+  vec3 fcProceduralNormal=normalize(normal*.94+fcLateral*.55);
   normal=normalize(mix(normal,fcProceduralNormal,fcGrassFxNormals));
 }`
   ).replace('#include <color_fragment>',

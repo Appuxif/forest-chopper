@@ -10,22 +10,33 @@ import {
 } from '../src/grass-clustering.js';
 import {grassTileData} from '../src/world-stream-data.js';
 import {sanitizeSettings} from '../src/settings.js';
-import {grassDistanceDensity} from '../src/micro-grass.js';
+import {grassDistanceDensity,generateGrassTile} from '../src/micro-grass.js';
 
-test('the requested game clustering defaults are real persisted settings',()=>{
+test('classic clumps are the only game grass mode with curated defaults',()=>{
   const s=sanitizeSettings({});
   for(const [key,value] of Object.entries(GRASS_CLUSTER_DEFAULTS))
     assert.equal(s[key],value,key);
-  assert.equal(s.grassClusterEnabled,false);
-  assert.equal(sanitizeSettings({grassClusterEnabled:true}).grassClusterEnabled,true,
-    'explicit opt-in to experimental clumps must continue working');
-  assert.ok(GRASS_CLUSTER_FIELDS.length>=28);
+  assert.equal('grassClusterEnabled' in s,false);
+  assert.equal(s.grassClusterBlades,2);
+  assert.equal(s.grassClusterDensity,25);
+  assert.equal(s.grassClusterGapMin,.05);
+  assert.equal(s.grassClusterMicroGapMax,3);
+  assert.equal(s.grassClusterMicroRadius,1);
+  assert.equal(s.grassClusterMicroStrength,.6);
+  assert.equal(s.grassClusterCells,86);
+  assert.equal(s.grassClusterWindSpeed,.15);
+  assert.deepEqual([s.grassTurnMin,s.grassTurnMax],[-30,30]);
+  for(const legacy of ['grassClusterTriangles','grassClusterSpread','grassClusterTilt',
+    'grassClusterAngleSpread','grassClusterSeed','grassClusterDensityReduction',
+    'grassClusterWidthIncrease']){
+    assert.equal(legacy in s,false,legacy);
+  }
   const altered=sanitizeSettings({
-    grassClusterEnabled:false,grassClusterDensity:199,grassClusterCells:120,
+    grassClusterEnabled:false,grassClusterDensity:40,grassClusterCells:120,
     grassClusterWindSpeed:.55,grassClusterMinHeight:.7,grassClusterMaxHeight:1.4,
   });
-  assert.equal(altered.grassClusterEnabled,false);
-  assert.equal(altered.grassClusterDensity,199);
+  assert.equal('grassClusterEnabled' in altered,false);
+  assert.equal(altered.grassClusterDensity,40);
   assert.equal(altered.grassClusterWindSpeed,.55);
 });
 
@@ -97,6 +108,31 @@ test('worker preserves 9-float tile layout for game instance matrices',()=>{
   }
 });
 
+test('legacy density slider changes real classic tuft count, and microgroup spacing is respected',()=>{
+  const make=density=>generateGrassTile(4512,1,3,12,density,'near',GRASS_CLUSTER_DEFAULTS);
+  const sparse=make(10),normal=make(30),dense=make(40);
+  assert.ok(normal.length>sparse.length*1.8,
+    'legacy density=30 is not inert when geometric clumps are enabled');
+  assert.ok(dense.length>normal.length,
+    'increasing legacy density should add tuft instances');
+  // The minimum clump spacing must not become inactive when microgrouping > 0.
+  const spacing=GRASS_CLUSTER_DEFAULTS.grassClusterGapMin;
+  const grid=new Map();
+  for(const tuft of normal){
+    const bx=Math.floor(tuft.x/spacing),bz=Math.floor(tuft.z/spacing);
+    for(let dz=-1;dz<=1;dz++)for(let dx=-1;dx<=1;dx++){
+      const nearby=grid.get((bx+dx)+','+(bz+dz))??[];
+      for(const other of nearby){
+        assert.ok(Math.hypot(tuft.x-other.x,tuft.z-other.z)>=spacing-1e-6,
+          'minimum separation must apply even with microgroups');
+      }
+    }
+    const key=bx+','+bz;
+    if(!grid.has(key))grid.set(key,[]);
+    grid.get(key).push(tuft);
+  }
+});
+
 test('dev distance formula is preserved and not replaced with editor t^k',()=>{
   assert.equal(grassDistanceDensity(0,50),1);
   assert.ok(grassDistanceDensity(33,50,{sharpness:.005})>
@@ -106,11 +142,13 @@ test('dev distance formula is preserved and not replaced with editor t^k',()=>{
 test('grass density increases until spatial spacing capacity is reached',()=>{
   const sample=(density,tier='far')=>generateClusteredGrassTile(57,1,2,
     tier==='far'?24:12,
-    {...GRASS_CLUSTER_DEFAULTS,grassClusterDensity:density},()=>true,tier);
+    {...GRASS_CLUSTER_DEFAULTS,grassClusterDensity:density,
+      grassClusterGapMin:0},()=>true,tier);
   const low=sample(25).length,mid=sample(50).length,high=sample(200).length;
-  assert.ok(low<mid*.65,{low,mid});
+  assert.ok(low<mid*.85,{low,mid});
   assert.ok(high>=mid,{mid,high});
-  assert.ok(sample(50,'near').length>sample(25,'near').length*1.35);
+  assert.ok(sample(50,'near').length>sample(25,'near').length*1.15,
+    'density rises, then levels off once the tuft-spacing limit is reached');
 });
 
 test('spacing controls upper spatial capacity independently of target density',()=>{
@@ -187,13 +225,15 @@ test('the uploaded JSON is exactly the runtime preset, including game controls',
   const settings=sanitizeSettings({});
   assert.deepEqual(toGrassEditorConfig(settings),file);
   for(const [key,field] of GRASS_EDITOR_FIELDS){
-    assert.equal(settings[key],FOREST_GRASS_PRESET[field],key);
+    if(GRASS_CLUSTER_FIELDS.some(([gameKey])=>gameKey===key))
+      assert.equal(settings[key],FOREST_GRASS_PRESET[field],key);
+    else assert.equal(key in settings,false,'removed game control: '+key);
   }
   for(const [key,field] of GRASS_CLUSTER_FLAGS){
     assert.equal(settings[key],FOREST_GRASS_PRESET[field],key);
   }
-  assert.equal(settings.grassClusterEnabled,false);
-  assert.equal(settings.grassClusterWidthIncrease,455);
+  assert.equal('grassClusterEnabled' in settings,false);
+  assert.equal('grassClusterWidthIncrease' in settings,false);
   assert.equal(settings.grassClusterGroundType,'forest');
 });
 

@@ -1,6 +1,6 @@
 import {parseOfflineSave,slotKey} from './offline-save.js';
 import {exportSlots,parseSlotArchive,importSlots,deleteSlot} from './save-slots.js?v=20261104-local-game3';
-import {createSettings} from './settings.js?v=20261105-baked-ground-ao2';
+import {createSettings} from './settings.js?v=20261106-classic-grass-only1';
 import {readCharacterModel,saveCharacterModel} from './character-model-selection.js?v=20261105-lumberjack-chop-1812';
 import {
   MENU_NAME_KEY,MENU_LAUNCH_KEY,MAX_SEED,parseSeed,listSavedSlots,
@@ -224,7 +224,7 @@ async function launch(options,{force=false,auto=false}={}){
   document.body.classList.add('fc-world-loading');
   menu.hidden=true;game.hidden=false;
   try{
-    await import('./main.js?v=20261105-baked-ground-ao2');
+    await import('./main.js?v=20261106-stable-procedural-normals1');
   }catch(error){
     console.error('Forest Chopper startup failed',error);
     delete globalThis.__forestLaunch;

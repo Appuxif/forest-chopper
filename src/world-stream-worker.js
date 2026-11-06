@@ -1,4 +1,4 @@
-import {forestChunkData,terrainGridData,grassTileData,grassAOData} from './world-stream-data.js?v=20261105-baked-ground-ao2';
+import {forestChunkData,terrainGridData,grassTileData,grassAOData} from './world-stream-data.js?v=20261106-classic-grass-only1';
 const actions={forest:forestChunkData,terrain:terrainGridData,
   grass:grassTileData,grassAO:grassAOData};
 self.onmessage=e=>{

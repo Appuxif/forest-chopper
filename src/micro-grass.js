@@ -3,10 +3,10 @@ import {gladesForTile,gladeAtPoint,gladeDensity} from './grass-glades.js?v=20261
 import {lakesNearTile,lakeNormalized} from './lakes.js';
 import {WorldLRU,WORLD_PRIORITY} from './world-task-scheduler.js';
 import {generateClusteredGrassTile,GRASS_CLUSTER_DEFAULTS as CLUSTER_DEFAULT_KEYS} from './grass-clustering.js';
-import {makeTuftGeometry,makeClassicGrassClumpGeometry} from './classic-grass-clump-geometry.js';
-import {applyClassicGrassTwoSidedLighting,applyGrassRandomPalette,makeGrassFoliageUniforms,updateGrassFoliageUniforms,applyGrassFoliageEffects} from './grass-palette.js?v=20261105-grass-fx-sliders1';
+import {makeClassicGrassClumpGeometry} from './classic-grass-clump-geometry.js';
+import {applyClassicGrassTwoSidedLighting,applyGrassRandomPalette,makeGrassFoliageUniforms,updateGrassFoliageUniforms,applyGrassFoliageEffects} from './grass-palette.js?v=20261106-stable-procedural-normals1';
 import {grassDistanceDensity} from './grass-density-lod.js';
-import {createGrassBakedAOAtlas} from './grass-baked-ao.js?v=20261105-baked-ground-ao2';
+import {createGrassBakedAOAtlas} from './grass-baked-ao.js?v=20261106-classic-grass-only1';
 export {grassDistanceDensity} from './grass-density-lod.js';
 // One shared geometry/material per LOD, no individual scene objects per tuft,
 // and no full-ring matrix uploads whenever the player walks a meter.
@@ -61,17 +61,19 @@ function field(seed, x, z) {
 // Progressive low-discrepancy positions fill each cached tile evenly, without
 // repeating the small 1.1 m placement grid. This is a cheap blue-noise-like
 // approximation, not an expensive runtime Poisson-disc solver.
-export function generateGrassTile(seed, tileX, tileZ, tileSize, density, tier, clusterConfig=null) {
-  const list = [];
+export function generateGrassTile(seed, tileX, tileZ, tileSize, density, tier, clusterConfig=CLUSTER_DEFAULT_KEYS) {
   const x0 = tileX * tileSize, z0 = tileZ * tileSize;
-  const far = tier === 'far';
+  clusterConfig??=CLUSTER_DEFAULT_KEYS;
   // Glades replace local grass density (including when the player's slider
   // is low), so generate enough candidates for the densest overlapping glade.
   const glades=gladesForTile(seed,x0,z0,tileSize);
   const nearbyLakes=lakesNearTile(seed,x0,z0,tileSize);
-  if(clusterConfig){
-    const patchState={kind:0,weight:0};
-    const grouped=generateClusteredGrassTile(seed,tileX,tileZ,tileSize,clusterConfig,(x,z)=>{
+  const patchState={kind:0,weight:0};
+    const densityConfig={...clusterConfig,
+      // Legacy density slider stays meaningful with geometric clumps.
+      // 30 is its original reference point (100% of the authored density).
+      grassClusterDensity:clusterConfig.grassClusterDensity*density/30};
+    const grouped=generateClusteredGrassTile(seed,tileX,tileZ,tileSize,densityConfig,(x,z)=>{
       if(Math.abs(z)<1.75)return false;
       gladeAtPoint(x,z,glades,patchState);
       if(patchState.kind===5&&patchState.weight>.15)return false;
@@ -89,121 +91,11 @@ export function generateGrassTile(seed, tileX, tileZ, tileSize, density, tier, c
     // Keep the original biomes/colors in the classic ribbon material.
     for(const tuft of grouped)tuft.biome=field(seed,tuft.x,tuft.z);
     return grouped;
-  }
-  const maxGladeDensity=glades.some(g=>g.kind===2) ? 46
-    : glades.some(g=>g.kind===3) ? 42 : 0;
-  const samplingDensity=Math.max(density,maxGladeDensity);
-  // Equal grass coverage across LODs; far blades only use fewer segments.
-  const lodFactor=1;
-  const candidates = Math.ceil(tileSize*tileSize*samplingDensity /
-    (MICRO_GRASS_CELL*MICRO_GRASS_CELL)*lodFactor*1.08);
-  const patchState={kind:0,weight:0};
-  // Each tile gets an independent phase; the same pattern never jumps as the
-  // player moves, and increasing density adds detail instead of making clumps.
-  const phaseX = hash(seed, tileX, tileZ, far ? 311 : 301);
-  const phaseZ = hash(seed, tileX, tileZ, far ? 312 : 302);
-  for (let i = 0; i < candidates; i++) {
-    // Irrational steps fill a tile more uniformly than clustered random points.
-    const u = (phaseX + (i + .5) * .7548776662466927) % 1;
-    const v = (phaseZ + (i + .5) * .5698402909980532) % 1;
-    const x = x0 + u * tileSize, z = z0 + v * tileSize;
-    if (Math.abs(z) < 1.75) continue; // preserve the existing clear trail
-    gladeAtPoint(x,z,glades,patchState);
-    if(patchState.kind===5&&patchState.weight>.15)continue;
-    // Avoid generating tens of thousands of blades on the sandy lakebed.
-    if(nearbyLakes.some(lake=>{
-      const u=lakeNormalized(lake,x,z);
-      return u!==null&&u<.97;
-    }))continue;
-    const requestedDensity=gladeDensity(patchState.kind);
-    const localDensity=requestedDensity===null ? density
-      : density+(requestedDensity-density)*patchState.weight;
-    if(hash(seed,tileX,tileZ,i+840)>localDensity/samplingDensity)continue;
-    const biome=field(seed,x,z);
-    // Soft biome-scale variation, including through the glade boundary.
-    if(hash(seed,tileX,tileZ,i+740) > .79 + biome*.19)continue;
-    const variation = hash(seed,tileX,tileZ,i+1300);
-    list.push({
-      x,z,
-      // Shared base lean. Per-blade yaw variation comes from a GPU uniform.
-      angle: .66,
-      scale: .82 + variation * .40,
-      tint: hash(seed,tileX,tileZ,i+3300),
-      biome,
-      patchKind:patchState.kind,
-      patchWeight:patchState.weight,
-    });
-  }
-  return list;
 }
 
-// One thin curved blade per instance, not a multi-leaf bush.
-// Near: a smooth three-section ribbon; distant: two sections.
-// All blades use the same two cached geometries, with world-aligned lean.
-// Extra volume for clustered grass only. All three effects are evaluated
-// per vertex: no extra triangles, draw calls or texture lookups.
-function applyClusterGrassLighting(shader) {
-  shader.vertexShader=shader.vertexShader.replace('#include <common>',
-    `#include <common>
-attribute float fcGrassRibbonSide;
-attribute float fcGrassAO;
-uniform vec3 fcGrassSunDirection;
-uniform float fcGrassSunPower;
-varying float fcGrassTransmission;`
-  ).replace('#include <beginnormal_vertex>',
-    `#include <beginnormal_vertex>
-    // Approximate a rounded ribbon across the blade's two edges.
-    vec2 fcAcross=vec2(-fcGrassDirection.y,fcGrassDirection.x);
-    vec2 fcBulgedNormal=fcGrassDirection*.92+
-      fcAcross*(fcGrassRibbonSide*.58);
-    objectNormal=normalize(vec3(fcBulgedNormal.x,.22,fcBulgedNormal.y));`
-  ).replace('#include <color_vertex>',
-    `#include <color_vertex>
-    #ifdef USE_COLOR
-      // Darker at crowded roots, brighter at open tips.
-      vColor.rgb*=fcGrassAO;
-    #endif`
-  ).replace('#include <worldpos_vertex>',
-    `#include <worldpos_vertex>
-    // Camera-aware backlighting. Calculate in the vertex shader, not on
-    // each fragment, to make this viable on integrated GPUs and phones.
-    #ifdef USE_INSTANCING
-      vec3 fcWorldNormal=normalize(mat3(modelMatrix)*
-        (mat3(instanceMatrix)*objectNormal));
-      vec3 fcGrassWorldPos=(modelMatrix*
-        (instanceMatrix*vec4(transformed,1.0))).xyz;
-      vec3 fcEyeDir=normalize(cameraPosition-fcGrassWorldPos);
-      vec3 fcFacingNormal=dot(fcWorldNormal,fcEyeDir)>=0.0
-        ? fcWorldNormal:-fcWorldNormal;
-      float fcBacklight=max(dot(-fcFacingNormal,fcGrassSunDirection),0.0);
-      float fcForward=max(dot(-fcEyeDir,fcGrassSunDirection),0.0);
-      float fcLeafHeight=smoothstep(.08,.9,position.y);
-      fcGrassTransmission=fcGrassSunPower*
-        fcBacklight*fcBacklight*(.48+.52*fcForward)*
-        (.38+.62*fcLeafHeight);
-    #else
-      fcGrassTransmission=0.0;
-    #endif`
-  );
-  if(typeof shader.fragmentShader!=='string')return;
-  shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
-    `#include <common>
-varying float fcGrassTransmission;`);
-  // Add subtle green transmitted light independently of the Lambert face
-  // lighting, making backlit leaves visible without alpha blending.
-  const insertAt=shader.fragmentShader.includes('#include <opaque_fragment>')
-    ? '#include <opaque_fragment>' : '#include <output_fragment>';
-  shader.fragmentShader=shader.fragmentShader.replace(insertAt,
-    `outgoingLight += diffuseColor.rgb * vec3(.76,1.04,.58) *
-      (fcGrassTransmission*.56);
-    ${insertAt}`);
-}
-
-// Animate only cluster wind and shader lighting; LOD stays on the original
-// dev distance-density curve, with no per-frame vertex buffer uploads.
-function makeMaterial(THREE, player, near, simple=false, clustered=false) {
-  // Clustered mode now uses the SAME legacy Lambert material as single blades:
-  // no procedural tilt/ground bend or experimental light model.
+// One instanced classic-ribbon material for every graphics preset.
+function makeMaterial(THREE, player, near, simple=false) {
+  // Preserve the original Lambert palette, LOD and actor interaction.
   const uniforms={
     fcGrassPlayer:{value:player},
     fcGrassFade:{value:new THREE.Vector4(-2,-1,19,26)},
@@ -214,9 +106,6 @@ function makeMaterial(THREE, player, near, simple=false, clustered=false) {
     ...makeGrassFoliageUniforms(),
     fcGrassWindTime:{value:0},
     fcGrassWindSpeed:{value:0},
-    fcGrassTilt:{value:0},
-    fcGrassSunDirection:{value:new THREE.Vector3(.38,.89,.27)},
-    fcGrassSunPower:{value:1},
     fcGrassDensityLod:{value:new THREE.Vector4(NEAR_END,50,.30,.005)},
     fcGrassDensityShape:{value:new THREE.Vector2(.25,1)},
     fcGrassMinDensity:{value:FAR_DENSITY_MIN},
@@ -229,7 +118,7 @@ function makeMaterial(THREE, player, near, simple=false, clustered=false) {
   const material=new THREE.MeshLambertMaterial({
     color:0xffffff,vertexColors:true,side:THREE.DoubleSide,depthWrite:true,
   });
-  material.customProgramCacheKey=()=>`grass-${clustered?'cluster':'single'}-${near?'near':'far'}-${simple?'simple':'full'}-light-dark-both-sides-foliagefx-v4`;
+  material.customProgramCacheKey=()=>`grass-classic-${near?'near':'far'}-${simple?'simple':'full'}-wind-foliage-v5`;
   if(simple){
     // Lightweight shader for low-end devices: only width correction.
     // No actor, clearing, biome or glade loops from the full shader.
@@ -238,10 +127,10 @@ function makeMaterial(THREE, player, near, simple=false, clustered=false) {
       shader.uniforms.fcGrassWidth=uniforms.fcGrassWidth;
       shader.uniforms.fcGrassWindTime=uniforms.fcGrassWindTime;
       shader.uniforms.fcGrassWindSpeed=uniforms.fcGrassWindSpeed;
-      shader.uniforms.fcGrassTilt=uniforms.fcGrassTilt;
       shader.uniforms.fcGrassDensityLod=uniforms.fcGrassDensityLod;
       shader.uniforms.fcGrassDensityShape=uniforms.fcGrassDensityShape;
       shader.uniforms.fcGrassMinDensity=uniforms.fcGrassMinDensity;
+      shader.uniforms.fcGrassTurnRange=uniforms.fcGrassTurnRange;
       shader.vertexShader=shader.vertexShader.replace(
         '#include <common>',
         `#include <common>
@@ -255,7 +144,7 @@ uniform float fcGrassMinDensity;
 attribute float fcGrassCenterX;
 attribute float fcGrassCenterZ;
 attribute float fcGrassPriority;
-${clustered ? 'uniform float fcGrassTilt; attribute vec2 fcGrassDirection;' : ''}`,
+uniform vec2 fcGrassTurnRange;`,
       ).replace('#include <begin_vertex>',`#include <begin_vertex>
 #ifdef USE_INSTANCING
   float fcDistance = length(instanceMatrix[3].xz - fcGrassPlayer);
@@ -273,28 +162,26 @@ ${clustered ? 'uniform float fcGrassTilt; attribute vec2 fcGrassDirection;' : ''
     (transformed.x - fcGrassCenterX) * fcGrassWidth * fcWidthLod;
   transformed.z = fcGrassCenterZ +
     (transformed.z - fcGrassCenterZ) * fcGrassWidth * fcWidthLod;
-  ${clustered ? `
-  // Use the instance's Y scale to express an exact world-space tilt
-  // regardless of the tuft height, while keeping blade width in metres.
-  float fcLean=tan(fcGrassTilt)*position.y*instanceMatrix[1].y;
-  transformed.x+=fcGrassDirection.x*fcLean;
-  transformed.z+=fcGrassDirection.y*fcLean;` : ''}
-  ${clustered ? `
-  float fcW = sin(fcGrassWindTime*fcGrassWindSpeed*1.7+
-    instanceMatrix[3].x*.31+instanceMatrix[3].z*.21);
-  float fcWindAmp=step(.001,fcGrassWindSpeed)*
-    min(.20,.065+.04*fcGrassWindSpeed);
-  transformed.x += fcW*fcWindAmp*position.y*position.y;` : ''}
+  // Legacy direction spread is shared with the full-quality shader.
+  float fcTurnRandom=fract(21.12345*fract(dot(
+    instanceMatrix[3].xz,vec2(.1031,.11369)))+
+    fcGrassBladeIndex*.61803398875);
+  float fcTurn=mix(fcGrassTurnRange.x,fcGrassTurnRange.y,fcTurnRandom);
+  float fcCos=cos(fcTurn),fcSin=sin(fcTurn),fcPrevX=transformed.x;
+  transformed.x=fcPrevX*fcCos-transformed.z*fcSin;
+  transformed.z=fcPrevX*fcSin+transformed.z*fcCos;
+  // Classic grass wind: root remains fixed, only tips sway.
+  float fcSwayMask=smoothstep(.015,.24,position.y);
+  fcSwayMask*=fcSwayMask;
+  float fcWindPhase=fcGrassWindTime*(.8+2.0*fcGrassWindSpeed)+
+    instanceMatrix[3].x*.31+instanceMatrix[3].z*.19;
+  transformed.x+=sin(fcWindPhase)*fcGrassWindSpeed*.035*fcSwayMask;
+  transformed.z+=cos(fcWindPhase*.67)*fcGrassWindSpeed*.022*fcSwayMask;
   transformed *= fcBladeFade;
 #endif`);
       applyGrassRandomPalette(shader,uniforms);
       applyClassicGrassTwoSidedLighting(shader);
       applyGrassFoliageEffects(shader,uniforms);
-      if(clustered){
-        shader.uniforms.fcGrassSunDirection=uniforms.fcGrassSunDirection;
-        shader.uniforms.fcGrassSunPower=uniforms.fcGrassSunPower;
-        applyClusterGrassLighting(shader);
-      }
     };
     material.userData.grassUniforms=uniforms;
     return material;
@@ -303,13 +190,12 @@ ${clustered ? 'uniform float fcGrassTilt; attribute vec2 fcGrassDirection;' : ''
     Object.assign(shader.uniforms,uniforms);
     shader.vertexShader=shader.vertexShader.replace(
       '#include <common>',
-      `#include <common>\nuniform vec2 fcGrassPlayer;\nuniform vec4 fcGrassFade;\nuniform vec2 fcGrassSizeRange;\nuniform float fcGrassWidth;\nuniform float fcGrassWindTime;\nuniform float fcGrassWindSpeed;\nuniform vec4 fcGrassDensityLod;\nuniform vec2 fcGrassDensityShape;\nuniform float fcGrassMinDensity;\nuniform vec2 fcGrassTurnRange;\n${clustered ? 'uniform float fcGrassTilt; attribute vec2 fcGrassDirection;' : ''}\nattribute float fcGrassCenterX;\nattribute float fcGrassCenterZ;\nattribute float fcGrassPriority;\nattribute vec2 fcGrassProfile;\nuniform vec4 fcGrassClearings[24];`
+      `#include <common>\nuniform vec2 fcGrassPlayer;\nuniform vec4 fcGrassFade;\nuniform vec2 fcGrassSizeRange;\nuniform float fcGrassWidth;\nuniform float fcGrassWindTime;\nuniform float fcGrassWindSpeed;\nuniform vec4 fcGrassDensityLod;\nuniform vec2 fcGrassDensityShape;\nuniform float fcGrassMinDensity;\nuniform vec2 fcGrassTurnRange;\nattribute float fcGrassCenterX;\nattribute float fcGrassCenterZ;\nattribute float fcGrassPriority;\nattribute vec2 fcGrassProfile;\nuniform vec4 fcGrassClearings[24];`
       + (near ? '\nuniform vec4 fcGrassActors[6];' : ''),
     ).replace('#include <color_vertex>', `#include <color_vertex>
-    // Height-based ambient occlusion: dark roots, open illuminated tips.
-    // Far LOD uses a weaker gradient to avoid heavy dark bands at distance.
-    ${clustered ? '' : `vColor.rgb *= mix(${near ? '0.53' : '0.68'},1.0,
-      smoothstep(0.0,0.21,position.y));`}`)
+    // Old dark-root gradient and lighter distant foliage.
+    vColor.rgb *= mix(${near ? '0.53' : '0.68'},1.0,
+      smoothstep(0.0,0.21,position.y));`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 #ifdef USE_INSTANCING
   float fcDistance = length(instanceMatrix[3].xz - fcGrassPlayer);
@@ -319,13 +205,6 @@ ${clustered ? 'uniform float fcGrassTilt; attribute vec2 fcGrassDirection;' : ''
   float fcRandom = fract(52.9829189 * fract(dot(
     instanceMatrix[3].xz,vec2(0.06711056,0.00583715))));
   float fcSize = mix(fcGrassSizeRange.x,fcGrassSizeRange.y,fcRandom);
-  // Legacy glade sizes must not override a clump's configured height.
-  ${clustered ? '' : `
-  if(fcGrassProfile.x > 1.5){
-    float fcGladeSize = fcGrassProfile.x < 2.5
-      ? mix(5.0,7.0,fcRandom) : mix(1.0,4.0,fcRandom);
-    fcSize=mix(fcSize,fcGladeSize,fcGrassProfile.y);
-  }`}
   // Distance LOD lowers the actual instance count on the CPU. Widen only
   // the remaining ribbons, never their height; same transition in both tiers.
   float fcDistanceT = clamp((fcDistance-fcGrassDensityLod.x) /
@@ -341,27 +220,21 @@ ${clustered ? 'uniform float fcGrassTilt; attribute vec2 fcGrassDirection;' : ''
   transformed.x = fcGrassCenterX + (transformed.x - fcGrassCenterX) * fcGrassWidth * fcWidthLod;
   transformed.z = fcGrassCenterZ + (transformed.z - fcGrassCenterZ) * fcGrassWidth * fcWidthLod;
   float fcTurnRandom = fract(21.12345 * fract(dot(
-    instanceMatrix[3].xz,vec2(0.1031,0.11369))));
+    instanceMatrix[3].xz,vec2(0.1031,0.11369)))+
+    fcGrassBladeIndex*.61803398875);
   float fcTurn = mix(fcGrassTurnRange.x, fcGrassTurnRange.y, fcTurnRandom);
   float fcCos = cos(fcTurn), fcSin = sin(fcTurn);
   float fcOriginalX = transformed.x;
   transformed.x = fcOriginalX * fcCos - transformed.z * fcSin;
   transformed.z = fcOriginalX * fcSin + transformed.z * fcCos;
-  ${clustered ? `
-  // Use the instance's Y scale to express an exact world-space tilt
-  // regardless of the tuft height, while keeping blade width in metres.
-  float fcLean=tan(fcGrassTilt)*position.y*instanceMatrix[1].y;
-  transformed.x+=fcGrassDirection.x*fcLean;
-  transformed.z+=fcGrassDirection.y*fcLean;` : ''}
-  ${clustered ? `
-  float fcW=sin(fcGrassWindTime*fcGrassWindSpeed*1.7+
-    instanceMatrix[3].x*.31+instanceMatrix[3].z*.21);
-  float fcW2=sin(fcGrassWindTime*fcGrassWindSpeed*.9+
-    instanceMatrix[3].z*.37);
-  float fcWindAmp=step(.001,fcGrassWindSpeed)*
-    min(.20,.065+.04*fcGrassWindSpeed);
-  transformed.x+=fcW*fcWindAmp*position.y*position.y;
-  transformed.z+=fcW2*fcWindAmp*.58*position.y*position.y;` : ''}
+  // Same gentle shader wind as the lightweight material.
+  // Absolute roots stay fixed; no vertex buffer uploads.
+  float fcSwayMask=smoothstep(.015,.24,position.y);
+  fcSwayMask*=fcSwayMask;
+  float fcWindPhase=fcGrassWindTime*(.8+2.0*fcGrassWindSpeed)+
+    instanceMatrix[3].x*.31+instanceMatrix[3].z*.19;
+  transformed.x+=sin(fcWindPhase)*fcGrassWindSpeed*.035*fcSwayMask;
+  transformed.z+=cos(fcWindPhase*.67)*fcGrassWindSpeed*.022*fcSwayMask;
   // Dither whole blades through LOD transitions instead of shrinking them:
   // the expected coverage stays constant instead of creating a thin-grass ring.
   float fcVisibilityRandom = fract(17.2194 * fract(dot(
@@ -408,11 +281,6 @@ ${clustered ? 'uniform float fcGrassTilt; attribute vec2 fcGrassDirection;' : ''
     applyGrassRandomPalette(shader,uniforms);
     applyClassicGrassTwoSidedLighting(shader);
     applyGrassFoliageEffects(shader,uniforms);
-    if(clustered){
-      shader.uniforms.fcGrassSunDirection=uniforms.fcGrassSunDirection;
-      shader.uniforms.fcGrassSunPower=uniforms.fcGrassSunPower;
-      applyClusterGrassLighting(shader);
-    }
   };
   material.userData.grassUniforms=uniforms;
   return material;
@@ -420,11 +288,9 @@ ${clustered ? 'uniform float fcGrassTilt; attribute vec2 fcGrassDirection;' : ''
 
 export function createMicroGrass(ctx) {
   const THREE=ctx.THREE,playerUniform=new THREE.Vector2();
-  const getClusterConfig=()=>ctx.settings?.grassClusterEnabled!==true ? null :
-    {...Object.fromEntries(Object.keys(CLUSTER_DEFAULT_KEYS).map(key=>[key,
-      ctx.settings?.[key]??CLUSTER_DEFAULT_KEYS[key]])),
-     grassTurnMin:ctx.settings?.grassTurnMin??-30,
-     grassTurnMax:ctx.settings?.grassTurnMax??30};
+  const getClusterConfig=()=>({...Object.fromEntries(
+    Object.keys(CLUSTER_DEFAULT_KEYS).map(key=>
+      [key,ctx.settings?.[key]??CLUSTER_DEFAULT_KEYS[key]]))});
   let clusterConfig=getClusterConfig();
   const tileConfigKeys=new Set([
     'grassClusterDensity','grassClusterGapMin','grassClusterGapMax',
@@ -456,13 +322,17 @@ export function createMicroGrass(ctx) {
   ]);
 
   const near={
-    tier:'near',size:NEAR_TILE,geometry:clusterConfig?makeClassicGrassClumpGeometry(THREE,clusterConfig,'near'):makeTuftGeometry(THREE,'near'),
-    material:makeMaterial(THREE,playerUniform,true,false,false),
+    tier:'near',size:NEAR_TILE,
+    geometry:makeClassicGrassClumpGeometry(THREE,clusterConfig,'near',
+      ctx.settings?.grassTriangles??6),
+    material:makeMaterial(THREE,playerUniform,true,false),
     active:new Map(),unused:[],
   };
   const far={
-    tier:'far',size:FAR_TILE,geometry:clusterConfig?makeClassicGrassClumpGeometry(THREE,clusterConfig,'far'):makeTuftGeometry(THREE,'far'),
-    material:makeMaterial(THREE,playerUniform,false,false,false),
+    tier:'far',size:FAR_TILE,
+    geometry:makeClassicGrassClumpGeometry(THREE,clusterConfig,'far',
+      ctx.settings?.grassTriangles??6),
+    material:makeMaterial(THREE,playerUniform,false,false),
     active:new Map(),unused:[],
   };
   let lastX=Infinity,lastZ=Infinity,lastSeed=null,lastDensity=null,lastRadius=null;
@@ -471,14 +341,13 @@ export function createMicroGrass(ctx) {
   for(const layer of [near,far]){
     layer.pending=new Set();layer.desired=new Set();
   }
-  let currentTriangles=clusterConfig?6:ctx.settings?.grassTriangles??6,currentInteraction=true;
+  let currentTriangles=ctx.settings?.grassTriangles??6,currentInteraction=true;
   let currentGeometrySignature='';
   // Only root placement and azimuth change the classic ribbon geometry.
   // Curved-editor tilt/bend/wave controls are intentionally ignored.
-  const geometrySignature=()=>JSON.stringify(clusterConfig&&[
+  const geometrySignature=()=>JSON.stringify([
     clusterConfig.grassClusterBlades,
-    clusterConfig.grassClusterBladeGapMin,clusterConfig.grassClusterBladeGapMax,
-    clusterConfig.grassClusterAngleSpread,clusterConfig.grassClusterSeed]);
+    clusterConfig.grassClusterBladeGapMin,clusterConfig.grassClusterBladeGapMax]);
   currentGeometrySignature=geometrySignature();
   let generatedTiles=0,cacheHits=0;
   const grassTrail=[];
@@ -621,16 +490,12 @@ export function createMicroGrass(ctx) {
       const patchWeight=packed?samples[j+8]:samples[source].patchWeight;
       dummy.position.set(x,y,z);
       dummy.rotation.set(0,angle,0);
-      const simple=ctx.settings?.grassInteraction===false;
-      if(clusterConfig){
-        // Keep the classic scale distribution (.82..1.22), with group height
-        // controls adjusting the average; don't flatten/stretch the profile.
-        const min=clusterConfig.grassClusterMinHeight;
-        const max=clusterConfig.grassClusterMaxHeight;
-        const normalized=Math.max(0,Math.min(1,(scale-min)/Math.max(.001,max-min)));
-        const average=(min+max)*.5;
-        dummy.scale.setScalar((.82+.40*normalized)*(average/.525));
-      }else dummy.scale.setScalar(scale*(simple?3.7:1));
+      // Original ribbon sizing; the height range controls tuft scale.
+      const min=clusterConfig.grassClusterMinHeight;
+      const max=clusterConfig.grassClusterMaxHeight;
+      const normalized=Math.max(0,Math.min(1,(scale-min)/Math.max(.001,max-min)));
+      const average=(min+max)*.5;
+      dummy.scale.setScalar((.82+.40*normalized)*(average/.525));
       dummy.updateMatrix();
       mesh.setMatrixAt(i,dummy.matrix);
       profile.setXY(i,patchKind,patchWeight);
@@ -843,7 +708,7 @@ export function createMicroGrass(ctx) {
     const clusterChanged=nextClusterSignature!==clusterSignature;
     clusterConfig=nextClusterConfig;
     clusterSignature=nextClusterSignature;
-    const triangles=clusterConfig?6:ctx.settings?.grassTriangles??6;
+    const triangles=ctx.settings?.grassTriangles??6;
     const interaction=ctx.settings?.grassInteraction!==false;
     const nextGeometrySignature=geometrySignature();
     if(triangles!==currentTriangles||interaction!==currentInteraction||
@@ -855,10 +720,9 @@ export function createMicroGrass(ctx) {
         for(const mesh of layer.unused)disposePage(mesh);
         layer.unused.length=0;
         layer.geometry.dispose();layer.material.dispose();
-        layer.geometry=clusterConfig?makeClassicGrassClumpGeometry(
-          THREE,clusterConfig,layer.tier):
-          makeTuftGeometry(THREE,layer.tier,triangles);
-        layer.material=makeMaterial(THREE,playerUniform,layer===near,!interaction,false);
+        layer.geometry=makeClassicGrassClumpGeometry(
+          THREE,clusterConfig,layer.tier,triangles);
+        layer.material=makeMaterial(THREE,playerUniform,layer===near,!interaction);
       }
       currentTriangles=triangles;currentInteraction=interaction;
       currentGeometrySignature=nextGeometrySignature;
@@ -884,9 +748,9 @@ export function createMicroGrass(ctx) {
     for(const layer of [near,far]){
       const u=layer.material.userData.grassUniforms;
       u.fcGrassSizeRange.value.set(minSize,maxSize);
-      u.fcGrassWindSpeed.value=clusterConfig?.grassClusterWindSpeed??0;
+      u.fcGrassWindSpeed.value=ctx.settings?.windEnabled===false
+        ?0:clusterConfig.grassClusterWindSpeed;
       // No experimental clump-only shading uniforms or bend controls.
-      u.fcGrassTilt.value=0;
       u.fcGrassWindTime.value=performance.now()/1000;
       u.fcGrassRandomColors.value=ctx.settings?.grassRandomColors?1:0;
       u.fcGrassYellowShare.value=(ctx.settings?.grassYellowPercent??5)/100;
@@ -905,9 +769,8 @@ export function createMicroGrass(ctx) {
     const radius=effectiveGrassRadius(
       ctx.settings?.grassDistance??MICRO_GRASS_RADIUS,
       ctx.terrain?.nightBlend??0);
-    const density=clusterConfig ? clusterConfig.grassClusterDensity :
-      Math.max(1,Math.min(MICRO_GRASS_MAX_DENSITY,
-        ctx.settings?.grassDensity??MICRO_GRASS_PER_CELL));
+    const density=Math.max(1,Math.min(MICRO_GRASS_MAX_DENSITY,
+      ctx.settings?.grassDensity??30));
     if(ctx.ground?.material?.userData?.grassDensityUniforms)
       ctx.ground.material.userData.grassDensityUniforms.fcGroundGrassDensity.value=density;
     const cutoff=Math.min(radius,NEAR_END);

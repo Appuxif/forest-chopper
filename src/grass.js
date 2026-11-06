@@ -1,4 +1,4 @@
-import {applyClassicGrassTwoSidedLighting,applyGrassRandomPalette,makeGrassFoliageUniforms,updateGrassFoliageUniforms,applyGrassFoliageEffects} from './grass-palette.js?v=20261105-grass-fx-sliders1';
+import {applyClassicGrassTwoSidedLighting,applyGrassRandomPalette,makeGrassFoliageUniforms,updateGrassFoliageUniforms,applyGrassFoliageEffects} from './grass-palette.js?v=20261106-stable-procedural-normals1';
 // Forest grass assembled from gently curved, tapered blades, not cone pyramids.
 // Four silhouettes × three regional colors. All 12 geometries and one vertex-
 // colored material are shared by every chunk; one tuft is always ONE draw call.
@@ -39,16 +39,18 @@ export function createGrass(THREE) {
   const material=new THREE.MeshLambertMaterial({
     side:THREE.DoubleSide,vertexColors:true,
   });
-  // One shared shader and two uniforms for every collectible tuft, even when
-  // region batched via InstancedMesh. Changing options does not rebuild decor.
+  // All collectible dry-grass bushes use the existing 'dry grass' range,
+  // independently of the green/dry percentage selected for micro-grass.
+  // The world position and blade slot still give every leaf its own stable
+  // straw / ochre / brown shade, without geometry or draw-call overhead.
   const paletteUniforms={
-    fcGrassRandomColors:{value:0},
-    fcGrassYellowShare:{value:.05},
+    fcGrassRandomColors:{value:1},
+    fcGrassYellowShare:{value:1},
     ...makeGrassFoliageUniforms(),
   };
   material.userData??={};
   material.userData.grassPaletteUniforms=paletteUniforms;
-  material.customProgramCacheKey=()=> 'collectible-grass-shared-fx-v2';
+  material.customProgramCacheKey=()=> 'collectible-grass-dry-palette-fx-v3';
   material.onBeforeCompile=shader=>{
     applyGrassRandomPalette(shader,paletteUniforms);
     applyClassicGrassTwoSidedLighting(shader);
@@ -139,11 +141,7 @@ export function createGrass(THREE) {
     return tuft;
   }
 
-  function setPalette(enabled,yellowPercent=5){
-    paletteUniforms.fcGrassRandomColors.value=enabled?1:0;
-    paletteUniforms.fcGrassYellowShare.value=Math.max(0,Math.min(100,yellowPercent))/100;
-  }
-  return {create,geometries,materials:[material],setPalette,
+  return {create,geometries,materials:[material],
     setEffects(settings,sun){updateGrassFoliageUniforms(paletteUniforms,settings,sun);},
   };
 }

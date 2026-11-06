@@ -9,7 +9,7 @@ import {GRASS_CLUSTER_DEFAULTS} from '../src/grass-clustering.js';
 
 const defaults={...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,
   grassClusterNormalsIntensity:1,
-  grassClusterEnabled:false,grassRandomColors:false,grassYellowPercent:5,
+  grassRandomColors:false,grassYellowPercent:5,
   grassAOEnabled:true,grassAOResolution:128,grassAOAtlasTiles:5,grassAOEdgeFade:true,
   ...Object.fromEntries(Object.entries(GRASS_AO_FIELDS).map(([key,field])=>[key,field[3]])),
   performancePreset:'high',
@@ -969,7 +969,7 @@ test('reviewed High preset applies every submitted FPS-affecting graphics/light/
   flameShader:true,flameBillboard:false,fireShadows:true,nightDisableMoonShadows:true,
   quality:'high',maxFps:0,shadowDistance:60,shadowRefreshSeconds:20,
   characterShadowsEnabled:true,characterShadowDistance:62,shadowContrast:100,
-  grassDensity:30,grassDistance:100,grassMinSize:2.5,grassMaxSize:5.5,
+  grassDensity:30,grassClusterBlades:2,grassDistance:100,grassMinSize:2.5,grassMaxSize:5.5,
   grassWidth:1,grassFullDensityDistance:10,grassFarDensityPercent:0,
   grassFarWidthBonus:30,grassDensitySharpness:.000001,grassDensityCoefficient:0,grassDensityOffset:30,grassTurnMin:-30,grassTurnMax:30,
  };
@@ -1279,7 +1279,7 @@ test('grass random palette toggle persists and does not switch to clump geometry
   checkbox.checked=true;
   checkbox.onchange();
   assert.equal(settings.grassRandomColors,true);
-  assert.equal(settings.grassClusterEnabled,false);
+  assert.equal(settings.grassClusterBlades,2);
   assert.equal(slider.disabled,false);
   slider.value='72';
   slider.oninput();
@@ -1414,4 +1414,30 @@ test('baked ground AO settings: 80%/50 cm defaults and quality controls',()=>{
   assert.equal(sanitizeSettings({grassAOIntensity:101}).grassAOIntensity,80);
   assert.equal(sanitizeSettings({grassFakeShadowIntensity:72}).grassAOIntensity,80);
   assert.equal(sanitizeSettings({grassFakeShadowRadius:44}).grassAOShadowRadius,50);
+});
+
+test('grass presets choose 3/2/1/1 classic blades; no disabled legacy geometry UI',()=>{
+  for(const [preset,count] of [['ultra',3],['high',2],['medium',1],['low',1]]){
+    assert.equal(PERFORMANCE_PRESETS[preset].grassClusterBlades,count,preset);
+    assert.equal(sanitizeSettings({performancePreset:preset}).grassClusterBlades,count,preset);
+  }
+  const {cfg,element}=(()=>{
+    const nodes=new Map();
+    const element=key=>{
+      if(!nodes.has(key))nodes.set(key,{value:'',checked:false,textContent:'',
+        closest(){return {classList:{toggle(){}}};},classList:{toggle(){}},
+        style:{},querySelector:element,setAttribute(){}});
+      return nodes.get(key);
+    };
+    const doc={createElement:()=>({hidden:false,style:{},textContent:'',
+      setAttribute(){},querySelector:element}),head:{append(){}},body:{append(){}}};
+    return {cfg:createSettings(doc,{getItem:()=>null,setItem(){}}),element};
+  })();
+  for(const [preset,count] of [['ultra',3],['high',2],['medium',1],['low',1]]){
+    cfg.setPerformancePreset(preset);
+    assert.equal(cfg.grassClusterBlades,count,preset);
+  }
+  assert.equal(element('#fc-grass-triangles').disabled,undefined);
+  assert.equal(element('#fc-grass-density').disabled,undefined);
+  assert.equal(cfg.grassClusterEnabled,undefined);
 });

@@ -90,7 +90,7 @@ test('regional palettes have distinct colors while geometry stays deterministic 
   assert.equal(first.create(99,99).userData.grassPalette,'forest');
 });
 
-test('collectible tufts share the micro-grass palette per individual blade',()=>{
+test('every collectible tuft uses the dry-grass color family, regardless of micro-grass settings',()=>{
   const {THREE,created}=threeMock();
   const grasses=createGrass(THREE);
   const material=grasses.materials[0];
@@ -109,8 +109,8 @@ test('collectible tufts share the micro-grass palette per individual blade',()=>
       assert.ok(index.slice(blade*30,(blade+1)*30).every(n=>n===blade));
   }
   const uniforms=material.userData.grassPaletteUniforms;
-  assert.equal(uniforms.fcGrassRandomColors.value,0);
-  assert.equal(uniforms.fcGrassYellowShare.value,.05);
+  assert.equal(uniforms.fcGrassRandomColors.value,1);
+  assert.equal(uniforms.fcGrassYellowShare.value,1);
   const shader={
     uniforms:{},
     vertexShader:'#include <common>\n#include <color_vertex>',
@@ -129,17 +129,16 @@ test('collectible tufts share the micro-grass palette per individual blade',()=>
   assert.match(shader.fragmentShader,/normal = normalize\(mat3\(viewMatrix\)/);
   assert.match(shader.fragmentShader,/reflectedLight\.directDiffuse \*= 0\.38/);
   assert.match(shader.fragmentShader,/reflectedLight\.indirectDiffuse \*= 0\.68/);
-  const resources=grasses.geometries.slice();
-  for(const [percent,fraction] of [[0,0],[5,.05],[35,.35],[100,1]]){
-    grasses.setPalette(true,percent);
-    assert.equal(uniforms.fcGrassRandomColors.value,1);
-    assert.equal(uniforms.fcGrassYellowShare.value,fraction);
-    assert.deepEqual(grasses.geometries,resources);
-    assert.equal(created.materials.length,1);
-  }
-  grasses.setPalette(false,5);
-  assert.equal(uniforms.fcGrassRandomColors.value,0);
-  assert.equal(uniforms.fcGrassYellowShare.value,.05);
+  // The old per-frame setPalette() API was removed: the global color slider
+  // controls micro-grass only. Here 100% of leaves use the fcDry branch.
+  assert.equal(grasses.setPalette,undefined);
+  assert.equal(uniforms.fcGrassRandomColors.value,1);
+  assert.equal(uniforms.fcGrassYellowShare.value,1);
+  assert.deepEqual(shader.uniforms.fcGrassYellowShare,uniforms.fcGrassYellowShare);
+  assert.match(shader.vertexShader,/vec3 fcDry=mix\(vec3\(\.24,\.115,\.035\),/);
+  assert.match(shader.vertexShader,/vec3\(\.84,\.73,\.32\),fcShade\)/);
+  assert.equal(created.geometries.length,12);
+  assert.equal(created.materials.length,1);
 });
 
 test('collectible bushes use the same three independent lighting switches',()=>{

@@ -8,7 +8,7 @@ test('AO roots match procedural clump geometry root placements',()=>{
   const config={grassClusterBlades:5,grassClusterSeed:7,
     grassClusterBladeGapMin:.01,grassClusterBladeGapMax:.12,
     grassClusterAngleSpread:300};
-  const geometryRoots=generateBladeRoots({seed:7,bladesPerClump:5,
+  const geometryRoots=generateBladeRoots({seed:0,bladesPerClump:5,
     bladeGapMin:.01,bladeGapMax:.12});
   assert.deepEqual(grassAORootOffsets(config),geometryRoots.map(r=>[r.x,r.z]));
   assert.deepEqual(grassAORootOffsets(null),[[0,0]]);

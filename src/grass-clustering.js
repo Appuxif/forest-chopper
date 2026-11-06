@@ -38,9 +38,23 @@ export const GRASS_EDITOR_FIELDS=Object.freeze([
   ['grassClusterWidthIncrease','widthIncrease',0,500,1,'Увеличение ширины вдали','%'],
   ['grassClusterSeed','seed',0,999999,1,'Seed модели травы',''],
 ]);
-export const GRASS_CLUSTER_FIELDS=Object.freeze(GRASS_EDITOR_FIELDS.map(
-  ([key,from,min,max,step,label,unit])=>[key,FOREST_GRASS_PRESET[from],
-    min,max,step,label,unit]));
+// Deliberately exclude the obsolete curved-editor blade shape, separate
+// angle spread and redundant distance LOD controls from game settings.
+export const GRASS_GAME_FIELD_KEYS=Object.freeze([
+  'grassClusterBlades','grassClusterMinHeight','grassClusterMaxHeight',
+  'grassClusterWindAlignment','grassClusterWindDirection',
+  'grassClusterGapMin','grassClusterGapMax',
+  'grassClusterBladeGapMin','grassClusterBladeGapMax','grassClusterDensity',
+  'grassClusterMicroGapMin','grassClusterMicroGapMax',
+  'grassClusterMicroRadius','grassClusterMicroStrength',
+  'grassClusterCells','grassClusterStrength','grassClusterSoftness',
+  'grassClusterWindSpeed','grassClusterTranslucencyIntensity',
+  'grassClusterAOIntensity','grassClusterTextureScale',
+]);
+export const GRASS_CLUSTER_FIELDS=Object.freeze(GRASS_EDITOR_FIELDS
+  .filter(([key])=>GRASS_GAME_FIELD_KEYS.includes(key))
+  .map(([key,from,min,max,step,label,unit])=>
+    [key,FOREST_GRASS_PRESET[from],min,max,step,label,unit]));
 
 export const GRASS_CLUSTER_FLAGS=Object.freeze([
   ['grassClusterProceduralNormals','proceduralNormals','Procedural Normals'],
@@ -202,8 +216,8 @@ export function generateClusteredGrassTile(seed,tileX,tileZ,size,config,
   const grouped=config.grassClusterMicroStrength>0?createWorldMicrogroups(seed,config):null;
   const gapMin=config.grassClusterGapMin;
   const gapMax=config.grassClusterGapMax;
-  // Enforce minimum neighbour spacing inside each generated tile. A
-  // zero minimum (the default) incurs no spatial-hash overhead.
+  // Respect minimum spacing with or without microgroups. Microgrouping
+  // influences placement, but should never silently disable the slider.
   const occupied=new Map();
   const bucketStep=Math.max(.01,gapMin);
   const bucketKey=(bx,bz)=>bx+','+bz;
@@ -237,16 +251,14 @@ export function generateClusteredGrassTile(seed,tileX,tileZ,size,config,
     let z=z0+clamp(v*size+Math.sin(direction)*drift,0,size-1e-6);
     const moved=grouped?.place(x,z,i,tileX,tileZ,size);
     if(moved){x=moved.x;z=moved.z;}
-    // Minimum neighbour spacing is the original sampling constraint;
-    // dense microgroups deliberately may pack roots closer together.
-    if(!grouped&&hasTooCloseNeighbour(x,z))continue;
+    if(hasTooCloseNeighbour(x,z))continue;
     const accepted=accepts(x,z);
     if(!accepted)continue;
     const patch=cluster?.sample(x,z);
     const fertility=1+(patch?.fertility-1||0)*config.grassClusterStrength;
     const chance=Math.min(1,baseProbability*fertility);
     if(hash(seed,tileX,tileZ,i+840)>chance)continue;
-    if(!grouped)addOccupied(x,z);
+    addOccupied(x,z);
     const heightRandom=hash(seed,tileX,tileZ,i+1300);
     const blend=(patch?.influence||0)*.87;
     const height=config.grassClusterMinHeight+
