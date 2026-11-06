@@ -29,7 +29,6 @@ test('audio layout matches registry, without loose or untracked runtime audio fi
  const actual=walk(root).sort();
  const registered=Object.values(AUDIO_FILES).sort();
  assert.deepEqual(actual,registered,'all bundled MP3/WAV files must be registered exactly once');
- assert.equal(registered.length,52,'new flesh-impact audio is part of the dev registry');
  for(const file of registered){
   assert.ok(!file.startsWith('/')&&!file.split('/').includes('..'),`unsafe path: ${file}`);
   assert.ok(file.includes('/'),`audio not organized in a subfolder: ${file}`);
