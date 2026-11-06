@@ -251,7 +251,7 @@
 | --- | --- | --- |
 | Почти чистые правила | `inventory.js`, `vitals.js`, `status-effects.js`, `mob-world.js`, `mob-population.js`, `mob-ai.js`, `mob-types.js`, `mob-flocking.js`, `mob-steering.js`, `entity-combat.js`, `hen-rules.js` | MOVE/ADAPT в `game-core`, сохранить экспорты/тесты через временные re-export |
 | Высоты/размещение/ресурсы | `terrain-noise.js`, `ponds.js`, `lakes.js` (чистые расчёты), `tree-spacing.js`, `resource-zones.js`, `collectible-decor.js`, `log-grid.js`, `fallen-log-layout.js`, `camp-rules.js`, `storage-model.js` | MOVE/ADAPT только чистую часть; рендерные функции/материалы оставить в клиенте |
-| Столкновения | `collision-world.js`, `collision-kinematic.js`, `physics.js`, `rock-collisions.js`, `structure-collisions.js` | SPLIT: логические габариты в core, клиентская точная кинематика/Root Motion в клиенте, **приближённые серверные прокси и лимиты** в Node adapter. |
+| Столкновения | `collision-world.js`, `collision-kinematic.js`, `physics.js` | SPLIT: логические габариты в core, клиентская точная кинематика/Root Motion в клиенте, **приближённые серверные прокси и лимиты** в Node adapter. |
 | Лес и чанки | `world.js`, `terrain.js`, `world-stream-data.js`, `ground-box-index.js` | SPLIT: логические объекты, deterministic spawn/ID/colliders — core; mesh/streaming/LOD — client |
 | Геймплей | `chopping.js`, `building.js`, `crafting.js`, `camp-structures.js`, `storages.js`, `forest-resources.js`, `ground-boxes.js`, `death.js` | SPLIT на commands/rules/state/events и UI/preview/VFX |
 | Персонаж | `player.js`, `animations.js`, `fall-damage.js`, `vitals-ui.js` | SPLIT: правила/урон/состояние в core; Root Motion и клиентская кинематика остаются на клиенте, сервер проверяет предложенную позицию приблизительно. |

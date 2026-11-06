@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHenLootPanel} from '../src/hen-loot-ui.js';
+import {createCorpseLootPanel} from '../src/corpse-loot-ui.js';
 class Element{
  constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.attributes={};this.classes=new Set();this.classList={toggle:(name,on)=>on?this.classes.add(name):this.classes.delete(name)};}
  setAttribute(k,v){this.attributes[k]=v;}
@@ -8,7 +8,7 @@ class Element{
  replaceChildren(){this.children=[];}
 }
 const fixture=()=>{
- const taken=[];const ui=createHenLootPanel({doc:{createElement:tag=>new Element(tag)},onTake:(...args)=>taken.push(args),onClose:()=>{}});
+ const taken=[];const ui=createCorpseLootPanel({doc:{createElement:tag=>new Element(tag)},onTake:(...args)=>taken.push(args),onClose:()=>{}});
  const record={id:'hen',loot:{chicken_meat:2,feather:4}};ui.render(record);return {ui,record,taken};
 };
 test('loot rows have stable selection, wrap with wheel and only take the selected item',()=>{

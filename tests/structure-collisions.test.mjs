@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {flatTerrain} from './helpers/flat-terrain.mjs';
 import {createCrafting} from '../src/crafting.js';
 import {createPhysics} from '../src/physics.js';
-import {structureBlocksPlayer,highestStructureSupport,structureCeiling} from '../src/structure-collisions.js';
+import {createCollisionWorld} from '../src/collision-world.js';
+import {createKinematicCollisionAdapter} from '../src/collision-kinematic.js';
 
 function fixture(orientation=0){
   class Geometry{}
@@ -107,9 +108,13 @@ test('future structures can register their own local collision boxes',()=>{
     position:{y:1},userData:{collisionRadius:3,
       collisionBoxes:[{x:.9,y:.5,z:0,w:1,h:1,d:.4}]},
   }}];
-  assert.equal(structureBlocksPlayer(structures,null,6,4.9,1,.31,1.7),true,
+  const context={terrain:flatTerrain(),crafting:{items:new Map([[1,structures[0]]])},
+    rockColliders:new Map(),trees:new Map(),placed:[],chunkSize:24,logRadius:.29,
+    PLAYER_RADIUS:.31,PLAYER_HEIGHT:1.7};
+  const collision=createKinematicCollisionAdapter(createCollisionWorld(context),context);
+  assert.equal(collision.blocked(6,4.9,1),true,
     'rotation turns +X-local into +Z-world');
-  assert.equal(structureBlocksPlayer(structures,null,7,4,1,.31,1.7),false);
-  assert.equal(highestStructureSupport(structures,null,6,4.9,2,1,.31),2);
-  assert.ok(Math.abs(structureCeiling(structures,null,6,4.9,-.8,-.6,.31,1.7)-(-.712))<1e-6);
+  assert.equal(collision.blocked(7,4,1),false);
+  assert.equal(collision.support(6,4.9,2,1),2);
+  assert.ok(Math.abs(collision.ceiling(6,4.9,-.8,-.6)-(-.712))<1e-6);
 });

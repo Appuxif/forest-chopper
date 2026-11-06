@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createChopping} from '../src/chopping.js';
-import {createHitEffects} from '../src/hit-effects.js';
 import {createCharacterOrientation} from '../src/character-orientation.js';
 import {weaponProfile} from '../src/weapon-profiles.js';
 
@@ -150,17 +149,6 @@ test('chip effects remain bounded and do not flash even with 100 rapid impacts',
   assert.equal(f.sceneObjects.length,96);
   assert.equal(f.trunk.material,f.material);
   assert.equal(f.tree.userData.scar,undefined);
-});
-
-test('previous cached hit effect API is inert for compatibility',()=>{
-  const f=setup();
-  const fx=createHitEffects(f.ctx);
-  fx.pulse(f.tree);
-  fx.tick(.075);
-  fx.release(f.tree);
-  assert.equal(f.trunk.material,f.material);
-  assert.equal(f.tree.userData.scar,undefined);
-  assert.equal(fx.activeCount,0);
 });
 
 test('aiming away at frame 25 is a complete miss: no sound, stamina, damage or chips',()=>{

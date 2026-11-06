@@ -2,9 +2,8 @@ import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createPhysics} from '../src/physics.js';
-import {
-  rockFootprint,nearbyRocks,rockBlocksPlayer,highestRockSupport,standingOnRock,
-} from '../src/rock-collisions.js';
+import {collisionRock,shapeFootprint,createCollisionWorld} from '../src/collision-world.js';
+import {createKinematicCollisionAdapter} from '../src/collision-kinematic.js';
 
 function fixture(){
   const ctx={terrain:flatTerrain(),chunkSize:24,rockColliders:new Map(),
@@ -17,17 +16,16 @@ function fixture(){
 
 test('rocks block horizontal walking, including sliding and crossing chunk edges',()=>{
   const {ctx,physics}=fixture();
-  assert.equal(rockFootprint(ctx.rockColliders.get('0,0')[0],.5,0,.31),true);
+  assert.equal(shapeFootprint(collisionRock(ctx.rockColliders.get('0,0')[0]),.5,0,.31),true);
   physics.moveHorizontal(.5,.35);
   assert.equal(ctx.px,0,'stone blocks horizontal penetration');
   assert.equal(ctx.pz,.35,'blocked X axis still allows sliding along Z');
-  assert.equal(rockBlocksPlayer(ctx.rockColliders,24,1,0,1.1,.31,1.7),false,
+  assert.equal(physics.blocksPlayerAt(1,0,1.1),false,
     'standing above the boulder does not block movement');
   ctx.rockColliders.set('-1,-1',[{x:-.3,z:-.2,radius:.3,top:.65,bottom:0}]);
-  let visited=0;
-  nearbyRocks(ctx.rockColliders,ctx.chunkSize,-.15,-.15,()=>{visited++});
-  assert.ok(visited>=1,'rock lookup handles negative coordinates and chunk boundaries');
-  assert.equal(rockBlocksPlayer(ctx.rockColliders,24,-.2,-.2,0,.31,1.7),true);
+  const rocks=createCollisionWorld(ctx).collect(-.15,-.15,1).filter(s=>s.kind==='rock');
+  assert.ok(rocks.length>=1,'rock lookup handles negative coordinates and chunk boundaries');
+  assert.equal(physics.blocksPlayerAt(-.2,-.2,0),true);
 });
 
 test('player can jump onto the faceted rock, land, jump again and walk off',()=>{
@@ -40,7 +38,7 @@ test('player can jump onto the faceted rock, land, jump again and walk off',()=>
   for(let i=0;i<28;i++)physics.simulateVertical(.04);
   assert.ok(Math.abs(ctx.feetY-.82)<.001,'falling player lands on the stone');
   assert.equal(ctx.onGround,true);
-  assert.equal(standingOnRock(ctx.rockColliders,24,1,0,ctx.feetY,.31),true);
+  assert.equal(createKinematicCollisionAdapter(createCollisionWorld(ctx),ctx).standingOn(1,0,ctx.feetY),true);
   physics.requestJump();
   physics.simulateVertical(.04);
   assert.ok(ctx.feetY>.82,'jumping again from the rock works');
@@ -56,6 +54,7 @@ test('player can jump onto the faceted rock, land, jump again and walk off',()=>
 
 test('a rock never catches the player if feet were already below its top',()=>{
   const {ctx}=fixture();
-  assert.equal(highestRockSupport(ctx.rockColliders,24,1,0,.1,0,.31),0);
-  assert.equal(highestRockSupport(ctx.rockColliders,24,1,0,1,.8,.31),.82);
+  const collision=createKinematicCollisionAdapter(createCollisionWorld(ctx),ctx);
+  assert.equal(collision.support(1,0,.1,0,{baseline:0}),0);
+  assert.equal(collision.support(1,0,1,.8,{baseline:0}),.82);
 });

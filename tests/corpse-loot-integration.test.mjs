@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHenLootActions} from '../src/hen-loot-actions.js';
-import {createHenLootPanel} from '../src/hen-loot-ui.js';
+import {createCorpseLootActions} from '../src/corpse-loot-actions.js';
+import {createCorpseLootPanel} from '../src/corpse-loot-ui.js';
 import {createPickupInteraction} from '../src/pickup-interaction.js';
 import {createInventoryModel} from '../src/inventory.js';
 import {createHenWorld} from '../src/hen-rules.js';
@@ -15,9 +15,9 @@ function fixture(online=false){
  let corpse=model.tick(0,[{x:0,z:0}]).find(r=>r.id===bird.id);
  const ctx={px:corpse.x,pz:corpse.z,inventory:{state,render(){}},isOnline:()=>online,
   audio:{effect:id=>sounds.push(id)},notify:message=>warnings.push(message),sendNet:packet=>sent.push(packet)};
- const actions=createHenLootActions(ctx,{getRecord:id=>id===corpse.id?corpse:null,world:()=>model,
+ const actions=createCorpseLootActions(ctx,{getRecord:id=>id===corpse.id?corpse:null,world:()=>model,
   refresh(){corpse=model.tick(0,[{x:ctx.px,z:ctx.pz}]).find(r=>r.id===bird.id);ui.render(corpse);}});
- const ui=createHenLootPanel({doc:{createElement:()=>new Element()},onTake:actions.take,onClose(){}});
+ const ui=createCorpseLootPanel({doc:{createElement:()=>new Element()},onTake:actions.take,onClose(){}});
  ui.render(corpse);return {ctx,state,ui,actions,sounds,warnings,sent,get corpse(){return corpse;}};
 }
 test('explicit E opens first; subsequent E and row clicks use identical full-bag feedback without ground pickup',()=>{
@@ -43,6 +43,6 @@ test('E, mouse/tap and take-all play pickup only on successful offline transfer'
 test('online pickup is silent until a matching server receipt and never repeats on duplicate ack',()=>{
  const f=fixture(true);f.ui.takeSelected();assert.equal(f.sent.length,1);assert.deepEqual(f.sounds,[]);
  f.actions.accept({});assert.deepEqual(f.sounds,[]);
- const ack={hen_loot:{id:f.corpse.id,item:'chicken_meat',count:1}};
+ const ack={corpse_loot:{id:f.corpse.id,item:'chicken_meat',count:1}};
  f.actions.accept(ack);f.actions.accept(ack);assert.deepEqual(f.sounds,['pickup']);
 });
