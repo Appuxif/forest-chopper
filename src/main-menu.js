@@ -224,7 +224,7 @@ async function launch(options,{force=false,auto=false}={}){
   document.body.classList.add('fc-world-loading');
   menu.hidden=true;game.hidden=false;
   try{
-    await import('./main.js?v=20261105-ori07-network-pose1');
+    await import('./main.js?v=20261106-ori08-ragdoll1');
   }catch(error){
     console.error('Forest Chopper startup failed',error);
     delete globalThis.__forestLaunch;

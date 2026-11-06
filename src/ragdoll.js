@@ -245,7 +245,7 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
          // 53-bone models the limbs are passive: zero motor force lets gravity
          // and contacts bend them rather than elastically straighten them.
          if(config.spring>0)
-           link.configureMotorPosition(0,config.spring,humanoid?0.7:1.6);
+           link.configureMotorPosition(0,config.spring,0.7);
        }
      }
      // Transfer the same world-space linear and yaw velocity to all capsule
@@ -279,11 +279,11 @@ export function createRagdoll(ctx,{loadPhysics=loadRagdollPhysics}={}){
      actor.visual.traverse(node=>{
        if(node.isSkinnedMesh){culling.push([node,node.frustumCulled]);node.frustumCulled=false;}
      });
-     // Only new humanoids relax after the fall; the classic 13-bone
-     // lumberjack and intentionally placed bed/sleep poses are unchanged.
+     // All playable models now share the 53-bone humanoid rig. Only a
+     // deliberate bed/sleep pose should disable passive settling.
      const targets=new Map([...alignments].map(([name,config])=>[name,config.target]));
      const settling=createRagdollSettling(parts,jointLinks,{
-       enabled:humanoid&&!bed,targets,
+       enabled:!bed,targets,
      });
      instance={world,parts,actor,snapshot,originalRoot,originalActorQuaternion,
        standingHipOffset,culling,environment,initialMotion,settling,accumulator:0,elapsed:0};

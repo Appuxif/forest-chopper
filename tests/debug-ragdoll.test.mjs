@@ -84,6 +84,17 @@ test('modular humanoid ragdolls have passive, anatomically bounded arms and legs
  assert.ok(RAGDOLL_HUMANOID_JOINTS.Head.spring>0);
 });
 
+test('unified rig ragdoll activation has no removed humanoid runtime flag',()=>{
+ // The legacy model now uses the same 53-bone physics path. An orphaned
+ // `humanoid` reference previously crashed live browser activation with
+ // ReferenceError while all purely anatomical unit tests still passed.
+ const source=readFileSync(new URL('../src/ragdoll.js',import.meta.url),'utf8');
+ assert.doesNotMatch(source,/\bhumanoid\s*\?/);
+ assert.doesNotMatch(source,/enabled\s*:\s*humanoid\b/);
+ assert.match(source,/configureMotorPosition\(0,config\.spring,0\.7\)/);
+ assert.match(source,/enabled:!bed,targets/);
+});
+
 test('bed resting pose aligns the head toward the pillow for each orientation',()=>{
  for(const orientation of [0,1,2,3]){
   const bed={kind:'bed',x:10,z:15,orientation};
