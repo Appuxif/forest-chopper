@@ -2,10 +2,22 @@
 import {collectDiagnostics, formatDiagnostics, getGpuRendererName} from './diagnostics.js?v=20261101-gpu-renderer1';
 import {FPS_OPTIONS} from './frame-limiter.js';
 import {CHARACTER_LOOK_FIELDS} from './character-orientation.js';
+import {GRASS_CLUSTER_FIELDS,GRASS_CLUSTER_DEFAULTS,GRASS_CLUSTER_FLAGS} from './grass-clustering.js';
 import {treeModelEditorMarkup,mountTreeModelEditor} from './tree-model-editor.js?v=20261103-shared-birch-all1';
 import {PERFORMANCE_PRESETS,PERFORMANCE_KEYS,PERFORMANCE_DEFAULTS,PERFORMANCE_LIGHTING_PRESETS} from './performance-presets.js?v=20261103-grass-presets-tuned1';
 import {SOUND_CONTROLS,AXE_VARIANTS,VOICE_VARIANTS,DEFAULT_AUDIO,sanitizeAudioSettings} from './sound-rules.js?v=20261105-mob-hit-audio1';
+export const GRASS_AO_FIELDS=Object.freeze({
+  grassAOIntensity:[0,100,1,80,'Интенсивность AO','%'],
+  grassAOShadowRadius:[0,50,1,50,'Радиус затенения','см'],
+  grassAOSoftness:[0,100,5,50,'Мягкость границ','%'],
+  grassAORootSampling:[5,100,5,100,'Доля корней при запекании','%'],
+  grassAOTilesPerFrame:[1,4,1,2,'Загружать новых тайлов за кадр','шт'],
+  grassAOUploadsPerSecond:[1,20,1,8,'Максимум загрузок атласа в секунду','/с'],
+  grassAOCacheTiles:[16,128,16,64,'Кеш карт AO','тайлов'],
+});
 const KEY = 'forest-chopper:settings:v1';
+const GRASS_CLASSIC_MIGRATION='forest-chopper:classic-grass-only:v1';
+const GRASS_FACING_DEFAULTS_MIGRATION='forest-chopper:far-facing-defaults:v1';
 export const LIGHTING_FIELDS=Object.freeze({
  dayAmbient:[0,3,.05,1.2,'☀️ Рассеянный свет дня'],
  daySun:[0,5,.05,2,'☀️ Солнечный свет'],
@@ -55,8 +67,15 @@ const PREVIOUS_LIGHTING_DEFAULTS=Object.freeze({
  torchNightIntensity:3.3,torchNightRadius:16,
 });
 const DEFAULT=Object.freeze({
- ...PERFORMANCE_DEFAULTS,performancePreset:'high',
- mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,fov:75,
+ grassClusterNormalsIntensity:1,
+ ...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,
+ grassRandomColors:false,grassYellowPercent:5,
+ grassFarFacingEnabled:true,grassFarFacingStrength:80,
+ grassFarFacingDistance:20,
+ grassAOEnabled:true,grassAOResolution:128,grassAOAtlasTiles:5,grassAOEdgeFade:true,
+ ...Object.fromEntries(Object.entries(GRASS_AO_FIELDS).map(([key,field])=>[key,field[3]])),
+  performancePreset:'high',
+  mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,fov:75,
  cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
  ...Object.fromEntries(Object.entries(CHARACTER_LOOK_FIELDS).map(([key,val])=>[key,val[3]])),
  audio:DEFAULT_AUDIO,
@@ -86,7 +105,8 @@ export function sanitizeSettings(value) {
       grassDensity:1,grassDistance:1,grassMinSize:1,grassMaxSize:1,grassWidth:1,
       grassFullDensityDistance:1,grassFarDensityPercent:1,grassFarWidthBonus:1,
       grassDensitySharpness:1,grassDensityCoefficient:1,grassDensityOffset:1,
-      grassTurnMin:1,grassTurnMax:1,shadowContrast:1,
+      grassTurnMin:1,grassTurnMax:1,grassFarFacingEnabled:1,
+      grassFarFacingStrength:1,grassFarFacingDistance:1,shadowContrast:1,
     })).map(key=>[key,
       typeof PERFORMANCE_DEFAULTS[key]==='number'
         ? (Number.isFinite(source[key])?source[key]:PERFORMANCE_DEFAULTS[key])
@@ -131,6 +151,40 @@ export function sanitizeSettings(value) {
       ? source.characterShadowDistance : DEFAULT.characterShadowDistance,
     shadowContrast: Number.isInteger(source.shadowContrast) && source.shadowContrast >= 0
       && source.shadowContrast <= 100 ? source.shadowContrast : DEFAULT.shadowContrast,
+    grassRandomColors: source.grassRandomColors===true,
+    grassAOEnabled:source.grassAOEnabled!==false,
+    grassAOEdgeFade:source.grassAOEdgeFade!==false,
+    grassAOResolution:[64,128,256].includes(source.grassAOResolution)
+      ?source.grassAOResolution:DEFAULT.grassAOResolution,
+    grassAOAtlasTiles:[3,5].includes(source.grassAOAtlasTiles)
+      ?source.grassAOAtlasTiles:DEFAULT.grassAOAtlasTiles,
+    ...Object.fromEntries(Object.entries(GRASS_AO_FIELDS).map(([key,field])=>{
+      let value=source[key];
+      const [min,max,step,fallback]=field;
+      return [key,Number.isFinite(value)&&value>=min&&value<=max
+        ?Math.round(value/step)*step:fallback];
+    })),
+    grassYellowPercent: Number.isInteger(source.grassYellowPercent)
+      && source.grassYellowPercent>=0 && source.grassYellowPercent<=100
+      ? source.grassYellowPercent:DEFAULT.grassYellowPercent,
+    ...Object.fromEntries(GRASS_CLUSTER_FIELDS.map(([key,fallback,min,max,step])=>{
+      const value=source[key]??(key==='grassClusterBlades'
+        ?PERFORMANCE_PRESETS[performancePreset]?.grassClusterBlades:undefined);
+      return [key,typeof value==='number'&&Number.isFinite(value)&&
+        value>=min&&value<=max?
+        Number((Math.round(value/step)*step).toFixed(4)):fallback];
+    })),
+    ...Object.fromEntries(GRASS_CLUSTER_FLAGS.map(([key])=>[key,
+      typeof source[key]==='boolean'?source[key]:GRASS_CLUSTER_DEFAULTS[key]])),
+    grassClusterNormalsIntensity:typeof source.grassClusterNormalsIntensity==='number'
+      && Number.isFinite(source.grassClusterNormalsIntensity)
+      && source.grassClusterNormalsIntensity>=0
+      && source.grassClusterNormalsIntensity<=1
+      ?Math.round(source.grassClusterNormalsIntensity*100)/100
+      :DEFAULT.grassClusterNormalsIntensity,
+    grassClusterGroundType:['micrograss','forest','blacksoil'].includes(source.grassClusterGroundType)
+      ?source.grassClusterGroundType:GRASS_CLUSTER_DEFAULTS.grassClusterGroundType,
+
     grassDensity: Number.isInteger(source.grassDensity) && source.grassDensity >= 1
       && source.grassDensity <= 50 ? source.grassDensity : DEFAULT.grassDensity,
     grassDistance: Number.isInteger(source.grassDistance) && source.grassDistance >= 12
@@ -148,8 +202,22 @@ export function sanitizeSettings(value) {
       && source.grassFarDensityPercent >= 0 && source.grassFarDensityPercent <= 100
       ? source.grassFarDensityPercent : DEFAULT.grassFarDensityPercent,
     grassFarWidthBonus: Number.isInteger(source.grassFarWidthBonus)
-      && source.grassFarWidthBonus >= 0 && source.grassFarWidthBonus <= 100
+      && source.grassFarWidthBonus >= 0 && source.grassFarWidthBonus <= 500
       ? source.grassFarWidthBonus : DEFAULT.grassFarWidthBonus,
+    grassFarFacingEnabled:typeof source.grassFarFacingEnabled==='boolean'
+      ?source.grassFarFacingEnabled:
+        (PERFORMANCE_PRESETS[performancePreset]?.grassFarFacingEnabled??
+        DEFAULT.grassFarFacingEnabled),
+    grassFarFacingStrength:Number.isInteger(source.grassFarFacingStrength)
+      && source.grassFarFacingStrength>=0 && source.grassFarFacingStrength<=100
+      ?source.grassFarFacingStrength:
+        (PERFORMANCE_PRESETS[performancePreset]?.grassFarFacingStrength??
+        DEFAULT.grassFarFacingStrength),
+    grassFarFacingDistance:Number.isInteger(source.grassFarFacingDistance)
+      && source.grassFarFacingDistance>=0 && source.grassFarFacingDistance<=100
+      ?source.grassFarFacingDistance:
+        (PERFORMANCE_PRESETS[performancePreset]?.grassFarFacingDistance??
+        DEFAULT.grassFarFacingDistance),
     // Experimental shape parameters accept any finite floating-point value.
     grassDensitySharpness: Number.isFinite(source.grassDensitySharpness)
       ? source.grassDensitySharpness : DEFAULT.grassDensitySharpness,
@@ -196,6 +264,12 @@ export function sanitizeSettings(value) {
     settings.lakeForestMode=PERFORMANCE_DEFAULTS.lakeForestMode;
   if(!['simple','high'].includes(settings.waterQuality))
     settings.waterQuality=PERFORMANCE_DEFAULTS.waterQuality;
+  for(const [lo,hi] of [
+    ['grassClusterMinHeight','grassClusterMaxHeight'],
+    ['grassClusterGapMin','grassClusterGapMax'],
+    ['grassClusterBladeGapMin','grassClusterBladeGapMax'],
+    ['grassClusterMicroGapMin','grassClusterMicroGapMax'],
+  ])if(settings[lo]>settings[hi])settings[hi]=settings[lo];
   if(settings.grassMinSize > settings.grassMaxSize)
     [settings.grassMinSize,settings.grassMaxSize] = [settings.grassMaxSize,settings.grassMinSize];
   return settings;
@@ -243,6 +317,47 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     const local = storage ?? window.localStorage;
     persisted = JSON.parse(local.getItem(KEY) || 'null');
     storage = local;
+    // Migrate from the old single-blade/curved-editor dual mode exactly once.
+    // Only reset values explicitly superseded by the reviewed classic layout.
+    // Keep camera, shadows, performance, animation and other user preferences.
+    if(persisted&&!local.getItem(GRASS_CLASSIC_MIGRATION)){
+      const oldGrassDefaults={
+        grassClusterGapMin:0,grassClusterDensity:50,
+        grassClusterMicroGapMax:2.95,grassClusterMicroRadius:1.1,
+        grassClusterMicroStrength:.58,grassClusterCells:204,
+        grassClusterWindSpeed:.65,grassClusterBlades:4,
+      };
+      for(const [key,previous] of Object.entries(oldGrassDefaults)){
+        if(persisted[key]===previous){
+          persisted[key]=key==='grassClusterBlades'
+            ?(PERFORMANCE_PRESETS[persisted.performancePreset]?.grassClusterBlades??2)
+            :GRASS_CLUSTER_DEFAULTS[key];
+        }
+      }
+      local.setItem(KEY,JSON.stringify(persisted));
+      local.setItem(GRASS_CLASSIC_MIGRATION,'1');
+    }
+    // Adopt approved per-preset camera-facing defaults once. Old unchanged
+    // settings (off/70%/20m) become on/80%/20m for High/Medium/Low, but
+    // Ultra remains off. Preserve custom values and future user overrides.
+    if(persisted&&!local.getItem(GRASS_FACING_DEFAULTS_MIGRATION)){
+      const previousFacingDefaults=
+        (persisted.grassFarFacingEnabled===false||
+          persisted.grassFarFacingEnabled===undefined)&&
+        (persisted.grassFarFacingStrength===70||
+          persisted.grassFarFacingStrength===undefined)&&
+        (persisted.grassFarFacingDistance===20||
+          persisted.grassFarFacingDistance===undefined);
+      const preset=persisted.performancePreset??'high';
+      if(previousFacingDefaults&&['high','medium','low'].includes(preset))
+        persisted.grassFarFacingEnabled=true;
+      if(['ultra','high','medium','low'].includes(preset)&&
+          (persisted.grassFarFacingStrength===70||
+           persisted.grassFarFacingStrength===undefined))
+        persisted.grassFarFacingStrength=80;
+      local.setItem(KEY,JSON.stringify(persisted));
+      local.setItem(GRASS_FACING_DEFAULTS_MIGRATION,'1');
+    }
     // Old untouched defaults should adopt the quieter reviewed recordings.
     // Preserve every custom audio value and run only once per browser profile.
     if(persisted?.audio && !local.getItem(AUDIO_REWORK_MIGRATION)){
@@ -483,10 +598,64 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     </section>
     <section class="fc-settings-page" data-category="trees" aria-label="Модели деревьев" hidden><div id="fc-tree-editor">${treeModelEditorMarkup()}</div></section>
     <section class="fc-settings-page" data-category="grass" aria-label="Трава" hidden>
+    <details class="fc-light-group" open id="fc-grass-cluster-section">
+      <summary>🌿 Кластеризация</summary>
+      <label><input type="checkbox" id="fc-grass-random-colors"> Разноцветная трава (зелёная, коричневая, жёлтая)</label>
+      <label>Доля жёлтой / жухлой травы: <output id="fc-grass-yellow-percent-value"></output>%
+        <input id="fc-grass-yellow-percent" type="range" min="0" max="100" step="1"></label>
+      <small>Случайные оттенки от тёмно-зелёного до светло-зелёного и от коричневого
+        до светло-жёлтого. 0% — вся зелёная, 100% — вся жухлая.
+        Пока без полянок, цвета стабильны для каждой травинки.
+        При выключении возвращается старая палитра.</small>
+      <small>Классические геометрические травинки всегда объединены в пучки.
+        Число травинок зависит от пресета качества (Low/Medium — 1,
+        High — 2, Ultra — 3); количество можно менять вручную.
+        Разброс направления — единый контроль ниже, как у старой травы.</small>
+      <button type="button" id="fc-grass-apply-generator-preset">🌿 Восстановить параметры травы</button>
+      <small>Плотность травинок задаёт базовую плотность пучков.
+        Плотность одиночной травы ниже — её общий множитель
+        (30 = 100%); обе настройки влияют на реальное число инстансов.</small>
+      ${GRASS_CLUSTER_FIELDS.filter(([key])=>
+        key!=='grassClusterTranslucencyIntensity'&&key!=='grassClusterAOIntensity')
+        .map(([key,,min,max,step,label,unit])=>`
+      <label>${label}: <output id="fc-${key}-value"></output> ${unit}
+        <input id="fc-${key}" type="range" min="${min}" max="${max}" step="${step}"></label>`).join('')}
+      <h3>Освещение и покрытие земли</h3>
+      <small>0% выключает эффект, 100% — максимум.
+        Translucency подсвечивает против солнца, AO затемняет корни.
+        Параметры действуют и на собираемые кустики.</small>
+      <label>Procedural Normals: <output id="fc-grass-fx-normals-value"></output>%
+        <input id="fc-grass-fx-normals" type="range" min="0" max="100" step="1"></label>
+      <label>Translucency: <output id="fc-grass-fx-translucency-value"></output>%
+        <input id="fc-grass-fx-translucency" type="range" min="0" max="100" step="1"></label>
+      <label>AO: <output id="fc-grass-fx-ao-value"></output>%
+        <input id="fc-grass-fx-ao" type="range" min="0" max="100" step="1"></label>
+      ${GRASS_CLUSTER_FLAGS.filter(([key])=>key==='grassClusterGroundTexture')
+        .map(([key,,label])=>`
+        <label><input id="fc-${key}" type="checkbox"> ${label}</label>`).join('')}
+      <label>Текстура земли
+        <select id="fc-grass-cluster-ground-type">
+          <option value="micrograss">Зелёная микротрава</option>
+          <option value="forest">Тёмная лесная подстилка</option>
+          <option value="blacksoil">Чёрная рельефная земля</option>
+        </select></label>
+    <label>Разброс направления травинок: <output id="fc-grass-turn-value"></output>
+      <span class="fc-angle-pair" id="fc-grass-turn-pair">
+        <span class="fc-angle-track" id="fc-grass-turn-track"></span>
+        <input id="fc-grass-turn-min" type="range" min="-90" max="90" step="1"
+          aria-label="Минимальный поворот, от -90 до 0 градусов">
+        <input id="fc-grass-turn-max" type="range" min="-90" max="90" step="1"
+          aria-label="Максимальный поворот, от 0 до 90 градусов">
+      </span>
+    </label>
+      <small>Максимальный интервал задаёт разброс размещения; из-за ограничения
+        плотности расстояния между соседними пучками могут быть больше.
+        Минимальный интервал соблюдается внутри каждого тайла.</small>
+    </details>
     <label>Треугольники мелкой травы
       <select id="fc-grass-triangles"><option value="6">6 — плавные</option><option value="3">3 — облегчённые</option><option value="1">1 — минимальные</option></select></label>
     <label><input type="checkbox" id="fc-grass-interaction"> Сгибание травы и взаимодействие с окружением</label>
-    <label>Плотность мелкой травы: <output id="fc-grass-density-value"></output>
+    <label>Плотность одиночной травы (30 = 100%): <output id="fc-grass-density-value"></output>
       <input id="fc-grass-density" type="range" min="1" max="50" step="1"></label>
     <label>Дальность мелкой травы: <output id="fc-grass-distance-value"></output> м
       <input id="fc-grass-distance" type="range" min="12" max="100" step="1"></label>
@@ -506,9 +675,18 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <input id="fc-grass-density-offset" type="number" step="any" inputmode="decimal"></label>
     <small>Можно вводить любые конечные числа, в том числе отрицательные. Если кривая немонотонна, CPU не прореживает плитки; итоговая плотность ограничена диапазоном 0–100%.</small>
     <label>Дополнительная ширина вдали: +<output id="fc-grass-far-width-bonus-value"></output>%
-      <input id="fc-grass-far-width-bonus" type="range" min="0" max="100" step="1"></label>
+      <input id="fc-grass-far-width-bonus" type="range" min="0" max="500" step="5"></label>
     <small>После указанного расстояния плотность плавно снижается до выбранного процента,
       а ширина оставшихся травинок постепенно увеличивается. 100% плотности и +0% ширины отключают эффект.</small>
+    <h3>Эксперимент: дальний силуэт травы</h3>
+    <label><input id="fc-grass-far-facing-enabled" type="checkbox"> Разворачивать травинки к камере вдали</label>
+    <label>Сила разворота: <output id="fc-grass-far-facing-strength-value"></output>%
+      <input id="fc-grass-far-facing-strength" type="range" min="0" max="100" step="5"></label>
+    <label>Начало разворота: <output id="fc-grass-far-facing-distance-value"></output> м
+      <input id="fc-grass-far-facing-distance" type="range" min="0" max="100" step="1"></label>
+    <small>По умолчанию выключено. До выбранного расстояния травинки сохраняют
+      исходный угол; затем разворот плавно нарастает в течение 15 м.
+      Угол и дистанцию можно менять без пересоздания травы.</small>
     <label>Размер травинок: <output id="fc-grass-size-range-value"></output>
       <span class="fc-angle-pair" id="fc-grass-size-pair">
         <span class="fc-angle-track" id="fc-grass-size-track"></span>
@@ -520,15 +698,6 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     </label>
     <label>Ширина травинок: <output id="fc-grass-width-value"></output>
       <input id="fc-grass-width" type="range" min="0.25" max="4" step="0.25"></label>
-    <label>Разброс поворота травинок: <output id="fc-grass-turn-value"></output>
-      <span class="fc-angle-pair" id="fc-grass-turn-pair">
-        <span class="fc-angle-track" id="fc-grass-turn-track"></span>
-        <input id="fc-grass-turn-min" type="range" min="-90" max="90" step="1"
-          aria-label="Минимальный поворот, от -90 до 0 градусов">
-        <input id="fc-grass-turn-max" type="range" min="-90" max="90" step="1"
-          aria-label="Максимальный поворот, от 0 до 90 градусов">
-      </span>
-    </label>
     <small>Меняется сразу; высокая плотность и дальность могут увеличить нагрузку. На полянках действуют собственные параметры травы.</small>
     </section>
     <section class="fc-settings-page" data-category="controls" aria-label="Управление" hidden>
@@ -619,6 +788,32 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     <small>Уменьшает фоновый свет внутри теней: 0% — мягкие, 100% — максимально контрастные. Применяется и днём, и ночью.</small>
     <small>В обе карты CSM входят деревья и персонажи; ближняя обновляется каждый кадр, дальняя — по таймеру.</small>
       </div>
+    <div class="fc-light-group">
+      <h3>🌿 Baked Ground AO · тени под травой</h3>
+      <label><input id="fc-grass-ao-enabled" type="checkbox"> Включить Baked Ground AO</label>
+      <small>Карты расстояний до настоящих корней запекаются в воркере вместе с геометрией травы.
+        Радиус, интенсивность и мягкость работают без повторного запекания.
+        Без дополнительных проходов теней.</small>
+      ${Object.entries(GRASS_AO_FIELDS).map(([key,[min,max,step,,label,unit]])=>
+        `<label>${label}: <output id="fc-${key}-value"></output> ${unit}
+        <input id="fc-${key}" type="range" min="${min}" max="${max}" step="${step}"></label>`).join('')}
+      <label>Разрешение одной карты AO
+        <select id="fc-grass-ao-resolution">
+          <option value="64">64×64 · экономно</option>
+          <option value="128">128×128 · баланс</option>
+          <option value="256">256×256 · детально</option>
+        </select></label>
+      <label>Область атласа вокруг игрока
+        <select id="fc-grass-ao-atlas-tiles">
+          <option value="3">3×3 тайла · 36×36 м</option>
+          <option value="5">5×5 тайлов · 60×60 м</option>
+        </select></label>
+      <label><input id="fc-grass-ao-edge-fade" type="checkbox">
+        Плавное затухание AO на границе атласа</label>
+      <small>Разрешение и доля корней требуют перезапекания в воркерах.
+        Для телефонов: 64×64, 3×3, 5–10 обновлений/с.</small>
+    </div>
+
       ${[
         ['sun-cascades','☀️ Ближние солнечные тени · каждый кадр',
           ['sunNearShadowDistance','sunNearShadowMapSize','sunCascadeBlendDistance','sunCascadeCasterOverlap','sunNearShadowSoftness']]
@@ -699,6 +894,42 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const grassMinSizeInput = panel.querySelector('#fc-grass-min-size');
   const grassMaxSizeInput = panel.querySelector('#fc-grass-max-size');
   const grassWidthInput = panel.querySelector('#fc-grass-width');
+  const grassAOEnabled=panel.querySelector('#fc-grass-ao-enabled');
+  const grassAOEdgeFade=panel.querySelector('#fc-grass-ao-edge-fade');
+  const grassAOResolution=panel.querySelector('#fc-grass-ao-resolution');
+  const grassAOAtlasTiles=panel.querySelector('#fc-grass-ao-atlas-tiles');
+  const grassAOInputs=Object.entries(GRASS_AO_FIELDS).map(([key])=>({
+    key,input:panel.querySelector('#fc-'+key),
+    output:panel.querySelector('#fc-'+key+'-value'),
+  }));
+  const grassRandomColorsInput=panel.querySelector('#fc-grass-random-colors');
+  const grassYellowPercentInput=panel.querySelector('#fc-grass-yellow-percent');
+  const grassYellowPercentValue=panel.querySelector('#fc-grass-yellow-percent-value');
+  const farFacingCheckbox=panel.querySelector('#fc-grass-far-facing-enabled');
+  const farFacingSliders=[
+    ['grassFarFacingStrength','grass-far-facing-strength'],
+    ['grassFarFacingDistance','grass-far-facing-distance'],
+  ].map(([key,id])=>({
+    key,input:panel.querySelector('#fc-'+id),
+    output:panel.querySelector('#fc-'+id+'-value'),
+  }));
+  const grassClusterFields=GRASS_CLUSTER_FIELDS
+    .filter(([key])=>key!=='grassClusterTranslucencyIntensity'
+      &&key!=='grassClusterAOIntensity')
+    .map(([key])=>[key,panel.querySelector('#fc-'+key)]);
+  const grassClusterFlags=GRASS_CLUSTER_FLAGS
+    .filter(([key])=>key==='grassClusterGroundTexture')
+    .map(([key])=>[key,panel.querySelector('#fc-'+key)]);
+  const grassFxSliders=[
+    ['normals','grassClusterProceduralNormals','grassClusterNormalsIntensity',1],
+    ['translucency','grassClusterTranslucency','grassClusterTranslucencyIntensity',1.5],
+    ['ao','grassClusterAO','grassClusterAOIntensity',1],
+  ].map(([id,flag,intensity,max])=>({
+    input:panel.querySelector('#fc-grass-fx-'+id),
+    output:panel.querySelector('#fc-grass-fx-'+id+'-value'),
+    flag,intensity,max,
+  }));
+  const grassClusterGroundType=panel.querySelector('#fc-grass-cluster-ground-type');
   const grassLodFields=[
     ['grassFullDensityDistance','grass-full-density-distance'],
     ['grassFarDensityPercent','grass-far-density-percent'],
@@ -781,6 +1012,37 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     shadowContrastValue.textContent = String(state.shadowContrast);
     shadowDistanceValue.textContent = String(state.shadowDistance);
     shadowRefreshValue.textContent = state.shadowRefreshSeconds===0?'каждый кадр':String(state.shadowRefreshSeconds)+' с';
+    grassRandomColorsInput.checked=state.grassRandomColors;
+    grassAOEnabled.checked=state.grassAOEnabled;
+    grassAOEdgeFade.checked=state.grassAOEdgeFade;
+    grassAOResolution.value=String(state.grassAOResolution);
+    grassAOAtlasTiles.value=String(state.grassAOAtlasTiles);
+    for(const {key,input,output} of grassAOInputs){
+      input.value=String(state[key]);
+      output.textContent=String(state[key]);
+    }
+    grassYellowPercentInput.value=String(state.grassYellowPercent);
+    grassYellowPercentValue.textContent=String(state.grassYellowPercent);
+    grassYellowPercentInput.disabled=!state.grassRandomColors;
+    farFacingCheckbox.checked=state.grassFarFacingEnabled;
+    for(const {key,input,output} of farFacingSliders){
+      input.value=String(state[key]);
+      input.disabled=!state.grassFarFacingEnabled;
+      output.textContent=String(state[key]);
+    }
+    for(const {input,output,flag,intensity,max} of grassFxSliders){
+      const percentage=state[flag]
+        ?Math.round(state[intensity]/max*100):0;
+      input.value=String(percentage);
+      output.textContent=String(percentage);
+    }
+    for(const [key,input] of grassClusterFlags)input.checked=state[key];
+    grassClusterGroundType.value=state.grassClusterGroundType;
+    for(const [key,input] of grassClusterFields){
+      input.value=String(state[key]);
+      panel.querySelector('#fc-'+key+'-value').textContent=
+        /Height|Gap/.test(key) ? state[key].toFixed(3) : String(state[key]);
+    }
     grassDensityInput.value = String(state.grassDensity);
     grassDistanceInput.value = String(state.grassDistance);
     grassDensityValue.textContent = String(state.grassDensity);
@@ -1006,6 +1268,84 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   shadowContrastInput.oninput = () => {
     state.shadowContrast = sanitizeSettings({...state,
       shadowContrast:Number(shadowContrastInput.value)}).shadowContrast;
+    reflect();save();
+  };
+  panel.querySelector('#fc-grass-apply-generator-preset').onclick=()=>{
+    Object.assign(state,GRASS_CLUSTER_DEFAULTS,{
+      grassClusterNormalsIntensity:1,
+      grassClusterBlades:PERFORMANCE_PRESETS[state.performancePreset]?.grassClusterBlades??2,
+      grassDensity:PERFORMANCE_PRESETS[state.performancePreset]?.grassDensity??30,
+      grassTurnMin:-30,grassTurnMax:30,
+    });
+    reflect();save();
+  };
+  grassAOEnabled.onchange=()=>{
+    state.grassAOEnabled=grassAOEnabled.checked;reflect();save();
+  };
+  grassAOEdgeFade.onchange=()=>{
+    state.grassAOEdgeFade=grassAOEdgeFade.checked;reflect();save();
+  };
+  grassAOResolution.onchange=()=>{
+    state.grassAOResolution=Number(grassAOResolution.value);reflect();save();
+  };
+  grassAOAtlasTiles.onchange=()=>{
+    state.grassAOAtlasTiles=Number(grassAOAtlasTiles.value);reflect();save();
+  };
+  for(const {key,input} of grassAOInputs){
+    input.oninput=()=>{
+      state[key]=Number(input.value);reflect();save();
+    };
+  }
+  grassRandomColorsInput.onchange=()=>{
+    state.grassRandomColors=grassRandomColorsInput.checked;
+    reflect();save();
+  };
+  grassYellowPercentInput.oninput=()=>{
+    state.grassYellowPercent=sanitizeSettings({
+      ...state,grassYellowPercent:Number(grassYellowPercentInput.value),
+    }).grassYellowPercent;
+    reflect();save();
+  };
+  farFacingCheckbox.onchange=()=>{
+    state.grassFarFacingEnabled=farFacingCheckbox.checked;
+    reflect();save();
+  };
+  for(const {key,input} of farFacingSliders){
+    input.oninput=()=>{
+      state[key]=sanitizeSettings({...state,[key]:Number(input.value)})[key];
+      reflect();save();
+    };
+  }
+  for(const [key,input] of grassClusterFields){
+    input.oninput=()=>{
+      state[key]=sanitizeSettings({...state,[key]:Number(input.value)})[key];
+      for(const [min,max] of [
+        ['grassClusterMinHeight','grassClusterMaxHeight'],
+        ['grassClusterGapMin','grassClusterGapMax'],
+        ['grassClusterBladeGapMin','grassClusterBladeGapMax'],
+        ['grassClusterMicroGapMin','grassClusterMicroGapMax'],
+      ]){
+        if(state[min]>state[max]){
+          if(key===max)state[min]=state[max];
+          else state[max]=state[min];
+        }
+      }
+      reflect();save();
+    };
+  }
+  for(const {input,flag,intensity,max} of grassFxSliders){
+    input.oninput=()=>{
+      const percentage=Math.max(0,Math.min(100,Number(input.value)));
+      state[flag]=percentage>0;
+      state[intensity]=Number((percentage*max/100).toFixed(3));
+      reflect();save();
+    };
+  }
+  for(const [key,input] of grassClusterFlags){
+    input.onchange=()=>{state[key]=input.checked;reflect();save();};
+  }
+  grassClusterGroundType.onchange=()=>{
+    state.grassClusterGroundType=grassClusterGroundType.value;
     reflect();save();
   };
   grassDensityInput.oninput = () => {
@@ -1267,6 +1607,46 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get characterShadowsEnabled(){return state.characterShadowsEnabled;},
     get characterShadowDistance(){return state.characterShadowDistance;},
     get shadowContrast(){return state.shadowContrast;},
+    get grassAOEnabled(){return state.grassAOEnabled;},
+    get grassAOEdgeFade(){return state.grassAOEdgeFade;},
+    get grassAOResolution(){return state.grassAOResolution;},
+    get grassAOAtlasTiles(){return state.grassAOAtlasTiles;},
+    get grassAOIntensity(){return state.grassAOIntensity;},
+    get grassAOShadowRadius(){return state.grassAOShadowRadius;},
+    get grassAOSoftness(){return state.grassAOSoftness;},
+    get grassAORootSampling(){return state.grassAORootSampling;},
+    get grassAOTilesPerFrame(){return state.grassAOTilesPerFrame;},
+    get grassAOUploadsPerSecond(){return state.grassAOUploadsPerSecond;},
+    get grassAOCacheTiles(){return state.grassAOCacheTiles;},
+    get grassRandomColors(){return state.grassRandomColors;},
+    get grassYellowPercent(){return state.grassYellowPercent;},
+    get grassClusterBlades(){return state.grassClusterBlades;},
+    get grassClusterMinHeight(){return state.grassClusterMinHeight;},
+    get grassClusterMaxHeight(){return state.grassClusterMaxHeight;},
+    get grassClusterGapMin(){return state.grassClusterGapMin;},
+    get grassClusterGapMax(){return state.grassClusterGapMax;},
+    get grassClusterBladeGapMin(){return state.grassClusterBladeGapMin;},
+    get grassClusterBladeGapMax(){return state.grassClusterBladeGapMax;},
+    get grassClusterDensity(){return state.grassClusterDensity;},
+    get grassClusterCells(){return state.grassClusterCells;},
+    get grassClusterStrength(){return state.grassClusterStrength;},
+    get grassClusterSoftness(){return state.grassClusterSoftness;},
+    get grassClusterWindSpeed(){return state.grassClusterWindSpeed;},
+    get grassClusterWindAlignment(){return state.grassClusterWindAlignment;},
+    get grassClusterWindDirection(){return state.grassClusterWindDirection;},
+    get grassClusterMicroGapMin(){return state.grassClusterMicroGapMin;},
+    get grassClusterMicroGapMax(){return state.grassClusterMicroGapMax;},
+    get grassClusterMicroRadius(){return state.grassClusterMicroRadius;},
+    get grassClusterMicroStrength(){return state.grassClusterMicroStrength;},
+    get grassClusterNormalsIntensity(){return state.grassClusterNormalsIntensity;},
+    get grassClusterTranslucencyIntensity(){return state.grassClusterTranslucencyIntensity;},
+    get grassClusterAOIntensity(){return state.grassClusterAOIntensity;},
+    get grassClusterTextureScale(){return state.grassClusterTextureScale;},
+    get grassClusterProceduralNormals(){return state.grassClusterProceduralNormals;},
+    get grassClusterTranslucency(){return state.grassClusterTranslucency;},
+    get grassClusterAO(){return state.grassClusterAO;},
+    get grassClusterGroundTexture(){return state.grassClusterGroundTexture;},
+    get grassClusterGroundType(){return state.grassClusterGroundType;},
     get grassDensity(){return state.grassDensity;},
     get grassDistance(){return state.grassDistance;},
     get grassMinSize(){return state.grassMinSize;},
@@ -1278,6 +1658,9 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get grassDensityCoefficient(){return state.grassDensityCoefficient;},
     get grassDensityOffset(){return state.grassDensityOffset;},
     get grassFarWidthBonus(){return state.grassFarWidthBonus;},
+    get grassFarFacingEnabled(){return state.grassFarFacingEnabled;},
+    get grassFarFacingStrength(){return state.grassFarFacingStrength;},
+    get grassFarFacingDistance(){return state.grassFarFacingDistance;},
     get grassTurnMin(){return state.grassTurnMin;},
     get grassTurnMax(){return state.grassTurnMax;},
     tick, tickPhysics, recordCpuFrame, setGpuFrameTime, close, setConnected, setLatency,

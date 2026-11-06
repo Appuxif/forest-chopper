@@ -1,13 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {sanitizeSettings,createSettings,lightingFieldMarkup,lookRangeMarkup,settingsExportJSON,LIGHTING_FIELDS,LIGHTING_FLAGS} from '../src/settings.js';
+import {sanitizeSettings,createSettings,lightingFieldMarkup,lookRangeMarkup,settingsExportJSON,LIGHTING_FIELDS,LIGHTING_FLAGS,GRASS_AO_FIELDS} from '../src/settings.js';
 import {PERFORMANCE_DEFAULTS,PERFORMANCE_PRESETS,PERFORMANCE_LIGHTING_PRESETS} from '../src/performance-presets.js';
 import {DEFAULT_AUDIO,SOUND_CONTROLS} from '../src/sound-rules.js';
 import {CHARACTER_LOOK_FIELDS} from '../src/character-orientation.js';
+import {GRASS_CLUSTER_DEFAULTS} from '../src/grass-clustering.js';
 
-const defaults={...PERFORMANCE_DEFAULTS,performancePreset:'high',
- mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,
+const defaults={...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,
+  grassClusterNormalsIntensity:1,
+  grassRandomColors:false,grassYellowPercent:5,
+  grassFarFacingEnabled:true,grassFarFacingStrength:80,
+  grassFarFacingDistance:20,
+  grassAOEnabled:true,grassAOResolution:128,grassAOAtlasTiles:5,grassAOEdgeFade:true,
+  ...Object.fromEntries(Object.entries(GRASS_AO_FIELDS).map(([key,field])=>[key,field[3]])),
+  performancePreset:'high',
+  mouseSensitivity:1,showFps:false,dayCycleEnabled:false,autoSprint:false,showTouchControls:true,
  fov:75,cameraHeight:2.3,cameraSide:.4,cameraDistance:1.7,cameraPitchLimit:80,
  ...Object.fromEntries(Object.entries(CHARACTER_LOOK_FIELDS).map(([key,val])=>[key,val[3]])),
  audio:DEFAULT_AUDIO,
@@ -963,9 +971,10 @@ test('reviewed High preset applies every submitted FPS-affecting graphics/light/
   flameShader:true,flameBillboard:false,fireShadows:true,nightDisableMoonShadows:true,
   quality:'high',maxFps:0,shadowDistance:60,shadowRefreshSeconds:20,
   characterShadowsEnabled:true,characterShadowDistance:62,shadowContrast:100,
-  grassDensity:30,grassDistance:100,grassMinSize:2.5,grassMaxSize:5.5,
+  grassDensity:30,grassClusterBlades:2,grassDistance:100,grassMinSize:2.5,grassMaxSize:5.5,
   grassWidth:1,grassFullDensityDistance:10,grassFarDensityPercent:0,
   grassFarWidthBonus:30,grassDensitySharpness:.000001,grassDensityCoefficient:0,grassDensityOffset:30,grassTurnMin:-30,grassTurnMax:30,
+  grassFarFacingEnabled:true,grassFarFacingStrength:80,grassFarFacingDistance:20,
  };
  const combined={...PERFORMANCE_PRESETS.high,...PERFORMANCE_LIGHTING_PRESETS.high};
  assert.deepEqual(combined,reviewed,'high preset matches all requested render-impacting settings');
@@ -1237,4 +1246,415 @@ test('pose slider inputs apply live, persist across sessions, and reset without 
  element('#fc-reset-settings').onclick();
  assert.equal(reloaded.lookSettings.lookFreeYaw,120);
  assert.equal(reloaded.cameraPitchLimit,80,'full reset still resets everything');
+});
+
+test('grass random palette toggle persists and does not switch to clump geometry',()=>{
+  assert.equal(sanitizeSettings({}).grassYellowPercent,5);
+  for(const percentage of [0,1,30,50,99,100])
+    assert.equal(sanitizeSettings({grassYellowPercent:percentage}).grassYellowPercent,percentage);
+  for(const invalid of [-1,101,50.5,NaN,Infinity,'20',null])
+    assert.equal(sanitizeSettings({grassYellowPercent:invalid}).grassYellowPercent,5);
+  assert.equal(sanitizeSettings({}).grassRandomColors,false);
+  assert.equal(sanitizeSettings({grassRandomColors:true}).grassRandomColors,true);
+  assert.equal(sanitizeSettings({grassRandomColors:'true'}).grassRandomColors,false);
+
+  const nodes=new Map();
+  const element=id=>{
+    if(!nodes.has(id))nodes.set(id,{value:'',checked:false,textContent:'',
+      style:{},setAttribute(){},querySelector:element});
+    return nodes.get(id);
+  };
+  const doc={createElement:()=>({hidden:false,style:{},setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}}};
+  const storageValues=new Map();
+  const storage={
+    getItem:key=>storageValues.get(key)??null,
+    setItem:(key,val)=>storageValues.set(key,val),
+  };
+  const settings=createSettings(doc,storage);
+  assert.equal(settings.grassRandomColors,false);
+  assert.equal(element('#fc-grass-random-colors').checked,false);
+  const slider=element('#fc-grass-yellow-percent');
+  assert.equal(slider.disabled,true);
+  assert.equal(slider.value,'5');
+  assert.equal(element('#fc-grass-yellow-percent-value').textContent,'5');
+  const checkbox=element('#fc-grass-random-colors');
+  checkbox.checked=true;
+  checkbox.onchange();
+  assert.equal(settings.grassRandomColors,true);
+  assert.equal(settings.grassClusterBlades,2);
+  assert.equal(slider.disabled,false);
+  slider.value='72';
+  slider.oninput();
+  assert.equal(settings.grassYellowPercent,72);
+  assert.equal(element('#fc-grass-yellow-percent-value').textContent,'72');
+  const stored=JSON.parse(storageValues.get('forest-chopper:settings:v1'));
+  assert.equal(stored.grassRandomColors,true);
+  assert.equal(stored.grassYellowPercent,72);
+  const reloaded=createSettings(doc,storage);
+  assert.equal(reloaded.grassRandomColors,true);
+  assert.equal(reloaded.grassYellowPercent,72);
+  assert.equal(element('#fc-grass-random-colors').checked,true);
+  assert.equal(slider.value,'72');
+  checkbox.checked=false;
+  checkbox.onchange();
+  assert.equal(reloaded.grassRandomColors,false);
+  assert.equal(slider.disabled,true);
+  assert.equal(reloaded.grassYellowPercent,72,'remember percent when disabled');
+});
+
+test('grass lighting defaults are 100% normals, 5% translucency, 100% AO',()=>{
+  const values=sanitizeSettings({});
+  assert.equal(values.grassClusterProceduralNormals,true);
+  assert.equal(values.grassClusterNormalsIntensity,1);
+  assert.equal(values.grassClusterTranslucency,true);
+  assert.equal(values.grassClusterTranslucencyIntensity,.075);
+  assert.equal(values.grassClusterAO,true);
+  assert.equal(values.grassClusterAOIntensity,1);
+  // Previously chosen values must survive the new baseline unchanged.
+  const previous=sanitizeSettings({grassClusterTranslucencyIntensity:.6,
+    grassClusterAOIntensity:.6,grassClusterNormalsIntensity:.35});
+  assert.equal(previous.grassClusterTranslucencyIntensity,.6);
+  assert.equal(previous.grassClusterAOIntensity,.6);
+  assert.equal(previous.grassClusterNormalsIntensity,.35);
+});
+
+test('foliage sliders migrate old flags and save independent strengths, 0 = off',()=>{
+  const elements=new Map(),storageValues=new Map();
+  const element=id=>{
+    if(!elements.has(id))elements.set(id,{
+      value:'',checked:false,textContent:'',style:{},
+      setAttribute(){},querySelector:element,
+      closest(){return {classList:{toggle(){}}};},
+    });
+    return elements.get(id);
+  };
+  const doc={
+    createElement:()=>({hidden:false,style:{},setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}},
+  };
+  const storage={
+    getItem:key=>storageValues.get(key)??null,
+    setItem:(key,value)=>storageValues.set(key,value),
+  };
+  const prefs=createSettings(doc,storage);
+  const entries=[
+    {id:'normals',flag:'grassClusterProceduralNormals',intensity:'grassClusterNormalsIntensity',
+      initial:100,percent:37,expected:.37},
+    {id:'translucency',flag:'grassClusterTranslucency',intensity:'grassClusterTranslucencyIntensity',
+      initial:5,percent:73,expected:1.095},
+    {id:'ao',flag:'grassClusterAO',intensity:'grassClusterAOIntensity',
+      initial:100,percent:82,expected:.82},
+  ];
+  for(const {id,flag,intensity,initial,percent,expected} of entries){
+    const input=element('#fc-grass-fx-'+id);
+    const output=element('#fc-grass-fx-'+id+'-value');
+    assert.equal(input.value,String(initial),'migrated preset intensity '+id);
+    assert.equal(output.textContent,String(initial));
+    input.value='0';
+    input.oninput();
+    assert.equal(prefs[flag],false,'zero turns '+id+' completely off');
+    assert.equal(prefs[intensity],0);
+    assert.equal(output.textContent,'0');
+    input.value=String(percent);
+    input.oninput();
+    assert.equal(prefs[flag],true,'above zero enables '+id);
+    assert.equal(prefs[intensity],expected);
+    assert.equal(output.textContent,String(percent));
+  }
+  const restored=createSettings(doc,storage);
+  for(const {id,flag,intensity,percent,expected} of entries){
+    assert.equal(restored[flag],true);
+    assert.equal(restored[intensity],expected);
+    assert.equal(element('#fc-grass-fx-'+id).value,String(percent));
+  }
+  assert.equal(sanitizeSettings({grassClusterNormalsIntensity:.36}).grassClusterNormalsIntensity,.36);
+  for(const invalid of [-1,1.1,NaN,'0.4',null])
+    assert.equal(sanitizeSettings({grassClusterNormalsIntensity:invalid}).grassClusterNormalsIntensity,1);
+});
+
+test('old foliage checkbox settings are shown as zero without overwriting old strength',()=>{
+  const elements=new Map();
+  const element=id=>{
+    if(!elements.has(id))elements.set(id,{
+      checked:false,value:'',textContent:'',style:{},
+      setAttribute(){},querySelector:element,
+      closest(){return {classList:{toggle(){}}};},
+    });
+    return elements.get(id);
+  };
+  const storage={
+    getItem:key=>key==='forest-chopper:settings:v1'
+      ?JSON.stringify({
+        grassClusterProceduralNormals:false,grassClusterTranslucency:false,
+        grassClusterAO:false,grassClusterTranslucencyIntensity:.85,
+        grassClusterAOIntensity:.45,
+      }):null,
+    setItem(){},
+  };
+  const settings=createSettings({
+    createElement:()=>({hidden:false,style:{},setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}},
+  },storage);
+  for(const id of ['normals','translucency','ao']){
+    assert.equal(element('#fc-grass-fx-'+id).value,'0');
+  }
+  assert.equal(settings.grassClusterTranslucencyIntensity,.85);
+  assert.equal(settings.grassClusterAOIntensity,.45);
+});
+
+
+test('baked ground AO settings: 80%/50 cm defaults and quality controls',()=>{
+  assert.equal(sanitizeSettings({}).grassAOIntensity,80);
+  assert.equal(sanitizeSettings({}).grassAOShadowRadius,50);
+  assert.equal(sanitizeSettings({grassAOEnabled:false}).grassAOEnabled,false);
+  assert.equal(sanitizeSettings({grassAOResolution:64}).grassAOResolution,64);
+  assert.equal(sanitizeSettings({grassAOResolution:256}).grassAOResolution,256);
+  assert.equal(sanitizeSettings({grassAOResolution:192}).grassAOResolution,128);
+  assert.equal(sanitizeSettings({grassAOAtlasTiles:3}).grassAOAtlasTiles,3);
+  assert.equal(sanitizeSettings({grassAORootSampling:50}).grassAORootSampling,50);
+  assert.equal(sanitizeSettings({grassAOUploadsPerSecond:4}).grassAOUploadsPerSecond,4);
+  assert.equal(sanitizeSettings({grassAOIntensity:101}).grassAOIntensity,80);
+  assert.equal(sanitizeSettings({grassFakeShadowIntensity:72}).grassAOIntensity,80);
+  assert.equal(sanitizeSettings({grassFakeShadowRadius:44}).grassAOShadowRadius,50);
+});
+
+test('grass presets choose 3/2/1/1 classic blades; no disabled legacy geometry UI',()=>{
+  for(const [preset,count] of [['ultra',3],['high',2],['medium',1],['low',1]]){
+    assert.equal(PERFORMANCE_PRESETS[preset].grassClusterBlades,count,preset);
+    assert.equal(sanitizeSettings({performancePreset:preset}).grassClusterBlades,count,preset);
+  }
+  const {cfg,element}=(()=>{
+    const nodes=new Map();
+    const element=key=>{
+      if(!nodes.has(key))nodes.set(key,{value:'',checked:false,textContent:'',
+        closest(){return {classList:{toggle(){}}};},classList:{toggle(){}},
+        style:{},querySelector:element,setAttribute(){}});
+      return nodes.get(key);
+    };
+    const doc={createElement:()=>({hidden:false,style:{},textContent:'',
+      setAttribute(){},querySelector:element}),head:{append(){}},body:{append(){}}};
+    return {cfg:createSettings(doc,{getItem:()=>null,setItem(){}}),element};
+  })();
+  for(const [preset,count] of [['ultra',3],['high',2],['medium',1],['low',1]]){
+    cfg.setPerformancePreset(preset);
+    assert.equal(cfg.grassClusterBlades,count,preset);
+  }
+  assert.equal(element('#fc-grass-triangles').disabled,undefined);
+  assert.equal(element('#fc-grass-density').disabled,undefined);
+  assert.equal(cfg.grassClusterEnabled,undefined);
+});
+
+
+test('camera-facing grass strength and start distance are independent, live and persistent',()=>{
+  for(const value of [0,20,70,100]){
+    const sanitized=sanitizeSettings({
+      grassFarFacingEnabled:true,grassFarFacingStrength:value,
+      grassFarFacingDistance:value,
+    });
+    assert.equal(sanitized.grassFarFacingStrength,value);
+    assert.equal(sanitized.grassFarFacingDistance,value);
+    assert.equal(sanitized.grassFarFacingEnabled,true);
+  }
+  for(const value of [-1,101,1.2,'50',null]){
+    assert.equal(sanitizeSettings({grassFarFacingStrength:value}).grassFarFacingStrength,80);
+    assert.equal(sanitizeSettings({grassFarFacingDistance:value}).grassFarFacingDistance,20);
+  }
+  assert.equal(sanitizeSettings({grassFarFacingEnabled:1}).grassFarFacingEnabled,true);
+  const legacy=sanitizeSettings({grassFarTipEnabled:true,grassFarTipWidth:95});
+  assert.equal('grassFarTipEnabled' in legacy,false);
+  assert.equal('grassFarTipWidth' in legacy,false);
+
+  const nodes=new Map(),storageValues=new Map();
+  function element(id){
+    if(!nodes.has(id))nodes.set(id,{
+      value:'',checked:false,textContent:'',style:{},
+      setAttribute(){},querySelector:element,
+      closest(){return {classList:{toggle(){}}};},
+      classList:{toggle(){}},
+    });
+    return nodes.get(id);
+  }
+  const doc={
+    createElement:()=>({hidden:false,style:{},setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}},
+  };
+  const storage={
+    getItem(key){return storageValues.get(key)??null;},
+    setItem(key,value){storageValues.set(key,value);},
+  };
+  const settings=createSettings(doc,storage);
+  const faceCheck=element('#fc-grass-far-facing-enabled');
+  const faceSlider=element('#fc-grass-far-facing-strength');
+  const distanceSlider=element('#fc-grass-far-facing-distance');
+  assert.equal(settings.grassFarFacingEnabled,true);
+  assert.equal(settings.grassFarFacingStrength,80);
+  assert.equal(faceSlider.disabled,false);
+  assert.equal(distanceSlider.disabled,false);
+  assert.equal(distanceSlider.value,'20');
+  faceCheck.checked=true;faceCheck.onchange();
+  assert.equal(settings.grassFarFacingEnabled,true);
+  assert.equal(faceSlider.disabled,false);
+  assert.equal(distanceSlider.disabled,false);
+  faceSlider.value='25';faceSlider.oninput();
+  assert.equal(settings.grassFarFacingStrength,25);
+  distanceSlider.value='65';distanceSlider.oninput();
+  assert.equal(settings.grassFarFacingDistance,65);
+  assert.equal(element('#fc-grass-far-facing-distance-value').textContent,'65');
+  faceCheck.checked=false;faceCheck.onchange();
+  assert.equal(distanceSlider.disabled,true);
+  assert.equal(settings.grassFarFacingDistance,65,
+    'disabling should preserve chosen distance');
+
+  const persisted=JSON.parse(storageValues.get('forest-chopper:settings:v1'));
+  assert.equal(persisted.grassFarFacingEnabled,false);
+  assert.equal(persisted.grassFarFacingStrength,25);
+  assert.equal(persisted.grassFarFacingDistance,65);
+  const restored=createSettings(doc,storage);
+  assert.equal(restored.grassFarFacingEnabled,false);
+  assert.equal(restored.grassFarFacingStrength,25);
+  assert.equal(restored.grassFarFacingDistance,65);
+});
+
+test('camera-facing reviewed defaults migrate exactly once, preserving customized choices',()=>{
+  const makeFixture=initial=>{
+    const nodes=new Map(),store=new Map();
+    store.set('forest-chopper:settings:v1',JSON.stringify(initial));
+    const element=key=>{
+      if(!nodes.has(key))nodes.set(key,{
+        value:'',checked:false,textContent:'',style:{},querySelector:element,
+        setAttribute(){},closest(){return {classList:{toggle(){}}};},
+        classList:{toggle(){}},
+      });
+      return nodes.get(key);
+    };
+    const doc={createElement:()=>({
+      hidden:false,style:{},setAttribute(){},querySelector:element,
+    }),head:{append(){}},body:{append(){}}};
+    const storage={
+      getItem:key=>store.get(key)??null,
+      setItem:(key,value)=>store.set(key,value),
+    };
+    return {doc,storage,store};
+  };
+  // The previous untouched (disabled / 70% / 20m) preset adopts the approved one.
+  const old=makeFixture({
+    grassFarFacingEnabled:false,grassFarFacingStrength:70,
+    grassFarFacingDistance:20,mouseSensitivity:1.4,
+  });
+  const updated=createSettings(old.doc,old.storage);
+  assert.equal(updated.grassFarFacingEnabled,true);
+  assert.equal(updated.grassFarFacingStrength,80);
+  assert.equal(updated.grassFarFacingDistance,20);
+  assert.equal(updated.mouseSensitivity,1.4);
+  assert.equal(old.store.get('forest-chopper:far-facing-defaults:v1'),'1');
+  const current=JSON.parse(old.store.get('forest-chopper:settings:v1'));
+  assert.equal(current.grassFarFacingEnabled,true);
+  assert.equal(current.grassFarFacingStrength,80);
+  // After migration, the user's decision to disable is not overridden.
+  current.grassFarFacingEnabled=false;
+  old.storage.setItem('forest-chopper:settings:v1',JSON.stringify(current));
+  assert.equal(createSettings(old.doc,old.storage).grassFarFacingEnabled,false);
+
+  // A customized distance/strength/flag is not reset by the migration.
+  const custom=makeFixture({
+    grassFarFacingEnabled:false,grassFarFacingStrength:35,grassFarFacingDistance:65,
+  });
+  const customSettings=createSettings(custom.doc,custom.storage);
+  assert.equal(customSettings.grassFarFacingEnabled,false);
+  assert.equal(customSettings.grassFarFacingStrength,35);
+  assert.equal(customSettings.grassFarFacingDistance,65);
+  // An already-enabled effect with the old default strength gains the
+  // newly agreed 80%, without losing its custom distance.
+  const enabled=makeFixture({
+    grassFarFacingEnabled:true,grassFarFacingStrength:70,grassFarFacingDistance:45,
+  });
+  const enabledSettings=createSettings(enabled.doc,enabled.storage);
+  assert.equal(enabledSettings.grassFarFacingEnabled,true);
+  assert.equal(enabledSettings.grassFarFacingStrength,80);
+  assert.equal(enabledSettings.grassFarFacingDistance,45);
+});
+
+test('grass camera-facing defaults follow quality presets, including switching back from Ultra',()=>{
+  for(const [preset,enabled] of [
+    ['ultra',false],['high',true],['medium',true],['low',true],
+  ]){
+    const defined=PERFORMANCE_PRESETS[preset];
+    assert.equal(defined.grassFarFacingEnabled,enabled,preset);
+    assert.equal(defined.grassFarFacingStrength,80,preset);
+    assert.equal(defined.grassFarFacingDistance,20,preset);
+    const loaded=sanitizeSettings({performancePreset:preset});
+    assert.equal(loaded.grassFarFacingEnabled,enabled,preset);
+    assert.equal(loaded.grassFarFacingStrength,80,preset);
+    assert.equal(loaded.grassFarFacingDistance,20,preset);
+  }
+  const nodes=new Map();
+  function element(id){
+    if(!nodes.has(id))nodes.set(id,{
+      value:'',checked:false,textContent:'',style:{},
+      setAttribute(){},querySelector:element,
+      closest(){return {classList:{toggle(){}}};},
+      classList:{toggle(){}},
+    });
+    return nodes.get(id);
+  }
+  const doc={createElement:()=>({hidden:false,style:{},
+    setAttribute(){},querySelector:element}),
+    head:{append(){}},body:{append(){}}};
+  const settings=createSettings(doc,{getItem:()=>null,setItem(){}});
+  for(const [preset,enabled] of [
+    ['ultra',false],['high',true],['medium',true],['low',true],
+    ['ultra',false],['high',true],
+  ]){
+    settings.setPerformancePreset(preset);
+    assert.equal(settings.grassFarFacingEnabled,enabled,preset);
+    assert.equal(settings.grassFarFacingStrength,80,preset);
+    assert.equal(settings.grassFarFacingDistance,20,preset);
+    assert.equal(element('#fc-grass-far-facing-enabled').checked,enabled,preset);
+    assert.equal(element('#fc-grass-far-facing-strength').disabled,!enabled,preset);
+    assert.equal(element('#fc-grass-far-facing-distance').disabled,!enabled,preset);
+  }
+  const strength=element('#fc-grass-far-facing-strength');
+  strength.value='50';strength.oninput();
+  assert.equal(settings.grassFarFacingStrength,50);
+  assert.equal(settings.performancePreset,'custom');
+  settings.setPerformancePreset('high');
+  assert.equal(settings.grassFarFacingStrength,80);
+  assert.equal(settings.performancePreset,'high');
+});
+
+test('old Ultra facing defaults migrate disabled; custom profile stays customized',()=>{
+  const make=(data)=>{
+    const values=new Map([['forest-chopper:settings:v1',JSON.stringify(data)]]);
+    const el=()=>({style:{},setAttribute(){},querySelector:el,closest(){return {classList:{toggle(){}}};},classList:{toggle(){}}});
+    const doc={createElement:el,head:{append(){}},body:{append(){}}};
+    return {doc,storage:{
+      getItem:k=>values.get(k)??null,
+      setItem:(k,v)=>values.set(k,v),
+    }};
+  };
+  const ultra=make({
+    performancePreset:'ultra',grassFarFacingEnabled:false,
+    grassFarFacingStrength:70,grassFarFacingDistance:20,
+  });
+  const ultraConfig=createSettings(ultra.doc,ultra.storage);
+  assert.equal(ultraConfig.grassFarFacingEnabled,false);
+  assert.equal(ultraConfig.grassFarFacingStrength,80);
+  assert.equal(ultraConfig.grassFarFacingDistance,20);
+  const custom=make({
+    performancePreset:'custom',grassFarFacingEnabled:false,
+    grassFarFacingStrength:35,grassFarFacingDistance:55,
+  });
+  const customConfig=createSettings(custom.doc,custom.storage);
+  assert.equal(customConfig.grassFarFacingEnabled,false);
+  assert.equal(customConfig.grassFarFacingStrength,35);
+  assert.equal(customConfig.grassFarFacingDistance,55);
+  // A custom profile with the old 70% value might be intentional.
+  const previousCustom=make({
+    performancePreset:'custom',grassFarFacingEnabled:false,
+    grassFarFacingStrength:70,grassFarFacingDistance:20,
+  });
+  const previousCustomConfig=createSettings(previousCustom.doc,previousCustom.storage);
+  assert.equal(previousCustomConfig.grassFarFacingEnabled,false);
+  assert.equal(previousCustomConfig.grassFarFacingStrength,70);
 });

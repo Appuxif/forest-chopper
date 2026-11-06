@@ -37,7 +37,7 @@ export function createDecorBatch(THREE,chunk,objects) {
     mesh.name='Decor batch';
     mesh.count=0;
     mesh.castShadow=true;
-    mesh.receiveShadow=group.entries.some(entry=>entry.part.receiveShadow);
+    mesh.receiveShadow=true; // Every ground-level decoration receives sunlight/fire shadows.
     mesh.frustumCulled=true;
     mesh.userData.profileCategory='decor';
     const first=group.entries[0].source;

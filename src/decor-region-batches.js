@@ -1,4 +1,4 @@
-import {createDecorBatch} from './decor-instancing.js?v=20261103-decor-region1';
+import {createDecorBatch} from './decor-instancing.js?v=20261105-decor-receivers2';
 
 // Adjustable GPU batch sectors (in chunks). Logical decor/IDs remain owned
 // by the original world chunks, so switching size never resets collectibles.

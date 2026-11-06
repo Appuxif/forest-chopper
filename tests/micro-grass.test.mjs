@@ -2,6 +2,8 @@ import {flatTerrain} from './helpers/flat-terrain.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {gladesForTile,gladeAtPoint,gladeDensity,GLADE_CELL} from '../src/grass-glades.js';
+import {GRASS_CLUSTER_DEFAULTS} from '../src/grass-clustering.js';
+import {makeClassicGrassClumpGeometry,makeTuftGeometry} from '../src/classic-grass-clump-geometry.js';
 import {generateGrassTile,createMicroGrass,effectiveGrassRadius,
   grassDistanceDensity,MICRO_GRASS_NIGHT_RADIUS} from '../src/micro-grass.js';
 
@@ -15,11 +17,13 @@ function fixture({radius=12,density=2}={}) {
   class Geometry {
     constructor() {this.attributes={};this.disposed=0;geometries.add(this);}
     setAttribute(key,attr){this.attributes[key]=attr;}
+    setIndex(indices){this.indices=indices;}
     getAttribute(key){return this.attributes[key];}
     computeVertexNormals(){}
     clone(){
       const copy=new Geometry();
       for(const [key,attr] of Object.entries(this.attributes))copy.setAttribute(key,attr.clone());
+      if(this.indices)copy.indices=this.indices.slice();
       return copy;
     }
     dispose(){this.disposed++;}
@@ -54,7 +58,9 @@ function fixture({radius=12,density=2}={}) {
     constructor(){
       this.position={x:0,y:0,z:0,set:(x,y,z)=>Object.assign(this.position,{x,y,z})};
       this.rotation={x:0,y:0,z:0,set:(x,y,z)=>Object.assign(this.rotation,{x,y,z})};
-      this.scale={x:1,y:1,z:1,setScalar:(n)=>Object.assign(this.scale,{x:n,y:n,z:n})};
+      this.scale={x:1,y:1,z:1,
+        set:(x,y,z)=>Object.assign(this.scale,{x,y,z}),
+        setScalar:(n)=>Object.assign(this.scale,{x:n,y:n,z:n})};
       this.matrix=null;
     }
     updateMatrix(){this.matrix={position:{...this.position},rotation:{...this.rotation},scale:{...this.scale}};}
@@ -581,4 +587,475 @@ test('for nonmonotonic offset below 1 CPU renders full tiles for safe shader LOD
   assert.equal(uniform.x,.25);
   assert.equal(uniform.y,.5);
   grass.dispose();
+});
+
+
+test('classic clumps always instance the original blade mesh with shared roots',()=>{
+  const {ctx,sceneItems,THREE}=fixture({radius:12,density:2});
+  Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{grassClusterEnabled:true,
+    grassClusterDensity:30});
+  const grass=createMicroGrass(ctx);
+  const mesh=[...sceneItems].find(v=>v.userData.grassTier==='near');
+  assert.ok(mesh);
+  const legacy=makeTuftGeometry(THREE,'near');
+  assert.equal(mesh.geometry.getAttribute('position').count,
+    legacy.getAttribute('position').count*GRASS_CLUSTER_DEFAULTS.grassClusterBlades);
+  assert.equal(mesh.geometry.getAttribute('color').count,
+    legacy.getAttribute('color').count*GRASS_CLUSTER_DEFAULTS.grassClusterBlades);
+  const pos=mesh.matrices.get(0);
+  assert.ok(pos.scale.y>=.8&&pos.scale.y<=1.3);
+  assert.equal(pos.scale.x,pos.scale.y);
+  const source=mesh.geometry.getAttribute('position').array;
+  assert.ok(source.every(Number.isFinite));
+  assert.equal(mesh.geometry.getAttribute('fcBladeTangent'),undefined);
+  assert.ok(mesh.geometry.getAttribute('fcGrassCenterX'));
+  assert.ok(mesh.geometry.getAttribute('fcGrassCenterZ'));
+  const originalCount=grass.generatedTiles;
+  // New curved-only knobs do not affect the classic geometry, shader or page cache.
+  Object.assign(ctx.settings,{
+    grassClusterTilt:80,grassClusterBend:1,grassClusterWave:1,
+    grassClusterRootUpright:0,grassClusterSpread:.65,grassClusterTipWidth:1,
+  });
+  grass.tick();
+  assert.equal(grass.generatedTiles,originalCount,
+    'tilt and ground-bending controls must not rebuild classic grass');
+  assert.ok(mesh.material.userData.grassUniforms.fcGrassWindSpeed);
+  const shader={uniforms:{},
+    vertexShader:'#include <common>\n#include <color_vertex>\n#include <begin_vertex>',
+    fragmentShader:'#include <common>\n#include <color_fragment>'};
+  mesh.material.onBeforeCompile(shader);
+  assert.match(shader.vertexShader,/fcGrassCenterX/);
+  assert.match(shader.vertexShader,/fcGrassDensityShape/);
+  assert.match(shader.vertexShader,/fcGrassFade/);
+  assert.match(shader.vertexShader,/fcGrassPriority/);
+  assert.match(shader.vertexShader,/fcGrassClearings/);
+  assert.match(shader.vertexShader,/fcGrassActors/);
+  assert.match(shader.vertexShader,/smoothstep\(0\.0,0\.21,position\.y\)/);
+  assert.doesNotMatch(shader.vertexShader,/fcBladeCentre|fcBladeTangent|fcGrassTilt/);
+  grass.dispose();
+});
+
+test('classic pouches retain original Lambert lighting, without curved extras',()=>{
+  for(const simple of [false,true]){
+    const {ctx,sceneItems}=fixture({radius:12,density:2});
+    Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{
+      grassClusterEnabled:true,grassClusterDensity:20,
+      grassInteraction:!simple,
+    });
+    const grass=createMicroGrass(ctx);
+    const mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+    assert.ok(mesh);
+    const shader={uniforms:{},
+      vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <color_vertex>\n#include <begin_vertex>',
+      fragmentShader:'#include <common>\n#include <opaque_fragment>',
+    };
+    mesh.material.onBeforeCompile(shader);
+    assert.match(shader.vertexShader,/fcGrassDensityShape/);
+    assert.doesNotMatch(shader.vertexShader,/fcBladeTangent|fcBulgedNormal|fcGrassRibbonSide/);
+    assert.doesNotMatch(shader.vertexShader,/fcGrassTranslucencyIntensity|fcGrassTilt/);
+    assert.doesNotMatch(shader.fragmentShader,/fcGrassTransmission|fcGrassAOIntensity/);
+    assert.ok(mesh.material.userData.grassUniforms.fcGrassFade);
+    assert.ok(mesh.material.userData.grassUniforms.fcGrassWindSpeed);
+    const generated=grass.generatedTiles;
+    ctx.settings.grassClusterBend=.9;
+    grass.tick();
+    assert.equal(grass.generatedTiles,generated);
+    grass.dispose();
+  }
+});
+
+test('legacy grass shaders keep original normal lighting and no cluster attributes',()=>{
+  const {ctx,sceneItems}=fixture();
+  ctx.settings.grassClusterEnabled=false;
+  const grass=createMicroGrass(ctx);
+  const mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+  const shader={
+    uniforms:{},
+    vertexShader:'#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>',
+    fragmentShader:'#include <common>\n#include <opaque_fragment>',
+  };
+  mesh.material.onBeforeCompile(shader);
+  assert.doesNotMatch(shader.vertexShader,/fcBulgedNormal|fcGrassRibbonSide/);
+  assert.doesNotMatch(shader.fragmentShader,/fcGrassTransmission/);
+  grass.dispose();
+});
+
+test('legacy blades and clustered blades have the same dark lighting on both faces',()=>{
+  for(const grouped of [false,true])for(const simple of [false,true]){
+    const {ctx,sceneItems}=fixture({radius:12,density:2});
+    if(grouped)Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{grassClusterEnabled:true});
+    ctx.settings.grassInteraction=!simple;
+    const grass=createMicroGrass(ctx);
+    const mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+    assert.ok(mesh);
+    const shader={
+      uniforms:{},
+      vertexShader:'#include <common>\n#include <begin_vertex>',
+      fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <lights_fragment_end>\n#include <opaque_fragment>',
+    };
+    mesh.material.onBeforeCompile(shader);
+    assert.match(shader.fragmentShader,/normal = normalize\(mat3\(viewMatrix\) \* vec3\(0\.0, 1\.0, 0\.0\)\)/);
+    assert.match(shader.fragmentShader,/reflectedLight\.directDiffuse \*= 0\.38/);
+    assert.match(shader.fragmentShader,/reflectedLight\.indirectDiffuse \*= 0\.68/);
+    assert.doesNotMatch(shader.fragmentShader,/normal = gl_FrontFacing \?/);
+    assert.doesNotMatch(shader.fragmentShader,/abs\(normal/);
+    grass.dispose();
+  }
+});
+
+test('grouped classic grass preserves 6-triangle near and 4-triangle far LOD',()=>{
+  const {ctx,sceneItems,THREE}=fixture({radius:38,density:1});
+  Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{
+    grassClusterEnabled:true,grassClusterDensity:12,
+  });
+  const grass=createMicroGrass(ctx);
+  const near=[...sceneItems].find(mesh=>mesh.userData.grassTier==='near');
+  const far=[...sceneItems].find(mesh=>mesh.userData.grassTier==='far');
+  assert.ok(near&&far,'both tiers must load');
+  const blades=GRASS_CLUSTER_DEFAULTS.grassClusterBlades;
+  assert.equal(near.geometry.getAttribute('position').count/3,blades*6);
+  assert.equal(far.geometry.getAttribute('position').count/3,blades*4);
+  assert.equal(makeTuftGeometry(THREE,'near').getAttribute('position').count/3,6);
+  assert.equal(makeTuftGeometry(THREE,'far').getAttribute('position').count/3,4);
+  grass.dispose();
+});
+
+test('group mode reuses original near/far dither transitions and distance LOD',()=>{
+  const {ctx,sceneItems}=fixture({radius:100,density:3});
+  Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{
+    grassClusterEnabled:true,grassFullDensityDistance:10,
+    grassFarDensityPercent:38,grassFarWidthBonus:30,
+  });
+  const grass=createMicroGrass(ctx);
+  const near=[...sceneItems].find(m=>m.userData.grassTier==='near');
+  const far=[...sceneItems].find(m=>m.userData.grassTier==='far');
+  assert.ok(near&&far);
+  const nu=near.material.userData.grassUniforms;
+  const fu=far.material.userData.grassUniforms;
+  assert.equal(nu.fcGrassFade.value.z,19);
+  assert.equal(nu.fcGrassFade.value.w,26);
+  assert.equal(fu.fcGrassFade.value.x,19);
+  assert.equal(fu.fcGrassFade.value.y,26);
+  assert.equal(nu.fcGrassDensityLod.value.x,10);
+  for(const mesh of [near,far]){
+    const shader={uniforms:{},
+      vertexShader:'#include <common>\n#include <begin_vertex>',
+      fragmentShader:'#include <common>\n#include <opaque_fragment>'};
+    mesh.material.onBeforeCompile(shader);
+    assert.match(shader.vertexShader,/fcBladeFade/);
+    assert.match(shader.vertexShader,/fcFadeIn\*fcFadeOut/);
+    assert.doesNotMatch(shader.vertexShader,/fcGrassTierFade|fcTierWeight/);
+  }
+  grass.dispose();
+});
+
+test('classic clump startup initializes original grass uniforms',()=>{
+  const {ctx,sceneItems}=fixture({radius:12,density:2});
+  Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{grassClusterEnabled:true});
+  assert.doesNotThrow(()=>createMicroGrass(ctx));
+  const near=[...sceneItems].find(m=>m.userData.grassTier==='near');
+  assert.ok(near,'clump mesh should be present after startup');
+  const uniforms=near.material.userData.grassUniforms;
+  assert.equal(uniforms.fcGrassSizeRange.value.x,ctx.settings.grassMinSize);
+  assert.equal(uniforms.fcGrassSizeRange.value.y,ctx.settings.grassMaxSize);
+  assert.equal(uniforms.fcGrassFade.value.w,12);
+  assert.ok(uniforms.fcGrassWindSpeed);
+  assert.ok(uniforms.fcGrassActors);
+});
+
+test('classic blade geometry is unchanged by curved-editor tilt, arch and wave',()=>{
+  const {THREE}=fixture();
+  const base={...GRASS_CLUSTER_DEFAULTS,grassClusterBlades:1,
+    grassClusterAngleSpread:0};
+  const source=makeTuftGeometry(THREE,'near').getAttribute('position').array;
+  const single=makeClassicGrassClumpGeometry(THREE,base,'near')
+    .getAttribute('position').array;
+  assert.deepEqual([...single],[...Float32Array.from(source)],
+    'single classic blade must match original profile at Float32 precision');
+  const flat=makeClassicGrassClumpGeometry(THREE,{...base,
+    grassClusterBlades:6},'near');
+  const extreme=makeClassicGrassClumpGeometry(THREE,{...base,
+    grassClusterBlades:6,grassClusterTilt:80,grassClusterBend:1,
+    grassClusterWave:1,grassClusterSpread:.65,grassClusterRootUpright:0,
+    grassClusterTipWidth:1,grassClusterTriangles:10},'near');
+  assert.deepEqual([...flat.getAttribute('position').array],
+    [...extreme.getAttribute('position').array]);
+  assert.equal(flat.getAttribute('position').count/3,36);
+  const roots=flat.getAttribute('position').array;
+  assert.ok(Math.abs(roots[0]-roots[source.length])>1e-5,
+    'individual legacy blades have different positions within a pouch');
+});
+
+
+test('optional randomized palette assigns stable per-blade colors without new pages',()=>{
+  for(const grouped of [false,true])for(const simple of [false,true]){
+    const {ctx,sceneItems}=fixture({radius:12,density:4});
+    if(grouped)Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{
+      grassClusterEnabled:true,grassClusterDensity:20,
+    });
+    ctx.settings.grassInteraction=!simple;
+    const grass=createMicroGrass(ctx);
+    const mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+    assert.ok(mesh);
+    const bladeIndices=mesh.geometry.getAttribute('fcGrassBladeIndex');
+    assert.ok(bladeIndices,'all legacy grass geometries have the palette attribute');
+    assert.equal(bladeIndices.count,mesh.geometry.getAttribute('position').count);
+    const unique=new Set(bladeIndices.array);
+    assert.equal(unique.size,GRASS_CLUSTER_DEFAULTS.grassClusterBlades);
+    const sourceGeometry=mesh.geometry;
+    const originalTiles=grass.generatedTiles;
+    const uniforms=mesh.material.userData.grassUniforms;
+    assert.equal(uniforms.fcGrassRandomColors.value,0,
+      'default color palette is unchanged');
+    const shader={
+      uniforms:{},
+      vertexShader:'#include <common>\n#include <color_vertex>\n#include <begin_vertex>',
+      fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <lights_fragment_end>',
+    };
+    mesh.material.onBeforeCompile(shader);
+    assert.strictEqual(shader.uniforms.fcGrassRandomColors,uniforms.fcGrassRandomColors);
+    assert.strictEqual(shader.uniforms.fcGrassYellowShare,uniforms.fcGrassYellowShare);
+    assert.equal(uniforms.fcGrassYellowShare.value,.05);
+    assert.match(shader.vertexShader,/uniform float fcGrassYellowShare/);
+    assert.match(shader.vertexShader,/step\(1\.0-fcGrassYellowShare,fcFamily\)/);
+    assert.match(shader.vertexShader,/attribute float fcGrassBladeIndex/);
+    assert.match(shader.vertexShader,/fcPaletteSeed/);
+    assert.match(shader.vertexShader,/fcGrassBladeIndex\*19\.19/);
+    assert.match(shader.vertexShader,/fcGrassRandomColors>0\.5/);
+    assert.match(shader.vertexShader,/fcGreen/);
+    assert.match(shader.vertexShader,/fcDry/);
+    assert.doesNotMatch(shader.vertexShader,/fcPaletteSeed.*fcGrassWindTime/);
+    ctx.settings.grassRandomColors=true;
+    grass.tick();
+    assert.equal(uniforms.fcGrassRandomColors.value,1);
+    assert.strictEqual(mesh.geometry,sourceGeometry);
+    assert.equal(grass.generatedTiles,originalTiles,
+      'switching palette should not rebuild or reupload grass pages');
+    // 0% dry = all green; 100% dry = all yellow/brown.
+    // The GPU threshold is adjusted via a uniform, never a new mesh.
+    for(const [percentage,fraction] of [[0,0],[15,.15],[30,.3],[75,.75],[100,1]]){
+      ctx.settings.grassYellowPercent=percentage;
+      grass.tick();
+      assert.equal(uniforms.fcGrassYellowShare.value,fraction);
+      assert.strictEqual(mesh.geometry,sourceGeometry);
+      assert.equal(grass.generatedTiles,originalTiles);
+    }
+    ctx.settings.grassRandomColors=false;
+    grass.tick();
+    assert.equal(uniforms.fcGrassRandomColors.value,0);
+    assert.equal(grass.generatedTiles,originalTiles);
+    grass.dispose();
+  }
+});
+
+test('classic clumps never fall back to legacy singles; blades and triangles rebuild',()=>{
+  const {ctx,sceneItems}=fixture({radius:12,density:30});
+  Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{grassClusterBlades:2});
+  const grass=createMicroGrass(ctx);
+  let mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+  assert.equal(mesh.geometry.getAttribute('position').count/3,12);
+  const initialCount=grass.generatedTiles;
+  ctx.settings.grassClusterEnabled=false; // Obsolete persisted preference is inert.
+  grass.tick();
+  mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+  assert.equal(mesh.geometry.getAttribute('position').count/3,12);
+  assert.equal(grass.generatedTiles,initialCount);
+  ctx.settings.grassClusterBlades=3;
+  ctx.settings.grassTriangles=3;
+  grass.tick();
+  mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+  assert.equal(mesh.geometry.getAttribute('position').count/3,9);
+  assert.ok(grass.generatedTiles>initialCount);
+  ctx.settings.grassMinSize=3;
+  ctx.settings.grassMaxSize=6;
+  ctx.settings.grassWidth=1.5;
+  ctx.settings.grassTurnMin=-12;
+  ctx.settings.grassTurnMax=18;
+  grass.tick();
+  const u=mesh.material.userData.grassUniforms;
+  assert.equal(u.fcGrassSizeRange.value.x,3);
+  assert.equal(u.fcGrassSizeRange.value.y,6);
+  assert.equal(u.fcGrassWidth.value,1.5);
+  assert.ok(Math.abs(u.fcGrassTurnRange.value.x+12*Math.PI/180)<1e-10);
+  assert.ok(Math.abs(u.fcGrassTurnRange.value.y-18*Math.PI/180)<1e-10);
+  ctx.settings.grassTriangles=1;
+  grass.tick();
+  mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+  assert.equal(mesh.geometry.getAttribute('position').count/3,3);
+  grass.dispose();
+});
+
+test('classic grass wind is live on full and lightweight shaders, and zero when disabled',()=>{
+  for(const interaction of [true,false]){
+    const {ctx,sceneItems}=fixture({radius:12,density:30});
+    Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{grassInteraction:interaction,
+      grassClusterWindSpeed:.15,windEnabled:true});
+    const grass=createMicroGrass(ctx);
+    const mesh=[...sceneItems].find(m=>m.userData.grassTier==='near');
+    const shader={uniforms:{},
+      vertexShader:'#include <common>\n#include <begin_vertex>',
+      fragmentShader:'#include <common>'};
+    mesh.material.onBeforeCompile(shader);
+    assert.match(shader.vertexShader,/fcSwayMask/);
+    assert.match(shader.vertexShader,/fcGrassWindSpeed\*\.035/);
+    assert.match(shader.vertexShader,/fcGrassTurnRange/);
+    assert.match(shader.vertexShader,/fcGrassBladeIndex\*\.61803398875/,
+      'one legacy angular-range control scatters each ribbon inside a clump');
+    const u=mesh.material.userData.grassUniforms;
+    assert.equal(u.fcGrassWindSpeed.value,.15);
+    const oldMesh=mesh;
+    ctx.settings.windEnabled=false;
+    grass.tick();
+    assert.equal(u.fcGrassWindSpeed.value,0);
+    ctx.settings.windEnabled=true;
+    ctx.settings.grassClusterWindSpeed=.5;
+    grass.tick();
+    assert.equal(u.fcGrassWindSpeed.value,.5);
+    assert.strictEqual(mesh.geometry,oldMesh.geometry,'wind cannot rebuild geometry');
+    grass.dispose();
+  }
+});
+
+test('classic grass foliage effects are live uniforms on near/far and simple/full materials',()=>{
+  for(const grouped of [false,true])for(const simple of [false,true]){
+    const {ctx,sceneItems}=fixture({radius:38,density:2});
+    if(grouped)Object.assign(ctx.settings,GRASS_CLUSTER_DEFAULTS,{
+      grassClusterEnabled:true,grassClusterDensity:15,
+    });
+    ctx.settings.grassInteraction=!simple;
+    // Disabling all three reproduces the classic symmetrical Lambert look.
+    Object.assign(ctx.settings,{
+      grassClusterProceduralNormals:false,grassClusterTranslucency:false,
+      grassClusterAO:false,grassClusterTranslucencyIntensity:.6,
+      grassClusterAOIntensity:.6,
+    });
+    const grass=createMicroGrass(ctx);
+    const before=grass.generatedTiles;
+    for(const mesh of sceneItems){
+      if(!mesh.userData.grassTier)continue;
+      const u=mesh.material.userData.grassUniforms;
+      assert.equal(u.fcGrassFxNormals.value,0);
+      assert.equal(u.fcGrassFxTranslucency.value,0);
+      assert.equal(u.fcGrassFxAO.value,0);
+      const shader={
+        uniforms:{},
+        vertexShader:'#include <common>\n#include <color_vertex>\n#include <begin_vertex>',
+        fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <color_fragment>\n#include <lights_fragment_end>\n#include <opaque_fragment>',
+      };
+      mesh.material.onBeforeCompile(shader);
+      assert.strictEqual(shader.uniforms.fcGrassFxNormals,u.fcGrassFxNormals);
+      assert.strictEqual(shader.uniforms.fcGrassFxAO,u.fcGrassFxAO);
+      assert.strictEqual(shader.uniforms.fcGrassFxTranslucency,u.fcGrassFxTranslucency);
+      assert.match(shader.fragmentShader,/fcSmooth=normalize\(vNormal\)/);
+      assert.match(shader.fragmentShader,/mix\(normal,fcProceduralNormal,fcGrassFxNormals\)/);
+      assert.match(shader.fragmentShader,/if\(fcGrassFxAO>\.5\)/);
+      assert.match(shader.fragmentShader,/if\(fcGrassFxTranslucency>\.5\)/);
+      assert.match(shader.fragmentShader,/mat3\(viewMatrix\)\*fcGrassFxSunDirection/);
+      assert.match(shader.fragmentShader,/fcSunHorizontal/);
+      assert.match(shader.fragmentShader,/fcViewHorizontal/);
+      assert.match(shader.fragmentShader,/smoothstep\(0\.10,0\.92,fcAzimuth\)/);
+      assert.match(shader.fragmentShader,/fcTransmission\*1\.08/);
+      assert.match(shader.fragmentShader,/normal = normalize\(mat3\(viewMatrix\)/);
+      assert.doesNotMatch(shader.fragmentShader,/if\s*\(\s*gl_FrontFacing/);
+      assert.match(shader.vertexShader,/vFcGrassRootExposure=smoothstep/);
+      assert.doesNotMatch(shader.fragmentShader,/alphaTest|discard/);
+    }
+    ctx.sun={position:{x:0,y:10,z:0},intensity:1};
+    Object.assign(ctx.settings,{
+      grassClusterProceduralNormals:true,grassClusterNormalsIntensity:.25,
+      grassClusterTranslucency:true,
+      grassClusterAO:true,grassClusterTranslucencyIntensity:1.25,
+      grassClusterAOIntensity:.3,
+    });
+    grass.tick();
+    assert.equal(grass.generatedTiles,before,'lighting switches never regenerate tile data');
+    for(const mesh of sceneItems){
+      if(!mesh.userData.grassTier)continue;
+      const u=mesh.material.userData.grassUniforms;
+      assert.equal(u.fcGrassFxNormals.value,.25);
+      assert.equal(u.fcGrassFxTranslucency.value,1);
+      assert.equal(u.fcGrassFxAO.value,1);
+      assert.equal(u.fcGrassFxTranslucencyIntensity.value,1.25);
+      assert.equal(u.fcGrassFxAOIntensity.value,.3);
+      assert.equal(u.fcGrassFxSunIntensity.value,.5);
+      assert.equal(u.fcGrassFxSunDirection.value.y,1);
+    }
+    Object.assign(ctx.settings,{
+      grassClusterProceduralNormals:false,grassClusterTranslucency:false,
+      grassClusterAO:false,
+    });
+    grass.tick();
+    assert.equal(grass.generatedTiles,before);
+    for(const mesh of sceneItems){
+      if(!mesh.userData.grassTier)continue;
+      assert.equal(mesh.material.userData.grassUniforms.fcGrassFxNormals.value,0);
+      assert.equal(mesh.material.userData.grassUniforms.fcGrassFxTranslucency.value,0);
+      assert.equal(mesh.material.userData.grassUniforms.fcGrassFxAO.value,0);
+    }
+    grass.dispose();
+  }
+});
+
+
+test('camera-facing LOD is live at adjustable distance without tip expansion or tile rebuild',()=>{
+  for(const simple of [false,true]){
+    const {THREE,ctx,sceneItems}=fixture({radius:36,density:2});
+    const original=makeTuftGeometry(THREE,'near',6);
+    const grouped=makeClassicGrassClumpGeometry(THREE,
+      {...GRASS_CLUSTER_DEFAULTS,grassClusterBlades:1},'near',6);
+    assert.deepEqual([...grouped.getAttribute('position').array],
+      [...Float32Array.from(original.getAttribute('position').array)],
+      'new facing setting must not change original triangle positions');
+    assert.equal(grouped.getAttribute('fcGrassSide'),undefined,
+      'discard the redundant tip-width vertex attribute');
+
+    ctx.settings.grassInteraction=!simple;
+    ctx.settings.grassFarFacingEnabled=false;
+    const grass=createMicroGrass(ctx);
+    const near=[...sceneItems].find(mesh=>mesh.userData.grassTier==='near');
+    assert.ok(near);
+    const u=near.material.userData.grassUniforms;
+    assert.deepEqual([u.fcGrassFacing.value.x,u.fcGrassFacing.value.y],[0,20]);
+    const shader={
+      uniforms:{},
+      vertexShader:'#include <common>\n#include <color_vertex>\n#include <begin_vertex>',
+      fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <color_fragment>\n#include <lights_fragment_end>\n#include <opaque_fragment>',
+    };
+    near.material.onBeforeCompile(shader);
+    assert.strictEqual(shader.uniforms.fcGrassFacing,u.fcGrassFacing);
+    assert.match(shader.vertexShader,
+      /smoothstep\(fcGrassFacing\.y,fcGrassFacing\.y\+15\.0,fcDistance\)/);
+    assert.match(shader.vertexShader,/fcAcross=fcTargetAxis\*dot\(fcAcross,fcBladeAxis\)/);
+    assert.match(shader.vertexShader,/cameraPosition\.xz/);
+    assert.match(shader.vertexShader,/vec3 fcWorldCentre=\(modelMatrix\*instanceMatrix/);
+    assert.doesNotMatch(shader.vertexShader,/fcGrassSide|fcTipMask|fcGrassFarShape/,
+      'removed tip widening must not remain in shader');
+    assert.doesNotMatch(shader.vertexShader,/gl_Position\.xy\s*[+\-]=/,
+      'do not reintroduce black pixels from screen-space tip expansion');
+
+    ctx.settings.grassFarFacingEnabled=true;
+    ctx.settings.grassFarFacingStrength=70;
+    ctx.settings.grassFarFacingDistance=45;
+    const before=grass.generatedTiles;
+    grass.tick();
+    assert.equal(u.fcGrassFacing.value.x,.7);
+    assert.equal(u.fcGrassFacing.value.y,45);
+    assert.equal(grass.generatedTiles,before,
+      'adjusting strength and start distance must not regenerate tiles');
+    ctx.settings.grassFarFacingDistance=0;
+    ctx.settings.grassFarFacingStrength=100;
+    grass.tick();
+    assert.deepEqual([u.fcGrassFacing.value.x,u.fcGrassFacing.value.y],[1,0]);
+    ctx.settings.grassFarFacingEnabled=false;
+    grass.tick();
+    assert.deepEqual([u.fcGrassFacing.value.x,u.fcGrassFacing.value.y],[0,0]);
+
+    ctx.settings.grassTriangles=1;
+    ctx.settings.grassFarFacingEnabled=true;
+    grass.tick();
+    const low=[...sceneItems].find(mesh=>mesh.userData.grassTier==='near');
+    assert.equal(low.material.userData.grassUniforms.fcGrassFacing.value.x,1,
+      'camera-facing must continue to work with the 1-triangle LOD');
+    grass.dispose();
+  }
 });

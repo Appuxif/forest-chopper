@@ -222,6 +222,8 @@ function animate(now){
  ctx.waterSplashes?.tick(dt);
  ctx.audio?.tick(now);
  ctx.microGrass?.tick();
+ // Collectible dry-grass shrubs have a fixed straw/brown palette.
+ ctx.grasses?.setEffects?.(ctx.settings,ctx.sun);
  ctx.worldStreamer?.tick();
  ctx.groundBoxes?.tick(now);ctx.storages?.tick();ctx.campStructures?.tick(now);
  ctx.plantInteraction?.tick(dt);

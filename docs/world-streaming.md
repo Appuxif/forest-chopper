@@ -37,6 +37,28 @@ src/micro-grass.js, src/world.js, src/world-startup.js.
   decides individual visibility, avoiding whole-page density jumps. Far blades
   can widen with distance. Presets in `performance-presets.js` configure these
   values; regression coverage is in `tests/micro-grass.test.mjs`.
+- Классическая трава в пучках сохраняет потоковый формат записей
+  (9 float/инстанс: x, y, z, yaw, scale, tint, biome, patchKind, patchWeight).
+  Worker создаёт world-space Voronoi и микрогруппы корней, но **не** новую
+  форму травинок. `classic-grass-clump-geometry.js` объединяет `N` экземпляров
+  оригинальной `makeTuftGeometry` в одну геометрию пучка: 6 треугольников
+  на травинку near, 4 far. Сам материал остался прежним `MeshLambertMaterial`
+  с обычными направлением, цветом, приоритетами и near/far dithering.
+  Все старые CPU/GPU коэффициенты прореживания и кеши используются без
+  дополнительной степенной/геометрической формулы; пучковая плотность
+  означает количество **травинок**, а не количество инстансов.
+  Экспериментальные контролы наклона/пригибания из игры удалены.
+  Пучки включены всегда: Ultra/High/Medium/Low — 3/2/1/1 травинки,
+  выбор треугольников 6/3/1; плотность 25 шт/м² с множителем
+  `grassDensity/30`. Единый диапазон поворота и ветер
+  работают на GPU. Минимальная дистанция 0.05 м действует
+  даже при включённой микрогруппировке.
+- Чёрное рельефное покрытие — третий выбор наряду с micrograss/forest.
+  `black-soil-texture.js` один раз генерирует периодическую цветовую карту
+  и grayscale bump map (512px) с mipmaps, без новых mesh/draw calls.
+  Материал остаётся `MeshLambertMaterial`, карта высоты активируется только
+  на этом покрытии. Общие UV-координаты, tiling, sand/shore masks и
+  декоративное затемнение грунта сохранены.
 - LRU budgets: terrain grids 32MiB, far-forest records 24MiB, grass records
   20MiB, plus up to one inactive tree-model preset capped at 96MiB. Grass
   keeps its existing limited GPU-mesh pool.

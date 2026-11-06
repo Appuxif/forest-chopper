@@ -32,7 +32,7 @@
 | WORLD-03 | LIVE | Водоёмы | Пруды/озёра, пляжи, песчаное дно, вода, брызги; плавания нет | `ponds.js`, `lakes.js`, `water-splashes.js` |
 | WORLD-04 | LIVE | Лес | Процедурные ели и берёзы, индивидуальный силуэт, hp и детерминированные ID; LOD/Instancing | `spruce-model.js`, `birch-model.js`, `world.js`, `tree-instancing.js` |
 | WORLD-05 | LIVE | Дальний лес | Independent 96-метровые GPU-сектора, frustum culling и worker-подготовка | `distant-forest.js`, `world-stream-worker.js` |
-| WORLD-06 | LIVE | Растительность | 2 LOD для micro-grass, цветы/грибы и плотность по графическим пресетам | `micro-grass.js`, `flowers.js`, `mushrooms.js`, `grass.js` |
+| WORLD-06 | LIVE | Растительность | Оригинальная GPU-трава из dev всегда в классических пучках (Ultra/High/Medium/Low: 3/2/1/1; выбор 6/3/1 треугольников). Voronoi + микрогруппы управляют размещением, но не меняют профиль, Lambert-материал, actor bending и оригинальную CPU/GPU-формулу LOD; покрытие земли переключается между микротравой и лесной подстилкой | `micro-grass.js`, `classic-grass-clump-geometry.js`, `grass-clustering.js`, `grass-ground-textures.js`, `grass.js` |
 | WORLD-07 | LIVE | День/ночь | Цикл 8 мин, offline сохранение фазы, online server-clock с периодической синхронизацией | `day-cycle.js`, `forest_server.py` |
 | WORLD-08 | LIVE | Атмосфера и тени | Солнце/луна, туман, освещение, обновляемые тени и GPU-ветер | `atmosphere.js`, `wind.js`, `tree-wind-shader.js` |
 | WORLD-09 | LIVE | Передвижение и коллизии | Root Motion, ходьба/бег, физика прыжка, столкновения с деревьями/камнями/брёвнами | `player.js`, `animations.js`, `physics.js`, `collision-world.js`, `collision-kinematic.js` |
@@ -348,3 +348,8 @@ online пустота подтверждается новым серверным
 до 8 голосов одновременно; отдельные настройки крика/кудахтанья.
 При смертельном ударе — один `07_hen_death.wav`; загрузка старых тушек без звука.
 Выбраны 7 WAV пользователя, пути/лицензия/метаданные в общем аудиокаталоге.
+
+- **Baked Ground AO:** запечённые карты расстояний до корней травы,
+  LRU + атлас 3×3/5×5 ближних тайлов. Настройки интенсивности, радиуса,
+  мягкости, плотности корней, разрешения, кеша и бюджета загрузок.
+  Без дополнительных теневых проходов.
