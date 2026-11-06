@@ -5,6 +5,7 @@ import {installProfilerPanel} from './debug-profiler-ui.js?v=20261103-region-def
 import {parseOfflineSave} from './offline-save.js';
 import {BOX_LIFETIME_SECONDS,MAX_GROUND_DROPS} from './ground-boxes.js';
 import {isFood} from './vitals.js';
+import {createRagdollStress} from './debug-ragdoll-stress.js';
 // Only loaded by index_debug.html. Never expose these controls on the normal page.
 export function installDebug(ctx) {
   installDebugCheats(ctx);
@@ -14,6 +15,7 @@ export function installDebug(ctx) {
   ctx.renderProfiler=profiler;
   const profilerPanel=installProfilerPanel(ctx,profiler);
   const ragdoll=ctx.ragdoll;
+  let ragdollStress=null;
   let benchmarkFixture=null,benchmarkRun=null;
   // Honor the saved/URL-selected graphics preset in regular debug sessions.
   // Dedicated FPS benchmark fixtures choose their own controlled preset.
@@ -468,6 +470,14 @@ export function installDebug(ctx) {
     async ragdoll(){if(ctx.deathSystem?.active)throw new Error('Cannot toggle ragdoll during death');releaseAll();return ctx.ragdollControls.ragdoll();},
     resetRagdoll(){if(ctx.deathSystem?.active)return false;return ctx.ragdollControls.getUp();},
     ragdollState(){return ragdoll.state();},
+    // Runs real walking/running and N voluntary ragdolls via the game loop.
+    stressRagdoll(count=10,options={}){
+      if(activeTask?.status==='running')throw Error('Stop the current debug task first');
+      if(benchmarkRun?.status==='running')throw Error('Stop the FPS benchmark first');
+      return ragdollStress.run(count,options);
+    },
+    stopRagdollStress(){return ragdollStress.cancel();},
+    ragdollStressStatus(){return ragdollStress.status();},
     die(){
       if(ctx.isOnline())throw new Error('Offline debug helper only');
       if(ctx.deathSystem?.active)return false;
@@ -509,10 +519,13 @@ export function installDebug(ctx) {
     clearDebugMobs() { return ctx.debugCheatsController.clearMobs(); },
     get mobs() { return ctx.mobs; },
     get hens() { return ctx.mobs??ctx.hens; },
-    help: 'spawnMob(type,{count,subcategory}), clearDebugMobs(), die(), ragdoll(), resetRagdoll(), ragdollState(), loadBenchmarkSave(), benchmarkBoxes(enabled), startBoxBenchmark(options), benchmarkStatus(), exitBenchmark(), setPreset(name), getPreset(), fpsStart({clear,phase}), fpsStats(phase), fpsSamples(), fpsPhase(name), fpsStop(), profileStart(), profileStop(), profileSnapshot(), grantLog(), dropLog(), bulkLogs(count,{intervalMs,phase}), startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
+    help: 'spawnMob(type,{count,subcategory}), clearDebugMobs(), die(), ragdoll(), resetRagdoll(), ragdollState(), stressRagdoll(N,options), ragdollStressStatus(), stopRagdollStress(), loadBenchmarkSave(), benchmarkBoxes(enabled), startBoxBenchmark(options), benchmarkStatus(), exitBenchmark(), setPreset(name), getPreset(), fpsStart({clear,phase}), fpsStats(phase), fpsSamples(), fpsPhase(name), fpsStop(), profileStart(), profileStop(), profileSnapshot(), grantLog(), dropLog(), bulkLogs(count,{intervalMs,phase}), startFollowing(playerId), stopFollowing(), startTask(type,params), getTask(id), cancelTask(id), getActiveTask(), getSnapshot(radius,limit,afterChatId), getBrief(afterChatId,afterEventId,afterTaskId), chat(limit), say(text), tasks(limit), observe(radius,limit), lookAt(x,z), navigateTo(x,z,options), chopTree(id), events(since), move(direction,ms,sprint), hold(code,ms), jump(), chop(), state()'
   };
+  ragdollStress=createRagdollStress(ctx,{
+    press:code=>api.press(code),releaseAll,wait,
+  });
   window.__gameDebug = api;
   window.addEventListener('blur', releaseAll);
-  window.addEventListener('pagehide', cancelActive);
+  window.addEventListener('pagehide', ()=>{cancelActive();ragdollStress.cancel();});
   console.info('Forest Chopper debug controls ready:', api.help);
 }

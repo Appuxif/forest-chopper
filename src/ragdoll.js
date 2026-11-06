@@ -1,5 +1,5 @@
-import {loadRagdollPhysics} from './rapier-loader.js';
-import {createRagdollEnvironment} from './ragdoll-colliders.js';
+import {loadRagdollPhysics} from './rapier-loader.js?v=20261106-rapier0211';
+import {createRagdollEnvironment} from './ragdoll-colliders.js?v=20261106-rapier0211';
 import {ragdollActivationMotion,applyRagdollMomentum} from './ragdoll-motion.js?v=20261102-bounce-fix1';
 import {createRagdollSettling} from './ragdoll-settling.js';
 import {calibrateLimbJoint,RAGDOLL_LIMB_END_BONES} from './ragdoll-anatomy.js';

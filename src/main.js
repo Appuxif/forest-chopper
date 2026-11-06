@@ -1,7 +1,7 @@
 import {loadRagdollPhysics} from './rapier-loader.js';
 import {createMobs} from './mobs.js?v=20261105-corpse-cursor1';
 import {createMobileHud} from './mobile-hud.js?v=20261104-fps3';
-import {createRagdoll} from './ragdoll.js?v=20261106-ori08-ragdoll1';
+import {createRagdoll} from './ragdoll.js?v=20261106-rapier0211';
 import {createRagdollControls} from './ragdoll-controls.js?v=20261103-ragdoll-save-recovery1';
 import {createAnimations} from './animations.js?v=20261105-crescent-low-game1';
 import {createWorld} from './world.js?v=20261103-region-default-3';
@@ -676,7 +676,7 @@ if(menuLaunch.mode==='online'){
 }
 refreshPerformance();
 if (location.pathname.endsWith('/index_debug.html')) {
-  const { installDebug } = await import('./debug.js?v=20261104-cheats-close2');
+  const { installDebug } = await import('./debug.js?v=20261106-ragdoll-stress1');
   installDebug(ctx);
 }
 requestAnimationFrame(animate);

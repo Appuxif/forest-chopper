@@ -69,7 +69,8 @@ test('Rapier environment creates fixed physical colliders and refreshes after tr
  assert.equal(env.refresh(RAGDOLL_ENV_REFRESH_DISTANCE/2,0),false);
  const old=env.colliderBodies;
  assert.equal(env.refresh(RAGDOLL_ENV_REFRESH_DISTANCE+1,0),true);
- assert.equal(world.removed.length,old,'old static bodies are released');
+ assert.equal(world.removed.length,1,'only displaced terrain is replaced');
+ assert.equal(env.colliderBodies,old,'in-range obstacles keep their original bodies');
  assert.equal(env.center.x,RAGDOLL_ENV_REFRESH_DISTANCE+1);
  assert.equal(env.refresh(RAGDOLL_ENV_REFRESH_DISTANCE+2,0),false);
 });
@@ -90,7 +91,44 @@ test('Rapier adapter invalidates old obstacle bodies as soon as shared world cha
  ctx.placed.length=0;
  ctx.collisionWorld.invalidate();
  assert.equal(env.refresh(0,0),true,'same position must refresh after construction change');
- assert.equal(world.removed.length,start);
+ assert.equal(world.removed.length,1,'only the removed log collider is disposed');
  assert.equal(env.colliderBodies,start-1);
  assert.equal(env.refresh(0,0),false,'no rebuild without a new revision');
+});
+
+
+test('unchanged collision revisions do not recreate physics bodies',()=>{
+ const ctx=fixture();
+ ctx.collisionWorld=createCollisionWorld(ctx);
+ const world={created:[],removed:[],
+  createRigidBody(desc){const body={desc};this.created.push(body);return body;},
+  removeRigidBody(body){this.removed.push(body);},
+  createCollider(){}};
+ const descriptor=kind=>(...args)=>({kind,args,
+  setTranslation(){return this;},setRotation(){return this;},
+  setFriction(){return this;},setCollisionGroups(){return this;}});
+ const physics={RigidBodyDesc:{fixed:descriptor('fixed')},ColliderDesc:{
+  trimesh:descriptor('trimesh'),cuboid:descriptor('cuboid'),
+  cylinder:descriptor('cylinder'),capsule:descriptor('capsule'),
+ }};
+ const env=createRagdollEnvironment(world,physics,ctx);
+ const initial=world.created.length;
+ for(let i=0;i<50;i++){
+  ctx.collisionWorld.invalidate();
+  assert.equal(env.refresh(0,0),true);
+ }
+ assert.equal(world.created.length,initial,'the existing ground and obstacles are reused');
+ assert.equal(world.removed.length,0,'revision alone does not remove colliders');
+ assert.equal(env.colliderBodies,initial);
+ // Replacing only the bench shape must leave the ground, rocks and logs intact.
+ const bench=ctx.crafting.items.get('b');
+ bench.group.userData.collisionBoxes[0].w+=.2;
+ ctx.collisionWorld.invalidate();
+ assert.equal(env.refresh(0,0),true);
+ assert.equal(world.created.length,initial+1);
+ assert.equal(world.removed.length,1);
+ ctx.collisionWorld.invalidate();
+ env.refresh(0,0);
+ assert.equal(world.created.length,initial+1,'the changed shape is reused after further revisions');
+ assert.equal(world.removed.length,1);
 });

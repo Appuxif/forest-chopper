@@ -1,5 +1,5 @@
 // Shared by every ragdoll. Start during world loading, never in the main menu.
-const RAPIER_URL='https://esm.sh/@dimforge/rapier3d-compat@0.20.0?bundle';
+const RAPIER_URL='https://esm.sh/@dimforge/rapier3d-compat@0.21.0?bundle';
 export function createPhysicsLoader(importPhysics){
  let pending=null;
  return ()=>{
