@@ -995,3 +995,67 @@ test('classic grass foliage effects are live uniforms on near/far and simple/ful
     grass.dispose();
   }
 });
+
+
+test('camera-facing LOD is live at adjustable distance without tip expansion or tile rebuild',()=>{
+  for(const simple of [false,true]){
+    const {THREE,ctx,sceneItems}=fixture({radius:36,density:2});
+    const original=makeTuftGeometry(THREE,'near',6);
+    const grouped=makeClassicGrassClumpGeometry(THREE,
+      {...GRASS_CLUSTER_DEFAULTS,grassClusterBlades:1},'near',6);
+    assert.deepEqual([...grouped.getAttribute('position').array],
+      [...Float32Array.from(original.getAttribute('position').array)],
+      'new facing setting must not change original triangle positions');
+    assert.equal(grouped.getAttribute('fcGrassSide'),undefined,
+      'discard the redundant tip-width vertex attribute');
+
+    ctx.settings.grassInteraction=!simple;
+    ctx.settings.grassFarFacingEnabled=false;
+    const grass=createMicroGrass(ctx);
+    const near=[...sceneItems].find(mesh=>mesh.userData.grassTier==='near');
+    assert.ok(near);
+    const u=near.material.userData.grassUniforms;
+    assert.deepEqual([u.fcGrassFacing.value.x,u.fcGrassFacing.value.y],[0,20]);
+    const shader={
+      uniforms:{},
+      vertexShader:'#include <common>\n#include <color_vertex>\n#include <begin_vertex>',
+      fragmentShader:'#include <common>\n#include <normal_fragment_begin>\n#include <color_fragment>\n#include <lights_fragment_end>\n#include <opaque_fragment>',
+    };
+    near.material.onBeforeCompile(shader);
+    assert.strictEqual(shader.uniforms.fcGrassFacing,u.fcGrassFacing);
+    assert.match(shader.vertexShader,
+      /smoothstep\(fcGrassFacing\.y,fcGrassFacing\.y\+15\.0,fcDistance\)/);
+    assert.match(shader.vertexShader,/fcAcross=fcTargetAxis\*dot\(fcAcross,fcBladeAxis\)/);
+    assert.match(shader.vertexShader,/cameraPosition\.xz/);
+    assert.match(shader.vertexShader,/vec3 fcWorldCentre=\(modelMatrix\*instanceMatrix/);
+    assert.doesNotMatch(shader.vertexShader,/fcGrassSide|fcTipMask|fcGrassFarShape/,
+      'removed tip widening must not remain in shader');
+    assert.doesNotMatch(shader.vertexShader,/gl_Position\.xy\s*[+\-]=/,
+      'do not reintroduce black pixels from screen-space tip expansion');
+
+    ctx.settings.grassFarFacingEnabled=true;
+    ctx.settings.grassFarFacingStrength=70;
+    ctx.settings.grassFarFacingDistance=45;
+    const before=grass.generatedTiles;
+    grass.tick();
+    assert.equal(u.fcGrassFacing.value.x,.7);
+    assert.equal(u.fcGrassFacing.value.y,45);
+    assert.equal(grass.generatedTiles,before,
+      'adjusting strength and start distance must not regenerate tiles');
+    ctx.settings.grassFarFacingDistance=0;
+    ctx.settings.grassFarFacingStrength=100;
+    grass.tick();
+    assert.deepEqual([u.fcGrassFacing.value.x,u.fcGrassFacing.value.y],[1,0]);
+    ctx.settings.grassFarFacingEnabled=false;
+    grass.tick();
+    assert.deepEqual([u.fcGrassFacing.value.x,u.fcGrassFacing.value.y],[0,0]);
+
+    ctx.settings.grassTriangles=1;
+    ctx.settings.grassFarFacingEnabled=true;
+    grass.tick();
+    const low=[...sceneItems].find(mesh=>mesh.userData.grassTier==='near');
+    assert.equal(low.material.userData.grassUniforms.fcGrassFacing.value.x,1,
+      'camera-facing must continue to work with the 1-triangle LOD');
+    grass.dispose();
+  }
+});

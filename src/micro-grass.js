@@ -93,6 +93,53 @@ export function generateGrassTile(seed, tileX, tileZ, tileSize, density, tier, c
     return grouped;
 }
 
+// Gradually turn each classic ribbon to face the camera beyond an adjustable
+// distance. The original geometry, dark-root shading and wind stay untouched.
+// This is vertex-only; no transparency, extra meshes or screen-space offsets.
+export function applyFarGrassFacingShader(shader,uniforms,{simple=false}={}){
+  shader.uniforms.fcGrassFacing=uniforms.fcGrassFacing;
+  shader.vertexShader=shader.vertexShader.replace('#include <common>',
+    `#include <common>
+uniform vec2 fcGrassFacing;`
+  );
+  const anchor=simple?'  // Classic grass wind:':'  // Same gentle shader wind as the lightweight material.';
+  const shape=`  // x: facing strength (0..1), y: start distance in metres.
+  // Transition completes over 15 metres, identically for both near/far LOD.
+  if(fcGrassFacing.x>0.0){
+    float fcFacingLOD=smoothstep(fcGrassFacing.y,fcGrassFacing.y+15.0,fcDistance);
+    if(fcFacingLOD>0.0){
+      vec2 fcBladeAxis=vec2(fcCos,fcSin);
+      vec2 fcShapeCentre=vec2(
+        fcGrassCenterX*fcCos-fcGrassCenterZ*fcSin,
+        fcGrassCenterX*fcSin+fcGrassCenterZ*fcCos
+      );
+      vec2 fcAcross=transformed.xz-fcShapeCentre;
+      vec3 fcWorldCentre=(modelMatrix*instanceMatrix*
+        vec4(fcShapeCentre.x,0.0,fcShapeCentre.y,1.0)).xyz;
+      vec2 fcToCamera=cameraPosition.xz-fcWorldCentre.xz;
+      if(dot(fcToCamera,fcToCamera)>0.0001){
+        vec3 fcAxisWorldX=mat3(modelMatrix)*instanceMatrix[0].xyz;
+        vec3 fcAxisWorldZ=mat3(modelMatrix)*instanceMatrix[2].xyz;
+        vec2 fcCameraLocal=vec2(
+          dot(fcToCamera,fcAxisWorldX.xz)/max(length(fcAxisWorldX.xz),0.0001),
+          dot(fcToCamera,fcAxisWorldZ.xz)/max(length(fcAxisWorldZ.xz),0.0001)
+        );
+        fcCameraLocal/=max(length(fcCameraLocal),0.0001);
+        vec2 fcCameraSide=vec2(-fcCameraLocal.y,fcCameraLocal.x);
+        float fcFacing=fcGrassFacing.x*fcFacingLOD;
+        vec2 fcTargetAxis=mix(fcBladeAxis,fcCameraSide,fcFacing);
+        float fcAxisLength=length(fcTargetAxis);
+        fcTargetAxis=fcAxisLength>0.0001
+          ?fcTargetAxis/fcAxisLength:fcCameraSide;
+        fcAcross=fcTargetAxis*dot(fcAcross,fcBladeAxis);
+        transformed.xz=fcShapeCentre+fcAcross;
+      }
+    }
+  }
+`;
+  shader.vertexShader=shader.vertexShader.replace(anchor,shape+anchor);
+}
+
 // One instanced classic-ribbon material for every graphics preset.
 function makeMaterial(THREE, player, near, simple=false) {
   // Preserve the original Lambert palette, LOD and actor interaction.
@@ -101,6 +148,7 @@ function makeMaterial(THREE, player, near, simple=false) {
     fcGrassFade:{value:new THREE.Vector4(-2,-1,19,26)},
     fcGrassSizeRange:{value:new THREE.Vector2(1,7)},
     fcGrassWidth:{value:1},
+    fcGrassFacing:{value:new THREE.Vector2(0,20)},
     fcGrassRandomColors:{value:0},
     fcGrassYellowShare:{value:.05},
     ...makeGrassFoliageUniforms(),
@@ -118,7 +166,7 @@ function makeMaterial(THREE, player, near, simple=false) {
   const material=new THREE.MeshLambertMaterial({
     color:0xffffff,vertexColors:true,side:THREE.DoubleSide,depthWrite:true,
   });
-  material.customProgramCacheKey=()=>`grass-classic-${near?'near':'far'}-${simple?'simple':'full'}-wind-foliage-v5`;
+  material.customProgramCacheKey=()=>`grass-classic-camera-facing2-${near?'near':'far'}-${simple?'simple':'full'}`;
   if(simple){
     // Lightweight shader for low-end devices: only width correction.
     // No actor, clearing, biome or glade loops from the full shader.
@@ -182,6 +230,7 @@ uniform vec2 fcGrassTurnRange;`,
       applyGrassRandomPalette(shader,uniforms);
       applyClassicGrassTwoSidedLighting(shader);
       applyGrassFoliageEffects(shader,uniforms);
+      applyFarGrassFacingShader(shader,uniforms,{simple:true});
     };
     material.userData.grassUniforms=uniforms;
     return material;
@@ -281,6 +330,7 @@ uniform vec2 fcGrassTurnRange;`,
     applyGrassRandomPalette(shader,uniforms);
     applyClassicGrassTwoSidedLighting(shader);
     applyGrassFoliageEffects(shader,uniforms);
+    applyFarGrassFacingShader(shader,uniforms);
   };
   material.userData.grassUniforms=uniforms;
   return material;
@@ -756,6 +806,10 @@ export function createMicroGrass(ctx) {
       u.fcGrassYellowShare.value=(ctx.settings?.grassYellowPercent??5)/100;
       updateGrassFoliageUniforms(u,ctx.settings,ctx.sun);
       u.fcGrassWidth.value=width;
+      u.fcGrassFacing.value.set(
+        ctx.settings?.grassFarFacingEnabled
+          ?(ctx.settings.grassFarFacingStrength??70)/100:0,
+        ctx.settings?.grassFarFacingDistance??20);
       u.fcGrassTurnRange.value.set(minTurn*Math.PI/180,maxTurn*Math.PI/180);
       u.fcGrassDensityLod.value.set(
         lodNear,Math.max(lodNear+1,lodRadius-2),lodWidth,lodSharpness);

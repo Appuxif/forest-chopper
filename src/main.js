@@ -15,7 +15,7 @@ import {detachTreeForFall} from './tree-instancing.js?v=20261031-spruce-sway1';
 import {createMushrooms} from './mushrooms.js?v=20261105-ground-receive-shadows1';
 import {createFlowers} from './flowers.js?v=20261105-ground-receive-shadows1';
 import {createGrass} from './grass.js?v=20261106-stable-procedural-normals1';
-import {createMicroGrass} from './micro-grass.js?v=20261106-stable-procedural-normals1';
+import {createMicroGrass} from './micro-grass.js?v=20261106-far-facing-distance1';
 import {createGroundTexture,enableGrassDensityShadows} from './ground-texture.js?v=20261105-baked-ground-ao2';
 import {createGroundMicrograssTexture,createForestGroundTexture} from './grass-ground-textures.js';
 import {createBlackSoilGroundTextures} from './black-soil-texture.js';
@@ -31,7 +31,7 @@ import {createCharacterOrientation} from './character-orientation.js?v=20261105-
 import {createMultiplayer} from './multiplayer.js?v=20261105-ori07-network-pose1';
 import {createMinimap} from './minimap.js?v=20261102-ragdoll-sleep1';
 import {createNotifications} from './notifications.js';
-import {createSettings} from './settings.js?v=20261106-classic-grass-only1';
+import {createSettings} from './settings.js?v=20261106-far-facing-defaults1';
 import {createGameAudio} from './game-audio.js?v=20261105-mob-hit-audio1';
 import {applyQuality} from './quality.js';
 import {createWind} from './wind.js?v=20261031-spruce-sway1';

@@ -17,6 +17,7 @@ export const GRASS_AO_FIELDS=Object.freeze({
 });
 const KEY = 'forest-chopper:settings:v1';
 const GRASS_CLASSIC_MIGRATION='forest-chopper:classic-grass-only:v1';
+const GRASS_FACING_DEFAULTS_MIGRATION='forest-chopper:far-facing-defaults:v1';
 export const LIGHTING_FIELDS=Object.freeze({
  dayAmbient:[0,3,.05,1.2,'☀️ Рассеянный свет дня'],
  daySun:[0,5,.05,2,'☀️ Солнечный свет'],
@@ -69,6 +70,8 @@ const DEFAULT=Object.freeze({
  grassClusterNormalsIntensity:1,
  ...PERFORMANCE_DEFAULTS,...GRASS_CLUSTER_DEFAULTS,
  grassRandomColors:false,grassYellowPercent:5,
+ grassFarFacingEnabled:true,grassFarFacingStrength:80,
+ grassFarFacingDistance:20,
  grassAOEnabled:true,grassAOResolution:128,grassAOAtlasTiles:5,grassAOEdgeFade:true,
  ...Object.fromEntries(Object.entries(GRASS_AO_FIELDS).map(([key,field])=>[key,field[3]])),
   performancePreset:'high',
@@ -102,7 +105,8 @@ export function sanitizeSettings(value) {
       grassDensity:1,grassDistance:1,grassMinSize:1,grassMaxSize:1,grassWidth:1,
       grassFullDensityDistance:1,grassFarDensityPercent:1,grassFarWidthBonus:1,
       grassDensitySharpness:1,grassDensityCoefficient:1,grassDensityOffset:1,
-      grassTurnMin:1,grassTurnMax:1,shadowContrast:1,
+      grassTurnMin:1,grassTurnMax:1,grassFarFacingEnabled:1,
+      grassFarFacingStrength:1,grassFarFacingDistance:1,shadowContrast:1,
     })).map(key=>[key,
       typeof PERFORMANCE_DEFAULTS[key]==='number'
         ? (Number.isFinite(source[key])?source[key]:PERFORMANCE_DEFAULTS[key])
@@ -200,6 +204,20 @@ export function sanitizeSettings(value) {
     grassFarWidthBonus: Number.isInteger(source.grassFarWidthBonus)
       && source.grassFarWidthBonus >= 0 && source.grassFarWidthBonus <= 500
       ? source.grassFarWidthBonus : DEFAULT.grassFarWidthBonus,
+    grassFarFacingEnabled:typeof source.grassFarFacingEnabled==='boolean'
+      ?source.grassFarFacingEnabled:
+        (PERFORMANCE_PRESETS[performancePreset]?.grassFarFacingEnabled??
+        DEFAULT.grassFarFacingEnabled),
+    grassFarFacingStrength:Number.isInteger(source.grassFarFacingStrength)
+      && source.grassFarFacingStrength>=0 && source.grassFarFacingStrength<=100
+      ?source.grassFarFacingStrength:
+        (PERFORMANCE_PRESETS[performancePreset]?.grassFarFacingStrength??
+        DEFAULT.grassFarFacingStrength),
+    grassFarFacingDistance:Number.isInteger(source.grassFarFacingDistance)
+      && source.grassFarFacingDistance>=0 && source.grassFarFacingDistance<=100
+      ?source.grassFarFacingDistance:
+        (PERFORMANCE_PRESETS[performancePreset]?.grassFarFacingDistance??
+        DEFAULT.grassFarFacingDistance),
     // Experimental shape parameters accept any finite floating-point value.
     grassDensitySharpness: Number.isFinite(source.grassDensitySharpness)
       ? source.grassDensitySharpness : DEFAULT.grassDensitySharpness,
@@ -318,6 +336,27 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       }
       local.setItem(KEY,JSON.stringify(persisted));
       local.setItem(GRASS_CLASSIC_MIGRATION,'1');
+    }
+    // Adopt approved per-preset camera-facing defaults once. Old unchanged
+    // settings (off/70%/20m) become on/80%/20m for High/Medium/Low, but
+    // Ultra remains off. Preserve custom values and future user overrides.
+    if(persisted&&!local.getItem(GRASS_FACING_DEFAULTS_MIGRATION)){
+      const previousFacingDefaults=
+        (persisted.grassFarFacingEnabled===false||
+          persisted.grassFarFacingEnabled===undefined)&&
+        (persisted.grassFarFacingStrength===70||
+          persisted.grassFarFacingStrength===undefined)&&
+        (persisted.grassFarFacingDistance===20||
+          persisted.grassFarFacingDistance===undefined);
+      const preset=persisted.performancePreset??'high';
+      if(previousFacingDefaults&&['high','medium','low'].includes(preset))
+        persisted.grassFarFacingEnabled=true;
+      if(['ultra','high','medium','low'].includes(preset)&&
+          (persisted.grassFarFacingStrength===70||
+           persisted.grassFarFacingStrength===undefined))
+        persisted.grassFarFacingStrength=80;
+      local.setItem(KEY,JSON.stringify(persisted));
+      local.setItem(GRASS_FACING_DEFAULTS_MIGRATION,'1');
     }
     // Old untouched defaults should adopt the quieter reviewed recordings.
     // Preserve every custom audio value and run only once per browser profile.
@@ -639,6 +678,15 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
       <input id="fc-grass-far-width-bonus" type="range" min="0" max="500" step="5"></label>
     <small>После указанного расстояния плотность плавно снижается до выбранного процента,
       а ширина оставшихся травинок постепенно увеличивается. 100% плотности и +0% ширины отключают эффект.</small>
+    <h3>Эксперимент: дальний силуэт травы</h3>
+    <label><input id="fc-grass-far-facing-enabled" type="checkbox"> Разворачивать травинки к камере вдали</label>
+    <label>Сила разворота: <output id="fc-grass-far-facing-strength-value"></output>%
+      <input id="fc-grass-far-facing-strength" type="range" min="0" max="100" step="5"></label>
+    <label>Начало разворота: <output id="fc-grass-far-facing-distance-value"></output> м
+      <input id="fc-grass-far-facing-distance" type="range" min="0" max="100" step="1"></label>
+    <small>По умолчанию выключено. До выбранного расстояния травинки сохраняют
+      исходный угол; затем разворот плавно нарастает в течение 15 м.
+      Угол и дистанцию можно менять без пересоздания травы.</small>
     <label>Размер травинок: <output id="fc-grass-size-range-value"></output>
       <span class="fc-angle-pair" id="fc-grass-size-pair">
         <span class="fc-angle-track" id="fc-grass-size-track"></span>
@@ -857,6 +905,14 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
   const grassRandomColorsInput=panel.querySelector('#fc-grass-random-colors');
   const grassYellowPercentInput=panel.querySelector('#fc-grass-yellow-percent');
   const grassYellowPercentValue=panel.querySelector('#fc-grass-yellow-percent-value');
+  const farFacingCheckbox=panel.querySelector('#fc-grass-far-facing-enabled');
+  const farFacingSliders=[
+    ['grassFarFacingStrength','grass-far-facing-strength'],
+    ['grassFarFacingDistance','grass-far-facing-distance'],
+  ].map(([key,id])=>({
+    key,input:panel.querySelector('#fc-'+id),
+    output:panel.querySelector('#fc-'+id+'-value'),
+  }));
   const grassClusterFields=GRASS_CLUSTER_FIELDS
     .filter(([key])=>key!=='grassClusterTranslucencyIntensity'
       &&key!=='grassClusterAOIntensity')
@@ -968,6 +1024,12 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     grassYellowPercentInput.value=String(state.grassYellowPercent);
     grassYellowPercentValue.textContent=String(state.grassYellowPercent);
     grassYellowPercentInput.disabled=!state.grassRandomColors;
+    farFacingCheckbox.checked=state.grassFarFacingEnabled;
+    for(const {key,input,output} of farFacingSliders){
+      input.value=String(state[key]);
+      input.disabled=!state.grassFarFacingEnabled;
+      output.textContent=String(state[key]);
+    }
     for(const {input,output,flag,intensity,max} of grassFxSliders){
       const percentage=state[flag]
         ?Math.round(state[intensity]/max*100):0;
@@ -1244,6 +1306,16 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     }).grassYellowPercent;
     reflect();save();
   };
+  farFacingCheckbox.onchange=()=>{
+    state.grassFarFacingEnabled=farFacingCheckbox.checked;
+    reflect();save();
+  };
+  for(const {key,input} of farFacingSliders){
+    input.oninput=()=>{
+      state[key]=sanitizeSettings({...state,[key]:Number(input.value)})[key];
+      reflect();save();
+    };
+  }
   for(const [key,input] of grassClusterFields){
     input.oninput=()=>{
       state[key]=sanitizeSettings({...state,[key]:Number(input.value)})[key];
@@ -1586,6 +1658,9 @@ export function createSettings(doc = document, storage = null, onFovChange = nul
     get grassDensityCoefficient(){return state.grassDensityCoefficient;},
     get grassDensityOffset(){return state.grassDensityOffset;},
     get grassFarWidthBonus(){return state.grassFarWidthBonus;},
+    get grassFarFacingEnabled(){return state.grassFarFacingEnabled;},
+    get grassFarFacingStrength(){return state.grassFarFacingStrength;},
+    get grassFarFacingDistance(){return state.grassFarFacingDistance;},
     get grassTurnMin(){return state.grassTurnMin;},
     get grassTurnMax(){return state.grassTurnMax;},
     tick, tickPhysics, recordCpuFrame, setGpuFrameTime, close, setConnected, setLatency,
